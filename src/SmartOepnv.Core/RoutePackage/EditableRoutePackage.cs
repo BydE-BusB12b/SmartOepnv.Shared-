@@ -1,0 +1,377 @@
+using System.Text.Json.Nodes;
+using SmartOepnv.Core;
+
+namespace SmartOepnv.Core.RoutePackage;
+
+public sealed class EditableRoutePackage
+{
+    private JsonObject _root = new();
+
+    public IList<string> RouteNames { get; } = new List<string>();
+    public JsonObject PackageRoot => _root;
+    public IDictionary<string, IList<RouteStopItem>> StopsByRoute { get; } =
+        new Dictionary<string, IList<RouteStopItem>>(StringComparer.Ordinal);
+
+    public IList<EmployeeRosterItem> Employees { get; } = [];
+    public IList<RegisteredVehicleItem> RegisteredVehicles { get; } = [];
+    public IList<RegisteredVehiclePhoneRedirect> RegisteredVehiclePhoneRedirects { get; } = [];
+    public IList<string> MessageTemplates { get; } = [];
+    public IList<string> MailTemplates { get; } = [];
+    public IList<ManagedStopTemplateItem> StopTemplates { get; } = [];
+    public IList<ManagedAnnouncementTemplateItem> AnnouncementTemplates { get; } = [];
+    public IList<string> AdditionalAllowedRoutes { get; } = [];
+    public IList<DateBasedHintItem> DateBasedHints { get; } = [];
+    public IList<string> OutsideDisplays { get; } = [];
+
+    public static EditableRoutePackage FromJson(string json)
+    {
+        var node = JsonNode.Parse(json) ?? throw new InvalidOperationException("Ungültiges JSON.");
+        if (node is not JsonObject root)
+        {
+            throw new InvalidOperationException("JSON-Wurzel muss ein Objekt sein.");
+        }
+
+        var package = new EditableRoutePackage { _root = root };
+        package.ReloadFromRoot();
+        return package;
+    }
+
+    public string ToJson(bool indented = true)
+    {
+        SyncToRoot();
+        _root["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (_root["version"] is null)
+        {
+            _root["version"] = "1.0";
+        }
+
+        if (_root["exportType"] is null)
+        {
+            _root["exportType"] = "routes";
+        }
+
+        _root["autoImport"] = true;
+
+        return _root.ToJsonString();
+    }
+
+    public void ReloadFromRoot()
+    {
+        RouteNames.Clear();
+        StopsByRoute.Clear();
+        Employees.Clear();
+        RegisteredVehicles.Clear();
+        RegisteredVehiclePhoneRedirects.Clear();
+        MessageTemplates.Clear();
+        MailTemplates.Clear();
+        StopTemplates.Clear();
+        AnnouncementTemplates.Clear();
+        AdditionalAllowedRoutes.Clear();
+        DateBasedHints.Clear();
+        OutsideDisplays.Clear();
+
+        if (_root["routes"] is JsonArray routes)
+        {
+            foreach (var r in routes)
+            {
+                var name = r?.GetValue<string>();
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    AddRouteNameIfMissing(name);
+                }
+            }
+        }
+
+        if (_root["routeStops"] is JsonObject routeStops)
+        {
+            foreach (var route in routeStops)
+            {
+                AddRouteNameIfMissing(route.Key);
+                var list = new List<RouteStopItem>();
+                if (route.Value is JsonArray stops)
+                {
+                    foreach (var stopNode in stops)
+                    {
+                        if (stopNode is JsonObject stopObj)
+                        {
+                            list.Add(GpsAnsagenStopJson.Parse(stopObj, route.Key));
+                        }
+                    }
+                }
+
+                StopsByRoute[route.Key] = list;
+            }
+        }
+
+        foreach (var name in RouteNames.Where(n => !StopsByRoute.ContainsKey(n)).ToList())
+        {
+            StopsByRoute[name] = new List<RouteStopItem>();
+        }
+
+        foreach (var employee in EmployeeRosterEditor.LoadFromRoot(_root))
+        {
+            Employees.Add(employee);
+        }
+
+        foreach (var redirect in RegisteredVehiclesEditor.LoadPhoneRedirectsFromRoot(_root))
+        {
+            RegisteredVehiclePhoneRedirects.Add(redirect);
+        }
+
+        foreach (var vehicle in RegisteredVehiclesEditor.LoadFromRoot(_root))
+        {
+            RegisteredVehicles.Add(vehicle);
+        }
+
+        foreach (var msg in MessageTemplatesEditor.LoadMessageTemplates(_root))
+        {
+            MessageTemplates.Add(msg);
+        }
+
+        foreach (var mail in MessageTemplatesEditor.LoadMailTemplates(_root))
+        {
+            MailTemplates.Add(mail);
+        }
+
+        foreach (var template in ManagedStopTemplateEditor.LoadFromRoot(_root))
+        {
+            StopTemplates.Add(template);
+        }
+
+        foreach (var announcement in ManagedAnnouncementTemplateEditor.LoadFromRoot(_root))
+        {
+            AnnouncementTemplates.Add(announcement);
+        }
+
+        foreach (var hint in DateBasedHintsEditor.LoadFromRoot(_root))
+        {
+            DateBasedHints.Add(hint);
+        }
+
+        foreach (var entry in RoutePackagePhoneMetadata.LoadOutsideDisplays(_root))
+        {
+            OutsideDisplays.Add(entry);
+        }
+
+        var allStops = StopsByRoute.Values.SelectMany(s => s).ToList();
+        var exportedRoutes = RouteDistributionRouteCollector.CollectAllRoutesForDistribution(RouteNames, allStops);
+        foreach (var extra in RoutePackagePhoneMetadata.LoadAdditionalAllowedRoutes(_root, exportedRoutes))
+        {
+            AdditionalAllowedRoutes.Add(extra);
+        }
+    }
+
+    public IList<RouteStopItem> GetStops(string routeName) =>
+        StopsByRoute.TryGetValue(routeName, out var stops) ? stops : new List<RouteStopItem>();
+
+    public void AddRoute(string routeName)
+    {
+        var name = routeName.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            return;
+        }
+
+        AddRouteNameIfMissing(name);
+        if (!StopsByRoute.ContainsKey(name))
+        {
+            StopsByRoute[name] = new List<RouteStopItem>();
+        }
+    }
+
+    public void RemoveRoute(string routeName)
+    {
+        RouteNames.Remove(routeName);
+        StopsByRoute.Remove(routeName);
+    }
+
+    public void AddStop(string routeName, RouteStopItem? template = null)
+    {
+        if (!StopsByRoute.ContainsKey(routeName))
+        {
+            StopsByRoute[routeName] = new List<RouteStopItem>();
+        }
+
+        var stop = template ?? new RouteStopItem { RouteName = routeName, Name = "Neue Haltestelle" };
+        stop.RouteName = routeName;
+        if (string.IsNullOrWhiteSpace(stop.PlannerStopCode))
+        {
+            stop.PlannerStopCode = PlannerStopCode.SuggestNext(
+                StopsByRoute.Values.SelectMany(s => s).Select(s => s.PlannerStopCode)
+                    .Concat(StopTemplates.Select(t => t.StopCode)));
+        }
+
+        StopsByRoute[routeName].Add(stop);
+    }
+
+    public void AddStopFromTemplate(string routeName, ManagedStopTemplateItem template)
+    {
+        AddStop(routeName, template.ToRouteStop(routeName));
+    }
+
+    public void RemoveStop(string routeName, RouteStopItem stop)
+    {
+        if (StopsByRoute.TryGetValue(routeName, out var list))
+        {
+            list.Remove(stop);
+        }
+    }
+
+    private void AddRouteNameIfMissing(string routeName)
+    {
+        if (!RouteNames.Contains(routeName))
+        {
+            RouteNames.Add(routeName);
+        }
+    }
+
+    private void SyncToRoot()
+    {
+        var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
+        GpsAnsagenRouteExportSync.ApplyToPackage(this, _root, workspace);
+    }
+
+    public void ReplaceStopTemplates(IList<ManagedStopTemplateItem> templates)
+    {
+        StopTemplates.Clear();
+        foreach (var t in templates)
+        {
+            StopTemplates.Add(t);
+        }
+    }
+
+    public void ReplaceAnnouncementTemplates(IList<ManagedAnnouncementTemplateItem> templates)
+    {
+        AnnouncementTemplates.Clear();
+        foreach (var t in templates)
+        {
+            AnnouncementTemplates.Add(t);
+        }
+    }
+
+    public void SyncEmbeddedSoundsFromTemplates(
+        IEnumerable<ManagedAnnouncementTemplateItem> templates,
+        LocalWorkspaceStore? workspace = null)
+    {
+        SyncEmbeddedSoundsFromFileNames(
+            templates.Select(t => ((string?)t.EmbeddedSoundFileName, t.LocalAudioPath)),
+            workspace);
+    }
+
+    public void SyncEmbeddedSoundsFromStopTemplates(
+        IEnumerable<ManagedStopTemplateItem> templates,
+        LocalWorkspaceStore? workspace = null)
+    {
+        SyncEmbeddedSoundsFromFileNames(
+            templates.Select(t => ((string?)t.EmbeddedSoundFileName, t.LocalAudioPath)),
+            workspace);
+    }
+
+    private void SyncEmbeddedSoundsFromFileNames(
+        IEnumerable<(string? FileName, string? LocalPath)> items,
+        LocalWorkspaceStore? workspace)
+    {
+        foreach (var (fileName, localPath) in items)
+        {
+            var name = fileName?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(localPath) && File.Exists(localPath))
+            {
+                EmbeddedSoundsEditor.UpsertFromFile(_root, name, localPath);
+                if (workspace is not null)
+                {
+                    CopyToWorkspace(workspace, name, localPath);
+                }
+
+                continue;
+            }
+
+            if (workspace is not null)
+            {
+                var wsPath = PlanerEmbeddedSoundsWorkspace.TryGetLocalFilePath(workspace, name);
+                if (wsPath is not null)
+                {
+                    EmbeddedSoundsEditor.UpsertFromFile(_root, name, wsPath);
+                }
+            }
+        }
+    }
+
+    private static void CopyToWorkspace(LocalWorkspaceStore workspace, string fileName, string sourcePath)
+    {
+        try
+        {
+            var target = Path.Combine(PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(workspace), fileName);
+            File.Copy(sourcePath, target, overwrite: true);
+        }
+        catch
+        {
+            // Workspace-Kopie optional
+        }
+    }
+
+    public void ReplaceEmployees(IList<EmployeeRosterItem> employees)
+    {
+        Employees.Clear();
+        foreach (var e in employees.Where(x => !x.IsDeprecatedDefaultCredential()))
+        {
+            Employees.Add(e);
+        }
+    }
+
+    public void ReplaceRegisteredVehicles(IList<RegisteredVehicleItem> vehicles)
+    {
+        RegisteredVehicles.Clear();
+        foreach (var v in vehicles)
+        {
+            RegisteredVehicles.Add(v);
+        }
+    }
+
+    public void ReplaceRegisteredVehiclePhoneRedirects(IList<RegisteredVehiclePhoneRedirect> redirects)
+    {
+        RegisteredVehiclePhoneRedirects.Clear();
+        foreach (var r in redirects)
+        {
+            RegisteredVehiclePhoneRedirects.Add(r);
+        }
+    }
+
+    public void ReplaceDateBasedHints(IList<DateBasedHintItem> hints)
+    {
+        DateBasedHints.Clear();
+        foreach (var h in hints)
+        {
+            DateBasedHints.Add(h);
+        }
+    }
+
+    public void ReplaceOutsideDisplays(IList<string> entries)
+    {
+        OutsideDisplays.Clear();
+        foreach (var e in entries)
+        {
+            OutsideDisplays.Add(e);
+        }
+    }
+
+    public void ReplaceMessageTemplates(IList<string> messageTemplates, IList<string> mailTemplates)
+    {
+        MessageTemplates.Clear();
+        MailTemplates.Clear();
+        foreach (var t in messageTemplates)
+        {
+            MessageTemplates.Add(t);
+        }
+
+        foreach (var t in mailTemplates)
+        {
+            MailTemplates.Add(t);
+        }
+    }
+
+}

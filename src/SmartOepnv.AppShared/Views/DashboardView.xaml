@@ -1,0 +1,154 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:SmartOepnv.AppShared.Views">
+    <!-- Kein äußerer ScrollViewer: Inhalt ist kompakt; HU-Liste bei Bedarf begrenzt scrollbar -->
+    <DockPanel LastChildFill="True">
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock Text="Übersicht"
+                       Style="{StaticResource SmartPageTitleStyle}"
+                       Margin="8,4,8,0"
+                       FontSize="22" />
+            <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
+                       Margin="8,0,8,4"
+                       FontSize="13"
+                       LineHeight="18"
+                       Text="Route-Paket laden, prüfen und an GPSAnsagen-Fahrzeuge über Dropbox verteilen." />
+
+            <TextBlock Text="HU / SP – Fristen"
+                       FontWeight="SemiBold"
+                       FontSize="13"
+                       Margin="8,2,8,4"
+                       Foreground="White" />
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          MaxHeight="110"
+                          Margin="8,0,8,4">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding InspectionWarnings}">
+                        <ItemsControl.Style>
+                            <Style TargetType="ItemsControl">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasInspectionWarnings}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ItemsControl.Style>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding BackgroundBrush}"
+                                        CornerRadius="6"
+                                        Padding="8,6"
+                                        Margin="0,0,0,6"
+                                        Cursor="Hand"
+                                        SnapsToDevicePixels="True"
+                                        Focusable="True"
+                                        ToolTip="In der Fahrzeugverwaltung öffnen">
+                                    <Border.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                      Command="{Binding DataContext.OpenVehicleFromInspectionWarningCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      CommandParameter="{Binding}" />
+                                    </Border.InputBindings>
+                                    <TextBlock Text="{Binding Message}"
+                                               Foreground="{Binding ForegroundBrush}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               TextWrapping="Wrap" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Margin="0,0,0,2"
+                               Opacity="0.55"
+                               FontSize="11"
+                               Text="Keine anstehenden HU- oder SP-Termine in den nächsten 30 Tagen."
+                               TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasLoadedPackage}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding HasInspectionWarnings}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </ScrollViewer>
+
+            <TextBlock Text="Führerschein / FQN / Fahrerkarte"
+                       FontWeight="SemiBold"
+                       FontSize="13"
+                       Margin="8,6,8,4"
+                       Foreground="White" />
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          MaxHeight="110"
+                          Margin="8,0,8,4">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding DriverCredentialWarnings}">
+                        <ItemsControl.Style>
+                            <Style TargetType="ItemsControl">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasDriverCredentialWarnings}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ItemsControl.Style>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding BackgroundBrush}"
+                                        CornerRadius="6"
+                                        Padding="8,6"
+                                        Margin="0,0,0,6"
+                                        Cursor="Hand"
+                                        SnapsToDevicePixels="True"
+                                        ToolTip="In der Fahrerverwaltung öffnen">
+                                    <Border.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                      Command="{Binding DataContext.OpenEmployeeFromCredentialWarningCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      CommandParameter="{Binding}" />
+                                    </Border.InputBindings>
+                                    <TextBlock Text="{Binding Message}"
+                                               Foreground="{Binding ForegroundBrush}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               TextWrapping="Wrap" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Margin="0,0,0,2"
+                               Opacity="0.55"
+                               FontSize="11"
+                               Text="Keine ablaufenden Führerscheine, FQN oder Fahrerkarten in den nächsten 90 Tagen."
+                               TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasLoadedPackage}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding HasDriverCredentialWarnings}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </ScrollViewer>
+        </StackPanel>
+
+        <local:DataTransferView DataContext="{Binding}" />
+    </DockPanel>
+</UserControl>

@@ -1,0 +1,13 @@
+# Build / IDE
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# NuGet
+packages/
+
+# OS
+Thumbs.db
+Desktop.ini

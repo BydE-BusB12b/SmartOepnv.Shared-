@@ -1,0 +1,136 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.DataTransferView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+    <!-- Kein ScrollViewer: soll auf der Übersicht ohne vertikales Scrollen passen -->
+    <StackPanel Margin="8,4,8,6" VerticalAlignment="Top">
+        <TextBlock Text="Daten importieren / exportieren"
+                   Style="{StaticResource SmartPageTitleStyle}"
+                   FontSize="22"
+                   Margin="0,0,0,4" />
+
+        <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
+                   Margin="0,0,0,6"
+                   FontSize="12"
+                   LineHeight="16"
+                   Text="JSON v1.0 – Routen, Haltestellen, Ansagen (embeddedSounds), Navidaten, Fahrer. Vor Export übernimmt der Planer offene Änderungen." />
+
+        <TextBlock Text="{Binding LocalWorkspaceHint}"
+                   TextTrimming="CharacterEllipsis"
+                   TextWrapping="NoWrap"
+                   ToolTip="{Binding LocalWorkspaceHint}"
+                   Opacity="0.72"
+                   Margin="0,0,0,6"
+                   FontSize="11" />
+
+        <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
+                             Background="{StaticResource SmartSurfaceBrush}"
+                             Margin="0,0,0,8">
+            <Grid VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" MinWidth="12" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Text="{Binding RouteCount}" FontSize="21" FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource SmartPrimaryLightBrush}" />
+                        <TextBlock Text="Routen" HorizontalAlignment="Center" Opacity="0.7" FontSize="11" />
+                    </StackPanel>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Text="{Binding StopCount}" FontSize="21" FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource SmartPrimaryLightBrush}" />
+                        <TextBlock Text="Haltestellen" HorizontalAlignment="Center" Opacity="0.7" FontSize="11" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="{Binding DriverCount}" FontSize="21" FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource SmartPrimaryLightBrush}" />
+                        <TextBlock Text="Fahrer" HorizontalAlignment="Center" Opacity="0.7" FontSize="11" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Datei" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"
+                               Margin="0,0,12,0" Opacity="0.95" />
+                    <Button Content="JSON importieren"
+                            Command="{Binding ImportFromFileCommand}"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            Padding="12,4" />
+                    <Button Content="JSON exportieren"
+                            Command="{Binding ExportToFileCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            VerticalAlignment="Center"
+                            Padding="12,4" />
+                </StackPanel>
+            </Grid>
+        </materialDesign:Card>
+
+        <materialDesign:Card Padding="10,8" UniformCornerRadius="10" Background="{StaticResource SmartPrimaryDarkBrush}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Dropbox"
+                               FontWeight="SemiBold"
+                               FontSize="15"
+                               Foreground="White"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Von Dropbox laden"
+                                Command="{Binding ImportFromDropboxCommand}"
+                                Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                Margin="0,0,6,0"
+                                Padding="12,4" />
+                        <Button Content="Nach Dropbox senden"
+                                Command="{Binding ExportToDropboxCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Foreground="White"
+                                BorderBrush="White"
+                                Margin="0,0,6,0"
+                                Padding="12,4" />
+                        <Button Content="Senden + Fernupdate"
+                                Command="{Binding ExportToDropboxWithRemoteUpdateCommand}"
+                                Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                Padding="12,4"
+                                ToolTip="Route hochladen und Update auf dem Fahrzeug auslösen (Umleitung während der Fahrt)" />
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Grid.Row="1"
+                           Foreground="White"
+                           Opacity="0.82"
+                           Margin="0,4,0,2"
+                           FontSize="11"
+                           LineHeight="15"
+                           TextWrapping="Wrap"
+                           Text="Gleiche Datei wie in GPSAnsagen (routes_export.json). Fernupdate: Fahrzeug lädt die Route nach (Pas.Info bleibt aktiv)." />
+
+                <TextBlock Grid.Row="2"
+                           Text="{Binding LastActionMessage}"
+                           Foreground="White"
+                           Opacity="0.88"
+                           FontSize="10"
+                           TextTrimming="CharacterEllipsis"
+                           TextWrapping="Wrap"
+                           MaxHeight="32"
+                           ToolTip="{Binding LastActionMessage}" />
+            </Grid>
+        </materialDesign:Card>
+    </StackPanel>
+</UserControl>

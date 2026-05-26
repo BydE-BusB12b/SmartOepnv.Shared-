@@ -1,0 +1,519 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.AnnouncementsLibraryView"
+
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+
+             VerticalAlignment="Stretch"
+
+             HorizontalAlignment="Stretch">
+
+    <Grid Margin="0,0,0,8">
+
+        <Grid.ColumnDefinitions>
+
+            <ColumnDefinition Width="340" />
+
+            <ColumnDefinition Width="*" />
+
+        </Grid.ColumnDefinitions>
+
+
+
+        <materialDesign:Card Grid.Column="0" Margin="0,0,12,0" Padding="16" UniformCornerRadius="12"
+
+                             Background="{StaticResource SmartSurfaceBrush}"
+
+                             VerticalAlignment="Stretch">
+
+            <Grid>
+
+                <Grid.RowDefinitions>
+
+                    <RowDefinition Height="Auto" />
+
+                    <RowDefinition Height="Auto" />
+
+                    <RowDefinition Height="Auto" />
+
+                    <RowDefinition Height="*" MinHeight="200" />
+
+                    <RowDefinition Height="Auto" />
+
+                </Grid.RowDefinitions>
+
+
+
+                <TextBlock Grid.Row="0" Text="Haltestellen-Kartei"
+
+                           FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
+
+                <TextBlock Grid.Row="1"
+
+                           Text="Liste = Haltestellen (jede mit 5-stelliger ID). Darin liegen die Ansagen (Ansagen-ID weiterhin 4-stellig).&#10;✓ Ansage-Ton zugeordnet   ·   ⚠ noch keine Tondatei"
+
+                           Opacity="0.65" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+
+
+                <TextBox Grid.Row="2"
+
+                         materialDesign:HintAssist.Hint="Suchen (Haltestellen-ID, Name, Richtung, Ansage)"
+
+                         Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+
+                         Margin="0,0,0,10" />
+
+
+
+                <ListBox Grid.Row="3"
+
+                         ItemsSource="{Binding FilteredStops}"
+
+                         SelectedItem="{Binding SelectedStop}"
+
+                         BorderThickness="1"
+
+                         BorderBrush="#334155"
+
+                         Background="Transparent"
+
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+
+                    <ListBox.ItemTemplate>
+
+                        <DataTemplate>
+
+                            <TextBlock Text="{Binding DisplayLabel}" TextWrapping="Wrap" Padding="2,4" />
+
+                        </DataTemplate>
+
+                    </ListBox.ItemTemplate>
+
+                </ListBox>
+
+
+
+                <StackPanel Grid.Row="4" Margin="0,12,0,0">
+
+                    <Button Content="Neue Haltestelle"
+
+                            Command="{Binding AddStopCommand}"
+
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+
+                            Margin="0,0,0,6" />
+
+                    <Button Content="Haltestelle duplizieren"
+
+                            Command="{Binding DuplicateStopCommand}"
+
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                            Margin="0,0,0,6" />
+
+                    <Button Content="Haltestelle löschen"
+
+                            Command="{Binding RemoveStopCommand}"
+
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                            Margin="0,0,0,6" />
+
+                    <Button Content="Speichern &amp; JSON"
+
+                            Command="{Binding SaveChangesCommand}"
+
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+
+                </StackPanel>
+
+            </Grid>
+
+        </materialDesign:Card>
+
+
+
+        <materialDesign:Card Grid.Column="1" Padding="16" UniformCornerRadius="12"
+
+                             Background="{StaticResource SmartSurfaceBrush}"
+
+                             VerticalAlignment="Stretch">
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+
+                <DockPanel>
+
+                    <TextBlock DockPanel.Dock="Top" Text="Haltestelle &amp; Ansagen"
+
+                               FontWeight="SemiBold" FontSize="16" Margin="0,0,0,12" />
+
+
+
+                    <TextBlock DockPanel.Dock="Bottom"
+
+                               Text="{Binding StatusMessage}"
+
+                               Margin="0,12,0,0" TextWrapping="Wrap" Opacity="0.85" FontSize="12" />
+
+
+
+                    <StackPanel>
+
+                        <TextBlock Text="Links eine Haltestelle wählen oder „Neue Haltestelle“ anlegen."
+
+                                   Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,12">
+
+                            <TextBlock.Style>
+
+                                <Style TargetType="TextBlock">
+
+                                    <Setter Property="Visibility" Value="Collapsed" />
+
+                                    <Style.Triggers>
+
+                                        <DataTrigger Binding="{Binding SelectedStop}" Value="{x:Null}">
+
+                                            <Setter Property="Visibility" Value="Visible" />
+
+                                        </DataTrigger>
+
+                                    </Style.Triggers>
+
+                                </Style>
+
+                            </TextBlock.Style>
+
+                        </TextBlock>
+
+
+
+                        <Grid DataContext="{Binding SelectedStop}" Margin="0,0,0,16">
+
+                            <Grid.Style>
+
+                                <Style TargetType="Grid">
+
+                                    <Style.Triggers>
+
+                                        <DataTrigger Binding="{Binding}" Value="{x:Null}">
+
+                                            <Setter Property="Visibility" Value="Collapsed" />
+
+                                        </DataTrigger>
+
+                                    </Style.Triggers>
+
+                                </Style>
+
+                            </Grid.Style>
+
+                            <Grid.ColumnDefinitions>
+
+                                <ColumnDefinition Width="Auto" />
+
+                                <ColumnDefinition Width="*" />
+
+                            </Grid.ColumnDefinitions>
+
+                            <Grid.RowDefinitions>
+
+                                <RowDefinition Height="Auto" />
+
+                                <RowDefinition Height="Auto" />
+
+                                <RowDefinition Height="Auto" />
+
+                                <RowDefinition Height="Auto" />
+
+                            </Grid.RowDefinitions>
+
+
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Haltestellen-ID (5 Ziffern):"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" MinWidth="180" />
+
+                            <TextBox Grid.Row="0" Grid.Column="1"
+
+                                     Text="{Binding StopCode, UpdateSourceTrigger=PropertyChanged}"
+
+                                     MaxLength="5" Margin="0,0,0,10" />
+
+
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Name (ITCS):"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+
+                            <TextBox Grid.Row="1" Grid.Column="1"
+
+                                     Text="{Binding StopNameItcs, UpdateSourceTrigger=PropertyChanged}"
+
+                                     Margin="0,0,0,10" />
+
+
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Richtung / Linie:"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+
+                            <TextBox Grid.Row="2" Grid.Column="1"
+
+                                     Text="{Binding DirectionDescription, UpdateSourceTrigger=PropertyChanged}"
+
+                                     Margin="0,0,0,10" />
+
+
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Ton in Route:"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.9" />
+
+                            <TextBox Grid.Row="3" Grid.Column="1"
+                                     Text="{Binding EmbeddedSoundFileName}"
+                                     IsReadOnly="True"
+                                     Opacity="0.85" />
+
+                        </Grid>
+
+
+
+                        <TextBlock Text="Ansagen dieser Haltestelle"
+
+                                   FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.9" />
+
+
+
+                        <ListBox ItemsSource="{Binding AnnouncementsForSelectedStop}"
+
+                                 SelectedItem="{Binding SelectedAnnouncement}"
+
+                                 DisplayMemberPath="DisplayLabel"
+
+                                 MinHeight="100" MaxHeight="180"
+
+                                 BorderThickness="1" BorderBrush="#334155"
+
+                                 Margin="0,0,0,10" />
+
+
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+
+                            <Button Content="Neue Ansage mit Tondatei"
+
+                                    Command="{Binding AddAnnouncementWithAudioCommand}"
+
+                                    Style="{StaticResource MaterialDesignRaisedButton}"
+
+                                    Margin="0,0,8,0" />
+
+                            <Button Content="Neue Ansage (ohne Ton)"
+
+                                    Command="{Binding AddAnnouncementCommand}"
+
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                    Margin="0,0,8,0" />
+
+                            <Button Content="Ansage löschen"
+
+                                    Command="{Binding RemoveAnnouncementCommand}"
+
+                                    Style="{StaticResource MaterialDesignOutlinedButton}" />
+
+                        </StackPanel>
+
+
+
+                        <Grid DataContext="{Binding SelectedAnnouncement}">
+
+                            <Grid.Style>
+
+                                <Style TargetType="Grid">
+
+                                    <Style.Triggers>
+
+                                        <DataTrigger Binding="{Binding}" Value="{x:Null}">
+
+                                            <Setter Property="Visibility" Value="Collapsed" />
+
+                                        </DataTrigger>
+
+                                    </Style.Triggers>
+
+                                </Style>
+
+                            </Grid.Style>
+
+                            <Grid.ColumnDefinitions>
+
+                                <ColumnDefinition Width="Auto" />
+
+                                <ColumnDefinition Width="*" />
+
+                            </Grid.ColumnDefinitions>
+
+                            <Grid.RowDefinitions>
+
+                                <RowDefinition Height="Auto" />
+
+                                <RowDefinition Height="Auto" />
+
+                                <RowDefinition Height="Auto" />
+
+                                <RowDefinition Height="Auto" />
+
+                                <RowDefinition Height="Auto" />
+
+                                <RowDefinition Height="Auto" />
+
+                            </Grid.RowDefinitions>
+
+
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Ansagen-ID (4 Ziffern):"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" MinWidth="180" />
+
+                            <TextBox Grid.Row="0" Grid.Column="1"
+
+                                     Text="{Binding AnnouncementCode, UpdateSourceTrigger=PropertyChanged}"
+
+                                     MaxLength="4" Margin="0,0,0,10" />
+
+
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Bezeichnung:"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+
+                            <TextBox Grid.Row="1" Grid.Column="1"
+
+                                     Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
+
+                                     Margin="0,0,0,10" />
+
+
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Kategorie:"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+
+                            <ComboBox Grid.Row="2" Grid.Column="1"
+
+                                      ItemsSource="{Binding DataContext.Categories, RelativeSource={RelativeSource AncestorType=UserControl}}"
+
+                                      SelectedItem="{Binding Category, UpdateSourceTrigger=PropertyChanged}"
+
+                                      Margin="0,0,0,10" />
+
+
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Beschreibung:"
+
+                                       VerticalAlignment="Top" Margin="0,4,12,10" Opacity="0.9" />
+
+                            <TextBox Grid.Row="3" Grid.Column="1"
+
+                                     Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+
+                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"
+
+                                     Margin="0,0,0,10" />
+
+
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Sonderansagen:"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+
+                            <CheckBox Grid.Row="4" Grid.Column="1"
+
+                                      Content="In Sonderansagen anzeigen (ITCS / Handy-Liste)"
+
+                                      IsChecked="{Binding IncludeInSpecialAnnouncements, UpdateSourceTrigger=PropertyChanged}"
+
+                                      Margin="0,0,0,10" />
+
+
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Eingebetteter Ton:"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.9" />
+
+                            <TextBox Grid.Row="5" Grid.Column="1"
+
+                                     Text="{Binding EmbeddedSoundFileName, UpdateSourceTrigger=PropertyChanged}" />
+
+                        </Grid>
+
+
+
+                        <TextBlock Text="{Binding SelectedAnnouncementAudioHint}"
+
+                                   Margin="0,10,0,0" TextWrapping="Wrap" Opacity="0.7" FontSize="11" FontStyle="Italic" />
+
+
+
+                        <materialDesign:Card Padding="12" UniformCornerRadius="8"
+
+                                             Background="{StaticResource SmartPrimaryDarkBrush}"
+
+                                             Margin="0,16,0,0">
+
+                            <StackPanel>
+
+                                <TextBlock Text="Ton &amp; Import" Foreground="White" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                                <Button Content="Tondatei wählen…"
+
+                                        Command="{Binding PickAudioFileCommand}"
+
+                                        Style="{StaticResource MaterialDesignRaisedLightButton}"
+
+                                        Margin="0,0,0,8" />
+
+                                <Button Content="Ton an Haltestelle übernehmen"
+
+                                        Command="{Binding ApplyAnnouncementToStopCommand}"
+
+                                        Style="{StaticResource MaterialDesignRaisedLightButton}"
+
+                                        Margin="0,0,0,8" />
+
+                                <Button Content="Aus Routen importieren"
+
+                                        Command="{Binding ImportFromRoutesCommand}"
+
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                        Margin="0,0,0,6" />
+
+                                <Button Content="Aus embeddedSounds importieren"
+
+                                        Command="{Binding ImportFromEmbeddedSoundsListCommand}"
+
+                                        Style="{StaticResource MaterialDesignOutlinedButton}" />
+
+                            </StackPanel>
+
+                        </materialDesign:Card>
+
+                    </StackPanel>
+
+                </DockPanel>
+
+            </ScrollViewer>
+
+        </materialDesign:Card>
+
+    </Grid>
+
+</UserControl>
+

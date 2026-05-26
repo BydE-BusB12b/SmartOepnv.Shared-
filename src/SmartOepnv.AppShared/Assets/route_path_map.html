@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; background: #0a1628; font-family: "Segoe UI", system-ui, -apple-system, sans-serif; }
+    body { position: relative; overflow: hidden; }
+    #map { position: absolute; inset: 0; }
+    .leaflet-container { background: #0a1628; font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+    .node-marker-wrap { background: transparent !important; border: none !important; }
+    .leaflet-marker-icon.node-marker-wrap { background: transparent !important; border: none !important; }
+    .node-dot { border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.45); }
+    .node-label {
+      font: 11px/1.2 Segoe UI, sans-serif; color: #fff; background: rgba(0,0,0,0.72);
+      padding: 2px 6px; border-radius: 6px; margin-top: 2px; max-width: 120px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .nav-symbol-icon {
+      width: 36px; height: 36px; border-radius: 6px;
+      background: rgba(255,255,255,0.95); border: 2px solid #1b5e20;
+      box-shadow: 0 2px 8px rgba(0,0,0,.45); object-fit: contain; padding: 2px;
+      cursor: pointer;
+    }
+    .nav-symbol-fallback {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: #1b5e20; border: 2px solid #fff; color: #fff;
+      font: bold 11px/32px Segoe UI, sans-serif; text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,.45); cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    let map, draft = null, markers = {}, lines = {}, navMarkers = {}, selectedFrom = null;
+    let autoFitRouteView = true;
+    let userAdjustedMapView = false;
+    let programmaticMapMove = false;
+    let lastLineTapKey = null;
+    let lastLineTapAtMs = 0;
+    const EDGE = '\u0001';
+    const NAV_HIDDEN = '__nav_hidden__';
+    const SEGMENT_LINE_DOUBLE_TAP_MS = 450;
+
+    function post(msg) {
+      if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(JSON.stringify(msg));
+    }
+
+    function nodeColor(type) {
+      if (type === 'STOP') return '#42a5f5';
+      if (type === 'ANNOUNCEMENT') return '#66bb6a';
+      return '#ffb74d';
+    }
+
+    function edgeKey(from, to) { return from + EDGE + to; }
+
+    function routeLineColor() {
+      const c = (draft && draft.routeLineColor) ? String(draft.routeLineColor).trim() : '';
+      return /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#2196f3';
+    }
+
+    function renumberSegments() {
+      (draft.segments || []).sort((a, b) => (a.order || 0) - (b.order || 0))
+        .forEach((s, i) => { s.order = i + 1; });
+    }
+
+    function closestLatLngOnPolyline(latlngs, click) {
+      if (!latlngs || latlngs.length < 2) return click;
+      let best = latlngs[0];
+      let bestDist = Infinity;
+      for (let i = 1; i < latlngs.length; i++) {
+        const a = latlngs[i - 1], b = latlngs[i];
+        const ax = a[0], ay = a[1], bx = b[0], by = b[1];
+        const px = click.lat, py = click.lng;
+        const dx = bx - ax, dy = by - ay;
+        const denom = dx * dx + dy * dy;
+        const t = denom <= 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / denom));
+        const lat = ax + dx * t, lon = ay + dy * t;
+        const dLat = lat - click.lat, dLon = lon - click.lng;
+        const dist = dLat * dLat + dLon * dLon;
+        if (dist < bestDist) { bestDist = dist; best = L.latLng(lat, lon); }
+      }
+      return best;
+    }
+
+    function invalidateSnapsForSegment(fromId, toId) {
+      if (!draft) return;
+      const key = edgeKey(fromId, toId);
+      draft.roadSnappedEdgeKeys = (draft.roadSnappedEdgeKeys || []).filter(k => k !== key);
+      draft.roadBusStraightEdgeKeys = (draft.roadBusStraightEdgeKeys || []).filter(k => k !== key);
+      draft.segmentSnaps = (draft.segmentSnaps || []).filter(s =>
+        !(s.fromNodeId === fromId && s.toNodeId === toId));
+      draft.snappedShape = [];
+      draft.snappedManeuvers = [];
+    }
+
+    function insertWaypointOnSegment(seg, clickLatLng, latlngs) {
+      const snap = closestLatLngOnPolyline(latlngs, clickLatLng);
+      const id = 'manual_' + Date.now();
+      draft.nodes.push({
+        id, type: 'MANUAL_WAYPOINT', title: 'Zwischenpunkt ' + id.slice(-4),
+        lat: snap.lat, lon: snap.lng, sourceStopName: null
+      });
+      const idx = (draft.segments || []).findIndex(s =>
+        s.fromNodeId === seg.fromNodeId && s.toNodeId === seg.toNodeId);
+      if (idx < 0) return;
+      const order = draft.segments[idx].order || (idx + 1);
+      invalidateSnapsForSegment(seg.fromNodeId, seg.toNodeId);
+      draft.segments.splice(idx, 1,
+        { order: order, fromNodeId: seg.fromNodeId, toNodeId: id },
+        { order: order + 1, fromNodeId: id, toNodeId: seg.toNodeId }
+      );
+      renumberSegments();
+      selectedFrom = null;
+      render();
+      notifyDraftChanged(true);
+      post({ type: 'segmentAdded', from: seg.fromNodeId, to: id });
+      post({ type: 'segmentAdded', from: id, to: seg.toNodeId });
+    }
+
+    function segmentSnap(seg) {
+      const snaps = draft.segmentSnaps || [];
+      return snaps.find(s => s.fromNodeId === seg.fromNodeId && s.toNodeId === seg.toNodeId) || null;
+    }
+
+    function normalizePoint(p) {
+      if (!p) return null;
+      const lat = Number(p.lat ?? p.latitude);
+      const lon = Number(p.lon ?? p.lng ?? p.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      return { lat, lon };
+    }
+
+    function segmentPoints(seg) {
+      const hit = segmentSnap(seg);
+      if (hit && hit.points && hit.points.length >= 2) {
+        const pts = hit.points.map(normalizePoint).filter(Boolean);
+        if (pts.length >= 2) return pts;
+      }
+      return null;
+    }
+
+    function segmentManeuvers(seg) {
+      const hit = segmentSnap(seg);
+      return hit && hit.maneuvers ? hit.maneuvers : [];
+    }
+
+    function isNavHidden(symbolType) {
+      return (symbolType || '').trim() === NAV_HIDDEN;
+    }
+
+    function symbolFileForType(symbolType) {
+      const s = (symbolType || '').toLowerCase();
+      const map = {
+        roundabout_2_4: 'Navi Kreisverkehr gerade aus.png', roundabout_2_5: 'Navi Kreisverkehr gerade aus.png',
+        roundabout_3_4: 'Navi Kreisverkehr 3.Ausfahrt.png', roundabout_3_5: 'Navi Kreisverkehr 3.Ausfahrt.png',
+        roundabout_4_4: 'Navi Kreisverkehr 4.Ausfahrt bei 4.png',
+        roundabout_4_5: 'Navi Kreisverkehr 4.Ausfahrt bei 5.png',
+        roundabout_5_5: 'Navi Kreisverkehr 5.Ausfahrt bei 5.png',
+        t_left: 'Navi T-Kreuzung links.png', t_right: 'Navi T-Kreuzung rechts.png',
+        cross_4_left: 'Navi Kreuzung links.png', left: 'Navi Kreuzung links.png',
+        cross_4_right: 'Navi Kreuzung rechts.png', right: 'Navi Kreuzung rechts.png',
+        cross_4_straight: 'Navi Kreuzung gerade aus.png',
+        cross_5: 'Navi 5 armige Kreuzung halb rechts.png',
+        cross_5_left: 'Navi Y-Kreuzung 5 Richtungen halb links.png',
+        cross_5_right: 'Navi 5 armige Kreuzung halb rechts.png',
+        kink_t_right: 'Navi links gekippte T-Kreuzung rechts.png',
+        kink_t_left: 'Navi rechts gekippte T-Kreuzung links.png',
+        kink_t_left_straight: 'Navi links gekippte T-Kreuzung gerade aus.png',
+        kink_t_right_straight: 'Navi rechts gekippte T-Kreuzung gerade aus.png',
+        priority_follow_left: 'Navi Vorfahrtsstrasse nach links folgen.png',
+        priority_follow_right: 'Navi Vorfahrtsstrasse nach rechts folgen.png',
+        priority_leave_left_straight: 'Navi Vorfahrtsstrasse nach links geradeaus verlassen.png',
+        priority_leave_right_straight: 'Navi Vorfahrtsstrasse nach rechts geradeaus verlassen.png',
+        double_t_right_left: 'Navi Doppel-T Kreuzung rechts-links.png',
+        double_t_left_right: 'Navi Doppel-T Kreuzung links-rechts.png',
+        special_cross_left: 'Navi Sonderform Kreuzung links abbiegen.png',
+        special_cross_right: 'Navi Sonderform Kreuzung rechts abbiegen.png',
+        u_turn_custom: 'Navi U-Turn Zusatz.png',
+        fork_left: 'Navi Y-Kreuzung links.png', fork_right: 'Navi Y-Kreuzung rechts.png',
+        off_route: 'Navi Route verlassen.png',
+        straight: 'Navi gerade aus.png', straight_stop: 'Navi gerade aus.png',
+        goal: 'Navi Ziel.png',
+        keep_left: 'Navi Linke Spur - Links abfahren.png', slight_left: 'Navi Linke Spur - Links abfahren.png',
+        left_lane_exit: 'Navi Linke Spur - Links abfahren.png',
+        keep_right: 'Navi rechts Spur - rechts abfahren.png', slight_right: 'Navi rechts Spur - rechts abfahren.png',
+        right_lane_exit: 'Navi rechts Spur - rechts abfahren.png', motorway_exit: 'Navi rechts Spur - rechts abfahren.png'
+      };
+      return map[s] || null;
+    }
+
+    function mapInstructionToSymbol(text) {
+      const t = (text || '').toLowerCase();
+      if (t.includes('linienweg verlassen') || t.includes('route verlassen')) return 'off_route';
+      if (t.includes('u-turn') || t.includes('wenden')) return 'u_turn_custom';
+      if (t.includes('links') && !t.includes('rechts')) return 'left';
+      if (t.includes('rechts')) return 'right';
+      if (t.includes('gerade')) return 'straight';
+      return 'straight';
+    }
+
+    function effectiveSymbolType(m) {
+      const explicit = (m.navSymbolType || '').trim();
+      if (explicit) return explicit;
+      return mapInstructionToSymbol(m.instruction);
+    }
+
+    function navIconUrl(fileName) {
+      return 'navi_grafiken/' + encodeURIComponent(fileName);
+    }
+
+    function createNavSymbolIcon(symbolType) {
+      const file = symbolFileForType(symbolType);
+      const label = (symbolType || '?').slice(0, 2).toUpperCase();
+      const html = file
+        ? '<img class="nav-symbol-icon" src="' + navIconUrl(file) + '" alt="' + symbolType + '" />'
+        : '<div class="nav-symbol-fallback">' + label + '</div>';
+      return L.divIcon({ className: '', html, iconSize: [36, 36], iconAnchor: [18, 18] });
+    }
+
+    function haversineMeters(a, b) {
+      const R = 6371000;
+      const toRad = x => x * Math.PI / 180;
+      const dLat = toRad(b.lat - a.lat);
+      const dLon = toRad(b.lon - a.lon);
+      const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+      const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    }
+
+    function samplePointAtDistance(shape, targetMeters) {
+      if (!shape || shape.length === 0) return null;
+      if (shape.length === 1) return shape[0];
+      let remaining = Math.max(0, targetMeters || 0);
+      for (let i = 1; i < shape.length; i++) {
+        const a = shape[i - 1], b = shape[i];
+        const len = haversineMeters(a, b);
+        if (remaining <= len || i === shape.length - 1) {
+          const t = len <= 0 ? 0 : Math.min(1, remaining / len);
+          return { lat: a.lat + (b.lat - a.lat) * t, lon: a.lon + (b.lon - a.lon) * t };
+        }
+        remaining -= len;
+      }
+      return shape[shape.length - 1];
+    }
+
+    function nodeCoord(n) {
+      if (!n) return null;
+      let lat = Number(n.lat);
+      let lon = Number(n.lon);
+      if ((!Number.isFinite(lat) || !Number.isFinite(lon)) && n.position) {
+        const p = n.position;
+        lat = Number(p.lat ?? p.latitude);
+        lon = Number(p.lon ?? p.lng ?? p.longitude);
+      }
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      return { lat, lon };
+    }
+
+    function normalizeDraftNodes(d) {
+      if (!d || !Array.isArray(d.nodes)) return;
+      d.nodes.forEach(n => {
+        const c = nodeCoord(n);
+        if (!c) return;
+        n.lat = c.lat;
+        n.lon = c.lon;
+      });
+    }
+
+    function collectRouteBounds() {
+      const pts = [];
+      if (!draft) return pts;
+      (draft.nodes || []).forEach(n => {
+        const c = nodeCoord(n);
+        if (c) pts.push([c.lat, c.lon]);
+      });
+      (draft.snappedShape || []).forEach(p => {
+        const lat = Number(p.lat), lon = Number(p.lon);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) pts.push([lat, lon]);
+      });
+      (draft.segmentSnaps || []).forEach(s => {
+        (s.points || []).forEach(p => {
+          const lat = Number(p.lat), lon = Number(p.lon);
+          if (Number.isFinite(lat) && Number.isFinite(lon)) pts.push([lat, lon]);
+        });
+      });
+      return pts;
+    }
+
+    window.fitMapToRoute = function() {
+      if (!map || !draft || userAdjustedMapView || !autoFitRouteView) return false;
+      const pts = collectRouteBounds();
+      if (!pts.length) return false;
+      programmaticMapMove = true;
+      if (pts.length === 1) {
+        map.setView(pts[0], 15, { animate: false });
+      } else {
+        map.fitBounds(pts, { padding: [48, 48], maxZoom: 16, animate: false });
+      }
+      setTimeout(function() { programmaticMapMove = false; }, 50);
+      return true;
+    };
+
+    window.fitBoundsPoints = function(pts) {
+      if (!map || !pts || !pts.length) return false;
+      if (userAdjustedMapView || !autoFitRouteView) return false;
+      programmaticMapMove = true;
+      if (pts.length === 1) {
+        map.setView(pts[0], 15, { animate: false });
+      } else {
+        map.fitBounds(pts, { padding: [48, 48], maxZoom: 16, animate: false });
+      }
+      setTimeout(function() { programmaticMapMove = false; }, 50);
+      return true;
+    };
+
+    function initMap() {
+      map = L.map('map', { zoomControl: true, doubleClickZoom: false }).setView([51.16, 10.45], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+      map.on('zoomend dragend', function() {
+        if (!programmaticMapMove) userAdjustedMapView = true;
+      });
+      map.on('contextmenu', e => {
+        if (!draft) return;
+        const id = 'manual_' + Date.now();
+        draft.nodes.push({
+          id, type: 'MANUAL_WAYPOINT', title: 'Manuell ' + id.slice(-4),
+          lat: e.latlng.lat, lon: e.latlng.lng, sourceStopName: null
+        });
+        render(); notifyDraftChanged(true);
+      });
+    }
+
+    function resolvePayload(raw) {
+      if (!raw) return null;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch (e) { return null; }
+      }
+      return raw;
+    }
+
+    function applyDraft(payload, options) {
+      options = options || {};
+      draft = resolvePayload(payload);
+      if (!draft) {
+        post({ type: 'draftLoaded', message: 'Karten-Daten leer oder ungültig.' });
+        return;
+      }
+      if (options.resetView) {
+        userAdjustedMapView = false;
+        autoFitRouteView = true;
+      }
+      normalizeDraftNodes(draft);
+      rebuildSegmentSnapsArray();
+      selectedFrom = null;
+      render();
+      var stopCount = (draft.nodes || []).filter(n => n.type === 'STOP').length;
+      var annCount = (draft.nodes || []).filter(n => n.type === 'ANNOUNCEMENT').length;
+      var segCount = (draft.segments || []).length;
+      var onMap = (draft.nodes || []).filter(n => nodeCoord(n)).length;
+      post({
+        type: 'draftLoaded',
+        message: onMap > 0
+          ? ('Karte: ' + stopCount + ' Haltestellen, ' + annCount + ' Ansagepunkte, ' +
+             onMap + ' Marker sichtbar, ' + segCount + ' Verbindungen.')
+          : (stopCount + annCount > 0
+            ? 'Knoten vorhanden, aber keine gültigen GPS-Koordinaten für die Karte.'
+            : 'Keine Haltestellen – bitte „Haltestellen laden“.')
+      });
+      if (!userAdjustedMapView && autoFitRouteView) {
+        invalidateMapSize(true);
+      } else {
+        invalidateMapSize(false);
+      }
+    }
+
+    window.loadDraft = function(jsonText, options) {
+      try {
+        // ExecuteScript übergibt ein JS-Objekt, PostMessage/JSON-Datei einen String.
+        var payload = (typeof jsonText === 'string') ? JSON.parse(jsonText) : jsonText;
+        applyDraft(payload, options);
+      } catch (e) {
+        draft = null;
+        post({ type: 'draftLoaded', message: 'Karten-Daten konnten nicht gelesen werden: ' + e.message });
+      }
+    };
+
+    window.invalidateMapSize = function(fitRoute) {
+      if (!map) return;
+      function tick() {
+        map.invalidateSize();
+        if (fitRoute && !userAdjustedMapView && autoFitRouteView && window.fitMapToRoute) fitMapToRoute();
+      }
+      setTimeout(tick, 80);
+      setTimeout(tick, 320);
+      setTimeout(tick, 640);
+    };
+
+    if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.addEventListener('message', function(ev) {
+        try {
+          var msg = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+          if (msg && msg.type === 'loadDraft' && msg.payload) {
+            applyDraft(resolvePayload(msg.payload), msg.options || {});
+          }
+        } catch (e) {
+          post({ type: 'draftLoaded', message: 'Karten-Nachricht fehlgeschlagen: ' + e.message });
+        }
+      });
+    }
+
+    function rebuildSegmentSnapsArray() {
+      if (!draft) return;
+      if (Array.isArray(draft.segmentSnaps)) return;
+      draft.segmentSnaps = [];
+    }
+
+    window.getDraftJson = function() { return JSON.stringify(draft || {}); };
+
+    function notifyDraftChanged(recordUndo) {
+      post({ type: 'draftChanged', draft: draft, recordUndo: !!recordUndo });
+    }
+
+    function handleSegmentLineTap(seg) {
+      const key = edgeKey(seg.fromNodeId, seg.toNodeId);
+      const now = Date.now();
+      const isDoubleTap = key === lastLineTapKey && (now - lastLineTapAtMs) <= SEGMENT_LINE_DOUBLE_TAP_MS;
+      if (isDoubleTap) {
+        lastLineTapKey = null;
+        lastLineTapAtMs = 0;
+        post({
+          type: 'segmentDeleteRequested',
+          from: seg.fromNodeId,
+          to: seg.toNodeId,
+          order: seg.order
+        });
+        return;
+      }
+      lastLineTapKey = key;
+      lastLineTapAtMs = now;
+      post({ type: 'segmentSelected', from: seg.fromNodeId, to: seg.toNodeId });
+    }
+
+    function addNavSymbolMarkers() {
+      const ordered = (draft.segments || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      ordered.forEach(seg => {
+        const pts = segmentPoints(seg);
+        if (!pts || pts.length < 2) return;
+        const mans = segmentManeuvers(seg);
+        mans.forEach((maneuver, idx) => {
+          const symbolType = effectiveSymbolType(maneuver);
+          if (isNavHidden(symbolType)) return;
+          const pos = samplePointAtDistance(pts, maneuver.distanceM);
+          if (!pos) return;
+          const key = edgeKey(seg.fromNodeId, seg.toNodeId) + '_m' + idx;
+          const icon = createNavSymbolIcon(symbolType);
+          const m = L.marker([pos.lat, pos.lon], { icon, zIndexOffset: 500 }).addTo(map);
+          const dist = Math.round(maneuver.distanceM || 0);
+          m.bindTooltip((idx + 1) + '. ' + (maneuver.instruction || symbolType) + ' (' + dist + ' m)', { direction: 'top' });
+          m.on('click', () => post({
+            type: 'segmentSelected',
+            from: seg.fromNodeId,
+            to: seg.toNodeId,
+            maneuverIndex: idx
+          }));
+          navMarkers[key] = m;
+        });
+      });
+    }
+
+    function render() {
+      if (!map) return;
+      Object.values(markers).forEach(m => map.removeLayer(m)); markers = {};
+      Object.values(lines).forEach(l => map.removeLayer(l)); lines = {};
+      Object.values(navMarkers).forEach(m => map.removeLayer(m)); navMarkers = {};
+      if (!draft || !draft.nodes || !draft.nodes.length) return;
+
+      const bounds = [];
+      draft.nodes.forEach(n => {
+        const c = nodeCoord(n);
+        if (!c) return;
+        const size = n.type === 'STOP' ? 20 : 16;
+        const prefix = n.type === 'STOP' ? 'H: ' : n.type === 'ANNOUNCEMENT' ? 'A: ' : '';
+        const label = prefix + (n.title || '');
+        const icon = L.divIcon({
+          className: 'node-marker-wrap',
+          html: '<div style="text-align:center">' +
+            '<div class="node-dot" style="width:' + size + 'px;height:' + size + 'px;background:' + nodeColor(n.type) + ';margin:0 auto"></div>' +
+            '<div class="node-label">' + label.replace(/</g, '') + '</div></div>',
+          iconSize: [120, size + 22], iconAnchor: [60, (size + 22) / 2]
+        });
+        const m = L.marker([c.lat, c.lon], { icon, draggable: true, zIndexOffset: 400 }).addTo(map);
+        m.bindTooltip(label + ' (' + n.type + ')', { direction: 'top', sticky: true });
+        m.on('dragend', ev => {
+          n.lat = ev.target.getLatLng().lat; n.lon = ev.target.getLatLng().lng;
+          invalidateSnapsForNode(n.id); render(); notifyDraftChanged(true);
+          post({ type: 'nodeMoved', nodeId: n.id });
+        });
+        m.on('click', () => onNodeClick(n));
+        markers[n.id] = m;
+        bounds.push([c.lat, c.lon]);
+      });
+
+      (draft.segments || []).forEach(seg => {
+        const a = draft.nodes.find(x => x.id === seg.fromNodeId);
+        const b = draft.nodes.find(x => x.id === seg.toNodeId);
+        if (!a || !b) return;
+        const ca = nodeCoord(a), cb = nodeCoord(b);
+        if (!ca || !cb) return;
+        const key = edgeKey(seg.fromNodeId, seg.toNodeId);
+        const snappedKeys = draft.roadSnappedEdgeKeys || [];
+        const busStraightKeys = draft.roadBusStraightEdgeKeys || [];
+        const snapped = snappedKeys.includes(key);
+        const busStraight = busStraightKeys.includes(key);
+        const pts = segmentPoints(seg);
+        const latlngs = pts ? pts.map(p => [Number(p.lat), Number(p.lon)]) : [[ca.lat, ca.lon], [cb.lat, cb.lon]];
+        const lineColor = busStraight ? '#ff9800' : (snapped ? routeLineColor() : '#ffeb3b');
+        const line = L.polyline(latlngs, {
+          color: lineColor,
+          weight: snapped || busStraight ? 5 : 4,
+          opacity: 0.9,
+          dashArray: busStraight ? '10 6' : null
+        }).addTo(map);
+        line.on('click', e => {
+          if (e.originalEvent && e.originalEvent.shiftKey) {
+            L.DomEvent.stopPropagation(e);
+            insertWaypointOnSegment(seg, e.latlng, latlngs);
+            return;
+          }
+          L.DomEvent.stopPropagation(e);
+          handleSegmentLineTap(seg);
+        });
+        lines[key] = line;
+      });
+
+      addNavSymbolMarkers();
+    }
+
+    function invalidateSnapsForNode(nodeId) {
+      if (!draft) return;
+      draft.roadSnappedEdgeKeys = (draft.roadSnappedEdgeKeys || []).filter(k => !k.includes(nodeId));
+      draft.roadBusStraightEdgeKeys = (draft.roadBusStraightEdgeKeys || []).filter(k => !k.includes(nodeId));
+      draft.segmentSnaps = (draft.segmentSnaps || []).filter(s => s.fromNodeId !== nodeId && s.toNodeId !== nodeId);
+      draft.snappedShape = [];
+      draft.snappedManeuvers = [];
+    }
+
+    function onNodeClick(node) {
+      if (!selectedFrom) { selectedFrom = node.id; return; }
+      if (selectedFrom === node.id) { selectedFrom = null; return; }
+      const fromId = selectedFrom;
+      draft.segments = draft.segments || [];
+      draft.segments.push({ order: draft.segments.length + 1, fromNodeId: fromId, toNodeId: node.id });
+      selectedFrom = null;
+      render();
+      notifyDraftChanged(true);
+      post({ type: 'segmentAdded', from: fromId, to: node.id });
+    }
+
+    initMap();
+    post({ type: 'ready' });
+  </script>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.EmployeesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             VerticalAlignment="Stretch"
+             HorizontalAlignment="Stretch">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <materialDesign:Card Grid.Column="0" Margin="0,0,12,0" Padding="16" UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Mitarbeiterregister"
+                               FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
+                    <TextBlock DockPanel.Dock="Top" Text="employeeRoster (wie Android-App)"
+                               Opacity="0.65" FontSize="11" Margin="0,0,0,12" />
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                        <Button Content="Mitarbeiter hinzufügen"
+                                Command="{Binding AddEmployeeCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,0,8" />
+                        <Button Content="Auswahl löschen"
+                                Command="{Binding RemoveEmployeeCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,0,8" />
+                        <Button Content="Speichern"
+                                Command="{Binding SaveChangesCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}" />
+                    </StackPanel>
+                    <ListBox ItemsSource="{Binding Employees}"
+                             SelectedItem="{Binding SelectedEmployee}"
+                             DisplayMemberPath="DisplayLabel"
+                             BorderThickness="0"
+                             Background="Transparent" />
+                </DockPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Grid.Column="1" Padding="16" UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}">
+                <DockPanel DataContext="{Binding SelectedEmployee}">
+                    <TextBlock DockPanel.Dock="Top" Text="Stammdaten"
+                               FontWeight="SemiBold" FontSize="16" Margin="0,0,0,12" />
+                    <TextBlock DockPanel.Dock="Bottom"
+                               Text="{Binding DataContext.StatusMessage, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                               Margin="0,12,0,0" TextWrapping="Wrap" Opacity="0.85" FontSize="12" />
+
+                    <StackPanel>
+                        <TextBlock Text="Links einen Mitarbeiter auswählen oder neu anlegen."
+                                   Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,12">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <Grid>
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Name:"
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" MinWidth="150" />
+                            <TextBox Grid.Row="0" Grid.Column="1"
+                                     Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,10" />
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Personalnummer:"
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+                            <TextBox Grid.Row="1" Grid.Column="1"
+                                     Text="{Binding PersonnelNumber, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,10" />
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Passwort (Bus):"
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+                            <TextBox Grid.Row="2" Grid.Column="1"
+                                     Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,10" />
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Telefon:"
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+                            <TextBox Grid.Row="3" Grid.Column="1"
+                                     Text="{Binding PhoneNumber, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,10" />
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Führerscheinablauf:"
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+                            <TextBox Grid.Row="4" Grid.Column="1"
+                                     Text="{Binding LicenseExpiry, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,10" />
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="FQN:"
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+                            <TextBox Grid.Row="5" Grid.Column="1"
+                                     Text="{Binding FqnExpiry, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,10" />
+
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Fahrerkarte:"
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+                            <TextBox Grid.Row="6" Grid.Column="1"
+                                     Text="{Binding DriverCardExpiry, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,12" />
+
+                            <CheckBox Grid.Row="7" Grid.ColumnSpan="2"
+                                      Content="Anmeldung als Hauptgerät (loginAsMainDevice)"
+                                      IsChecked="{Binding LoginAsMainDevice}"
+                                      Margin="0,0,0,8" />
+                            <TextBlock Grid.Row="8" Grid.ColumnSpan="2"
+                                       Text="Speichern schreibt employeeRoster in den lokalen Workspace und den Routen-Export."
+                                       Opacity="0.7" FontSize="11" TextWrapping="Wrap" />
+                        </Grid>
+                    </StackPanel>
+                </DockPanel>
+            </materialDesign:Card>
+        </Grid>
+    </ScrollViewer>
+</UserControl>
