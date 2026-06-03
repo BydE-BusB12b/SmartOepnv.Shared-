@@ -523,6 +523,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
         if (_draft is null || string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
         {
             SelectedManeuverText = null;
+            PushDraftToMap();
             return;
         }
 
@@ -541,6 +542,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
             SelectedManeuverText = "Noch nicht gesnappt";
             StatusMessage = "Segment gewählt – „Straße snappen (Auswahl)“ für nur dieses Teilstück.";
         }
+
+        PushDraftToMap();
     }
 
     [RelayCommand]
@@ -732,7 +735,19 @@ public partial class RoutePathEditorViewModel : ObservableObject
         if (_draft is null) return;
         try
         {
-            var json = RoutePathDraftSerializer.ToJson(_draft);
+            var node = JsonNode.Parse(RoutePathDraftSerializer.ToJson(_draft))!.AsObject();
+            if (!string.IsNullOrEmpty(_selectedSegmentFrom) && !string.IsNullOrEmpty(_selectedSegmentTo))
+            {
+                node["selectedSegmentFrom"] = _selectedSegmentFrom;
+                node["selectedSegmentTo"] = _selectedSegmentTo;
+            }
+            else
+            {
+                node.Remove("selectedSegmentFrom");
+                node.Remove("selectedSegmentTo");
+            }
+
+            var json = node.ToJsonString();
             var bounds = resetMapView
                 ? BuildBoundsJson(stopsForBounds ?? CollectStopsForSelectedRoute())
                 : null;

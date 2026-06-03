@@ -30,9 +30,21 @@ public sealed class RoutePackageService
     public void LoadFromJson(string json, bool persistLocally = true, string source = "import")
     {
         Validate(json);
+        if (AppServices.IsPlannerApp && AppServices.PlannerLocal is not null)
+        {
+            json = AppServices.PlannerLocal.StripDeletedFromPackageJson(json);
+        }
+
         _currentJson = json;
         Editor = EditableRoutePackage.FromJson(json);
         Stats = ParseStats(json);
+
+        if (AppServices.IsPlannerApp && AppServices.PlannerLocal is not null && Editor is not null)
+        {
+            AppServices.PlannerLocal.ApplyAfterPackageLoad(Editor);
+            _currentJson = Editor.ToJson();
+            Stats = ParseStats(_currentJson);
+        }
 
         if (AppServices.IsInitialized)
         {
@@ -238,5 +250,34 @@ public sealed class RoutePackageService
         stats.DriverCount = driverCount;
         stats.AnnouncementTemplateCount = announcementCount;
         return stats;
+    }
+
+    public static RoutePackageStats ParseStatsPublic(string json) => ParseStats(json);
+
+    public string BuildLeitstelleStandJson()
+    {
+        if (Editor is null)
+        {
+            throw new InvalidOperationException("Kein Route-Paket geladen.");
+        }
+
+        return LeitstelleStandPackage.BuildJson(Editor);
+    }
+
+    public void TryMergeLeitstelleStandJson(string json)
+    {
+        if (Editor is null || string.IsNullOrWhiteSpace(json))
+        {
+            return;
+        }
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(json)?.AsObject();
+        if (node is null)
+        {
+            return;
+        }
+
+        LeitstelleStandPackage.ApplyToEditor(Editor, node);
+        ApplyEditorChanges("leitstelle-stand-merge");
     }
 }

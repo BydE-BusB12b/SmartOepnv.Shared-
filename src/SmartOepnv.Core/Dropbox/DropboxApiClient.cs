@@ -167,6 +167,24 @@ public sealed class DropboxApiClient
         return await DownloadNamedFileAsync(DropboxConstants.RouteFileName, ct);
     }
 
+    public async Task<string?> TryDownloadLeitstelleStandAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await DownloadNamedFileAsync(DropboxConstants.LeitstelleStandFileName, ct)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task UploadLeitstelleStandAsync(string jsonContent, CancellationToken ct = default)
+    {
+        await UploadNamedFileAsync(DropboxConstants.LeitstelleStandFileName, jsonContent, ct);
+    }
+
     public async Task<string> DownloadNamedFileAsync(string fileName, CancellationToken ct = default)
     {
         return await DownloadNamedFileInternalAsync(fileName, await GetValidAccessTokenAsync(ct), ct);
@@ -182,6 +200,40 @@ public sealed class DropboxApiClient
                         n.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    public async Task<IReadOnlyList<string>> ListZblMessageFilesAsync(CancellationToken ct = default)
+    {
+        var folder = Settings.FolderPath.TrimEnd('/');
+        var token = await GetValidAccessTokenAsync(ct);
+        var names = await ListFileNamesAsync(folder, token, ct);
+        return names
+            .Where(n => n.StartsWith("zbl_message(", StringComparison.OrdinalIgnoreCase) &&
+                        n.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<string>> ListMailAndSosChatFilesAsync(CancellationToken ct = default)
+    {
+        var folder = Settings.FolderPath.TrimEnd('/');
+        var token = await GetValidAccessTokenAsync(ct);
+        var names = await ListFileNamesAsync(folder, token, ct);
+        return names
+            .Where(n =>
+                n.EndsWith(".json", StringComparison.OrdinalIgnoreCase) &&
+                (n.StartsWith("mailchat(", StringComparison.OrdinalIgnoreCase) ||
+                 n.StartsWith("soschat(", StringComparison.OrdinalIgnoreCase) ||
+                 n.StartsWith("mailchat_", StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public async Task UploadZblMessageAsync(string phoneRaw, string message, CancellationToken ct = default)
+    {
+        var fileName = ZblMessageService.BuildFileName(phoneRaw);
+        var payload = ZblMessageService.BuildPayloadJson(phoneRaw, message);
+        await UploadNamedFileAsync(fileName, payload, ct).ConfigureAwait(false);
     }
 
     private async Task<string> DownloadRouteFileInternalAsync(string token, CancellationToken ct)

@@ -60,7 +60,9 @@ public partial class EmployeesViewModel : ObservableObject
 
         editor.ReplaceEmployees(Employees.Select(Clone).ToList());
         AppServices.Routes.ApplyEditorChanges("fahrer");
-        StatusMessage = $"{Employees.Count} Mitarbeiter lokal gespeichert – werden mit Routen-Export/ Dropbox übertragen.";
+        AppServices.PlannerLocal?.PersistFromEditor(editor);
+        StatusMessage =
+            $"{Employees.Count} Mitarbeiter im Planer gespeichert (lokal, höchste Priorität) – werden mit Routen-Export/Dropbox übertragen.";
     }
 
     [RelayCommand]
@@ -92,6 +94,11 @@ public partial class EmployeesViewModel : ObservableObject
         {
             StatusMessage = "Bitte zuerst einen Mitarbeiter auswählen.";
             return;
+        }
+
+        if (AppServices.PlannerLocal is not null)
+        {
+            AppServices.PlannerLocal.RecordEmployeeDeleted(SelectedEmployee);
         }
 
         var idx = Employees.IndexOf(SelectedEmployee);

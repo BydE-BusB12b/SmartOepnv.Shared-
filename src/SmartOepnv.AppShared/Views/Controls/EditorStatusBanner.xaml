@@ -1,0 +1,98 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.Controls.EditorStatusBanner"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             x:Name="Root">
+    <Border Padding="10,8"
+            CornerRadius="8"
+            BorderThickness="1">
+        <Border.Style>
+            <Style TargetType="Border">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Style.Triggers>
+                    <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding IsSuccess, ElementName=Root}" Value="True" />
+                            <Condition Binding="{Binding LightOnDark, ElementName=Root}" Value="False" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Background" Value="{StaticResource SmartSuccessBackgroundBrush}" />
+                        <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessBorderBrush}" />
+                    </MultiDataTrigger>
+                    <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding IsSuccess, ElementName=Root}" Value="True" />
+                            <Condition Binding="{Binding LightOnDark, ElementName=Root}" Value="True" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                        <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                    </MultiDataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+        <StackPanel Orientation="Horizontal">
+            <materialDesign:PackIcon Kind="CheckCircle"
+                                     Width="18"
+                                     Height="18"
+                                     Margin="0,1,8,0"
+                                     VerticalAlignment="Top">
+                <materialDesign:PackIcon.Style>
+                    <Style TargetType="materialDesign:PackIcon">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Setter Property="Foreground" Value="{StaticResource SmartSuccessForegroundBrush}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsSuccess, ElementName=Root}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsSuccess, ElementName=Root}" Value="True" />
+                                    <Condition Binding="{Binding LightOnDark, ElementName=Root}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </materialDesign:PackIcon.Style>
+            </materialDesign:PackIcon>
+            <TextBlock Text="{Binding Message, ElementName=Root}"
+                       TextWrapping="Wrap"
+                       FontSize="{Binding MessageFontSize, ElementName=Root}"
+                       VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Opacity" Value="0.85" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding LightOnDark, ElementName=Root}" Value="True" />
+                                    <Condition Binding="{Binding IsSuccess, ElementName=Root}" Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.88" />
+                            </MultiDataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsSuccess, ElementName=Root}" Value="True" />
+                                    <Condition Binding="{Binding LightOnDark, ElementName=Root}" Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Opacity" Value="1" />
+                                <Setter Property="Foreground" Value="{StaticResource SmartSuccessForegroundBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </MultiDataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsSuccess, ElementName=Root}" Value="True" />
+                                    <Condition Binding="{Binding LightOnDark, ElementName=Root}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Opacity" Value="1" />
+                                <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </StackPanel>
+    </Border>
+</UserControl>

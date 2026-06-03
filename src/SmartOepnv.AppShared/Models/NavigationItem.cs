@@ -9,4 +9,6 @@ public sealed class NavigationItem
     public required PackIconKind Icon { get; init; }
     public required FrameworkElement Content { get; init; }
     public string? Description { get; init; }
+
+    public string BadgeText { get; set; } = string.Empty;
 }

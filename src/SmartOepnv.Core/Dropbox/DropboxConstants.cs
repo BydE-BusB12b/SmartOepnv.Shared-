@@ -6,6 +6,7 @@ public static class DropboxConstants
     public const string DefaultAppSecret = "lzer62tixqyzpc3";
     public const string DefaultFolderPath = "/App/Smart ÖPNV";
     public const string RouteFileName = "routes_export.json";
+    public const string LeitstelleStandFileName = "leitstelle_stand.json";
     public const string OAuthRedirectUri = "https://www.dropbox.com";
 
     public const string AuthorizeUrl = "https://www.dropbox.com/oauth2/authorize";

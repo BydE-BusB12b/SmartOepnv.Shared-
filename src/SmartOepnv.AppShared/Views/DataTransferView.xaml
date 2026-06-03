@@ -107,8 +107,27 @@
                         <Button Content="Senden + Fernupdate"
                                 Command="{Binding ExportToDropboxWithRemoteUpdateCommand}"
                                 Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                Margin="0,0,6,0"
                                 Padding="12,4"
                                 ToolTip="Route hochladen und Update auf dem Fahrzeug auslösen (Umleitung während der Fahrt)" />
+                        <Button Command="{Binding SaveLeitstelleStandToDropboxCommand}"
+                                Foreground="White"
+                                BorderBrush="White"
+                                Padding="12,4"
+                                Margin="0,0,6,0"
+                                ToolTip="Fahrer, Fahrzeuge, Nachrichten-Vorlagen und Fahrwege für die Leitstelle (leitstelle_stand.json).">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Setter Property="Content" Value="Für Leitstelle speichern" />
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowLeitstelleStandExportButton}" Value="False">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                     </StackPanel>
                 </Grid>
 
@@ -131,6 +150,51 @@
                            MaxHeight="32"
                            ToolTip="{Binding LastActionMessage}" />
             </Grid>
+        </materialDesign:Card>
+
+        <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
+                             Background="{StaticResource SmartSurfaceBrush}"
+                             Margin="0,8,0,0">
+            <materialDesign:Card.Style>
+                <Style TargetType="materialDesign:Card">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowVersionManagement}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </materialDesign:Card.Style>
+            <StackPanel>
+                <TextBlock Text="Versionen (Planer-Snapshots)" FontWeight="SemiBold" Margin="0,0,0,8" />
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             materialDesign:HintAssist.Hint="Bezeichnung (optional)"
+                             Text="{Binding NewVersionLabel, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,8,0" />
+                    <Button Grid.Column="1"
+                            Content="Version speichern"
+                            Command="{Binding SavePackageVersionCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}" />
+                </Grid>
+                <ComboBox ItemsSource="{Binding PackageVersions}"
+                          DisplayMemberPath="DisplayLine"
+                          SelectedItem="{Binding SelectedPackageVersion}"
+                          Margin="0,0,0,8" />
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Version laden"
+                            Command="{Binding LoadPackageVersionCommand}"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Margin="0,0,8,0" />
+                    <Button Content="Version löschen"
+                            Command="{Binding DeletePackageVersionCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}" />
+                </StackPanel>
+            </StackPanel>
         </materialDesign:Card>
     </StackPanel>
 </UserControl>

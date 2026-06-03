@@ -24,9 +24,12 @@ public partial class DataTransferViewModel : ObservableObject
     [ObservableProperty] private string localWorkspaceHint = string.Empty;
     [ObservableProperty] private bool hasInspectionWarnings;
     [ObservableProperty] private bool hasDriverCredentialWarnings;
+    [ObservableProperty] private string newVersionLabel = string.Empty;
+    [ObservableProperty] private PlannerPackageVersionInfo? selectedPackageVersion;
 
     public ObservableCollection<VehicleInspectionWarningItem> InspectionWarnings { get; } = [];
     public ObservableCollection<DriverCredentialWarningItem> DriverCredentialWarnings { get; } = [];
+    public ObservableCollection<PlannerPackageVersionInfo> PackageVersions { get; } = [];
 
     /// <summary>Wird beim Klick auf einen HU-/SP-Hinweis ausgelöst (normalisierte Telefonnummer oder leer).</summary>
     public event Action<string?>? NavigateToVehicleManagementRequested;
@@ -34,12 +37,27 @@ public partial class DataTransferViewModel : ObservableObject
     /// <summary>Wird beim Klick auf eine Fahrer-Warnung ausgelöst (Personalnummer, 4-stellig).</summary>
     public event Action<string?>? NavigateToEmployeeManagementRequested;
 
-    public DataTransferViewModel()
+    private readonly bool _isLeitstelleProfile;
+
+    public DataTransferViewModel(SmartOepnvAppProfile profile)
     {
+        _isLeitstelleProfile = profile.IsLeitstelle;
         RefreshStats();
         IsDropboxConnected = AppServices.Dropbox.Settings.IsConnected;
         UpdateLocalWorkspaceHint();
+        RefreshPackageVersions();
     }
+
+    /// <summary>Nur Smart-ÖPNV Planer: Dropbox-Upload „Für Leitstelle speichern“.</summary>
+    public bool ShowLeitstelleStandExportButton => !_isLeitstelleProfile;
+
+    /// <summary>Nur Planer: JSON-Snapshots als Versionen speichern/laden.</summary>
+    public bool ShowVersionManagement => !_isLeitstelleProfile && AppServices.PlannerVersions is not null;
+
+    public string PlannerLocalOverlayHint =>
+        AppServices.PlannerLocal is null
+            ? string.Empty
+            : $"Fahrer & Fahrzeuge (Planer, Priorität): {AppServices.PlannerLocal.OverlayFilePath}";
 
     private void UpdateLocalWorkspaceHint()
     {
@@ -49,8 +67,30 @@ public partial class DataTransferViewModel : ObservableObject
             return;
         }
 
-        LocalWorkspaceHint =
-            $"Lokaler Arbeits-Speicher: {AppServices.Workspace.PackageFilePath} – gleicher Inhalt wie Dropbox (Routen, Navidaten, Hinweise, Fahrer, Fahrzeuge).";
+        var routesHint =
+            $"Routen-Arbeitsstand: {AppServices.Workspace.PackageFilePath} (Dropbox routes_export.json).";
+        var overlayHint = PlannerLocalOverlayHint;
+        LocalWorkspaceHint = string.IsNullOrWhiteSpace(overlayHint)
+            ? routesHint
+            : $"{routesHint} {overlayHint}";
+        OnPropertyChanged(nameof(PlannerLocalOverlayHint));
+    }
+
+    public void RefreshPackageVersions()
+    {
+        PackageVersions.Clear();
+        SelectedPackageVersion = null;
+        if (AppServices.PlannerVersions is null)
+        {
+            return;
+        }
+
+        foreach (var v in AppServices.PlannerVersions.List())
+        {
+            PackageVersions.Add(v);
+        }
+
+        SelectedPackageVersion = PackageVersions.FirstOrDefault();
     }
 
     public void RefreshStats()
@@ -195,6 +235,16 @@ public partial class DataTransferViewModel : ObservableObject
 
         var json = await AppServices.Dropbox.DownloadRouteFileAsync(cancellationToken);
         AppServices.Routes.LoadFromJson(json, persistLocally: true, source: "dropbox-import");
+        if (_isLeitstelleProfile)
+        {
+            var stand = await AppServices.Dropbox.TryDownloadLeitstelleStandAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(stand))
+            {
+                AppServices.Routes.TryMergeLeitstelleStandJson(stand);
+            }
+        }
+
         LastActionMessage = $"Importiert von Dropbox und lokal gespeichert: {AppServices.Dropbox.GetRouteFilePath()}";
         RefreshStats();
         return true;
@@ -263,6 +313,112 @@ public partial class DataTransferViewModel : ObservableObject
             LastActionMessage =
                 $"Route gesendet + Fernupdate ausgelöst für {picker.SelectedPhoneNumber} ({AppServices.Dropbox.GetRouteFilePath()})";
         });
+    }
+
+    [RelayCommand]
+    private async Task SaveLeitstelleStandToDropboxAsync()
+    {
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            LastActionMessage = "Dropbox nicht verbunden – bitte Einstellungen öffnen.";
+            return;
+        }
+
+        if (!AppServices.Routes.HasPackage)
+        {
+            LastActionMessage = "Kein Paket geladen – zuerst importieren.";
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            AppServices.FlushAllPendingEdits();
+            var json = AppServices.Routes.BuildLeitstelleStandJson();
+            await AppServices.Dropbox.UploadLeitstelleStandAsync(json);
+            LastActionMessage =
+                $"Für Leitstelle gespeichert: {DropboxConstants.LeitstelleStandFileName} (Fahrer, Fahrzeuge, Vorlagen, Fahrwege).";
+        });
+    }
+
+    [RelayCommand]
+    private void SavePackageVersion()
+    {
+        if (AppServices.PlannerVersions is null)
+        {
+            return;
+        }
+
+        if (!AppServices.Routes.HasPackage)
+        {
+            LastActionMessage = "Kein Paket geladen – zuerst importieren.";
+            return;
+        }
+
+        try
+        {
+            AppServices.FlushAllPendingEdits();
+            var json = AppServices.Routes.PrepareExportJson();
+            var info = AppServices.PlannerVersions.Save(NewVersionLabel, json);
+            RefreshPackageVersions();
+            SelectedPackageVersion = PackageVersions.FirstOrDefault(v => v.Id == info.Id) ?? info;
+            NewVersionLabel = string.Empty;
+            LastActionMessage =
+                $"Version gespeichert: {info.DisplayLine} – Fahrer/Fahrzeuge beim Laden weiterhin aus dem Planer-Overlay.";
+        }
+        catch (Exception ex)
+        {
+            LastActionMessage = $"Fehler beim Speichern der Version: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void LoadPackageVersion()
+    {
+        if (AppServices.PlannerVersions is null || SelectedPackageVersion is null)
+        {
+            LastActionMessage = "Bitte eine Version auswählen.";
+            return;
+        }
+
+        try
+        {
+            var json = AppServices.PlannerVersions.TryLoadPackageJson(SelectedPackageVersion.Id);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                LastActionMessage = "Version konnte nicht gelesen werden.";
+                return;
+            }
+
+            AppServices.Routes.LoadFromJson(json, persistLocally: true, source: "planner-version");
+            LastActionMessage =
+                $"Version geladen: {SelectedPackageVersion.DisplayLine} – Fahrer/Fahrzeuge aus Planer-Overlay übernommen.";
+            RefreshStats();
+            RoutePackageImported?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            LastActionMessage = $"Fehler beim Laden der Version: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void DeletePackageVersion()
+    {
+        if (AppServices.PlannerVersions is null || SelectedPackageVersion is null)
+        {
+            LastActionMessage = "Bitte eine Version zum Löschen auswählen.";
+            return;
+        }
+
+        var label = SelectedPackageVersion.DisplayLine;
+        if (!AppServices.PlannerVersions.TryDelete(SelectedPackageVersion.Id))
+        {
+            LastActionMessage = "Version konnte nicht gelöscht werden.";
+            return;
+        }
+
+        RefreshPackageVersions();
+        LastActionMessage = $"Version gelöscht: {label}";
     }
 
     private async Task RunAsync(Func<Task> action)

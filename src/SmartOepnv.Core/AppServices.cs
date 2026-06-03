@@ -28,7 +28,20 @@ public static class AppServices
 
     public static string SettingsSubfolder { get; private set; } = "Planer";
 
+    public static bool IsPlannerApp =>
+        string.Equals(SettingsSubfolder, "Planer", StringComparison.OrdinalIgnoreCase);
+
     public static bool IsInitialized => _initialized;
+
+    public static PlannerLocalOverlayService? PlannerLocal => _plannerLocal;
+
+    public static PlannerPackageVersionStore? PlannerVersions => _plannerVersions;
+
+    public static DeviceRegistrationDropboxService? DeviceRegistration => _deviceRegistration;
+
+    private static PlannerLocalOverlayService? _plannerLocal;
+    private static PlannerPackageVersionStore? _plannerVersions;
+    private static DeviceRegistrationDropboxService? _deviceRegistration;
 
     private static readonly List<Action> _flushBeforeExport = [];
 
@@ -57,6 +70,12 @@ public static class AppServices
         _dropbox = new DropboxApiClient(_dropboxSettingsStore);
         _vehicleTracking = new VehicleTrackingService(_dropbox);
         _workspace = new LocalWorkspaceStore(settingsSubfolder);
+        if (IsPlannerApp)
+        {
+            _plannerLocal = new PlannerLocalOverlayService(settingsSubfolder);
+            _plannerVersions = new PlannerPackageVersionStore(settingsSubfolder);
+            _deviceRegistration = new DeviceRegistrationDropboxService();
+        }
         _initialized = true;
     }
 }

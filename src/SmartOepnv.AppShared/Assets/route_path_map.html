@@ -517,12 +517,15 @@
         const busStraightKeys = draft.roadBusStraightEdgeKeys || [];
         const snapped = snappedKeys.includes(key);
         const busStraight = busStraightKeys.includes(key);
+        const selFrom = draft.selectedSegmentFrom;
+        const selTo = draft.selectedSegmentTo;
+        const isSelected = selFrom === seg.fromNodeId && selTo === seg.toNodeId;
         const pts = segmentPoints(seg);
         const latlngs = pts ? pts.map(p => [Number(p.lat), Number(p.lon)]) : [[ca.lat, ca.lon], [cb.lat, cb.lon]];
-        const lineColor = busStraight ? '#ff9800' : (snapped ? routeLineColor() : '#ffeb3b');
+        const lineColor = isSelected ? '#ffeb3b' : (busStraight ? '#ff9800' : (snapped ? routeLineColor() : '#ffeb3b'));
         const line = L.polyline(latlngs, {
           color: lineColor,
-          weight: snapped || busStraight ? 5 : 4,
+          weight: isSelected ? 7 : (snapped || busStraight ? 5 : 4),
           opacity: 0.9,
           dashArray: busStraight ? '10 6' : null
         }).addTo(map);

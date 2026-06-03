@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Reflection;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,7 +14,7 @@ namespace SmartOepnv.AppShared.ViewModels;
 public partial class MainViewModel : ObservableObject
 {
     private readonly SmartOepnvAppProfile _profile;
-    private readonly DataTransferViewModel _dataTransferViewModel = new();
+    private readonly DataTransferViewModel _dataTransferViewModel;
     private readonly SettingsViewModel _settingsViewModel = new();
     private readonly RoutesViewModel _routesViewModel = new();
     private readonly RoutePathEditorViewModel _routePathEditorViewModel = new();
@@ -22,10 +23,15 @@ public partial class MainViewModel : ObservableObject
     private readonly AnnouncementsLibraryViewModel _announcementsLibraryViewModel = new();
     private readonly VehicleManagementViewModel _vehicleManagementViewModel = new();
     private readonly MessagesViewModel _messagesViewModel = new();
+    private readonly MessageSendViewModel _messageSendViewModel = new();
+    private readonly LeitstelleMessagesInboxViewModel _leitstelleMessagesInboxViewModel = new();
     private readonly DisplaysOperationsViewModel _displaysOperationsViewModel = new();
     private readonly VehicleTrackingViewModel _vehicleTrackingViewModel = new();
+    private readonly ZeitwirtschaftPlannerViewModel _zeitwirtschaftPlannerViewModel = new();
+    private readonly SevSignEditorViewModel _sevSignEditorViewModel = new();
 
     private NavigationItem? _previousNavigationItem;
+    private NavigationItem? _leitstelleMessagesNavItem;
 
     public MainViewModel(SmartOepnvAppProfile profile)
     {
@@ -33,6 +39,8 @@ public partial class MainViewModel : ObservableObject
         ProductName = profile.ProductName;
         ProductSubtitle = profile.ProductSubtitle;
         DashboardHint = profile.DashboardHint;
+        AppVersion = ResolveDisplayedAppVersion();
+        _dataTransferViewModel = new DataTransferViewModel(profile);
 
         NavigationItems = new ObservableCollection<NavigationItem>(CreateNavigationItems());
         SelectedNavigationItem = NavigationItems[0];
@@ -42,6 +50,15 @@ public partial class MainViewModel : ObservableObject
         _dataTransferViewModel.RoutePackageImported += OnRoutePackageLoaded;
         _dataTransferViewModel.NavigateToVehicleManagementRequested += OnNavigateToVehicleManagementRequested;
         _dataTransferViewModel.NavigateToEmployeeManagementRequested += OnNavigateToEmployeeManagementRequested;
+        _leitstelleMessagesInboxViewModel.SosAlertRaised += OnLeitstelleSosAlertRaised;
+        _leitstelleMessagesInboxViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(LeitstelleMessagesInboxViewModel.UnreadMailCount) or
+                nameof(LeitstelleMessagesInboxViewModel.HasUnreadMail))
+            {
+                UpdateLeitstelleMessagesBadge();
+            }
+        };
 
         var localLoaded = LoadLocalWorkspaceOnStartup();
         if (localLoaded)
@@ -60,6 +77,12 @@ public partial class MainViewModel : ObservableObject
         if (profile.AutoLoadDropboxOnStartup && AppServices.Dropbox.Settings.IsConnected)
         {
             _ = SyncDropboxOnStartupAsync();
+        }
+
+        if (_profile.IsLeitstelle)
+        {
+            _leitstelleMessagesInboxViewModel.StartMonitoring();
+            UpdateLeitstelleMessagesBadge();
         }
     }
 
@@ -128,7 +151,20 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Nachrichten")
         {
-            _messagesViewModel.RefreshFromEditor();
+            if (_profile.IsLeitstelle)
+            {
+                _ = _leitstelleMessagesInboxViewModel.RefreshAsync();
+                _leitstelleMessagesInboxViewModel.MarkMailAsRead();
+                UpdateLeitstelleMessagesBadge();
+            }
+            else
+            {
+                _messagesViewModel.RefreshFromEditor();
+            }
+        }
+        else if (value.Title == "Nachricht senden")
+        {
+            _messageSendViewModel.RefreshFromEditor();
         }
         else if (value.Title == "Anzeigen & Hinweise")
         {
@@ -137,6 +173,14 @@ public partial class MainViewModel : ObservableObject
         else if (value.Title == "Fahrzeuge")
         {
             _vehicleTrackingViewModel.OnViewActivated();
+        }
+        else if (value.Title == "Zeitwirtschaft")
+        {
+            _zeitwirtschaftPlannerViewModel.RefreshHint();
+        }
+        else if (value.Title == "SEV-Schilder")
+        {
+            _sevSignEditorViewModel.RefreshFromEditor();
         }
         else
         {
@@ -180,7 +224,10 @@ public partial class MainViewModel : ObservableObject
                 _dataTransferViewModel.RefreshInspectionWarnings();
                 break;
             case "Nachrichten":
-                _messagesViewModel.CommitChanges();
+                if (!_profile.IsLeitstelle)
+                {
+                    _messagesViewModel.CommitChanges();
+                }
                 break;
             case "Anzeigen & Hinweise":
                 _displaysOperationsViewModel.CommitChanges();
@@ -272,6 +319,7 @@ public partial class MainViewModel : ObservableObject
         {
             _dataTransferViewModel.IsBusy = false;
             _dataTransferViewModel.RefreshStats();
+            await TryProcessDeviceRegistrationsFromDropboxAsync().ConfigureAwait(true);
         }
     }
 
@@ -301,6 +349,7 @@ public partial class MainViewModel : ObservableObject
 
     private void OnRoutePackageLoaded()
     {
+        _ = TryProcessDeviceRegistrationsFromDropboxAsync();
         _dataTransferViewModel.RefreshStats();
         _routesViewModel.RefreshFromEditor();
         _routePathEditorViewModel.RefreshRoutes();
@@ -310,6 +359,38 @@ public partial class MainViewModel : ObservableObject
         _vehicleManagementViewModel.RefreshFromEditor();
         _messagesViewModel.RefreshFromEditor();
         _displaysOperationsViewModel.RefreshFromEditor();
+        _sevSignEditorViewModel.RefreshFromEditor();
+        if (_profile.IsLeitstelle)
+        {
+            _messageSendViewModel.RefreshFromEditor();
+            _leitstelleMessagesInboxViewModel.RefreshFromEditor();
+            _ = _leitstelleMessagesInboxViewModel.RefreshAsync();
+            UpdateLeitstelleMessagesBadge();
+        }
+    }
+
+    private async Task TryProcessDeviceRegistrationsFromDropboxAsync()
+    {
+        if (!AppServices.IsPlannerApp || AppServices.DeviceRegistration is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await AppServices.DeviceRegistration.TryProcessPendingAsync().ConfigureAwait(true);
+            if (result.AnyAdded)
+            {
+                _vehicleManagementViewModel.RefreshFromEditor();
+                _dataTransferViewModel.RefreshStats();
+                _dataTransferViewModel.LastActionMessage =
+                    "Geräte registriert: " + string.Join(", ", result.AddedVehicles);
+            }
+        }
+        catch
+        {
+            // optional
+        }
     }
 
     private IReadOnlyList<NavigationItem> CreateNavigationItems()
@@ -323,7 +404,11 @@ public partial class MainViewModel : ObservableObject
         var announcementsLibrary = new AnnouncementsLibraryView { DataContext = _announcementsLibraryViewModel };
         var vehicleManagement = new VehicleManagementView { DataContext = _vehicleManagementViewModel };
         var messages = new MessagesView { DataContext = _messagesViewModel };
+        var messageSend = new MessageSendView { DataContext = _messageSendViewModel };
+        var leitstelleMessages = new LeitstelleMessagesInboxView { DataContext = _leitstelleMessagesInboxViewModel };
         var displaysOperations = new DisplaysOperationsView { DataContext = _displaysOperationsViewModel };
+        var zeitwirtschaft = new ZeitwirtschaftPlannerView { DataContext = _zeitwirtschaftPlannerViewModel };
+        var sevSignEditor = new SevSignEditorView { DataContext = _sevSignEditorViewModel };
 
         var items = new List<NavigationItem>
         {
@@ -333,34 +418,6 @@ public partial class MainViewModel : ObservableObject
                 Icon = PackIconKind.ViewDashboard,
                 Description = "Dashboard, Import und Export",
                 Content = dashboard
-            },
-            new()
-            {
-                Title = "Routen",
-                Icon = PackIconKind.SignDirection,
-                Description = "Routen und Haltestellen bearbeiten",
-                Content = routes
-            },
-            new()
-            {
-                Title = "Haltestellen",
-                Icon = PackIconKind.BusMarker,
-                Description = "Haltestellenbibliothek und Vorlagen (managedStopTemplates)",
-                Content = stopsLibrary
-            },
-            new()
-            {
-                Title = "Ansagen",
-                Icon = PackIconKind.VolumeHigh,
-                Description = "Haltestellen-Kartei mit 5-stelliger ID – Ansagen pro Haltestelle",
-                Content = announcementsLibrary
-            },
-            new()
-            {
-                Title = "Navidaten",
-                Icon = PackIconKind.MapMarkerPath,
-                Description = "Fahrweg auf Karte planen (Handy-kompatibel)",
-                Content = new RoutePathEditorView { DataContext = _routePathEditorViewModel }
             },
             new()
             {
@@ -378,17 +435,12 @@ public partial class MainViewModel : ObservableObject
             },
             new()
             {
-                Title = "Nachrichten",
+                Title = _profile.IsLeitstelle ? "Nachricht senden" : "Nachrichten",
                 Icon = PackIconKind.MessageText,
-                Description = "KOM- und Mail-Vorlagen (messageTemplates / mailTemplates)",
-                Content = messages
-            },
-            new()
-            {
-                Title = "Anzeigen & Hinweise",
-                Icon = PackIconKind.Billboard,
-                Description = "Zielliste und datumgesteuerte Hinweise",
-                Content = displaysOperations
+                Description = _profile.IsLeitstelle
+                    ? "Vorlagen wählen und per Dropbox an Fahrzeuge senden (zbl_message)"
+                    : "KOM- und Mail-Vorlagen (messageTemplates / mailTemplates)",
+                Content = _profile.IsLeitstelle ? messageSend : messages
             },
             new()
             {
@@ -406,8 +458,69 @@ public partial class MainViewModel : ObservableObject
             }
         };
 
+        if (!_profile.IsLeitstelle)
+        {
+            items.Insert(1, new NavigationItem
+            {
+                Title = "Routen",
+                Icon = PackIconKind.SignDirection,
+                Description = "Routen und Haltestellen bearbeiten",
+                Content = routes
+            });
+            items.Insert(2, new NavigationItem
+            {
+                Title = "Haltestellen",
+                Icon = PackIconKind.BusMarker,
+                Description = "Haltestellenbibliothek und Vorlagen (managedStopTemplates)",
+                Content = stopsLibrary
+            });
+            items.Insert(3, new NavigationItem
+            {
+                Title = "Ansagen",
+                Icon = PackIconKind.VolumeHigh,
+                Description = "Nur Ansagen: 4-stellige ID, Ton, ★ Sonder mit „S“",
+                Content = announcementsLibrary
+            });
+            items.Insert(4, new NavigationItem
+            {
+                Title = "Navidaten",
+                Icon = PackIconKind.MapMarkerPath,
+                Description = "Fahrweg auf Karte planen (Handy-kompatibel)",
+                Content = new RoutePathEditorView { DataContext = _routePathEditorViewModel }
+            });
+            items.Insert(items.Count - 2, new NavigationItem
+            {
+                Title = "Anzeigen & Hinweise",
+                Icon = PackIconKind.Billboard,
+                Description = "Zielliste und datumgesteuerte Hinweise",
+                Content = displaysOperations
+            });
+            items.Insert(items.Count - 2, new NavigationItem
+            {
+                Title = "SEV-Schilder",
+                Icon = PackIconKind.FilePdfBox,
+                Description = "NRW-SEV-Schild A3 quer als PDF (Linie, Ziel, Haltestellen, Betreiber)",
+                Content = sevSignEditor
+            });
+            items.Insert(items.Count - 2, new NavigationItem
+            {
+                Title = "Zeitwirtschaft",
+                Icon = PackIconKind.ClockOutline,
+                Description = "Zeitstempel aus Tablets zusammenführen (Dropbox JSON)",
+                Content = zeitwirtschaft
+            });
+        }
+
         if (_profile.IsLeitstelle)
         {
+            _leitstelleMessagesNavItem = new NavigationItem
+            {
+                Title = "Nachrichten",
+                Icon = PackIconKind.MessageBadge,
+                Description = "MailChat / SOS aus Dropbox (SOS → Karte)",
+                Content = leitstelleMessages
+            };
+            items.Insert(3, _leitstelleMessagesNavItem);
             items.Insert(1, new NavigationItem
             {
                 Title = "Fahrzeuge",
@@ -418,5 +531,51 @@ public partial class MainViewModel : ObservableObject
         }
 
         return items;
+    }
+
+    private void OnLeitstelleSosAlertRaised(string phoneNormalized)
+    {
+        if (!_profile.IsLeitstelle || string.IsNullOrWhiteSpace(phoneNormalized))
+        {
+            return;
+        }
+
+        var fahrzeugeNav = NavigationItems.FirstOrDefault(i => i.Title == "Fahrzeuge");
+        if (fahrzeugeNav is null)
+        {
+            return;
+        }
+
+        if (SelectedNavigationItem != fahrzeugeNav)
+        {
+            SelectedNavigationItem = fahrzeugeNav;
+        }
+
+        _vehicleTrackingViewModel.FocusVehicleByPhone(phoneNormalized);
+    }
+
+    private void UpdateLeitstelleMessagesBadge()
+    {
+        if (!_profile.IsLeitstelle || _leitstelleMessagesNavItem is null)
+        {
+            return;
+        }
+
+        _leitstelleMessagesNavItem.BadgeText =
+            _leitstelleMessagesInboxViewModel.HasUnreadMail ? "1" : string.Empty;
+    }
+
+    private static string ResolveDisplayedAppVersion()
+    {
+        var assembly = Assembly.GetEntryAssembly() ?? typeof(MainViewModel).Assembly;
+        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            var cut = informational.IndexOf('+', StringComparison.Ordinal);
+            return cut > 0 ? informational[..cut] : informational;
+        }
+
+        var version = assembly.GetName().Version;
+        return version is null ? "0.3.0" : version.ToString(3);
     }
 }

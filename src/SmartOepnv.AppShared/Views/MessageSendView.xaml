@@ -1,0 +1,89 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.MessageSendView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             VerticalAlignment="Stretch"
+             HorizontalAlignment="Stretch">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="0,0,0,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" MinHeight="280" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                <TextBlock Text="Nachricht senden"
+                           FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
+                <TextBlock Text="Vorlagen aus messageTemplates (vom Planer im routes_export.json). Wählen Sie eine Vorlage, markieren Sie Fahrzeuge und senden Sie per Dropbox – wie „Meldung“ in der Android-Tracking-Karte."
+                           Opacity="0.65" FontSize="11" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="200" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="1.2*" MinWidth="260" />
+                </Grid.ColumnDefinitions>
+
+                <materialDesign:Card Grid.Column="0" Padding="16" UniformCornerRadius="12"
+                                     Background="{StaticResource SmartSurfaceBrush}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="Vorlagen"
+                                   FontWeight="SemiBold" Margin="0,0,0,8" />
+                        <TextBlock DockPanel.Dock="Bottom" Text="Klick = Text übernehmen"
+                                   Opacity="0.6" FontSize="10" Margin="0,8,0,0" />
+                        <ListBox ItemsSource="{Binding MessageTemplates}"
+                                 SelectedItem="{Binding SelectedMessageTemplate}"
+                                 BorderThickness="0"
+                                 Background="Transparent" />
+                    </DockPanel>
+                </materialDesign:Card>
+
+                <materialDesign:Card Grid.Column="2" Padding="16" UniformCornerRadius="12"
+                                     Background="{StaticResource SmartSurfaceBrush}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="Nachricht &amp; Empfänger"
+                                   FontWeight="SemiBold" Margin="0,0,0,8" />
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                            <Button Content="Senden"
+                                    Command="{Binding SendCommand}"
+                                    Style="{StaticResource MaterialDesignRaisedButton}"
+                                    HorizontalAlignment="Left"
+                                    MinWidth="160" />
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBox Text="{Binding MessageText, UpdateSourceTrigger=PropertyChanged}"
+                                     materialDesign:HintAssist.Hint="Nachrichtentext"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     MinHeight="88"
+                                     MaxHeight="160"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Margin="0,0,0,12" />
+                            <CheckBox Content="Alle Fahrzeuge"
+                                      IsChecked="{Binding SelectAllRecipients}"
+                                      Margin="0,0,0,8" />
+                            <ListBox ItemsSource="{Binding Recipients}"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     MaxHeight="220">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding DisplayLabel}"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                  Margin="0,2" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </DockPanel>
+                </materialDesign:Card>
+            </Grid>
+
+            <TextBlock Grid.Row="2" Margin="0,12,0,0"
+                       Text="{Binding StatusMessage}"
+                       TextWrapping="Wrap" Opacity="0.85" FontSize="12" />
+        </Grid>
+    </ScrollViewer>
+</UserControl>

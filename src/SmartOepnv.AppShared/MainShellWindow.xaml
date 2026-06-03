@@ -87,7 +87,12 @@
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
                                         <materialDesign:PackIcon Kind="{Binding Icon}"
                                                                  Width="22" Height="22"
                                                                  VerticalAlignment="Center"
@@ -96,7 +101,31 @@
                                         <TextBlock Text="{Binding Title}"
                                                    VerticalAlignment="Center"
                                                    FontSize="15" />
-                                    </StackPanel>
+                                        </StackPanel>
+                                        <Border Grid.Column="1"
+                                                Width="20" Height="20"
+                                                CornerRadius="10"
+                                                Background="#FBC02D"
+                                                Margin="8,0,0,0"
+                                                VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding BadgeText}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding BadgeText}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontWeight="Bold"
+                                                       FontSize="11"
+                                                       Foreground="#1B1B1B" />
+                                        </Border>
+                                    </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>

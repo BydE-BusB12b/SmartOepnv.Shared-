@@ -82,6 +82,25 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         SelectedVehicle = Vehicles.FirstOrDefault(v => v.Id == id);
     }
 
+    public bool FocusVehicleByPhone(string? normalizedPhone)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedPhone))
+        {
+            return false;
+        }
+
+        var target = Vehicles.FirstOrDefault(v =>
+            string.Equals(v.PhoneNormalized, normalizedPhone, StringComparison.Ordinal));
+        if (target is null)
+        {
+            return false;
+        }
+
+        SelectedVehicle = target;
+        FocusVehicleOnMap(target.Id);
+        return true;
+    }
+
     private void FocusVehicleOnMap(string id)
     {
         PushVehiclesToMap();
@@ -176,6 +195,7 @@ public sealed class VehicleListItemViewModel
 {
     public required string Id { get; init; }
     public required string DisplayName { get; init; }
+    public string? PhoneNormalized { get; init; }
     public string? LineCourse { get; init; }
     public string? RouteName { get; init; }
     public string? StopName { get; init; }
@@ -202,6 +222,9 @@ public sealed class VehicleListItemViewModel
         {
             Id = v.Id,
             DisplayName = v.DisplayName,
+            PhoneNormalized = string.IsNullOrWhiteSpace(v.PhoneNumber)
+                ? null
+                : new string(v.PhoneNumber.Where(char.IsDigit).ToArray()),
             LineCourse = string.IsNullOrWhiteSpace(v.LineCourse) ? "–" : v.LineCourse,
             RouteName = v.RouteName,
             StopName = v.StopName,

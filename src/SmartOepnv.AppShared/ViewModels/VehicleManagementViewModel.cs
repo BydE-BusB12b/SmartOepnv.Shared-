@@ -85,8 +85,9 @@ public partial class VehicleManagementViewModel : ObservableObject
         editor.ReplaceRegisteredVehicles(Vehicles.Select(CloneForSave).ToList());
         editor.ReplaceRegisteredVehiclePhoneRedirects(redirects);
         AppServices.Routes.ApplyEditorChanges("fahrzeugverwaltung");
+        AppServices.PlannerLocal?.PersistFromEditor(editor);
         StatusMessage =
-            $"{Vehicles.Count} Fahrzeuge gespeichert – KOM nur Name/Telefon; Planer-Daten und Nummern-Historie im Paket (auch Dropbox).";
+            $"{Vehicles.Count} Fahrzeuge im Planer gespeichert (lokal, höchste Priorität) – KOM und Planer-Daten gehen mit Routen-Export/Dropbox.";
     }
 
     [RelayCommand]
@@ -116,6 +117,11 @@ public partial class VehicleManagementViewModel : ObservableObject
         {
             StatusMessage = "Bitte zuerst ein Fahrzeug auswählen.";
             return;
+        }
+
+        if (AppServices.PlannerLocal is not null)
+        {
+            AppServices.PlannerLocal.RecordVehicleDeleted(SelectedVehicle);
         }
 
         var idx = Vehicles.IndexOf(SelectedVehicle);
