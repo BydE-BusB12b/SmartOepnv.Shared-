@@ -18,9 +18,42 @@ public static class NavManeuverHelper
             .Contains(ManualInstruction, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>Anzeige in Hinweisliste: „Manuell“ → Bezeichnung des gewählten Symbols.</summary>
+    public static string GetDisplayInstruction(RoutePathSnapManeuver maneuver, string symbolTypeId)
+    {
+        if (IsManualManeuver(maneuver) ||
+            string.Equals((maneuver.Instruction ?? string.Empty).Trim(), ManualInstruction, StringComparison.OrdinalIgnoreCase))
+        {
+            return NavSymbolCatalog.GetLabel(symbolTypeId);
+        }
+
+        var instruction = (maneuver.Instruction ?? string.Empty).Trim();
+        return string.IsNullOrEmpty(instruction)
+            ? NavSymbolCatalog.GetLabel(symbolTypeId)
+            : instruction;
+    }
+
     public static void EnsureManualInstruction(RoutePathSnapManeuver maneuver)
     {
         maneuver.Instruction = ManualInstruction;
+    }
+
+    /// <summary>„Manuell“ + Symboltyp → lesbarer Name (Liste, Speichern, Handy).</summary>
+    public static void NormalizeManualManeuverInstructions(RoutePathDraft draft)
+    {
+        foreach (var list in draft.RoadSegmentManeuvers.Values)
+        {
+            foreach (var maneuver in list)
+            {
+                if (!IsManualManeuver(maneuver))
+                {
+                    continue;
+                }
+
+                var symbolType = NavManeuverDisplayHelper.EffectiveSymbolType(maneuver);
+                maneuver.Instruction = NavSymbolCatalog.GetLabel(symbolType);
+            }
+        }
     }
 
     /// <summary>

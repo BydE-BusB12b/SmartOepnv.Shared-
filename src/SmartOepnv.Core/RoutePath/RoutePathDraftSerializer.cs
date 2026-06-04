@@ -9,6 +9,7 @@ public static class NavSymbolCatalog
 {
     public const string Hidden = "__nav_hidden__";
 
+    /// <summary>Alle wählbaren Symbole (abgestimmt mit RoutePathBuilderActivity am Handy).</summary>
     public static IReadOnlyList<(string Id, string Label)> All { get; } =
     [
         ("straight", "Geradeaus"),
@@ -24,17 +25,73 @@ public static class NavSymbolCatalog
         ("cross_5_right", "5-armig halb rechts"),
         ("fork_left", "Gabelung links"),
         ("fork_right", "Gabelung rechts"),
+        ("kink_t_left", "Gekippte T-Kreuzung (links)"),
+        ("kink_t_right", "Gekippte T-Kreuzung (rechts)"),
+        ("kink_t_left_straight", "Links gekippte T-Kreuzung geradeaus"),
+        ("kink_t_right_straight", "Rechts gekippte T-Kreuzung geradeaus"),
+        ("priority_follow_left", "Vorfahrtsstraße nach links folgen"),
+        ("priority_follow_right", "Vorfahrtsstraße nach rechts folgen"),
+        ("priority_leave_left_straight", "Vorfahrtsstraße nach links geradeaus verlassen"),
+        ("priority_leave_right_straight", "Vorfahrtsstraße nach rechts geradeaus verlassen"),
+        ("double_t_left_right", "Doppel-T links–rechts"),
+        ("double_t_right_left", "Doppel-T rechts–links"),
+        ("shifted_double_t_left_right", "Verschobene Doppel-T links+rechts"),
+        ("shifted_double_t_right_left", "Verschobene Doppel-T rechts+links"),
+        ("shifted_t_to_cross_left_right", "Verschobene T-Kreuzung → 4-armig links+rechts"),
+        ("special_cross_left", "Sonderform links abbiegen"),
+        ("special_cross_right", "Sonderform rechts abbiegen"),
+        ("special_cross_left_plain", "Sonderform Kreuzung links"),
+        ("special_cross_right_plain", "Sonderform Kreuzung rechts"),
+        ("u_turn_custom", "U-Turn / Wenden (Zusatz)"),
+        ("u_turn", "U-Turn"),
+        ("left_lane_exit", "Linke Spur / links abfahren"),
+        ("right_lane_exit", "Rechte Spur / rechts abfahren"),
         ("slight_left", "Leicht links"),
         ("slight_right", "Leicht rechts"),
         ("roundabout_1_4", "Kreisverkehr 1. Ausf. (4-arm)"),
         ("roundabout_2_4", "Kreisverkehr 2. Ausf. (4-arm)"),
         ("roundabout_3_4", "Kreisverkehr 3. Ausf. (4-arm)"),
         ("roundabout_4_4", "Kreisverkehr 4. Ausf. (4-arm)"),
-        ("u_turn_custom", "U-Turn / Wenden"),
+        ("roundabout_1_5", "Kreisverkehr 1. Ausf. (5-arm)"),
+        ("roundabout_2_5", "Kreisverkehr 2. Ausf. (5-arm)"),
+        ("roundabout_3_5", "Kreisverkehr 3. Ausf. (5-arm)"),
+        ("roundabout_4_5", "Kreisverkehr 4. Ausf. (5-arm)"),
+        ("roundabout_5_5", "Kreisverkehr 5. Ausf. (5-arm)"),
+        ("off_route", "Linienweg verlassen"),
         ("goal", "Ziel / Endhaltestelle"),
         ("straight_stop", "Haltestelle geradeaus"),
-        ("off_route", "Linienweg verlassen")
+        ("haltestelle", "Haltestelle")
     ];
+
+    public static string GetLabel(string? symbolTypeId)
+    {
+        var id = (symbolTypeId ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(id))
+        {
+            return "Geradeaus";
+        }
+
+        foreach (var (symbolId, label) in All)
+        {
+            if (string.Equals(symbolId, id, StringComparison.OrdinalIgnoreCase))
+            {
+                return label;
+            }
+        }
+
+        return id;
+    }
+
+    public static JsonObject BuildNavSymbolLabelsJson()
+    {
+        var obj = new JsonObject();
+        foreach (var (id, label) in All)
+        {
+            obj[id] = label;
+        }
+
+        return obj;
+    }
 }
 
 public static class RoutePathDraftSerializer
@@ -56,7 +113,10 @@ public static class RoutePathDraftSerializer
             CreatedAtEpochMs = obj["createdAtEpochMs"]?.GetValue<long>() ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             UpdatedAtEpochMs = obj["updatedAtEpochMs"]?.GetValue<long>() ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             Notes = obj["notes"]?.GetValue<string>() ?? RoutePathDraft.DefaultNotes,
-            RouteLineColor = NormalizeRouteLineColor(obj["routeLineColor"]?.GetValue<string>())
+            RouteLineColor = NormalizeRouteLineColor(obj["routeLineColor"]?.GetValue<string>()),
+            MapViewLat = ParseOptionalFiniteDouble(obj["mapViewLat"]),
+            MapViewLon = ParseOptionalFiniteDouble(obj["mapViewLon"]),
+            MapViewZoom = ParseOptionalFiniteDouble(obj["mapViewZoom"])
         };
 
         if (obj["nodes"] is JsonArray nodes)
@@ -134,28 +194,30 @@ public static class RoutePathDraftSerializer
                 if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to)) continue;
                 var key = RoutePathDraft.SegmentEdgeKey(from, to);
                 var pts = snap["points"] is JsonArray ptsArr ? ParsePoints(ptsArr) : [];
-                if (pts.Count >= 2) draft.RoadSegmentPolylines[key] = pts;
+                if (pts.Count >= 2)
+                {
+                    draft.RoadSegmentPolylines[key] = pts;
+                    draft.RoadSnappedEdgeKeys.Add(key);
+                }
                 if (snap["maneuvers"] is JsonArray manArr)
                 {
                     var parsed = ParseManeuvers(manArr);
-                    if (parsed.Count > 0) draft.RoadSegmentManeuvers[key] = parsed;
+                    if (parsed.Count > 0)
+                    {
+                        draft.RoadSegmentManeuvers[key] = parsed;
+                        draft.RoadSnappedEdgeKeys.Add(key);
+                    }
                 }
             }
         }
 
-        if (draft.RoadSnappedEdgeKeys.Count == 0 && draft.SnappedShape.Count >= 2 && draft.Segments.Count > 0)
-        {
-            foreach (var seg in draft.Segments)
-            {
-                draft.RoadSnappedEdgeKeys.Add(RoutePathDraft.SegmentEdgeKey(seg.FromNodeId, seg.ToNodeId));
-            }
-        }
-
+        RoutePathDraftMutator.EnsureBusStraightEdgeKeys(draft);
         return draft;
     }
 
     public static JsonObject ToJsonNode(RoutePathDraft draft)
     {
+        RoutePathDraftMutator.EnsureBusStraightEdgeKeys(draft);
         var obj = new JsonObject
         {
             ["routeName"] = draft.RouteName,
@@ -164,6 +226,13 @@ public static class RoutePathDraftSerializer
             ["notes"] = draft.Notes,
             ["routeLineColor"] = NormalizeRouteLineColor(draft.RouteLineColor)
         };
+
+        if (TryWriteMapView(draft, out var mapViewLat, out var mapViewLon, out var mapViewZoom))
+        {
+            obj["mapViewLat"] = mapViewLat;
+            obj["mapViewLon"] = mapViewLon;
+            obj["mapViewZoom"] = mapViewZoom;
+        }
 
         var nodes = new JsonArray();
         foreach (var node in draft.Nodes)
@@ -209,21 +278,58 @@ public static class RoutePathDraftSerializer
         }
         obj["roadBusStraightEdgeKeys"] = busKeys;
 
+        foreach (var key in draft.RoadSegmentPolylines.Keys)
+        {
+            if (draft.RoadSegmentPolylines[key].Count >= 2)
+            {
+                draft.RoadSnappedEdgeKeys.Add(key);
+            }
+        }
+
+        var snapKeys = new HashSet<string>(draft.RoadSegmentPolylines.Keys, StringComparer.Ordinal);
+        foreach (var key in draft.RoadSegmentManeuvers.Keys)
+        {
+            snapKeys.Add(key);
+        }
+
+        var nodeById = draft.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
         var snaps = new JsonArray();
-        foreach (var (key, pts) in draft.RoadSegmentPolylines)
+        foreach (var key in snapKeys.OrderBy(k => k, StringComparer.Ordinal))
         {
             var parts = key.Split('\u0001', 2);
             if (parts.Length != 2) continue;
+
+            List<RoutePathLatLng> pts;
+            if (draft.RoadSegmentPolylines.TryGetValue(key, out var poly) && poly.Count >= 2)
+            {
+                pts = poly;
+                draft.RoadSnappedEdgeKeys.Add(key);
+            }
+            else if (nodeById.TryGetValue(parts[0], out var fromNode) &&
+                     nodeById.TryGetValue(parts[1], out var toNode))
+            {
+                pts =
+                [
+                    new RoutePathLatLng { Lat = fromNode.Lat, Lon = fromNode.Lon },
+                    new RoutePathLatLng { Lat = toNode.Lat, Lon = toNode.Lon }
+                ];
+            }
+            else
+            {
+                continue;
+            }
+
             var snapObj = new JsonObject
             {
                 ["fromNodeId"] = parts[0],
                 ["toNodeId"] = parts[1],
                 ["points"] = WritePoints(pts)
             };
-            if (draft.RoadSegmentManeuvers.TryGetValue(key, out var mans))
+            if (draft.RoadSegmentManeuvers.TryGetValue(key, out var mans) && mans.Count > 0)
             {
                 snapObj["maneuvers"] = WriteManeuvers(mans);
             }
+
             snaps.Add(snapObj);
         }
         obj["segmentSnaps"] = snaps;
@@ -254,7 +360,7 @@ public static class RoutePathDraftSerializer
         return arr;
     }
 
-    private static List<RoutePathSnapManeuver> ParseManeuvers(JsonArray arr)
+    public static List<RoutePathSnapManeuver> ParseManeuvers(JsonArray arr)
     {
         var list = new List<RoutePathSnapManeuver>();
         foreach (var m in arr.OfType<JsonObject>())
@@ -300,6 +406,34 @@ public static class RoutePathDraftSerializer
             });
         }
         return arr;
+    }
+
+    private static double? ParseOptionalFiniteDouble(JsonNode? node)
+    {
+        var value = node?.GetValue<double>() ?? double.NaN;
+        return double.IsFinite(value) ? value : null;
+    }
+
+    private static bool TryWriteMapView(
+        RoutePathDraft draft,
+        out double lat,
+        out double lon,
+        out double zoom)
+    {
+        lat = lon = zoom = 0;
+        if (draft.MapViewZoom is not > 0 ||
+            draft.MapViewLat is not { } mapLat ||
+            draft.MapViewLon is not { } mapLon ||
+            !double.IsFinite(mapLat) ||
+            !double.IsFinite(mapLon))
+        {
+            return false;
+        }
+
+        lat = mapLat;
+        lon = mapLon;
+        zoom = draft.MapViewZoom.Value;
+        return true;
     }
 }
 

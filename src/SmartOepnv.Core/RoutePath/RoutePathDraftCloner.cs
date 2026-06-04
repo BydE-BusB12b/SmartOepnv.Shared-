@@ -11,6 +11,9 @@ public static class RoutePathDraftCloner
             UpdatedAtEpochMs = source.UpdatedAtEpochMs,
             Notes = source.Notes,
             RouteLineColor = source.RouteLineColor,
+            MapViewLat = source.MapViewLat,
+            MapViewLon = source.MapViewLon,
+            MapViewZoom = source.MapViewZoom,
             Nodes = source.Nodes.Select(n => new RoutePathNode
             {
                 Id = n.Id,

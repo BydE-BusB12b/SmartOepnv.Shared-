@@ -19,12 +19,15 @@ public static class RoutePathSnapOrchestrator
         var key = RoutePathDraft.SegmentEdgeKey(fromNodeId, toNodeId);
         if (draft.RoadBusStraightEdgeKeys.Contains(key))
         {
-            RoutePathBusLaneHelper.ApplyBusStraightToSegment(draft, segment);
+            var preserveMans = draft.RoadSegmentManeuvers.TryGetValue(key, out var existing) &&
+                               existing.Count > 0 &&
+                               (existing.Count > 1 || HasCustomBusManeuvers(existing));
+            RoutePathBusLaneHelper.ApplyBusStraightToSegment(draft, segment, preserveMans);
             RebuildMergedShapeAndManeuvers(draft);
             return;
         }
 
-        var waypoints = BuildSegmentWaypoints(draft, segment);
+        var waypoints = BuildSegmentWaypoints(draft, segment, key);
         if (waypoints.Count < 2)
         {
             throw new InvalidOperationException("Segment-Endpunkte haben keine gültigen Koordinaten.");
@@ -40,6 +43,8 @@ public static class RoutePathSnapOrchestrator
         draft.RoadSegmentManeuvers[key] = snap.Maneuvers.ToList();
         draft.RoadSnappedEdgeKeys.Add(key);
         draft.RoadBusStraightEdgeKeys.Remove(key);
+        RoutePathPolylineJoin.AlignSegmentEndpointsAtSharedNodes(draft, key);
+        RoutePathDraftMutator.DeduplicateSegmentsByEdge(draft);
         RebuildMergedShapeAndManeuvers(draft);
     }
 
@@ -124,8 +129,13 @@ public static class RoutePathSnapOrchestrator
         draft.SnappedManeuvers = mergedManeuvers;
     }
 
-    private static List<RoutePathLatLng> BuildSegmentWaypoints(RoutePathDraft draft, RoutePathSegment segment)
+    private static List<RoutePathLatLng> BuildSegmentWaypoints(
+        RoutePathDraft draft,
+        RoutePathSegment segment,
+        string? excludeEdgeKey = null)
     {
+        var edgeKey = excludeEdgeKey ??
+                      RoutePathDraft.SegmentEdgeKey(segment.FromNodeId, segment.ToNodeId);
         var nodeMap = draft.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
         if (!nodeMap.TryGetValue(segment.FromNodeId, out var fromNode) ||
             !nodeMap.TryGetValue(segment.ToNodeId, out var toNode))
@@ -139,13 +149,23 @@ public static class RoutePathSnapOrchestrator
             new() { Lat = fromNode.Lat, Lon = fromNode.Lon }
         };
 
+        var stitchFrom = RoutePathPolylineJoin.FindNetworkPointAtNode(draft, segment.FromNodeId, edgeKey);
+        if (stitchFrom is not null && !RoutePathPolylineJoin.NearlySamePoint(waypoints[^1], stitchFrom))
+        {
+            waypoints.Add(stitchFrom);
+        }
+
         if (fromNode.Type == RoutePathNodeType.ANNOUNCEMENT &&
             ShouldRouteViaPairedStop(fromNode, toNode))
         {
             var paired = ResolvePairedStopNode(fromNode, stopNodes);
             if (paired is not null)
             {
-                waypoints.Add(new RoutePathLatLng { Lat = paired.Lat, Lon = paired.Lon });
+                var pairedPt = new RoutePathLatLng { Lat = paired.Lat, Lon = paired.Lon };
+                if (!RoutePathPolylineJoin.NearlySamePoint(waypoints[^1], pairedPt))
+                {
+                    waypoints.Add(pairedPt);
+                }
             }
         }
 
@@ -155,12 +175,45 @@ public static class RoutePathSnapOrchestrator
             var paired = ResolvePairedStopNode(toNode, stopNodes);
             if (paired is not null)
             {
-                waypoints.Add(new RoutePathLatLng { Lat = paired.Lat, Lon = paired.Lon });
+                var pairedPt = new RoutePathLatLng { Lat = paired.Lat, Lon = paired.Lon };
+                if (!RoutePathPolylineJoin.NearlySamePoint(waypoints[^1], pairedPt))
+                {
+                    waypoints.Add(pairedPt);
+                }
             }
         }
 
-        waypoints.Add(new RoutePathLatLng { Lat = toNode.Lat, Lon = toNode.Lon });
-        return waypoints;
+        var endPt = new RoutePathLatLng { Lat = toNode.Lat, Lon = toNode.Lon };
+        var stitchTo = RoutePathPolylineJoin.FindNetworkPointAtNode(draft, segment.ToNodeId, edgeKey);
+        if (stitchTo is not null && !RoutePathPolylineJoin.NearlySamePoint(endPt, stitchTo))
+        {
+            waypoints.Add(stitchTo);
+        }
+
+        if (!RoutePathPolylineJoin.NearlySamePoint(waypoints[^1], endPt))
+        {
+            waypoints.Add(endPt);
+        }
+
+        return DedupeConsecutiveWaypoints(waypoints);
+    }
+
+    private static List<RoutePathLatLng> DedupeConsecutiveWaypoints(List<RoutePathLatLng> waypoints)
+    {
+        var list = new List<RoutePathLatLng>();
+        RoutePathLatLng? last = null;
+        foreach (var p in waypoints)
+        {
+            if (last is not null && RoutePathPolylineJoin.NearlySamePoint(last, p))
+            {
+                continue;
+            }
+
+            list.Add(p);
+            last = p;
+        }
+
+        return list;
     }
 
     private static bool ShouldRouteViaPairedStop(RoutePathNode announcementNode, RoutePathNode otherNode)
@@ -212,7 +265,7 @@ public static class RoutePathSnapOrchestrator
         {
             var first = pts[0];
             var last = acc[^1];
-            if (NearlySame(first, last))
+            if (RoutePathPolylineJoin.NearlySamePoint(first, last))
             {
                 acc.AddRange(pts.Skip(1));
                 return;
@@ -221,9 +274,6 @@ public static class RoutePathSnapOrchestrator
 
         acc.AddRange(pts);
     }
-
-    private static bool NearlySame(RoutePathLatLng a, RoutePathLatLng b) =>
-        Math.Abs(a.Lat - b.Lat) < 1e-7 && Math.Abs(a.Lon - b.Lon) < 1e-7;
 
     private static double PathLengthMeters(IReadOnlyList<RoutePathLatLng> points)
     {
@@ -252,4 +302,10 @@ public static class RoutePathSnapOrchestrator
                 Math.Cos(aLat) * Math.Cos(bLat) * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
         return 2 * r * Math.Asin(Math.Min(1, Math.Sqrt(h)));
     }
+
+    private static bool HasCustomBusManeuvers(IReadOnlyList<RoutePathSnapManeuver> maneuvers) =>
+        maneuvers.Count > 1 ||
+        maneuvers.Any(m =>
+            NavManeuverHelper.IsManualManeuver(m) ||
+            !string.Equals(m.NavSymbolType, "straight", StringComparison.OrdinalIgnoreCase));
 }

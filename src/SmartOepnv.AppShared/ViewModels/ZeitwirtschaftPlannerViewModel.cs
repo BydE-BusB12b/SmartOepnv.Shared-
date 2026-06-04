@@ -1,84 +1,182 @@
-using System.Diagnostics;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Zeitwirtschaft;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
 public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
 {
     [ObservableProperty] private string statusMessage =
-        "Zeitwirtschaft-Tool: lädt zeitwirtschaft_*.json aus Dropbox, führt zusammen, CSV-Export.";
+        "Zeitwirtschaft aus Dropbox laden – alle zeitwirtschaft_*.json werden zusammengeführt.";
+
+    [ObservableProperty] private bool isBusy;
+
+    [ObservableProperty] private ZeitwirtschaftMergedEmployee? selectedEmployee;
+
+    public ObservableCollection<ZeitwirtschaftMergedEmployee> Employees { get; } = [];
+
+    public ObservableCollection<ZeitwirtschaftTimeTableRow> TimeRows { get; } = [];
+
+    private ZeitwirtschaftMergedData? _mergedData;
+
+    partial void OnSelectedEmployeeChanged(ZeitwirtschaftMergedEmployee? value) =>
+        RefreshTimeRows();
 
     public void RefreshHint()
     {
-        var script = ResolveScriptPath();
-        StatusMessage = File.Exists(script)
-            ? $"Tool bereit: {script}"
-            : "zeitwirtschaft_planer.py nicht gefunden – bitte im GPSAnsagen-Ordner prüfen.";
+        if (AppServices.Dropbox.Settings.IsConnected)
+        {
+            _ = LoadFromDropboxAsync();
+            return;
+        }
+
+        StatusMessage = "Dropbox nicht verbunden – bitte zuerst unter Übersicht verbinden.";
     }
 
     [RelayCommand]
-    private void OpenZeitwirtschaftTool()
+    private async Task LoadFromDropboxAsync()
     {
-        var script = ResolveScriptPath();
-        if (!File.Exists(script))
+        if (IsBusy)
         {
-            StatusMessage = "Python-Tool nicht gefunden: " + script;
+            return;
+        }
+
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            StatusMessage = "Dropbox nicht verbunden – bitte zuerst unter Übersicht verbinden.";
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = "Lade zeitwirtschaft_*.json aus Dropbox…";
+        try
+        {
+            var files = await AppServices.Dropbox.ListZeitwirtschaftFilesAsync();
+            if (files.Count == 0)
+            {
+                Employees.Clear();
+                TimeRows.Clear();
+                _mergedData = null;
+                SelectedEmployee = null;
+                StatusMessage = "Keine zeitwirtschaft_*.json im Dropbox-Ordner gefunden.";
+                return;
+            }
+
+            var docs = new List<(string FilePhone, string Json)>();
+            foreach (var fileName in files)
+            {
+                var phone = ZeitwirtschaftMergeService.PhoneFromFileName(fileName) ?? fileName;
+                try
+                {
+                    var json = await AppServices.Dropbox.DownloadNamedFileAsync(fileName);
+                    docs.Add((phone, json));
+                }
+                catch (Exception ex)
+                {
+                    StatusMessage = $"Warnung bei {fileName}: {ex.Message}";
+                }
+            }
+
+            _mergedData = ZeitwirtschaftMergeService.MergeDocuments(docs);
+            Employees.Clear();
+            foreach (var employee in _mergedData.Employees)
+            {
+                Employees.Add(employee);
+            }
+
+            SelectedEmployee = Employees.FirstOrDefault();
+            RefreshTimeRows();
+
+            StatusMessage =
+                $"{_mergedData.SourceFileCount} JSON-Datei(en), {_mergedData.TotalEntryCount} Einträge, {Employees.Count} Mitarbeiter.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Laden fehlgeschlagen: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private void ExportCsv()
+    {
+        if (_mergedData is null || _mergedData.TotalEntryCount == 0)
+        {
+            StatusMessage = "Keine Daten zum Export – zuerst aus Dropbox laden.";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "CSV (*.csv)|*.csv",
+            FileName = $"zeitwirtschaft_{DateTime.Now:yyyyMMdd_HHmm}.csv",
+            DefaultExt = ".csv"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
             return;
         }
 
         try
         {
-            Process.Start(new ProcessStartInfo
+            var sb = new StringBuilder();
+            sb.AppendLine("Personalnummer;Name;Fahrzeug;Kommen;Gehen;Arbeitszeit;Lohnstunden;EintragId");
+            foreach (var employee in _mergedData.Employees)
             {
-                FileName = "pythonw",
-                Arguments = $"\"{script}\"",
-                UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(script) ?? Environment.CurrentDirectory
-            });
-            StatusMessage = "Zeitwirtschaft-Planer gestartet.";
-        }
-        catch
-        {
-            try
-            {
-                Process.Start(new ProcessStartInfo
+                foreach (var row in ZeitwirtschaftMergeService.BuildTableRows(employee))
                 {
-                    FileName = "python",
-                    Arguments = $"\"{script}\"",
-                    UseShellExecute = true,
-                    WorkingDirectory = Path.GetDirectoryName(script) ?? Environment.CurrentDirectory
-                });
-                StatusMessage = "Zeitwirtschaft-Planer gestartet.";
+                    sb.Append(Csv(employee.PersonnelNumber)).Append(';')
+                        .Append(Csv(employee.Name)).Append(';')
+                        .Append(Csv(row.VehiclePhone)).Append(';')
+                        .Append(Csv(row.Kommen)).Append(';')
+                        .Append(Csv(row.Gehen)).Append(';')
+                        .Append(Csv(row.Arbeitszeit)).Append(';')
+                        .Append(Csv(row.Lohnstunden)).Append(';')
+                        .Append(Csv(row.EntryId))
+                        .AppendLine();
+                }
             }
-            catch (Exception ex)
-            {
-                StatusMessage = $"Tool konnte nicht gestartet werden: {ex.Message}";
-            }
+
+            File.WriteAllText(dialog.FileName, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            StatusMessage = $"CSV exportiert: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"CSV-Export fehlgeschlagen: {ex.Message}";
         }
     }
 
-    private static string ResolveScriptPath()
+    private void RefreshTimeRows()
     {
-        var candidates = new[]
+        TimeRows.Clear();
+        if (SelectedEmployee is null)
         {
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                "AndroidStudioProjects", "GPSAnsagen", "zeitwirtschaft_planer.py"),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "GPSAnsagen", "zeitwirtschaft_planer.py")),
-            Path.Combine(AppContext.BaseDirectory, "zeitwirtschaft_planer.py")
-        };
-
-        foreach (var path in candidates)
-        {
-            if (File.Exists(path))
-            {
-                return path;
-            }
+            return;
         }
 
-        return candidates[0];
+        foreach (var row in ZeitwirtschaftMergeService.BuildTableRows(SelectedEmployee))
+        {
+            TimeRows.Add(row);
+        }
+    }
+
+    private static string Csv(string? value)
+    {
+        var s = value ?? string.Empty;
+        if (s.Contains('"') || s.Contains(';') || s.Contains('\n'))
+        {
+            return '"' + s.Replace("\"", "\"\"") + '"';
+        }
+
+        return s;
     }
 }

@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using System.Text.Json.Nodes;
 using SmartOepnv.Core;
 
@@ -10,10 +9,6 @@ namespace SmartOepnv.Core.RoutePackage;
 /// </summary>
 public static class GpsAnsagenRouteExportSync
 {
-    private static readonly Regex LineCourseSuffix = new(
-        @"\(Linie:\s*([^,]+),\s*Fahrt:\s*([^)]+)\)\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     public static void ApplyToPackage(EditableRoutePackage package, JsonObject root, LocalWorkspaceStore? workspace = null)
     {
         var allStops = package.StopsByRoute.Values.SelectMany(s => s).ToList();
@@ -44,8 +39,8 @@ public static class GpsAnsagenRouteExportSync
         MessageTemplatesEditor.SaveToRoot(root, package.MessageTemplates, package.MailTemplates);
         ManagedStopTemplateEditor.SaveToRoot(root, package.StopTemplates);
         ManagedAnnouncementTemplateEditor.SaveToRoot(root, package.AnnouncementTemplates);
-        SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
         SyncEmbeddedSounds(package, root, workspace);
+        SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
     }
 
     private static void SyncRoutesAndLineCourse(IEnumerable<string> routesToExport, JsonObject root)
@@ -55,16 +50,16 @@ public static class GpsAnsagenRouteExportSync
 
         foreach (var routeName in routesToExport.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
         {
-            var match = LineCourseSuffix.Match(routeName);
-            if (!match.Success)
+            var parsed = RouteDisplayHelper.Parse(routeName);
+            if (string.IsNullOrWhiteSpace(parsed.LineCourse) && string.IsNullOrWhiteSpace(parsed.TripNumber))
             {
                 simpleRoutes.AddString(routeName);
                 continue;
             }
 
-            var lineCourse = match.Groups[1].Value.Trim();
-            var tripNumber = match.Groups[2].Value.Trim();
-            var pureName = routeName[..match.Index].TrimEnd();
+            var lineCourse = RouteDisplayHelper.NormalizeLineCourse(parsed.LineCourse);
+            var tripNumber = (parsed.TripNumber ?? string.Empty).Trim();
+            var pureName = parsed.Name.Trim();
 
             if (lineCourseRoutes[lineCourse] is not JsonArray arr)
             {

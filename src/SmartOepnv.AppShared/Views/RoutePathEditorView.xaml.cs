@@ -16,6 +16,7 @@ public partial class RoutePathEditorView : UserControl
     private string? _pendingDraftJson;
     private string? _pendingBoundsJson;
     private bool _pendingResetMapView;
+    private bool _pendingRestoreMapView;
 
     public RoutePathEditorView()
     {
@@ -58,14 +59,35 @@ public partial class RoutePathEditorView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PushDraftToMapRequested -= OnPushDraftToMapHandler;
+            _viewModel.NavManeuverListFocusRequested -= OnNavManeuverListFocusRequested;
+            _viewModel.PullMapDraftJsonAsync = null;
         }
 
         _viewModel = e.NewValue as RoutePathEditorViewModel;
         if (_viewModel is not null)
         {
             _viewModel.PushDraftToMapRequested += OnPushDraftToMapHandler;
+            _viewModel.NavManeuverListFocusRequested += OnNavManeuverListFocusRequested;
+            _viewModel.PullMapDraftJsonAsync = PullMapDraftJsonAsync;
             _viewModel.RefreshRoutes();
         }
+    }
+
+    private void OnNavManeuverListFocusRequested(RoutePathNavManeuverListItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            NavManeuverListBox.UpdateLayout();
+            if (NavManeuverListBox.ItemContainerGenerator.ContainerFromItem(item) is System.Windows.Controls.ListBoxItem listItem)
+            {
+                listItem.BringIntoView();
+            }
+        }, System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private async void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
@@ -90,16 +112,23 @@ public partial class RoutePathEditorView : UserControl
         if (!e.IsSuccess) return;
         _pageLoaded = true;
         _mapReady = true;
+        MapWebView.IsEnabled = true;
+        MapWebView.IsHitTestVisible = true;
         _ = FlushPendingMapDataAsync();
     }
 
-    private void OnPushDraftToMapHandler(string json, string? boundsJson, bool resetMapView) =>
-        OnPushDraftToMap(json, boundsJson, resetMapView);
+    private void OnPushDraftToMapHandler(string json, string? boundsJson, bool resetMapView, bool restoreMapView) =>
+        OnPushDraftToMap(json, boundsJson, resetMapView, restoreMapView);
 
-    private async void OnPushDraftToMap(string json, string? boundsJson = null, bool resetMapView = false)
+    private async void OnPushDraftToMap(
+        string json,
+        string? boundsJson = null,
+        bool resetMapView = false,
+        bool restoreMapView = false)
     {
         _pendingDraftJson = json;
         _pendingResetMapView = resetMapView;
+        _pendingRestoreMapView = restoreMapView;
         if (boundsJson is not null)
         {
             _pendingBoundsJson = boundsJson;
@@ -125,9 +154,10 @@ public partial class RoutePathEditorView : UserControl
         if (MapWebView.CoreWebView2 is null || !_pageLoaded) return;
 
         var resetView = _pendingResetMapView;
+        var restoreView = _pendingRestoreMapView;
         if (!string.IsNullOrEmpty(_pendingDraftJson))
         {
-            await PushDraftAsync(_pendingDraftJson, resetView);
+            await PushDraftAsync(_pendingDraftJson, resetView, restoreView);
             _pendingDraftJson = null;
         }
 
@@ -140,7 +170,7 @@ public partial class RoutePathEditorView : UserControl
         await InvalidateMapSizeAsync(fitRoute: false);
     }
 
-    private Task PushDraftAsync(string json, bool resetMapView = false)
+    private Task PushDraftAsync(string json, bool resetMapView = false, bool restoreMapView = false)
     {
         var core = MapWebView.CoreWebView2 ?? throw new InvalidOperationException("Karte nicht bereit.");
         var trimmed = json.Trim();
@@ -153,7 +183,11 @@ public partial class RoutePathEditorView : UserControl
         {
             ["type"] = "loadDraft",
             ["payload"] = JsonNode.Parse(trimmed),
-            ["options"] = new JsonObject { ["resetView"] = resetMapView }
+            ["options"] = new JsonObject
+            {
+                ["resetView"] = resetMapView,
+                ["restoreMapView"] = restoreMapView
+            }
         };
         core.PostWebMessageAsJson(envelope.ToJsonString());
         return Task.CompletedTask;
@@ -186,6 +220,12 @@ public partial class RoutePathEditorView : UserControl
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => OnWebMessageReceived(sender, e));
+            return;
+        }
+
         try
         {
             var root = JsonNode.Parse(e.WebMessageAsJson)?.AsObject();
@@ -207,6 +247,7 @@ public partial class RoutePathEditorView : UserControl
                     }
                     break;
                 case "draftLoaded":
+                    _viewModel?.OnMapDraftLoadedFromView();
                     _viewModel?.NotifyMapStatus(root["message"]?.GetValue<string>() ?? string.Empty);
                     _ = InvalidateMapSizeAsync(fitRoute: false);
                     break;
@@ -215,6 +256,17 @@ public partial class RoutePathEditorView : UserControl
                     if (draftNode is not null)
                     {
                         var recordUndo = root["recordUndo"]?.GetValue<bool>() == true;
+                        if (draftNode is JsonObject draftObj)
+                        {
+                            var manualFrom = root["manualConnectFrom"]?.GetValue<string>();
+                            var manualTo = root["manualConnectTo"]?.GetValue<string>();
+                            if (!string.IsNullOrWhiteSpace(manualFrom) && !string.IsNullOrWhiteSpace(manualTo))
+                            {
+                                draftObj["manualConnectFrom"] = manualFrom.Trim();
+                                draftObj["manualConnectTo"] = manualTo.Trim();
+                            }
+                        }
+
                         _viewModel?.ApplyDraftJsonFromMap(draftNode.ToJsonString(), recordUndo);
                     }
                     break;
@@ -227,7 +279,17 @@ public partial class RoutePathEditorView : UserControl
                     _viewModel?.SetSelectedSegment(
                         root["from"]?.GetValue<string>(),
                         root["to"]?.GetValue<string>(),
-                        root["maneuverIndex"]?.GetValue<int>());
+                        root["maneuverIndex"]?.GetValue<int>(),
+                        root["segmentOrder"]?.GetValue<int>());
+                    break;
+                case "navSymbolSelected":
+                    // Nur Auswahl – kein erneutes ApplyDraftJsonFromMap (verhindert Doppel-Liste nach „Symbol übernehmen“ / Klick-Durchgriff).
+                    _viewModel?.SelectNavManeuverFromMap(
+                        root["from"]?.GetValue<string>(),
+                        root["to"]?.GetValue<string>(),
+                        root["maneuverIndex"]?.GetValue<int>(),
+                        root["symbolType"]?.GetValue<string>(),
+                        root["instruction"]?.GetValue<string>());
                     break;
                 case "segmentAdded":
                     _viewModel?.OnSegmentAddedFromMap(
@@ -235,13 +297,55 @@ public partial class RoutePathEditorView : UserControl
                         root["to"]?.GetValue<string>());
                     break;
                 case "nodeMoved":
-                    _viewModel?.SchedulePreviewSnapForNode(root["nodeId"]?.GetValue<string>());
+                    _viewModel?.OnNodeMovedFromMap(root["nodeId"]?.GetValue<string>());
+                    break;
+                case "mapViewChanged":
+                    _viewModel?.OnMapViewChangedFromMap(
+                        root["lat"]?.GetValue<double>() ?? double.NaN,
+                        root["lon"]?.GetValue<double>() ?? double.NaN,
+                        root["zoom"]?.GetValue<double>() ?? double.NaN);
                     break;
             }
         }
+        catch (Exception ex)
+        {
+            _viewModel?.NotifyMapStatus($"Karten-Meldung fehlgeschlagen: {ex.Message}");
+        }
+    }
+
+    private async Task<string?> PullMapDraftJsonAsync()
+    {
+        if (!_mapReady || !_pageLoaded || MapWebView.CoreWebView2 is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var raw = await MapWebView.CoreWebView2.ExecuteScriptAsync(
+                "(function(){ try { return window.getDraftJson ? window.getDraftJson() : ''; } catch(e) { return ''; } })();");
+            return UnwrapWebViewScriptString(raw);
+        }
         catch
         {
-            // ignore malformed messages from map
+            return null;
+        }
+    }
+
+    private static string? UnwrapWebViewScriptString(string? scriptResult)
+    {
+        if (string.IsNullOrWhiteSpace(scriptResult) || scriptResult == "null")
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonNode.Parse(scriptResult)?.GetValue<string>();
+        }
+        catch
+        {
+            return scriptResult.Trim().Trim('"');
         }
     }
 }

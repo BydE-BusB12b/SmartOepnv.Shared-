@@ -35,7 +35,10 @@ public static class RoutePathBusLaneHelper
         }
     ];
 
-    public static void ApplyBusStraightToSegment(RoutePathDraft draft, RoutePathSegment segment)
+    public static void ApplyBusStraightToSegment(
+        RoutePathDraft draft,
+        RoutePathSegment segment,
+        bool preserveExistingManeuvers = false)
     {
         var nodeMap = draft.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
         if (!nodeMap.TryGetValue(segment.FromNodeId, out var from) ||
@@ -46,7 +49,13 @@ public static class RoutePathBusLaneHelper
 
         var key = RoutePathDraft.SegmentEdgeKey(segment.FromNodeId, segment.ToNodeId);
         draft.RoadSegmentPolylines[key] = InterpolateStraight(from.Lat, from.Lon, to.Lat, to.Lon);
-        draft.RoadSegmentManeuvers[key] = BusStraightManeuvers();
+        if (!preserveExistingManeuvers ||
+            !draft.RoadSegmentManeuvers.TryGetValue(key, out var existing) ||
+            existing.Count == 0)
+        {
+            draft.RoadSegmentManeuvers[key] = BusStraightManeuvers();
+        }
+
         draft.RoadSnappedEdgeKeys.Add(key);
         draft.RoadBusStraightEdgeKeys.Add(key);
     }

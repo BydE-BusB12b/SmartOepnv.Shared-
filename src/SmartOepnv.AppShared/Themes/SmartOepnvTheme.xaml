@@ -16,6 +16,20 @@
     <SolidColorBrush x:Key="SmartSurfaceBrush" Color="{StaticResource SmartSurfaceColor}" />
     <SolidColorBrush x:Key="SmartBackgroundBrush" Color="{StaticResource SmartBackgroundColor}" />
 
+    <Color x:Key="SmartSuccessColor">#FF66BB6A</Color>
+    <Color x:Key="SmartSuccessBackgroundColor">#264CAF50</Color>
+    <Color x:Key="SmartSuccessBorderColor">#664CAF50</Color>
+    <Color x:Key="SmartSuccessOnDarkColor">#FF81C784</Color>
+    <Color x:Key="SmartSuccessOnDarkBackgroundColor">#4081C784</Color>
+    <Color x:Key="SmartSuccessOnDarkBorderColor">#8081C784</Color>
+
+    <SolidColorBrush x:Key="SmartSuccessForegroundBrush" Color="{StaticResource SmartSuccessColor}" />
+    <SolidColorBrush x:Key="SmartSuccessBackgroundBrush" Color="{StaticResource SmartSuccessBackgroundColor}" />
+    <SolidColorBrush x:Key="SmartSuccessBorderBrush" Color="{StaticResource SmartSuccessBorderColor}" />
+    <SolidColorBrush x:Key="SmartSuccessOnDarkForegroundBrush" Color="{StaticResource SmartSuccessOnDarkColor}" />
+    <SolidColorBrush x:Key="SmartSuccessOnDarkBackgroundBrush" Color="{StaticResource SmartSuccessOnDarkBackgroundColor}" />
+    <SolidColorBrush x:Key="SmartSuccessOnDarkBorderBrush" Color="{StaticResource SmartSuccessOnDarkBorderColor}" />
+
     <Style x:Key="SmartPageTitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="28" />
         <Setter Property="FontWeight" Value="SemiBold" />

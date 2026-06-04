@@ -3,9 +3,49 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch"
              Margin="0">
+    <UserControl.Resources>
+        <!-- Gedämpfte Zustandsfarben (Outlined wie die übrigen Buttons, kein greller Vollton) -->
+        <Storyboard x:Key="RoutePathSaveBlinkStoryboard" RepeatBehavior="Forever">
+            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)"
+                                          Duration="0:0:0.55"
+                                          AutoReverse="True">
+                <LinearColorKeyFrame Value="#33FFB74D" KeyTime="0:0:0" />
+                <LinearColorKeyFrame Value="#33FF9800" KeyTime="0:0:0.55" />
+            </ColorAnimationUsingKeyFrames>
+        </Storyboard>
+        <Style x:Key="RoutePathSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="Foreground" Value="{StaticResource SmartAccentBrush}" />
+            <Setter Property="Background" Value="#2642A5F5" />
+            <Setter Property="BorderBrush" Value="#6642A5F5" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SaveButtonState}" Value="{x:Static vm:RoutePathSaveButtonState.Saved}">
+                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding SaveButtonState}" Value="{x:Static vm:RoutePathSaveButtonState.Unsaved}">
+                    <Setter Property="Foreground" Value="{StaticResource SmartAccentBrush}" />
+                    <Setter Property="Background" Value="#2642A5F5" />
+                    <Setter Property="BorderBrush" Value="#6642A5F5" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding SaveButtonState}" Value="{x:Static vm:RoutePathSaveButtonState.Saving}">
+                    <Setter Property="Foreground" Value="#FFFFCC80" />
+                    <Setter Property="Background" Value="#33FFB74D" />
+                    <Setter Property="BorderBrush" Value="#80FFB74D" />
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard Name="RoutePathSaveBlink" Storyboard="{StaticResource RoutePathSaveBlinkStoryboard}" />
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="RoutePathSaveBlink" />
+                    </DataTrigger.ExitActions>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
     <DockPanel x:Name="RootDock" LastChildFill="True" ClipToBounds="True">
         <!-- Rechts: feste Breite, scrollt bei wenig Fensterhöhe (treibt Layout-Höhe nicht auf) -->
         <ScrollViewer DockPanel.Dock="Right"
@@ -46,8 +86,10 @@
                                 ToolTip="Verbindet alle Haltestellen auf einmal (ohne Snap) – für Punkt-zu-Punkt lieber A→B auf der Karte." />
                         <Button Content="Speichern"
                                 Command="{Binding SaveToPackageCommand}"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                Margin="0,0,0,10" HorizontalAlignment="Stretch" />
+                                Style="{StaticResource RoutePathSaveButtonStyle}"
+                                Margin="0,0,0,10"
+                                HorizontalAlignment="Stretch"
+                                ToolTip="Hellblau = ungespeichert, sanft orange blinkend = speichert, grün = gespeichert" />
 
                         <TextBlock Text="Fahrweg bearbeiten" FontWeight="SemiBold" Margin="0,0,0,6" />
                         <Button Content="Schritt zurück"
@@ -99,11 +141,17 @@
                                    TextWrapping="Wrap"
                                    FontSize="12"
                                    LineHeight="18">
-                            <Run Text="• Punkt-zu-Punkt: Knoten A tippen, dann B → „Straße snappen (Auswahl)“" />
+                            <Run Text="• Haltestellen laden = nur Knoten (keine Auto-Linien)" />
+                            <LineBreak />
+                            <Run Text="• Knoten A tippen, dann B → gelbe Linie → Straße snappen / Busspur" />
+                            <LineBreak />
+                            <Run Text="• Gelb = bearbeitbar · Blau = gesnappt · Orange = Busspur" />
+                            <LineBreak />
+                            <Run Text="• Snap/Busspur-Button nur für gelbe Verbindungen" />
                             <LineBreak />
                             <Run Text="• Doppelklick auf Linie = Verbindung löschen" />
                             <LineBreak />
-                            <Run Text="• Orange Linie = Busspur/direkt (ohne PKW-Umweg)" />
+                            <Run Text="• Orange gestrichelt = Busspur/direkt (ohne PKW-Umweg)" />
                             <LineBreak />
                             <Run Text="• Shift + Klick auf Linie = Zwischenpunkt" />
                             <LineBreak />
@@ -119,19 +167,103 @@
                 <materialDesign:Card Padding="14" UniformCornerRadius="12"
                                      Background="{StaticResource SmartPrimaryDarkBrush}">
                     <StackPanel>
-                        <TextBlock Text="Navi-Symbol"
+                        <TextBlock Text="Navi-Symbol bearbeiten"
                                    Foreground="White"
                                    FontWeight="SemiBold"
-                                   Margin="0,0,0,10" />
-                        <ComboBox ItemsSource="{Binding NavSymbols}"
-                                  SelectedItem="{Binding SelectedNavSymbol}"
-                                  Margin="0,0,0,8" />
+                                   Margin="0,0,0,8" />
+                        <TextBlock Text="Hinweis auswählen"
+                                   Foreground="#BBDEFB"
+                                   FontSize="12"
+                                   Margin="0,0,0,6" />
+                        <TextBlock Text="Noch keine Navi-Hinweise auf der Route (nach Snap oder Doppelklick auf Linie)."
+                                   Foreground="#90CAF9"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasNavManeuvers}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <ListBox x:Name="NavManeuverListBox"
+                                 ItemsSource="{Binding NavManeuverItems}"
+                                 SelectedItem="{Binding SelectedNavManeuverItem}"
+                                 MaxHeight="200"
+                                 Margin="0,0,0,10"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.Style>
+                                <Style TargetType="ListBox" BasedOn="{StaticResource MaterialDesignListBox}">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasNavManeuvers}" Value="False">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Style>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+                                    <Setter Property="Foreground" Value="White" />
+                                    <Setter Property="Padding" Value="4,2" />
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="2,0">
+                                        <Image Source="{Binding IconUri}"
+                                               Width="32" Height="32"
+                                               Margin="0,0,10,0"
+                                               Stretch="Uniform"
+                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Subtitle}"
+                                                       FontSize="11"
+                                                       Opacity="0.85"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Text="Symboltyp"
+                                   Foreground="#BBDEFB"
+                                   FontSize="12"
+                                   Margin="0,0,0,4" />
+                        <ComboBox ItemsSource="{Binding NavSymbolPickerOptions}"
+                                  SelectedValuePath="Id"
+                                  SelectedValue="{Binding SelectedNavSymbol}"
+                                  MaxDropDownHeight="420"
+                                  Margin="0,0,0,8">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="{Binding IconUri}"
+                                               Width="28" Height="28"
+                                               Margin="0,0,8,0"
+                                               Stretch="Uniform" />
+                                        <TextBlock Text="{Binding Label}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <TextBox materialDesign:HintAssist.Hint="Anweisungstext"
                                  Text="{Binding SelectedManeuverText, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,0,0,10" />
                         <Button Content="Symbol übernehmen"
                                 Command="{Binding ApplyNavSymbolCommand}"
-                                Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Foreground="White"
+                                BorderBrush="#6642A5F5"
                                 HorizontalAlignment="Stretch" />
                     </StackPanel>
                 </materialDesign:Card>

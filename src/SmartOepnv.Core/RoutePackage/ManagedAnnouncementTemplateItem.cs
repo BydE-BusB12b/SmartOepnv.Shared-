@@ -37,8 +37,10 @@ public sealed class ManagedAnnouncementTemplateItem
     {
         var code = NormalizeCode(AnnouncementCode);
         var name = string.IsNullOrWhiteSpace(DisplayName) ? "Ohne Bezeichnung" : DisplayName.Trim();
+        var desc = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim();
         var prefix = hasAudio ? "✓ " : "⚠ ";
-        return string.IsNullOrEmpty(code) ? $"{prefix}{name}" : $"{prefix}{code} – {name}";
+        var title = desc is null ? name : $"{name} – {desc}";
+        return string.IsNullOrEmpty(code) ? $"{prefix}{title}" : $"{prefix}{code} – {title}";
     }
 
     public string DisplayLabel => FormatDisplayLabel(HasAssignedAudio);

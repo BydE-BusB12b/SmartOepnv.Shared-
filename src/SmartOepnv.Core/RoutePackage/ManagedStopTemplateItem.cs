@@ -48,6 +48,17 @@ public sealed class ManagedStopTemplateItem
 
     public string DisplayLabel => FormatDisplayLabel(HasAssignedAudio);
 
+    /// <summary>Ansagen-Kartei: ohne Richtung/Linie (nur Haltestellen-ID und Name).</summary>
+    public string FormatAnnouncementsLibraryDisplayLabel(bool hasAudio)
+    {
+        var code = PlannerStopCode.Normalize(StopCode);
+        var name = string.IsNullOrWhiteSpace(StopNameItcs) ? "Ohne Name" : StopNameItcs.Trim();
+        var prefix = hasAudio ? "✓ " : "⚠ ";
+        return string.IsNullOrEmpty(code) ? $"{prefix}{name}" : $"{prefix}{code} – {name}";
+    }
+
+    public string AnnouncementsLibraryDisplayLabel => FormatAnnouncementsLibraryDisplayLabel(HasAssignedAudio);
+
     public static bool IsPlaceholderStopName(string? name) =>
         string.Equals(name?.Trim(), PlaceholderStopName, StringComparison.OrdinalIgnoreCase);
 

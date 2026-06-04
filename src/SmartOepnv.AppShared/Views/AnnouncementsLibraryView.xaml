@@ -46,13 +46,13 @@
 
 
 
-                <TextBlock Grid.Row="0" Text="Haltestellen-Kartei"
+                <TextBlock Grid.Row="0" Text="Ansagen-Kartei"
 
                            FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
 
                 <TextBlock Grid.Row="1"
 
-                           Text="Liste = Haltestellen (jede mit 5-stelliger ID). Darin liegen die Ansagen (Ansagen-ID weiterhin 4-stellig).&#10;✓ Ansage-Ton zugeordnet   ·   ⚠ noch keine Tondatei"
+                           Text="Jede Ansage hat eine 4-stellige ID. Beschreibung z. B. „Endhaltestelle“.&#10;✓ Ton zugeordnet   ·   ⚠ noch keine Tondatei"
 
                            Opacity="0.65" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
 
@@ -60,7 +60,7 @@
 
                 <TextBox Grid.Row="2"
 
-                         materialDesign:HintAssist.Hint="Suchen (Haltestellen-ID, Name, Richtung, Ansage)"
+                         materialDesign:HintAssist.Hint="Suchen (Ansagen-ID, Bezeichnung, Beschreibung)"
 
                          Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
 
@@ -70,9 +70,11 @@
 
                 <ListBox Grid.Row="3"
 
-                         ItemsSource="{Binding FilteredStops}"
+                         ItemsSource="{Binding FilteredAnnouncements}"
 
-                         SelectedItem="{Binding SelectedStop}"
+                         SelectedItem="{Binding SelectedAnnouncement}"
+
+                         DisplayMemberPath="DisplayLabel"
 
                          BorderThickness="1"
 
@@ -82,43 +84,39 @@
 
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
 
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-
-                    <ListBox.ItemTemplate>
-
-                        <DataTemplate>
-
-                            <TextBlock Text="{Binding DisplayLabel}" TextWrapping="Wrap" Padding="2,4" />
-
-                        </DataTemplate>
-
-                    </ListBox.ItemTemplate>
-
-                </ListBox>
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
 
 
 
                 <StackPanel Grid.Row="4" Margin="0,12,0,0">
 
-                    <Button Content="Neue Haltestelle"
+                    <Button Content="Neue Ansage mit Tondatei"
 
-                            Command="{Binding AddStopCommand}"
+                            Command="{Binding AddAnnouncementWithAudioCommand}"
 
                             Style="{StaticResource MaterialDesignRaisedButton}"
 
                             Margin="0,0,0,6" />
 
-                    <Button Content="Haltestelle duplizieren"
+                    <Button Content="Neue Ansage (ohne Ton)"
 
-                            Command="{Binding DuplicateStopCommand}"
+                            Command="{Binding AddAnnouncementCommand}"
 
                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
                             Margin="0,0,0,6" />
 
-                    <Button Content="Haltestelle löschen"
+                    <Button Content="Ansage duplizieren"
 
-                            Command="{Binding RemoveStopCommand}"
+                            Command="{Binding DuplicateAnnouncementCommand}"
+
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                            Margin="0,0,0,6" />
+
+                    <Button Content="Ansage löschen"
+
+                            Command="{Binding RemoveAnnouncementCommand}"
 
                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
@@ -148,7 +146,7 @@
 
                 <DockPanel>
 
-                    <TextBlock DockPanel.Dock="Top" Text="Haltestelle &amp; Ansagen"
+                    <TextBlock DockPanel.Dock="Top" Text="Ansage bearbeiten"
 
                                FontWeight="SemiBold" FontSize="16" Margin="0,0,0,12" />
 
@@ -164,7 +162,7 @@
 
                     <StackPanel>
 
-                        <TextBlock Text="Links eine Haltestelle wählen oder „Neue Haltestelle“ anlegen."
+                        <TextBlock Text="Links eine Ansage wählen oder „Neue Ansage“ anlegen."
 
                                    Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,12">
 
@@ -176,7 +174,7 @@
 
                                     <Style.Triggers>
 
-                                        <DataTrigger Binding="{Binding SelectedStop}" Value="{x:Null}">
+                                        <DataTrigger Binding="{Binding SelectedAnnouncement}" Value="{x:Null}">
 
                                             <Setter Property="Visibility" Value="Visible" />
 
@@ -189,145 +187,6 @@
                             </TextBlock.Style>
 
                         </TextBlock>
-
-
-
-                        <Grid DataContext="{Binding SelectedStop}" Margin="0,0,0,16">
-
-                            <Grid.Style>
-
-                                <Style TargetType="Grid">
-
-                                    <Style.Triggers>
-
-                                        <DataTrigger Binding="{Binding}" Value="{x:Null}">
-
-                                            <Setter Property="Visibility" Value="Collapsed" />
-
-                                        </DataTrigger>
-
-                                    </Style.Triggers>
-
-                                </Style>
-
-                            </Grid.Style>
-
-                            <Grid.ColumnDefinitions>
-
-                                <ColumnDefinition Width="Auto" />
-
-                                <ColumnDefinition Width="*" />
-
-                            </Grid.ColumnDefinitions>
-
-                            <Grid.RowDefinitions>
-
-                                <RowDefinition Height="Auto" />
-
-                                <RowDefinition Height="Auto" />
-
-                                <RowDefinition Height="Auto" />
-
-                                <RowDefinition Height="Auto" />
-
-                            </Grid.RowDefinitions>
-
-
-
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Haltestellen-ID (5 Ziffern):"
-
-                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" MinWidth="180" />
-
-                            <TextBox Grid.Row="0" Grid.Column="1"
-
-                                     Text="{Binding StopCode, UpdateSourceTrigger=PropertyChanged}"
-
-                                     MaxLength="5" Margin="0,0,0,10" />
-
-
-
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Name (ITCS):"
-
-                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
-
-                            <TextBox Grid.Row="1" Grid.Column="1"
-
-                                     Text="{Binding StopNameItcs, UpdateSourceTrigger=PropertyChanged}"
-
-                                     Margin="0,0,0,10" />
-
-
-
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Richtung / Linie:"
-
-                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
-
-                            <TextBox Grid.Row="2" Grid.Column="1"
-
-                                     Text="{Binding DirectionDescription, UpdateSourceTrigger=PropertyChanged}"
-
-                                     Margin="0,0,0,10" />
-
-
-
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Ton in Route:"
-
-                                       VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.9" />
-
-                            <TextBox Grid.Row="3" Grid.Column="1"
-                                     Text="{Binding EmbeddedSoundFileName}"
-                                     IsReadOnly="True"
-                                     Opacity="0.85" />
-
-                        </Grid>
-
-
-
-                        <TextBlock Text="Ansagen dieser Haltestelle"
-
-                                   FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.9" />
-
-
-
-                        <ListBox ItemsSource="{Binding AnnouncementsForSelectedStop}"
-
-                                 SelectedItem="{Binding SelectedAnnouncement}"
-
-                                 DisplayMemberPath="DisplayLabel"
-
-                                 MinHeight="100" MaxHeight="180"
-
-                                 BorderThickness="1" BorderBrush="#334155"
-
-                                 Margin="0,0,0,10" />
-
-
-
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-
-                            <Button Content="Neue Ansage mit Tondatei"
-
-                                    Command="{Binding AddAnnouncementWithAudioCommand}"
-
-                                    Style="{StaticResource MaterialDesignRaisedButton}"
-
-                                    Margin="0,0,8,0" />
-
-                            <Button Content="Neue Ansage (ohne Ton)"
-
-                                    Command="{Binding AddAnnouncementCommand}"
-
-                                    Style="{StaticResource MaterialDesignOutlinedButton}"
-
-                                    Margin="0,0,8,0" />
-
-                            <Button Content="Ansage löschen"
-
-                                    Command="{Binding RemoveAnnouncementCommand}"
-
-                                    Style="{StaticResource MaterialDesignOutlinedButton}" />
-
-                        </StackPanel>
 
 
 
@@ -479,14 +338,6 @@
 
                                         Margin="0,0,0,8" />
 
-                                <Button Content="Ton an Haltestelle übernehmen"
-
-                                        Command="{Binding ApplyAnnouncementToStopCommand}"
-
-                                        Style="{StaticResource MaterialDesignRaisedLightButton}"
-
-                                        Margin="0,0,0,8" />
-
                                 <Button Content="Aus Routen importieren"
 
                                         Command="{Binding ImportFromRoutesCommand}"
@@ -516,4 +367,3 @@
     </Grid>
 
 </UserControl>
-

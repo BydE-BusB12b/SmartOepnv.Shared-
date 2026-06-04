@@ -2,36 +2,111 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="8,4,8,16" MaxWidth="720">
-            <TextBlock Text="Zeitwirtschaft"
-                       Style="{StaticResource SmartPageTitleStyle}"
-                       FontSize="22"
-                       Margin="0,0,0,8" />
+    <Grid Margin="8,4,8,8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="280" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Zeitwirtschaft"
+                   Style="{StaticResource SmartPageTitleStyle}"
+                   FontSize="22"
+                   Margin="0,0,0,4" />
+
+        <StackPanel Grid.Row="1" Margin="0,0,0,10">
             <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
                        TextWrapping="Wrap"
-                       Margin="0,0,0,16"
-                       Text="Tablets stempeln Arbeitsbeginn/-ende in zeitwirtschaft_&lt;Telefon&gt;.json (Dropbox). Der Planer führt alle Dateien zusammen, erlaubt Korrekturen und CSV-Export." />
-
-            <materialDesign:Card Padding="16" UniformCornerRadius="12"
-                                 Background="{StaticResource SmartSurfaceBrush}">
-                <StackPanel>
-                    <TextBlock Text="{Binding StatusMessage}"
-                               TextWrapping="Wrap"
-                               Margin="0,0,0,16"
-                               Opacity="0.9" />
-                    <Button Content="Zeitwirtschaft-Tool öffnen"
-                            Command="{Binding OpenZeitwirtschaftToolCommand}"
-                            Style="{StaticResource MaterialDesignRaisedButton}"
-                            HorizontalAlignment="Left"
-                            MinWidth="220" />
-                    <TextBlock Margin="0,14,0,0"
-                               Opacity="0.65"
-                               FontSize="11"
-                               TextWrapping="Wrap"
-                               Text="Startet zeitwirtschaft_planer.py (Tkinter). Dropbox-Ordner im Tool wählen oder lokalen Ordner mit zeitwirtschaft_*.json." />
-                </StackPanel>
-            </materialDesign:Card>
+                       Margin="0,0,0,8"
+                       Text="Stempelzeiten aus allen Fahrzeugen (zeitwirtschaft_&lt;Telefon&gt;.json) – automatisch aus dem verbundenen Dropbox-Ordner." />
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Aus Dropbox laden"
+                        Command="{Binding LoadFromDropboxCommand}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Margin="0,0,8,0"
+                        Padding="14,4" />
+                <Button Content="CSV exportieren"
+                        Command="{Binding ExportCsvCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Padding="14,4" />
+            </StackPanel>
+            <TextBlock Text="{Binding StatusMessage}"
+                       TextWrapping="Wrap"
+                       Margin="0,8,0,0"
+                       Opacity="0.88"
+                       FontSize="12" />
         </StackPanel>
-    </ScrollViewer>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" MinWidth="200" MaxWidth="360" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" MinWidth="320" />
+            </Grid.ColumnDefinitions>
+
+            <materialDesign:Card Grid.Column="0"
+                                 Padding="0"
+                                 UniformCornerRadius="10"
+                                 Background="{StaticResource SmartSurfaceBrush}">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Mitarbeiter"
+                               FontWeight="SemiBold"
+                               Margin="12,10,12,6" />
+                    <ListBox ItemsSource="{Binding Employees}"
+                             SelectedItem="{Binding SelectedEmployee}"
+                             DisplayMemberPath="DisplayLine"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Margin="4,0,4,8"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                </DockPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Grid.Column="2"
+                                 Padding="0"
+                                 UniformCornerRadius="10"
+                                 Background="{StaticResource SmartSurfaceBrush}">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Zeiten"
+                               FontWeight="SemiBold"
+                               Margin="12,10,12,6" />
+                    <DataGrid ItemsSource="{Binding TimeRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              CanUserReorderColumns="False"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              RowBackground="Transparent"
+                              AlternatingRowBackground="#18FFFFFF"
+                              Margin="8,0,8,8"
+                              MinRowHeight="32">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Fahrzeug"
+                                                Binding="{Binding VehiclePhone}"
+                                                Width="110" />
+                            <DataGridTextColumn Header="Kommen"
+                                                Binding="{Binding Kommen}"
+                                                Width="*" MinWidth="130" />
+                            <DataGridTextColumn Header="Gehen"
+                                                Binding="{Binding Gehen}"
+                                                Width="*" MinWidth="130" />
+                            <DataGridTextColumn Header="Arbeitszeit"
+                                                Binding="{Binding Arbeitszeit}"
+                                                Width="90" />
+                            <DataGridTextColumn Header="Lohnstunden"
+                                                Binding="{Binding Lohnstunden}"
+                                                Width="90" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </materialDesign:Card>
+        </Grid>
+    </Grid>
 </UserControl>

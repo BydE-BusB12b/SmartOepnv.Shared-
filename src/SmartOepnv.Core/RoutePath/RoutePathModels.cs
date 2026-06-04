@@ -52,6 +52,12 @@ public sealed class RoutePathDraft
     public string Notes { get; set; } = DefaultNotes;
     /// <summary>Hex-Farbe für gesnappte Routenlinien auf der Karte, z. B. #2196f3.</summary>
     public string RouteLineColor { get; set; } = "#2196f3";
+    /// <summary>Zuletzt genutzter Kartenmittelpunkt (Breite).</summary>
+    public double? MapViewLat { get; set; }
+    /// <summary>Zuletzt genutzter Kartenmittelpunkt (Länge).</summary>
+    public double? MapViewLon { get; set; }
+    /// <summary>Zuletzt genutzter Leaflet-Zoom (ca. 3–19).</summary>
+    public double? MapViewZoom { get; set; }
     public List<RoutePathNode> Nodes { get; set; } = [];
     public List<RoutePathSegment> Segments { get; set; } = [];
     public List<RoutePathLatLng> SnappedShape { get; set; } = [];

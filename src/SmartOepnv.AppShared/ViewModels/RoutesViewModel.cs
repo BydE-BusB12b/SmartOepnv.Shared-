@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
 
@@ -10,7 +12,6 @@ public partial class RoutesViewModel : ObservableObject
 {
     [ObservableProperty] private string? selectedRoute;
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
-    [ObservableProperty] private string newRouteName = string.Empty;
 
     public ObservableCollection<string> Routes { get; } = new();
     public ObservableCollection<RouteStopItem> Stops { get; } = new();
@@ -74,14 +75,28 @@ public partial class RoutesViewModel : ObservableObject
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
+            StatusMessage = "Kein Route-Paket geladen.";
             return;
         }
 
-        var name = string.IsNullOrWhiteSpace(NewRouteName) ? $"Route {Routes.Count + 1}" : NewRouteName.Trim();
-        editor.AddRoute(name);
-        NewRouteName = string.Empty;
+        var owner = Application.Current?.MainWindow;
+        var dialog = new AddRouteDialog(editor.RouteNames.ToList()) { Owner = owner };
+        if (dialog.ShowDialog() != true || dialog.ResultDefinition is null)
+        {
+            return;
+        }
+
+        if (!editor.TryAddRoute(dialog.ResultDefinition, dialog.CopyStopsFromRouteKey, out var displayKey, out var error))
+        {
+            StatusMessage = error ?? "Route konnte nicht angelegt werden.";
+            return;
+        }
+
         RefreshFromEditor();
-        SelectedRoute = name;
+        SelectedRoute = displayKey;
+        StatusMessage = dialog.CopyStopsFromRouteKey is null
+            ? $"Route „{displayKey}“ hinzugefügt."
+            : $"Route „{displayKey}“ angelegt (Haltestellen kopiert).";
         CommitChanges();
     }
 

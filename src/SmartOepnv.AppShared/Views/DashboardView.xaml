@@ -2,7 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:SmartOepnv.AppShared.Views">
-    <!-- Kein äußerer ScrollViewer: Inhalt ist kompakt; HU-Liste bei Bedarf begrenzt scrollbar -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
     <DockPanel LastChildFill="True">
         <StackPanel DockPanel.Dock="Top">
             <TextBlock Text="Übersicht"
@@ -151,4 +152,5 @@
 
         <local:DataTransferView DataContext="{Binding}" />
     </DockPanel>
+    </ScrollViewer>
 </UserControl>

@@ -229,6 +229,19 @@ public sealed class DropboxApiClient
             .ToList();
     }
 
+    public async Task<IReadOnlyList<string>> ListZeitwirtschaftFilesAsync(CancellationToken ct = default)
+    {
+        var folder = Settings.FolderPath.TrimEnd('/');
+        var token = await GetValidAccessTokenAsync(ct);
+        var names = await ListFileNamesAsync(folder, token, ct);
+        return names
+            .Where(n =>
+                n.StartsWith("zeitwirtschaft_", StringComparison.OrdinalIgnoreCase) &&
+                n.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public async Task UploadZblMessageAsync(string phoneRaw, string message, CancellationToken ct = default)
     {
         var fileName = ZblMessageService.BuildFileName(phoneRaw);
@@ -298,7 +311,10 @@ public sealed class DropboxApiClient
         using var request = new HttpRequestMessage(HttpMethod.Post, DropboxConstants.UploadUrl);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Headers.Add("Dropbox-API-Arg", apiArg);
-        request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/octet-stream");
+        var body = Encoding.UTF8.GetBytes(jsonContent);
+        request.Content = new ByteArrayContent(body);
+        // Dropbox verlangt exakt application/octet-stream ohne charset (kein StringContent).
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
 
         using var response = await _http.SendAsync(request, ct);
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&

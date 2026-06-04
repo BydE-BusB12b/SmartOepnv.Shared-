@@ -143,6 +143,8 @@ public sealed class EditableRoutePackage
             AnnouncementTemplates.Add(announcement);
         }
 
+        ManagedAnnouncementTemplateEditor.ApplySpecialFlagsFromRoot(_root, AnnouncementTemplates);
+
         foreach (var hint in DateBasedHintsEditor.LoadFromRoot(_root))
         {
             DateBasedHints.Add(hint);
@@ -178,6 +180,79 @@ public sealed class EditableRoutePackage
             StopsByRoute[name] = new List<RouteStopItem>();
         }
     }
+
+    public bool TryAddRoute(RouteDefinition definition, string? copyStopsFromRouteKey, out string displayKey, out string? error)
+    {
+        displayKey = RouteDisplayHelper.ToDisplayString(definition);
+        if (string.IsNullOrWhiteSpace(definition.Name))
+        {
+            error = "Bitte geben Sie einen Routennamen ein.";
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(displayKey))
+        {
+            error = "Ungültiger Routenname.";
+            return false;
+        }
+
+        if (RouteNames.Contains(displayKey))
+        {
+            error = "Route schon vorhanden.";
+            return false;
+        }
+
+        if (RouteDisplayHelper.HasDuplicateTripInLineCourse(RouteNames, definition))
+        {
+            error = "Route schon vorhanden (gleiche Linie/Kurs und Fahrtnummer).";
+            return false;
+        }
+
+        AddRoute(displayKey);
+        if (!string.IsNullOrWhiteSpace(copyStopsFromRouteKey) &&
+            StopsByRoute.TryGetValue(copyStopsFromRouteKey.Trim(), out var sourceStops))
+        {
+            var targetKey = displayKey;
+            StopsByRoute[targetKey] = sourceStops.Select(s => CloneStopForRoute(s, targetKey)).ToList();
+        }
+
+        error = null;
+        return true;
+    }
+
+    private static RouteStopItem CloneStopForRoute(RouteStopItem source, string routeName) =>
+        new()
+        {
+            PlannerStopCode = source.PlannerStopCode,
+            Name = source.Name,
+            RouteName = routeName,
+            GpsCoordinates = source.GpsCoordinates,
+            StopCoordinates = source.StopCoordinates,
+            Radius = source.Radius,
+            VrrStopId = source.VrrStopId,
+            StopDisplay = source.StopDisplay,
+            Time = source.Time,
+            IsWaypoint = source.IsWaypoint,
+            WaypointName = source.WaypointName,
+            IsAnnouncementEnabled = source.IsAnnouncementEnabled,
+            EmbeddedSoundFileName = source.EmbeddedSoundFileName,
+            Destination = source.Destination,
+            LineNumber = source.LineNumber,
+            EndDestination = source.EndDestination,
+            IsEndStop = source.IsEndStop,
+            RouteChangeEnabled = source.RouteChangeEnabled,
+            SelectedLineCourseTrip = source.SelectedLineCourseTrip,
+            EndDestinationCoordinates = source.EndDestinationCoordinates,
+            IsDisplayEnabled = source.IsDisplayEnabled,
+            DisplayText = source.DisplayText,
+            DisplayText2 = source.DisplayText2,
+            DisplayText3 = source.DisplayText3,
+            UseDisplayText2 = source.UseDisplayText2,
+            UseDisplayText3 = source.UseDisplayText3,
+            DisplayInterval = source.DisplayInterval,
+            NextStop = source.NextStop,
+            Abstand = source.Abstand
+        };
 
     public void RemoveRoute(string routeName)
     {

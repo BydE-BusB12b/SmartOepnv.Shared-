@@ -25,10 +25,81 @@ public static class ManagedAnnouncementTemplateEditor
         var arr = new JsonArray();
         foreach (var t in templates)
         {
+            NormalizeSpecialCategory(t);
             arr.Add(Write(t));
         }
 
         root["managedAnnouncementTemplates"] = arr;
+    }
+
+    /// <summary>
+    /// Handy-Export: Sonderansagen stehen in <c>specialAnnouncements</c> (Schlüssel = Anzeigename).
+    /// Beim Import Flags auf die Kartei übertragen, falls nur der Block gesetzt war.
+    /// </summary>
+    public static void ApplySpecialFlagsFromRoot(JsonObject root, IList<ManagedAnnouncementTemplateItem> templates)
+    {
+        if (root["specialAnnouncements"] is not JsonObject specialObj)
+        {
+            return;
+        }
+
+        foreach (var template in templates)
+        {
+            if (MatchesSpecialAnnouncementEntry(specialObj, template))
+            {
+                template.IncludeInSpecialAnnouncements = true;
+                NormalizeSpecialCategory(template);
+            }
+        }
+    }
+
+    private static bool MatchesSpecialAnnouncementEntry(
+        JsonObject specialObj,
+        ManagedAnnouncementTemplateItem template)
+    {
+        var displayName = template.DisplayName.Trim();
+        var fileName = template.EmbeddedSoundFileName.Trim();
+
+        foreach (var prop in specialObj)
+        {
+            if (!string.IsNullOrEmpty(displayName) &&
+                string.Equals(prop.Key, displayName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (prop.Value is not JsonObject entry)
+            {
+                continue;
+            }
+
+            var entryName = entry["name"]?.GetValue<string>()?.Trim();
+            if (!string.IsNullOrEmpty(displayName) &&
+                !string.IsNullOrEmpty(entryName) &&
+                string.Equals(entryName, displayName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var entryFile = entry["fileName"]?.GetValue<string>()?.Trim();
+            if (!string.IsNullOrEmpty(fileName) &&
+                !string.IsNullOrEmpty(entryFile) &&
+                string.Equals(entryFile, fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void NormalizeSpecialCategory(ManagedAnnouncementTemplateItem template)
+    {
+        if (template.IncludeInSpecialAnnouncements &&
+            string.Equals(template.Category, "haltestelle", StringComparison.OrdinalIgnoreCase))
+        {
+            template.Category = "sonder";
+        }
     }
 
     private static ManagedAnnouncementTemplateItem Parse(JsonObject obj)
