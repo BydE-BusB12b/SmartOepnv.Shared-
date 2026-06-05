@@ -229,15 +229,34 @@ public sealed class DropboxApiClient
             .ToList();
     }
 
+    public async Task<IReadOnlyList<string>> ListAllFileNamesAsync(CancellationToken ct = default)
+    {
+        var folder = Settings.FolderPath.TrimEnd('/');
+        var token = await GetValidAccessTokenAsync(ct);
+        return await ListFileNamesAsync(folder, token, ct);
+    }
+
     public async Task<IReadOnlyList<string>> ListZeitwirtschaftFilesAsync(CancellationToken ct = default)
     {
         var folder = Settings.FolderPath.TrimEnd('/');
         var token = await GetValidAccessTokenAsync(ct);
         var names = await ListFileNamesAsync(folder, token, ct);
-        return names
+        var filtered = names
             .Where(n =>
                 n.StartsWith("zeitwirtschaft_", StringComparison.OrdinalIgnoreCase) &&
                 n.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (filtered.Count > 0)
+        {
+            return filtered;
+        }
+
+        var searched = await SearchZeitwirtschaftFileNamesAsync(folder, token, ct);
+        return searched
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -385,8 +404,96 @@ public sealed class DropboxApiClient
 
     private async Task<IReadOnlyList<string>> ListFileNamesAsync(string folderPath, string token, CancellationToken ct)
     {
-        using var request = CreateJsonPost(DropboxConstants.ListFolderUrl,
-            JsonSerializer.Serialize(new { path = folderPath }), token);
+        try
+        {
+            return await ListFileNamesInternalAsync(folderPath, token, ct);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("abgelaufen", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!await RefreshAccessTokenAsync(ct))
+            {
+                throw;
+            }
+
+            return await ListFileNamesInternalAsync(folderPath, Settings.AccessToken!, ct);
+        }
+    }
+
+    private async Task<IReadOnlyList<string>> ListFileNamesInternalAsync(
+        string folderPath,
+        string token,
+        CancellationToken ct)
+    {
+        var names = new List<string>();
+        string? cursor = null;
+
+        do
+        {
+            using var request = cursor is null
+                ? CreateJsonPost(
+                    DropboxConstants.ListFolderUrl,
+                    JsonSerializer.Serialize(new { path = folderPath }),
+                    token)
+                : CreateJsonPost(
+                    DropboxConstants.ListFolderContinueUrl,
+                    JsonSerializer.Serialize(new { cursor }),
+                    token);
+
+            using var response = await _http.SendAsync(request, ct);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                throw new InvalidOperationException("Dropbox-Zugriff abgelaufen – Token erneuern.");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync(ct);
+                throw new InvalidOperationException($"Ordnerliste fehlgeschlagen ({folderPath}): {err}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("entries", out var entries))
+            {
+                foreach (var entry in entries.EnumerateArray())
+                {
+                    if (entry.TryGetProperty(".tag", out var tag) && tag.GetString() == "file" &&
+                        entry.TryGetProperty("name", out var name))
+                    {
+                        names.Add(name.GetString() ?? string.Empty);
+                    }
+                }
+            }
+
+            cursor = doc.RootElement.TryGetProperty("has_more", out var hasMore) &&
+                     hasMore.GetBoolean() &&
+                     doc.RootElement.TryGetProperty("cursor", out var cursorEl)
+                ? cursorEl.GetString()
+                : null;
+        } while (!string.IsNullOrEmpty(cursor));
+
+        return names;
+    }
+
+    private async Task<IReadOnlyList<string>> SearchZeitwirtschaftFileNamesAsync(
+        string folderPath,
+        string token,
+        CancellationToken ct)
+    {
+        using var request = CreateJsonPost(
+            DropboxConstants.SearchUrl,
+            JsonSerializer.Serialize(new
+            {
+                query = "zeitwirtschaft_",
+                options = new
+                {
+                    path = folderPath,
+                    filename_only = true,
+                    max_results = 200
+                }
+            }),
+            token);
+
         using var response = await _http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
         {
@@ -395,18 +502,26 @@ public sealed class DropboxApiClient
 
         var json = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(json);
-        var names = new List<string>();
-        if (!doc.RootElement.TryGetProperty("entries", out var entries))
+        if (!doc.RootElement.TryGetProperty("matches", out var matches))
         {
-            return names;
+            return Array.Empty<string>();
         }
 
-        foreach (var entry in entries.EnumerateArray())
+        var names = new List<string>();
+        foreach (var match in matches.EnumerateArray())
         {
-            if (entry.TryGetProperty(".tag", out var tag) && tag.GetString() == "file" &&
-                entry.TryGetProperty("name", out var name))
+            if (!match.TryGetProperty("metadata", out var metadataWrapper) ||
+                !metadataWrapper.TryGetProperty("metadata", out var metadata) ||
+                !metadata.TryGetProperty("name", out var nameEl))
             {
-                names.Add(name.GetString() ?? string.Empty);
+                continue;
+            }
+
+            var name = nameEl.GetString() ?? string.Empty;
+            if (name.StartsWith("zeitwirtschaft_", StringComparison.OrdinalIgnoreCase) &&
+                name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                names.Add(name);
             }
         }
 

@@ -3,87 +3,466 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:controls="clr-namespace:SmartOepnv.AppShared.Views.Controls"
+             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel MaxWidth="960" Margin="0,0,0,8">
-            <TextBlock Text="Fahrzeugdispo"
+    <UserControl.Resources>
+        <conv:HexToBrushConverter x:Key="HexToBrushConverter" />
+        <Style x:Key="DispoCellButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="MinHeight" Value="52" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Command"
+                    Value="{Binding DataContext.ToggleDayCellCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+            <Setter Property="CommandParameter" Value="{Binding}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsHourCell}" Value="True">
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinHeight" Value="48" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsCollapseCell}" Value="True">
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinWidth" Value="0" />
+                    <Setter Property="Command"
+                            Value="{Binding DataContext.CollapseHourViewCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                    <Setter Property="CommandParameter" Value="{x:Null}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsExpandedTarget}" Value="True">
+                    <Setter Property="Background" Value="#1A1976D2" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel LastChildFill="True">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <TextBlock Text="Fahrzeugdisposition"
                        Style="{StaticResource SmartPageTitleStyle}" />
-            <TextBlock Text="Fahrzeuge den Linien und Fahrten zuordnen (Einsatzplanung)."
+            <TextBlock Text="Kalenderschnur: Fahrzeuge aus der Fahrzeugverwaltung, Einsätze nach Tag und Stunde."
                        Style="{StaticResource SmartPageSubtitleStyle}" />
-
-            <materialDesign:Card Padding="16"
-                                 UniformCornerRadius="12"
-                                 Background="{StaticResource SmartSurfaceBrush}"
-                                 Margin="0,0,0,12">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="16" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Dispo-Datum"
-                               VerticalAlignment="Center"
-                               FontWeight="SemiBold" />
-                    <DatePicker Grid.Column="2"
-                                SelectedDate="{Binding SelectedDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                SelectedDateFormat="Short"
-                                materialDesign:HintAssist.Hint="Tag wählen"
-                                Width="160" />
-                    <StackPanel Grid.Column="3"
-                                Orientation="Horizontal"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="BusArticulatedFront"
-                                                 VerticalAlignment="Center"
-                                                 Margin="0,0,6,0"
-                                                 Opacity="0.75" />
-                        <TextBlock VerticalAlignment="Center">
-                            <Run Text="{Binding VehicleCount, Mode=OneWay}" FontWeight="SemiBold" />
-                            <Run Text=" Fahrzeuge" />
-                        </TextBlock>
-                        <TextBlock Text=" · "
-                                   VerticalAlignment="Center"
-                                   Margin="8,0" />
-                        <materialDesign:PackIcon Kind="SignDirection"
-                                                 VerticalAlignment="Center"
-                                                 Margin="0,0,6,0"
-                                                 Opacity="0.75" />
-                        <TextBlock VerticalAlignment="Center">
-                            <Run Text="{Binding RouteCount, Mode=OneWay}" FontWeight="SemiBold" />
-                            <Run Text=" Routen" />
-                        </TextBlock>
-                    </StackPanel>
-                </Grid>
-            </materialDesign:Card>
-
-            <materialDesign:Card Padding="24"
-                                 UniformCornerRadius="12"
-                                 Background="{StaticResource SmartSurfaceBrush}"
-                                 Margin="0,0,0,12">
-                <StackPanel>
-                    <materialDesign:PackIcon Kind="CalendarClock"
-                                             Width="48"
-                                             Height="48"
-                                             HorizontalAlignment="Left"
-                                             Foreground="{StaticResource SmartAccentBrush}"
-                                             Margin="0,0,0,16" />
-                    <TextBlock Text="Fahrzeug-Einsatzplanung in Vorbereitung"
-                               FontSize="18"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,8" />
-                    <TextBlock TextWrapping="Wrap"
-                               Opacity="0.85"
-                               LineHeight="22">
-                        Hier entsteht die Zuordnung von Fahrzeugen zu Linien, Kursen und Umläufen.
-                        Stammdaten kommen aus „Fahrzeugverwaltung“ (registeredVehicles) und „Routen“.
-                    </TextBlock>
-                </StackPanel>
-            </materialDesign:Card>
-
-            <controls:EditorStatusBanner Message="{Binding StatusMessage}"
-                                         IsSuccess="{Binding StatusMessageIsSuccess}" />
         </StackPanel>
-    </ScrollViewer>
+
+        <materialDesign:Card DockPanel.Dock="Top"
+                             Padding="12"
+                             UniformCornerRadius="12"
+                             Background="{StaticResource SmartSurfaceBrush}"
+                             Margin="0,0,0,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button Content="◀"
+                        Command="{Binding PreviousWeekCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Padding="10,4"
+                        ToolTip="Vorherige Woche" />
+                <Button Grid.Column="2"
+                        Content="Heute"
+                        Command="{Binding GoToTodayCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Padding="12,4" />
+                <Button Grid.Column="4"
+                        Content="▶"
+                        Command="{Binding NextWeekCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Padding="10,4"
+                        ToolTip="Nächste Woche" />
+
+                <Button Grid.Column="6"
+                        Content="Wochenansicht"
+                        Command="{Binding CollapseHourViewCommand}"
+                        ToolTip="Zurück zur Wochenübersicht">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                            <Setter Property="Padding" Value="12,4" />
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasExpandedRow}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button Grid.Column="8"
+                        Content="Neue Fahrt"
+                        Command="{Binding AddTripCommand}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Padding="14,4"
+                        ToolTip="Fahrt für ein Fahrzeug eintragen" />
+
+                <TextBlock Grid.Column="9"
+                           VerticalAlignment="Center"
+                           Margin="16,0,0,0"
+                           FontWeight="SemiBold">
+                    <Run Text="{Binding ViewStartDate, StringFormat='{}{0:dd.MM.yyyy}', Mode=OneWay}" />
+                    <Run Text=" – " />
+                    <Run Text="{Binding VisibleVehicleCount, Mode=OneWay}" />
+                    <Run Text=" Fahrzeuge sichtbar" />
+                </TextBlock>
+
+                <CheckBox Grid.Column="10"
+                          Content="Nur aktive Fahrzeuge"
+                          IsChecked="{Binding ShowOnlyActiveVehicles, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          VerticalAlignment="Center" />
+            </Grid>
+        </materialDesign:Card>
+
+        <controls:EditorStatusBanner DockPanel.Dock="Bottom"
+                                     Message="{Binding StatusMessage}"
+                                     IsSuccess="{Binding StatusMessageIsSuccess}"
+                                     Margin="0,8,0,0" />
+
+        <materialDesign:Card Padding="0"
+                             UniformCornerRadius="12"
+                             Background="{StaticResource SmartSurfaceBrush}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Auto"
+                          Padding="0">
+                <StackPanel>
+                    <!-- Kopfzeile Tage -->
+                    <Grid Margin="0,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0"
+                                BorderBrush="#33000000"
+                                BorderThickness="0,0,1,1"
+                                Background="#0A000000"
+                                Padding="8,6">
+                            <TextBlock Text="Fahrzeug"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <ItemsControl Grid.Column="1"
+                                      ItemsSource="{Binding DayHeaders}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Width="{Binding CellWidth}"
+                                            Height="34"
+                                            BorderBrush="#33000000"
+                                            BorderThickness="0,0,1,1"
+                                            Background="#0A000000"
+                                            Padding="4,2">
+                                        <TextBlock Text="{Binding Header}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsWeekend}" Value="True">
+                                                            <Setter Property="Foreground" Value="#C62828" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+
+                    <!-- Fahrzeugzeilen -->
+                    <ItemsControl ItemsSource="{Binding VehicleRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Grid.Column="0"
+                                            BorderBrush="#33000000"
+                                            BorderThickness="0,0,1,1"
+                                            Padding="8,6"
+                                            MinHeight="56"
+                                            Background="{Binding RowColorHex, Converter={StaticResource HexToBrushConverter}}">
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontWeight="Bold"
+                                                       Foreground="#C62828"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Subtitle}"
+                                                       FontSize="10"
+                                                       Opacity="0.8"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Subtitle}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding HourModeDateLabel, StringFormat='Stunden: {0}'}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Margin="0,4,0,0"
+                                                       Opacity="0.9">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsHourMode}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Grid Grid.Column="1" MinHeight="56">
+                                        <ItemsControl ItemsSource="{Binding Cells}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="#33000000"
+                                                        BorderThickness="0,0,1,1"
+                                                        Width="{Binding CellWidth}"
+                                                        MinHeight="56">
+                                                    <Button Style="{StaticResource DispoCellButtonStyle}"
+                                                            ToolTip="{Binding Tooltip}">
+                                                        <Grid>
+                                                            <!-- Zurück (Stundenansicht) -->
+                                                            <TextBlock Text="◀"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       FontSize="14"
+                                                                       FontWeight="SemiBold">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsCollapseCell}" Value="True">
+                                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                            <!-- Stunde -->
+                                                            <TextBlock Text="{Binding Header}"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       FontSize="8"
+                                                                       Opacity="0.75">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsHourCell}" Value="True">
+                                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </Grid>
+                                                    </Button>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <ItemsControl x:Name="AssignmentBarsHost"
+                                                      ItemsSource="{Binding AssignmentBars}"
+                                                      IsHitTestVisible="True"
+                                                      Panel.ZIndex="1"
+                                                      VerticalAlignment="Center"
+                                                      Height="56">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <Canvas Height="56" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemContainerStyle>
+                                                <Style TargetType="ContentPresenter">
+                                                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                    <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                                    <Setter Property="Panel.ZIndex" Value="{Binding LaneIndex}" />
+                                                </Style>
+                                            </ItemsControl.ItemContainerStyle>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Width="{Binding Width}"
+                                                          Height="{Binding Height}"
+                                                          Cursor="Hand"
+                                                          ToolTip="{Binding Tooltip}"
+                                                          MouseLeftButtonUp="AssignmentBar_MouseLeftButtonUp"
+                                                          MouseRightButtonUp="AssignmentBar_MouseRightButtonUp">
+                                                        <!-- Tagesansicht -->
+                                                        <Border Background="#CC5C6BC0"
+                                                                BorderBrush="#FF7986CB"
+                                                                BorderThickness="1"
+                                                                CornerRadius="3">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsHourViewBar}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <TextBlock Text="{Binding Label}"
+                                                                       FontSize="8"
+                                                                       Foreground="White"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       VerticalAlignment="Center"
+                                                                       Margin="4,0"
+                                                                       TextWrapping="NoWrap" />
+                                                        </Border>
+
+                                                        <!-- Stundenansicht: Text über/unter der Zeitschnur -->
+                                                        <StackPanel Orientation="Vertical">
+                                                            <StackPanel.Style>
+                                                                <Style TargetType="StackPanel">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <MultiDataTrigger>
+                                                                            <MultiDataTrigger.Conditions>
+                                                                                <Condition Binding="{Binding IsHourViewBar}" Value="True" />
+                                                                                <Condition Binding="{Binding TimeLabelAboveBar}" Value="True" />
+                                                                            </MultiDataTrigger.Conditions>
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </MultiDataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </StackPanel.Style>
+                                                            <TextBlock Text="{Binding Label}"
+                                                                       FontSize="9"
+                                                                       FontWeight="Bold"
+                                                                       Foreground="White"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Margin="0,0,0,1"
+                                                                       Padding="2,0">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Label}" Value="">
+                                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                            <Border Background="#E60A1628"
+                                                                    CornerRadius="2"
+                                                                    Padding="3,1"
+                                                                    HorizontalAlignment="Left"
+                                                                    Margin="0,0,0,2">
+                                                                <TextBlock Text="{Binding TimeLabel}"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="White"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                            </Border>
+                                                            <Border Height="10"
+                                                                    Background="#CC5C6BC0"
+                                                                    BorderBrush="#FF7986CB"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="2"
+                                                                    VerticalAlignment="Bottom" />
+                                                        </StackPanel>
+
+                                                        <StackPanel Orientation="Vertical">
+                                                            <StackPanel.Style>
+                                                                <Style TargetType="StackPanel">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <MultiDataTrigger>
+                                                                            <MultiDataTrigger.Conditions>
+                                                                                <Condition Binding="{Binding IsHourViewBar}" Value="True" />
+                                                                                <Condition Binding="{Binding TimeLabelAboveBar}" Value="False" />
+                                                                            </MultiDataTrigger.Conditions>
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </MultiDataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </StackPanel.Style>
+                                                            <Border Height="10"
+                                                                    Background="#CC5C6BC0"
+                                                                    BorderBrush="#FF7986CB"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="2"
+                                                                    Margin="0,0,0,2" />
+                                                            <TextBlock Text="{Binding Label}"
+                                                                       FontSize="9"
+                                                                       FontWeight="Bold"
+                                                                       Foreground="White"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Margin="0,0,0,1"
+                                                                       Padding="2,0">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Label}" Value="">
+                                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                            <Border Background="#E60A1628"
+                                                                    CornerRadius="2"
+                                                                    Padding="3,1"
+                                                                    HorizontalAlignment="Left">
+                                                                <TextBlock Text="{Binding TimeLabel}"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="White"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Grid>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </materialDesign:Card>
+    </DockPanel>
 </UserControl>

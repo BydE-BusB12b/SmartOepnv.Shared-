@@ -5,7 +5,7 @@ namespace SmartOepnv.AppShared.ViewModels;
 
 public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 {
-    public FahrerdispoViewModel() : base("Fahrerdispo – Datum wählen und Einsätze planen.")
+    public FahrerdispoViewModel() : base("Fahrerdisposition – Datum wählen und Einsätze planen.")
     {
     }
 
@@ -36,7 +36,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
         DriverCount = editor.Employees.Count;
         RouteCount = editor.RouteNames.Count;
         StatusMessage =
-            $"Fahrerdispo für {SelectedDate:dd.MM.yyyy} – {DriverCount} Fahrer, {RouteCount} Routen im Paket. " +
+            $"Fahrerdisposition für {SelectedDate:dd.MM.yyyy} – {DriverCount} Mitarbeiter, {RouteCount} Routen im Paket. " +
             "Einsatzplanung wird hier als Nächstes ergänzt.";
     }
 }

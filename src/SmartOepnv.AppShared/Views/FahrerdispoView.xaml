@@ -7,7 +7,7 @@
              HorizontalAlignment="Stretch">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel MaxWidth="960" Margin="0,0,0,8">
-            <TextBlock Text="Fahrerdispo"
+            <TextBlock Text="Fahrerdisposition"
                        Style="{StaticResource SmartPageTitleStyle}" />
             <TextBlock Text="Fahrer den Linien und Fahrten zuordnen (Einsatzplanung)."
                        Style="{StaticResource SmartPageSubtitleStyle}" />
@@ -77,7 +77,7 @@
                                Opacity="0.85"
                                LineHeight="22">
                         Hier entsteht die Zuordnung von Fahrern zu Linien, Kursen und Schichten.
-                        Stammdaten kommen aus „Fahrer“ (employeeRoster) und „Routen“.
+                        Stammdaten kommen aus „Personalverwaltung“ (employeeRoster) und „Routen“.
                     </TextBlock>
                 </StackPanel>
             </materialDesign:Card>

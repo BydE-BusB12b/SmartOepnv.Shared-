@@ -112,7 +112,7 @@
                                         Margin="0,0,0,6"
                                         Cursor="Hand"
                                         SnapsToDevicePixels="True"
-                                        ToolTip="In der Fahrerverwaltung öffnen">
+                                        ToolTip="In der Personalverwaltung öffnen">
                                     <Border.InputBindings>
                                         <MouseBinding MouseAction="LeftClick"
                                                       Command="{Binding DataContext.OpenEmployeeFromCredentialWarningCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"

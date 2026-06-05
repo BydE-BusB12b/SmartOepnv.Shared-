@@ -29,6 +29,9 @@ public sealed class PlannerLocalOverlayData
     /// <summary>Normalisierte KOM-Telefonnummern gelöschter Fahrzeuge.</summary>
     public List<string> DeletedVehiclePhoneKeys { get; set; } = [];
 
+    /// <summary>Fahrzeugdisposition: Touren/Einsätze (nur Planer).</summary>
+    public List<VehicleDispositionAssignment> VehicleDispositionAssignments { get; set; } = [];
+
     [JsonIgnore]
     public bool HasContent =>
         Employees.Count > 0 ||
@@ -36,5 +39,6 @@ public sealed class PlannerLocalOverlayData
         PhoneRedirects.Count > 0 ||
         DeletedEmployeePersonnel.Count > 0 ||
         DeletedEmployeePhones.Count > 0 ||
-        DeletedVehiclePhoneKeys.Count > 0;
+        DeletedVehiclePhoneKeys.Count > 0 ||
+        VehicleDispositionAssignments.Count > 0;
 }

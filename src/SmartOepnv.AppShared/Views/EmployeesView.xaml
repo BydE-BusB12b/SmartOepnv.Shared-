@@ -6,6 +6,17 @@
              HorizontalAlignment="Stretch">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid Margin="0,0,0,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                <TextBlock Text="Personalverwaltung"
+                           Style="{StaticResource SmartPageTitleStyle}" />
+                <TextBlock Text="Mitarbeiterstammdaten für Anmeldung, Dokumente und Hauptgerät-Zuordnung."
+                           Style="{StaticResource SmartPageSubtitleStyle}" />
+            </StackPanel>
+            <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="300" />
                 <ColumnDefinition Width="*" />
@@ -142,6 +153,7 @@
                     </StackPanel>
                 </DockPanel>
             </materialDesign:Card>
+            </Grid>
         </Grid>
     </ScrollViewer>
 </UserControl>

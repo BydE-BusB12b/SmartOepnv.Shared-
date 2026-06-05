@@ -22,6 +22,12 @@ public abstract partial class EditorStatusViewModelBase : ObservableObject
         _reportingSaveSuccess = false;
     }
 
+    protected void ReportSaveError(string message)
+    {
+        StatusMessage = message;
+        StatusMessageIsSuccess = false;
+    }
+
     partial void OnStatusMessageChanged(string value)
     {
         if (!_reportingSaveSuccess)

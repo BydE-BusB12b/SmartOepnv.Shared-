@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using SmartOepnv.Core;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -57,6 +58,6 @@ public sealed class PlannerLocalOverlayStore
             Directory.CreateDirectory(dir);
         }
 
-        File.WriteAllText(_overlayPath, JsonSerializer.Serialize(data, JsonOptions));
+        SafeDataFileStore.WriteAllText(_overlayPath, JsonSerializer.Serialize(data, JsonOptions));
     }
 }

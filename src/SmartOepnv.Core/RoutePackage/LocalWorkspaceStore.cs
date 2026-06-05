@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 
 namespace SmartOepnv.Core.RoutePackage;
@@ -80,14 +81,14 @@ public sealed class LocalWorkspaceStore
             Directory.CreateDirectory(dir);
         }
 
-        File.WriteAllText(_packagePath, json);
+        SafeDataFileStore.WriteAllText(_packagePath, json);
         var meta = new WorkspaceMeta
         {
             LastSavedUtc = DateTimeOffset.UtcNow,
             Source = source,
             PackageTimestamp = ExtractPackageTimestamp(json)
         };
-        File.WriteAllText(_metaPath, JsonSerializer.Serialize(meta, MetaJsonOptions));
+        SafeDataFileStore.WriteAllText(_metaPath, JsonSerializer.Serialize(meta, MetaJsonOptions));
     }
 
     public static long ExtractPackageTimestamp(string json)

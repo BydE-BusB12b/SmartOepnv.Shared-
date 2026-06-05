@@ -530,7 +530,11 @@ public static class RegisteredVehiclesEditor
 
         NextMainInspection = obj["nextMainInspection"]?.GetValue<string>() ?? string.Empty,
 
-        NextSpInspection = obj["nextSpInspection"]?.GetValue<string>() ?? string.Empty
+        NextSpInspection = obj["nextSpInspection"]?.GetValue<string>() ?? string.Empty,
+
+        IsActive = obj["isActive"]?.GetValue<bool?>() ?? true,
+
+        DispoRowColor = obj["dispoRowColor"]?.GetValue<string>() ?? string.Empty
 
     };
 
@@ -558,7 +562,11 @@ public static class RegisteredVehiclesEditor
 
             ["nextMainInspection"] = d.NextMainInspection,
 
-            ["nextSpInspection"] = d.NextSpInspection
+            ["nextSpInspection"] = d.NextSpInspection,
+
+            ["isActive"] = d.IsActive,
+
+            ["dispoRowColor"] = d.DispoRowColor
 
         };
 
@@ -647,6 +655,16 @@ public static class RegisteredVehiclesEditor
         {
 
             target.NextSpInspection = source.NextSpInspection;
+
+        }
+
+
+
+        if (string.IsNullOrWhiteSpace(target.DispoRowColor))
+
+        {
+
+            target.DispoRowColor = source.DispoRowColor;
 
         }
 
@@ -760,7 +778,11 @@ internal static class RegisteredVehiclePlannerDetailsExtensions
 
         !string.IsNullOrWhiteSpace(d.NextMainInspection) ||
 
-        !string.IsNullOrWhiteSpace(d.NextSpInspection);
+        !string.IsNullOrWhiteSpace(d.NextSpInspection) ||
+
+        !d.IsActive ||
+
+        !string.IsNullOrWhiteSpace(d.DispoRowColor);
 
 }
 

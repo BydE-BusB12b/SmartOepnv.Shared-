@@ -1,4 +1,6 @@
+using System.IO;
 using System.Text.Json.Nodes;
+using SmartOepnv.Core;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -65,6 +67,9 @@ public sealed class PlannerLocalOverlayService
         overlay.DeletedVehiclePhoneKeys = MergeUnique(
             previous.DeletedVehiclePhoneKeys,
             overlay.DeletedVehiclePhoneKeys);
+        overlay.VehicleDispositionAssignments = previous.VehicleDispositionAssignments
+            .Select(a => a.Clone())
+            .ToList();
         _store.Save(overlay);
     }
 
@@ -96,7 +101,32 @@ public sealed class PlannerLocalOverlayService
             AddUnique(overlay.DeletedVehiclePhoneKeys, key);
         }
 
+        var phoneKeys = CollectVehiclePhoneKeys(vehicle).ToHashSet(StringComparer.Ordinal);
+        overlay.VehicleDispositionAssignments.RemoveAll(a =>
+            phoneKeys.Contains(NormalizePhone(a.VehiclePhone)));
+
         _store.Save(overlay);
+    }
+
+    public IReadOnlyList<VehicleDispositionAssignment> LoadVehicleDisposition()
+    {
+        return _store.LoadOrEmpty()
+            .VehicleDispositionAssignments
+            .Select(a => a.Clone())
+            .ToList();
+    }
+
+    public void SaveVehicleDisposition(IEnumerable<VehicleDispositionAssignment> assignments)
+    {
+        var list = assignments.Select(a => a.Clone()).ToList();
+        var overlay = _store.LoadOrEmpty();
+        overlay.VehicleDispositionAssignments = list;
+        _store.Save(overlay);
+
+        if (AppServices.IsPlannerApp)
+        {
+            SmartOepnvDataBackupService.BackupAppData(AppServices.SettingsSubfolder, "vehicle-dispo");
+        }
     }
 
     /// <summary>

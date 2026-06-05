@@ -6,10 +6,24 @@ using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
+public sealed record DispoRowColorOption(string Hex, string Label);
+
 public partial class VehicleManagementViewModel : ObservableObject
 {
+    public static IReadOnlyList<DispoRowColorOption> DispoRowColorOptions { get; } =
+    [
+        new(string.Empty, "Standard"),
+        new("#FFF9C4", "Gelb (Test)"),
+        new("#FFCDD2", "Rosa (Test)"),
+        new("#ECEFF1", "Grau"),
+        new("#C8E6C9", "Hellgrün"),
+        new("#BBDEFB", "Hellblau")
+    ];
+
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private RegisteredVehicleItem? selectedVehicle;
+
+    public IReadOnlyList<DispoRowColorOption> RowColorOptions => DispoRowColorOptions;
 
     public ObservableCollection<RegisteredVehicleItem> Vehicles { get; } = [];
 

@@ -16,6 +16,12 @@ public sealed class RegisteredVehiclePlannerDetails
     /// <summary>ISO-Datum yyyy-MM-dd (Planer DatePicker).</summary>
     public string NextSpInspection { get; set; } = string.Empty;
 
+    /// <summary>Fahrzeug in der Disposition anzeigen (Planer, default aktiv).</summary>
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>Hintergrundfarbe der Dispo-Zeile (#RRGGBB), leer = Standard.</summary>
+    public string DispoRowColor { get; set; } = string.Empty;
+
     public RegisteredVehiclePlannerDetails Clone() => new()
     {
         VehicleType = VehicleType,
@@ -25,6 +31,8 @@ public sealed class RegisteredVehiclePlannerDetails
         PermittedTotalMassKg = PermittedTotalMassKg,
         EmptyWeightKg = EmptyWeightKg,
         NextMainInspection = NextMainInspection,
-        NextSpInspection = NextSpInspection
+        NextSpInspection = NextSpInspection,
+        IsActive = IsActive,
+        DispoRowColor = DispoRowColor
     };
 }

@@ -19,11 +19,33 @@
             <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
                        TextWrapping="Wrap"
                        Margin="0,0,0,8"
-                       Text="Stempelzeiten aus allen Fahrzeugen (zeitwirtschaft_&lt;Telefon&gt;.json) – automatisch aus dem verbundenen Dropbox-Ordner." />
+                       Text="Pro Fahrzeug eine JSON (zeitwirtschaft_&lt;Telefon&gt;.json). Alle Fahrzeuge werden pro Fahrer zusammengeführt und chronologisch angezeigt (Spalte Fahrzeug = Name aus Fahrzeugverwaltung). Korrekturen werden in der jeweiligen Fahrzeug-JSON gespeichert und per Dropbox an alle Apps verteilt." />
             <StackPanel Orientation="Horizontal">
                 <Button Content="Aus Dropbox laden"
                         Command="{Binding LoadFromDropboxCommand}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
+                        Margin="0,0,8,0"
+                        Padding="14,4" />
+                <Button Content="Aus Ordner laden"
+                        Command="{Binding LoadFromLocalFolderCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Margin="0,0,8,0"
+                        Padding="14,4" />
+                <Button Content="Zeitkorrektur"
+                        Command="{Binding CorrectTimeCommand}"
+                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Margin="0,0,8,0"
+                        Padding="14,4" />
+                <ComboBox ItemsSource="{Binding AvailableMonths}"
+                          SelectedItem="{Binding SelectedMonth}"
+                          DisplayMemberPath="Label"
+                          MinWidth="160"
+                          Margin="0,0,8,0"
+                          VerticalAlignment="Center" />
+                <Button Content="PDF erstellen"
+                        Command="{Binding ExportPdfCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
                         Margin="0,0,8,0"
                         Padding="14,4" />
                 <Button Content="CSV exportieren"
@@ -70,10 +92,12 @@
                                  Background="{StaticResource SmartSurfaceBrush}">
                 <DockPanel LastChildFill="True">
                     <TextBlock DockPanel.Dock="Top"
-                               Text="Zeiten"
+                               Text="Zeiten pro Fahrer – alle Fahrzeuge chronologisch (Monatsfilter)"
                                FontWeight="SemiBold"
                                Margin="12,10,12,6" />
-                    <DataGrid ItemsSource="{Binding TimeRows}"
+                    <DataGrid DockPanel.Dock="Top"
+                              ItemsSource="{Binding TimeRows}"
+                              SelectedItem="{Binding SelectedTimeRow}"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               CanUserAddRows="False"
@@ -85,18 +109,39 @@
                               BorderThickness="0"
                               RowBackground="Transparent"
                               AlternatingRowBackground="#18FFFFFF"
-                              Margin="8,0,8,8"
-                              MinRowHeight="32">
+                              Margin="8,0,8,0"
+                              MinRowHeight="40">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Fahrzeug"
-                                                Binding="{Binding VehiclePhone}"
-                                                Width="110" />
+                                                Binding="{Binding VehicleDisplayName}"
+                                                Width="*" MinWidth="140">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <DataGridTextColumn Header="Kommen"
                                                 Binding="{Binding Kommen}"
-                                                Width="*" MinWidth="130" />
+                                                Width="*" MinWidth="130">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <DataGridTextColumn Header="Gehen"
                                                 Binding="{Binding Gehen}"
-                                                Width="*" MinWidth="130" />
+                                                Width="*" MinWidth="130">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <DataGridTextColumn Header="Arbeitszeit"
                                                 Binding="{Binding Arbeitszeit}"
                                                 Width="90" />
@@ -105,6 +150,36 @@
                                                 Width="90" />
                         </DataGrid.Columns>
                     </DataGrid>
+                    <Border DockPanel.Dock="Bottom"
+                            Margin="8,0,8,8"
+                            Padding="8,10"
+                            Background="#22FFFFFF"
+                            BorderBrush="#33FFFFFF"
+                            BorderThickness="0,1,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*" MinWidth="130" />
+                                <ColumnDefinition Width="*" MinWidth="130" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="90" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="Gesamtsumme"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3"
+                                       Text="{Binding TotalDuration}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="4"
+                                       Text="{Binding TotalDuration}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Left" />
+                        </Grid>
+                    </Border>
                 </DockPanel>
             </materialDesign:Card>
         </Grid>

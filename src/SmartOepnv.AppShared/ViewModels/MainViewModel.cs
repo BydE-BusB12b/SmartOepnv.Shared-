@@ -29,6 +29,8 @@ public partial class MainViewModel : ObservableObject
     private readonly VehicleTrackingViewModel _vehicleTrackingViewModel = new();
     private readonly ZeitwirtschaftPlannerViewModel _zeitwirtschaftPlannerViewModel = new();
     private readonly SevSignEditorViewModel _sevSignEditorViewModel = new();
+    private readonly FahrerdispoViewModel _fahrerdispoViewModel = new();
+    private readonly FahrzeugdispoViewModel _fahrzeugdispoViewModel = new();
 
     private NavigationItem? _previousNavigationItem;
     private NavigationItem? _leitstelleMessagesNavItem;
@@ -133,9 +135,17 @@ public partial class MainViewModel : ObservableObject
         {
             _routePathEditorViewModel.RefreshRoutes();
         }
-        else if (value.Title == "Fahrer")
+        else if (value.Title == "Personalverwaltung")
         {
             _employeesViewModel.RefreshFromEditor();
+        }
+        else if (value.Title == "Fahrerdisposition")
+        {
+            _fahrerdispoViewModel.RefreshFromEditor();
+        }
+        else if (value.Title == "Fahrzeugdisposition")
+        {
+            _fahrzeugdispoViewModel.RefreshFromEditor();
         }
         else if (value.Title == "Haltestellen")
         {
@@ -176,6 +186,7 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Zeitwirtschaft")
         {
+            _zeitwirtschaftPlannerViewModel.RefreshFromEditor();
             _zeitwirtschaftPlannerViewModel.RefreshHint();
         }
         else if (value.Title == "SEV-Schilder")
@@ -209,7 +220,7 @@ public partial class MainViewModel : ObservableObject
             case "Navidaten":
                 _routePathEditorViewModel.CommitDraftToWorkspace();
                 break;
-            case "Fahrer":
+            case "Personalverwaltung":
                 _employeesViewModel.CommitChanges();
                 _dataTransferViewModel.RefreshDriverCredentialWarnings();
                 break;
@@ -231,6 +242,9 @@ public partial class MainViewModel : ObservableObject
                 break;
             case "Anzeigen & Hinweise":
                 _displaysOperationsViewModel.CommitChanges();
+                break;
+            case "Fahrzeugdisposition":
+                _fahrzeugdispoViewModel.CommitChanges();
                 break;
         }
     }
@@ -337,7 +351,7 @@ public partial class MainViewModel : ObservableObject
 
     private void OnNavigateToEmployeeManagementRequested(string? personnelNumberNormalized)
     {
-        var navItem = NavigationItems.FirstOrDefault(i => i.Title == "Fahrer");
+        var navItem = NavigationItems.FirstOrDefault(i => i.Title == "Personalverwaltung");
         if (navItem is null)
         {
             return;
@@ -360,6 +374,7 @@ public partial class MainViewModel : ObservableObject
         _messagesViewModel.RefreshFromEditor();
         _displaysOperationsViewModel.RefreshFromEditor();
         _sevSignEditorViewModel.RefreshFromEditor();
+        _fahrzeugdispoViewModel.RefreshFromEditor();
         if (_profile.IsLeitstelle)
         {
             _messageSendViewModel.RefreshFromEditor();
@@ -409,6 +424,8 @@ public partial class MainViewModel : ObservableObject
         var displaysOperations = new DisplaysOperationsView { DataContext = _displaysOperationsViewModel };
         var zeitwirtschaft = new ZeitwirtschaftPlannerView { DataContext = _zeitwirtschaftPlannerViewModel };
         var sevSignEditor = new SevSignEditorView { DataContext = _sevSignEditorViewModel };
+        var fahrerdisposition = new FahrerdispoView { DataContext = _fahrerdispoViewModel };
+        var fahrzeugdisposition = new FahrzeugdispoView { DataContext = _fahrzeugdispoViewModel };
 
         var items = new List<NavigationItem>
         {
@@ -421,7 +438,7 @@ public partial class MainViewModel : ObservableObject
             },
             new()
             {
-                Title = "Fahrer",
+                Title = "Personalverwaltung",
                 Icon = PackIconKind.AccountGroup,
                 Description = "Mitarbeiterregister (employeeRoster)",
                 Content = employees
@@ -460,6 +477,25 @@ public partial class MainViewModel : ObservableObject
 
         if (!_profile.IsLeitstelle)
         {
+            var personalIdx = items.FindIndex(i => i.Title == "Personalverwaltung");
+            if (personalIdx >= 0)
+            {
+                items.Insert(personalIdx + 1, new NavigationItem
+                {
+                    Title = "Fahrerdisposition",
+                    Icon = PackIconKind.CalendarAccount,
+                    Description = "Fahrer den Linien und Fahrten zuordnen",
+                    Content = fahrerdisposition
+                });
+                items.Insert(personalIdx + 2, new NavigationItem
+                {
+                    Title = "Fahrzeugdisposition",
+                    Icon = PackIconKind.BusMultiple,
+                    Description = "Fahrzeuge den Linien und Fahrten zuordnen",
+                    Content = fahrzeugdisposition
+                });
+            }
+
             items.Insert(1, new NavigationItem
             {
                 Title = "Routen",

@@ -54,8 +54,11 @@
                                FontWeight="SemiBold" FontSize="15" Margin="0,0,0,6" />
                     <TextBlock DockPanel.Dock="Bottom"
                                Text="{Binding DataContext.StatusMessage, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                               Margin="0,6,0,0" TextWrapping="Wrap" Opacity="0.82" FontSize="11" LineHeight="15" />
+                               Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.82" FontSize="11" LineHeight="15" />
 
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="0,0,4,4">
                     <StackPanel>
                         <TextBlock Text="Links ein Fahrzeug wählen oder neu anlegen."
                                    Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,8">
@@ -86,6 +89,9 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -187,15 +193,38 @@
                                         Padding="4,2" />
 
                             <TextBlock Grid.Row="11" Grid.Column="0" Text="Nächste SP:"
-                                       VerticalAlignment="Center" Margin="0,0,10,2" Opacity="0.9" FontSize="12" />
+                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
                             <DatePicker Grid.Row="11" Grid.Column="1"
                                         SelectedDate="{Binding PlannerDetails.NextSpInspection, Converter={StaticResource InspectionDateConverter}, UpdateSourceTrigger=PropertyChanged}"
                                         SelectedDateFormat="Short"
                                         materialDesign:HintAssist.Hint="Sicherheitsprüfung"
-                                        Margin="0,0,0,2"
+                                        Margin="0,0,0,5"
                                         Padding="4,2" />
+
+                            <TextBlock Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="2"
+                                       Text="Fahrzeugdisposition"
+                                       FontWeight="SemiBold" Opacity="0.85" FontSize="13" Margin="0,4,0,6" />
+
+                            <TextBlock Grid.Row="13" Grid.Column="0" Text="Aktiv in Dispo:"
+                                       VerticalAlignment="Center" Margin="0,0,10,8" Opacity="0.9" MinWidth="152" FontSize="12" />
+                            <CheckBox Grid.Row="13" Grid.Column="1"
+                                      Content="In Kalenderschnur anzeigen"
+                                      IsChecked="{Binding PlannerDetails.IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,0,8" />
+
+                            <TextBlock Grid.Row="14" Grid.Column="0" Text="Zeilenfarbe:"
+                                       VerticalAlignment="Center" Margin="0,0,10,4" Opacity="0.9" MinWidth="152" FontSize="12" />
+                            <ComboBox Grid.Row="14" Grid.Column="1"
+                                      ItemsSource="{Binding DataContext.RowColorOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                      DisplayMemberPath="Label"
+                                      SelectedValuePath="Hex"
+                                      SelectedValue="{Binding PlannerDetails.DispoRowColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      Margin="0,0,0,4"
+                                      Padding="6,4" />
                         </Grid>
                     </StackPanel>
+                    </ScrollViewer>
                 </DockPanel>
             </materialDesign:Card>
         </Grid>
