@@ -60,10 +60,10 @@ public static class ZeitwirtschaftPdfGenerator
                     foreach (var row in rows)
                     {
                         table.Cell().Element(CellBody).Text(row.VehicleDisplayName);
-                        table.Cell().Element(CellBody).Text(row.Kommen.Replace('\n', ' '));
-                        table.Cell().Element(CellBody).Text(row.Gehen.Replace('\n', ' '));
-                        table.Cell().Element(CellBody).Text(row.Arbeitszeit);
-                        table.Cell().Element(CellBody).Text(row.Lohnstunden);
+                        table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Kommen));
+                        table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Gehen));
+                        table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Arbeitszeit));
+                        table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Lohnstunden));
                     }
 
                     if (rows.Count > 0)
@@ -77,6 +77,23 @@ public static class ZeitwirtschaftPdfGenerator
                 });
             });
         }).GeneratePdf(outputPath);
+    }
+
+    private static void WriteCell(IContainer container, ZeitwirtschaftTimeTableRow row, string text)
+    {
+        var display = text.Replace('\n', ' ').Trim();
+        if (!row.IsVoided)
+        {
+            container.Text(display);
+            return;
+        }
+
+        var reason = string.IsNullOrWhiteSpace(row.VoidReason) ? "Storno" : row.VoidReason.Trim();
+        container.Text(textBlock =>
+        {
+            textBlock.Span(display).Strikethrough();
+            textBlock.Span($" ({reason})").FontColor(Colors.Grey.Darken1);
+        });
     }
 
     private static IContainer CellHeader(IContainer container) =>
@@ -103,5 +120,4 @@ public static class ZeitwirtschaftPdfGenerator
             .Background(Colors.Grey.Lighten3)
             .BorderTop(1)
             .BorderColor(Colors.Grey.Medium);
-
 }

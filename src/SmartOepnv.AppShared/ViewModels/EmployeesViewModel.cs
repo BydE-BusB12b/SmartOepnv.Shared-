@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmartOepnv.Core;
@@ -6,12 +7,17 @@ using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
-public partial class EmployeesViewModel : ObservableObject
+public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
 {
+    private readonly EditorAreaSyncState _sync = new();
+    private string? _loadedFingerprint;
+
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private EmployeeRosterItem? selectedEmployee;
 
     public ObservableCollection<EmployeeRosterItem> Employees { get; } = [];
+
+    public bool HasPendingChanges => _sync.HasPendingChanges;
 
     public void TrySelectEmployeeByPersonnelNumber(string? personnelDigits)
     {
@@ -29,7 +35,19 @@ public partial class EmployeesViewModel : ObservableObject
         }
     }
 
-    public void RefreshFromEditor()
+    public void RefreshFromEditorIfNeeded()
+    {
+        if (!_sync.ShouldRefresh(Employees.Count > 0))
+        {
+            return;
+        }
+
+        RefreshFromEditorCore();
+    }
+
+    public void RefreshFromEditor() => RefreshFromEditorCore();
+
+    private void RefreshFromEditorCore()
     {
         Employees.Clear();
         SelectedEmployee = null;
@@ -48,6 +66,19 @@ public partial class EmployeesViewModel : ObservableObject
 
         SelectedEmployee = Employees.FirstOrDefault();
         StatusMessage = $"{Employees.Count} Mitarbeiter im Register (employeeRoster).";
+        _sync.AfterRefresh();
+        _loadedFingerprint = ComputeFingerprint();
+    }
+
+    public void CommitChangesIfDirty()
+    {
+        var fingerprint = ComputeFingerprint();
+        if (!_sync.ShouldCommit(fingerprint, _loadedFingerprint))
+        {
+            return;
+        }
+
+        CommitChanges();
     }
 
     public void CommitChanges()
@@ -63,6 +94,8 @@ public partial class EmployeesViewModel : ObservableObject
         AppServices.PlannerLocal?.PersistFromEditor(editor);
         StatusMessage =
             $"{Employees.Count} Mitarbeiter im Planer gespeichert (lokal, höchste Priorität) – werden mit Routen-Export/Dropbox übertragen.";
+        _sync.AfterCommit();
+        _loadedFingerprint = ComputeFingerprint();
     }
 
     [RelayCommand]
@@ -84,6 +117,7 @@ public partial class EmployeesViewModel : ObservableObject
         };
         Employees.Add(item);
         SelectedEmployee = item;
+        _sync.MarkDirty();
         StatusMessage = "Neuer Mitarbeiter – bitte Daten ergänzen und speichern.";
     }
 
@@ -106,6 +140,7 @@ public partial class EmployeesViewModel : ObservableObject
         SelectedEmployee = Employees.Count == 0
             ? null
             : Employees[Math.Clamp(idx, 0, Employees.Count - 1)];
+        _sync.MarkDirty();
         StatusMessage = "Mitarbeiter aus der Liste entfernt – „Speichern“ nicht vergessen.";
     }
 
@@ -149,6 +184,19 @@ public partial class EmployeesViewModel : ObservableObject
             StatusMessage = $"„{employee.Name}“ – Eingaben ok, bitte „Speichern“.";
         }
     }
+
+    private string ComputeFingerprint() =>
+        JsonSerializer.Serialize(Employees.Select(e => new
+        {
+            e.Name,
+            e.PhoneNumber,
+            e.PersonnelNumber,
+            e.Password,
+            e.LicenseExpiry,
+            e.FqnExpiry,
+            e.DriverCardExpiry,
+            e.LoginAsMainDevice
+        }));
 
     private static EmployeeRosterItem Clone(EmployeeRosterItem e) => new()
     {

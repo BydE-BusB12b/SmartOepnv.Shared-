@@ -8,15 +8,31 @@ using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
-public partial class RoutesViewModel : ObservableObject
+public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 {
+    private readonly EditorAreaSyncState _sync = new();
+
     [ObservableProperty] private string? selectedRoute;
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
 
     public ObservableCollection<string> Routes { get; } = new();
     public ObservableCollection<RouteStopItem> Stops { get; } = new();
 
-    public void RefreshFromEditor()
+    public bool HasPendingChanges => _sync.HasPendingChanges;
+
+    public void RefreshFromEditorIfNeeded()
+    {
+        if (!_sync.ShouldRefresh(Routes.Count > 0))
+        {
+            return;
+        }
+
+        RefreshFromEditorCore();
+    }
+
+    public void RefreshFromEditor() => RefreshFromEditorCore();
+
+    private void RefreshFromEditorCore()
     {
         Routes.Clear();
         Stops.Clear();
@@ -36,6 +52,7 @@ public partial class RoutesViewModel : ObservableObject
 
         SelectedRoute = Routes.FirstOrDefault();
         StatusMessage = $"{Routes.Count} Route(n) geladen.";
+        _sync.AfterRefresh();
     }
 
     partial void OnSelectedRouteChanged(string? value)
@@ -58,6 +75,16 @@ public partial class RoutesViewModel : ObservableObject
         }
     }
 
+    public void CommitChangesIfDirty()
+    {
+        if (!_sync.HasPendingChanges)
+        {
+            return;
+        }
+
+        CommitChanges();
+    }
+
     public void CommitChanges()
     {
         if (AppServices.Routes.Editor is null)
@@ -67,6 +94,7 @@ public partial class RoutesViewModel : ObservableObject
 
         AppServices.Routes.ApplyEditorChanges("routes");
         StatusMessage = $"{Routes.Count} Route(n) – lokal gespeichert.";
+        _sync.AfterCommit();
     }
 
     [RelayCommand]
@@ -92,6 +120,7 @@ public partial class RoutesViewModel : ObservableObject
             return;
         }
 
+        _sync.MarkDirty();
         RefreshFromEditor();
         SelectedRoute = displayKey;
         StatusMessage = dialog.CopyStopsFromRouteKey is null
@@ -109,6 +138,7 @@ public partial class RoutesViewModel : ObservableObject
         }
 
         AppServices.Routes.Editor?.RemoveRoute(SelectedRoute);
+        _sync.MarkDirty();
         RefreshFromEditor();
         CommitChanges();
     }
@@ -123,6 +153,7 @@ public partial class RoutesViewModel : ObservableObject
 
         AppServices.Routes.Editor?.AddStop(SelectedRoute);
         OnSelectedRouteChanged(SelectedRoute);
+        _sync.MarkDirty();
         CommitChanges();
     }
 
@@ -136,6 +167,7 @@ public partial class RoutesViewModel : ObservableObject
 
         AppServices.Routes.Editor?.RemoveStop(SelectedRoute, stop);
         Stops.Remove(stop);
+        _sync.MarkDirty();
         CommitChanges();
     }
 

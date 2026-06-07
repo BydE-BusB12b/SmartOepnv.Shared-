@@ -53,6 +53,43 @@ public static class ZeitwirtschaftDocumentEditor
         return true;
     }
 
+    public static bool TryApplyVoid(
+        JsonObject root,
+        string personnelNumber,
+        string entryId,
+        string voidReason,
+        string voidedBy,
+        out string? error)
+    {
+        error = null;
+        var reason = voidReason.Trim();
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            error = "Bitte einen Storno-Grund angeben (z. B. Test).";
+            return false;
+        }
+
+        var entry = FindEntry(root, personnelNumber, entryId);
+        if (entry is null)
+        {
+            error = "Eintrag nicht gefunden.";
+            return false;
+        }
+
+        if (entry["voided"]?.GetValue<bool>() == true)
+        {
+            error = "Eintrag ist bereits storniert.";
+            return false;
+        }
+
+        entry["voided"] = true;
+        entry["voidedAtMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        entry["voidedBy"] = voidedBy;
+        entry["voidReason"] = reason;
+        root["updatedAtMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        return true;
+    }
+
     public static JsonObject? FindEntry(JsonObject root, string personnelNumber, string entryId)
     {
         var drivers = root["drivers"] as JsonObject;

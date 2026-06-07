@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -6,8 +8,12 @@ namespace SmartOepnv.Core.RoutePackage;
 /// <summary>
 /// Eintrag in <c>outsideDisplays</c> (Pipe-Format wie GPSAnsagen SharedPreferences „programs“).
 /// </summary>
-public sealed class OutsideDisplayProgram
+public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 {
+    private bool _isListEnabled = true;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     public string Name { get; set; } = string.Empty;
     public string FrontLine1 { get; set; } = string.Empty;
     public string FrontLine2 { get; set; } = string.Empty;
@@ -20,7 +26,20 @@ public sealed class OutsideDisplayProgram
     public string ControlCodes { get; set; } = string.Empty;
     public bool UseZa4 { get; set; } = true;
     public bool UseZa5 { get; set; }
-    public bool IsListEnabled { get; set; } = true;
+    public bool IsListEnabled
+    {
+        get => _isListEnabled;
+        set
+        {
+            if (_isListEnabled == value)
+            {
+                return;
+            }
+
+            _isListEnabled = value;
+            OnPropertyChanged();
+        }
+    }
     public bool IsStartTarget { get; set; }
     public bool IsKrefeld { get; set; }
 
@@ -102,6 +121,10 @@ public sealed class OutsideDisplayProgram
         if (parts.Length >= 8 && bool.TryParse(parts[7], out var listEnabled))
         {
             program.IsListEnabled = listEnabled;
+        }
+        else if (parts.Length >= 6 && parts.Length < 8 && bool.TryParse(parts[5], out var legacyListEnabled))
+        {
+            program.IsListEnabled = legacyListEnabled;
         }
 
         if (parts.Length >= 9)
@@ -242,4 +265,7 @@ public sealed class OutsideDisplayProgram
         string.IsNullOrEmpty(text)
             ? string.Empty
             : Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }

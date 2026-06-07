@@ -25,6 +25,7 @@ public static class SevSignPdfGenerator
     private const float DestinationFontSizeCompact = 80f;
     private const int DestinationFontSizeCompactFromLength = 14;
     private const float ExpressBusFontSize = 80f;
+    private const float StopLabelFontSize = 22f;
 
     private static readonly string HeaderBlue = "#001F5B";
     private static readonly string ExpressBusMagenta = "#9c1c62";
@@ -657,7 +658,6 @@ public static class SevSignPdfGenerator
                 for (var i = 0; i < stops.Count; i++)
                 {
                     var x = stopX[i];
-                    var fontSize = stops[i].Length > 24 ? 18f : stops[i].Length > 18 ? 22f : 26f;
                     var ovalX = x - capsuleHalfW;
                     var ovalY = lineY - capsuleHalfH;
                     var labelX = x + labelOffsetRight;
@@ -677,7 +677,7 @@ public static class SevSignPdfGenerator
                     using var textPaint = new SKPaint
                     {
                         Color = SKColor.Parse(StopMagenta),
-                        TextSize = fontSize,
+                        TextSize = StopLabelFontSize,
                         Typeface = labelTypeface,
                         IsAntialias = true,
                         TextAlign = SKTextAlign.Left,
@@ -737,8 +737,7 @@ public static class SevSignPdfGenerator
         string AssetFileName,
         float WidthMm,
         float HeightMm,
-        bool AlignBottom,
-        bool CenterAnchor);
+        bool AlignBottom);
 
     private sealed record FooterLogoPlacement(
         float LeftMm,
@@ -819,14 +818,8 @@ public static class SevSignPdfGenerator
     {
         var slots = new List<FooterLogoSlot>();
 
-        static bool IsFooterRowOperator(SevOperatorOption o) =>
-            !o.UseLargeOperatorLogo
-            && o.IncludeInFooterLogoRow
-            && o.Kind is not SevOperatorKind.Vrr
-            && o.Kind is not SevOperatorKind.MobilNrw;
-
         var rowOperators = selectedOperators
-            .Where(IsFooterRowOperator)
+            .Where(o => !o.UseLargeOperatorLogo && o.IncludeInFooterLogoRow)
             .Select((op, index) => (op, index))
             .OrderBy(x => x.op.FooterSortOrder)
             .ThenBy(x => x.index)
@@ -840,36 +833,7 @@ public static class SevSignPdfGenerator
                     asset,
                     op.OperatorLogoWidthMm,
                     op.OperatorLogoHeightMm,
-                    AlignBottom: false,
-                    CenterAnchor: op.CenterInFooterRow));
-            }
-        }
-
-        var mobil = selectedOperators.FirstOrDefault(o => o.Kind == SevOperatorKind.MobilNrw);
-        if (mobil is not null)
-        {
-            foreach (var asset in mobil.PdfLogoAssetFileNames)
-            {
-                slots.Add(new FooterLogoSlot(
-                    asset,
-                    mobil.OperatorLogoWidthMm,
-                    mobil.OperatorLogoHeightMm,
-                    AlignBottom: false,
-                    CenterAnchor: false));
-            }
-        }
-
-        var vrr = selectedOperators.FirstOrDefault(o => o.Kind == SevOperatorKind.Vrr);
-        if (vrr is not null)
-        {
-            foreach (var asset in vrr.PdfLogoAssetFileNames)
-            {
-                slots.Add(new FooterLogoSlot(
-                    asset,
-                    vrr.OperatorLogoWidthMm,
-                    vrr.OperatorLogoHeightMm,
-                    AlignBottom: false,
-                    CenterAnchor: false));
+                    AlignBottom: false));
             }
         }
 
@@ -885,113 +849,55 @@ public static class SevSignPdfGenerator
             return [];
         }
 
-        var left = rowLeftMm;
+        var left = rowLeftMm > FooterLogoRowLeftMm + 0.1f ? rowLeftMm : FooterLineLeftMm;
         var right = FooterLogoRowRightMm;
-        var gap = FooterLogoSlotGapMm;
-
-        var vrrIndex = -1;
-        for (var i = 0; i < slots.Count; i++)
-        {
-            if (slots[i].AssetFileName.Equals("footer_vrr.png", StringComparison.Ordinal))
-            {
-                vrrIndex = i;
-                break;
-            }
-        }
-
-        var mainSlots = vrrIndex >= 0
-            ? slots.Where((_, i) => i != vrrIndex).ToList()
-            : slots.ToList();
-
-        FooterLogoSlot? vrrSlot = vrrIndex >= 0 ? slots[vrrIndex] : null;
-        var mainAvailable = vrrSlot is null
-            ? right - left
-            : right - left - vrrSlot.WidthMm - gap;
-
-        var placements = LayoutFooterLogoRowSegment(mainSlots, left, mainAvailable, gap);
-
-        if (vrrSlot is null)
-        {
-            return placements;
-        }
-
-        var vrrWidth = vrrSlot.WidthMm;
-        var vrrLeft = right - vrrWidth;
-        placements.Add(new FooterLogoPlacement(
-            vrrLeft,
-            FooterLogoRowTopMm,
-            vrrWidth,
-            vrrSlot.HeightMm,
-            vrrSlot.AssetFileName,
-            vrrSlot.AlignBottom));
-
-        return placements;
-    }
-
-    private static List<FooterLogoPlacement> LayoutFooterLogoRowSegment(
-        IReadOnlyList<FooterLogoSlot> slots,
-        float left,
-        float available,
-        float gap)
-    {
-        if (slots.Count == 0)
+        var available = right - left;
+        if (available <= 0f)
         {
             return [];
         }
 
         var nominalWidths = slots.Select(s => s.WidthMm).ToList();
-        var totalNominal = nominalWidths.Sum() + gap * (slots.Count - 1);
+        var totalNominal = nominalWidths.Sum();
         var scale = totalNominal > available ? available / totalNominal : 1f;
-        scale = Math.Max(scale, 0.72f);
+        scale = Math.Min(scale, 1f);
 
         var widths = nominalWidths.Select(w => w * scale).ToList();
-        var totalWidth = widths.Sum() + gap * (slots.Count - 1);
-
-        var anchorIndex = -1;
-        for (var i = 0; i < slots.Count; i++)
-        {
-            if (slots[i].CenterAnchor)
-            {
-                anchorIndex = i;
-                break;
-            }
-        }
-
-        float startX;
-        if (anchorIndex >= 0)
-        {
-            var beforeAnchor = widths.Take(anchorIndex).Sum() + gap * anchorIndex;
-            var anchorCenter = beforeAnchor + widths[anchorIndex] / 2f;
-            var rowCenter = left + available / 2f;
-            startX = rowCenter - anchorCenter;
-            startX = Math.Clamp(startX, left, Math.Max(left, left + available - totalWidth));
-        }
-        else
-        {
-            startX = left + (available - totalWidth) / 2f;
-        }
 
         var placements = new List<FooterLogoPlacement>();
-        var x = startX;
 
+        if (slots.Count == 1)
+        {
+            var x = left + (available - widths[0]) / 2f;
+            AddFooterLogoPlacement(placements, slots[0], x, widths[0], scale);
+            return placements;
+        }
+
+        var slotWidth = available / slots.Count;
         for (var i = 0; i < slots.Count; i++)
         {
-            var slot = slots[i];
-            var width = widths[i];
-            var height = slot.HeightMm * scale;
-
-            placements.Add(new FooterLogoPlacement(
-                x,
-                FooterLogoRowTopMm,
-                width,
-                height,
-                slot.AssetFileName,
-                slot.AlignBottom));
-
-            x += width + gap;
+            var slotLeft = left + i * slotWidth;
+            var x = slotLeft + (slotWidth - widths[i]) / 2f;
+            AddFooterLogoPlacement(placements, slots[i], x, widths[i], scale);
         }
 
         return placements;
+    }
+
+    private static void AddFooterLogoPlacement(
+        List<FooterLogoPlacement> placements,
+        FooterLogoSlot slot,
+        float leftMm,
+        float widthMm,
+        float scale)
+    {
+        placements.Add(new FooterLogoPlacement(
+            leftMm,
+            FooterLogoRowTopMm,
+            widthMm,
+            slot.HeightMm * scale,
+            slot.AssetFileName,
+            slot.AlignBottom));
     }
 
     private static void DrawOperatorLogo(
@@ -1051,7 +957,8 @@ public static class SevSignPdfGenerator
     }
 
     private static bool ShouldStripWhiteBackground(string fileName) =>
-        fileName.Contains("re13_db", StringComparison.OrdinalIgnoreCase)
+        fileName.Contains("deutsche_bahn", StringComparison.OrdinalIgnoreCase)
+        || fileName.Contains("re13_db", StringComparison.OrdinalIgnoreCase)
         || fileName.Equals("operator_db.png", StringComparison.OrdinalIgnoreCase);
 
     private static byte[]? LoadImageStrippingNearWhiteBackground(string path)
@@ -1096,8 +1003,20 @@ public static class SevSignPdfGenerator
             yield break;
         }
 
+        if (fileName.StartsWith("operator_deutsche_bahn", StringComparison.Ordinal))
+        {
+            yield return "operator_deutsche_bahn.png";
+            yield return "operator_deutsche_bahn_310x163.png";
+            yield return "operator_re13_db_329x159.png";
+            yield return "operator_re13_db_310x163.png";
+            yield return "operator_db.png";
+            yield break;
+        }
+
         if (fileName.StartsWith("operator_re13", StringComparison.Ordinal))
         {
+            yield return "operator_deutsche_bahn.png";
+            yield return "operator_deutsche_bahn_310x163.png";
             yield return "operator_re13_db_329x159.png";
             yield return "operator_re13_db_310x163.png";
             yield return "operator_db.png";

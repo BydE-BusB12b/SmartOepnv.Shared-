@@ -45,7 +45,8 @@ public static class RoutePackagePhoneMetadata
         }
 
         root["outsideDisplays"] = arr;
-        root.Remove("destinationList");
+        // GPSAnsagen liest teils destinationList (Merge), teils outsideDisplays (Replace) – beides befüllen.
+        root["destinationList"] = arr.DeepClone();
     }
 
     public static IList<string> LoadAdditionalAllowedRoutes(JsonObject root, HashSet<string> exportedRoutes)

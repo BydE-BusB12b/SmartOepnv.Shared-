@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Text.Json;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -11,9 +12,11 @@ using SmartOepnv.Core.Vrr;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
-public partial class StopsLibraryViewModel : ObservableObject
+public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewModel
 {
     private readonly List<ManagedStopTemplateItem> _allTemplates = [];
+    private readonly EditorAreaSyncState _sync = new();
+    private string? _loadedFingerprint;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private string searchQuery = string.Empty;
@@ -21,6 +24,7 @@ public partial class StopsLibraryViewModel : ObservableObject
     [ObservableProperty] private string? selectedRouteForInsert;
     [ObservableProperty] private string selectedAnnouncementCoordinates = string.Empty;
     [ObservableProperty] private string selectedStopCoordinates = string.Empty;
+    [ObservableProperty] private string announcementMergePauseSeconds = "0,3";
 
     private bool _syncingCoordinates;
 
@@ -31,11 +35,25 @@ public partial class StopsLibraryViewModel : ObservableObject
     {
         if (AppServices.IsInitialized)
         {
-            AppServices.RegisterFlushBeforeExport(CommitChanges);
+            AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
         }
     }
 
-    public void RefreshFromEditor()
+    public bool HasPendingChanges => _sync.HasPendingChanges;
+
+    public void RefreshFromEditorIfNeeded()
+    {
+        if (!_sync.ShouldRefresh(_allTemplates.Count > 0))
+        {
+            return;
+        }
+
+        RefreshFromEditorCore();
+    }
+
+    public void RefreshFromEditor() => RefreshFromEditorCore();
+
+    private void RefreshFromEditorCore()
     {
         _allTemplates.Clear();
         FilteredTemplates.Clear();
@@ -76,7 +94,41 @@ public partial class StopsLibraryViewModel : ObservableObject
         SelectedTemplate = FilteredTemplates.FirstOrDefault();
         SyncCoordinateFieldsFromSelected();
         StatusMessage = BuildLibraryStatusMessage(fromManaged, merge);
+        _sync.AfterRefresh();
+        _loadedFingerprint = ComputeFingerprint();
     }
+
+    public void CommitChangesIfDirty()
+    {
+        var fingerprint = ComputeFingerprint();
+        if (!_sync.ShouldCommit(fingerprint, _loadedFingerprint))
+        {
+            return;
+        }
+
+        CommitChanges();
+    }
+
+    private string ComputeFingerprint() =>
+        JsonSerializer.Serialize(_allTemplates.Select(t => new
+        {
+            t.Id,
+            t.StopCode,
+            t.StopNameItcs,
+            t.StopDisplay,
+            t.VrrStopId,
+            t.DirectionDescription,
+            t.AnnouncementLat,
+            t.AnnouncementLng,
+            t.StopLat,
+            t.StopLng,
+            t.RadiusMeters,
+            t.ExternalSoundUri,
+            t.EmbeddedSoundFileName,
+            t.LocalAudioPath
+        }));
+
+    private void MarkDirty() => _sync.MarkDirty();
 
     private string BuildLibraryStatusMessage(int fromManaged, StopTemplateRouteMerger.MergeResult merge)
     {
@@ -149,6 +201,8 @@ public partial class StopsLibraryViewModel : ObservableObject
         RefreshTemplateListLabels();
         StatusMessage =
             $"{_allTemplates.Count} Vorlagen lokal gespeichert – werden mit Routen-Export/Dropbox übertragen.";
+        _sync.AfterCommit();
+        _loadedFingerprint = ComputeFingerprint();
     }
 
     partial void OnSearchQueryChanged(string value) => ApplyFilter();
@@ -167,6 +221,7 @@ public partial class StopsLibraryViewModel : ObservableObject
             SelectedTemplate.AnnouncementLat = lat;
             SelectedTemplate.AnnouncementLng = lon;
         });
+        MarkDirty();
     }
 
     partial void OnSelectedStopCoordinatesChanged(string value)
@@ -181,6 +236,7 @@ public partial class StopsLibraryViewModel : ObservableObject
             SelectedTemplate.StopLat = lat;
             SelectedTemplate.StopLng = lon;
         });
+        MarkDirty();
     }
 
     private void SyncCoordinateFieldsFromSelected()
@@ -286,6 +342,7 @@ public partial class StopsLibraryViewModel : ObservableObject
         ApplyFilter();
         SelectedTemplate = FilteredTemplates.FirstOrDefault(t => t.Id == item.Id);
         StatusMessage = $"Neue Vorlage ({code}) – ITCS-Name ergänzen und speichern.";
+        MarkDirty();
     }
 
     private void PruneEmptyDrafts()
@@ -322,6 +379,7 @@ public partial class StopsLibraryViewModel : ObservableObject
         ApplyFilter();
         SelectedTemplate = FilteredTemplates.FirstOrDefault(t => t.Id == copy.Id);
         StatusMessage = "Vorlage dupliziert – bitte speichern.";
+        MarkDirty();
     }
 
     [RelayCommand]
@@ -337,6 +395,7 @@ public partial class StopsLibraryViewModel : ObservableObject
         ApplyFilter();
         SelectedTemplate = FilteredTemplates.FirstOrDefault();
         StatusMessage = "Vorlage entfernt – „Speichern“ nicht vergessen.";
+        MarkDirty();
     }
 
     [RelayCommand]
@@ -377,6 +436,7 @@ public partial class StopsLibraryViewModel : ObservableObject
             SyncCoordinateFieldsFromSelected();
             RefreshSelectedTemplateBinding();
             StatusMessage = $"VRR-ID „{SelectedTemplate.VrrStopId}“ übernommen ({assignment.DisplayName}).";
+            MarkDirty();
         }
         catch (Exception ex)
         {
@@ -408,11 +468,133 @@ public partial class StopsLibraryViewModel : ObservableObject
             return;
         }
 
+        var names = TryListEmbeddedSoundNames(out var listError);
+        if (names is null)
+        {
+            StatusMessage = listError ?? "Keine Ansagen verfügbar.";
+            return;
+        }
+
+        var prefill = SelectedTemplate.EmbeddedSoundFileName?.Trim();
+        if (string.IsNullOrEmpty(prefill))
+        {
+            prefill = SelectedTemplate.StopNameItcs?.Trim();
+        }
+
+        var owner = ResolveDialogOwner();
+        var dialog = new EmbeddedSoundPickerDialog(names, prefill) { Owner = owner };
+        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.SelectedFileName))
+        {
+            return;
+        }
+
+        SelectedTemplate.EmbeddedSoundFileName = dialog.SelectedFileName.Trim();
+        SelectedTemplate.LocalAudioPath = null;
+        RefreshSelectedTemplateBinding();
+        StatusMessage = $"Ansage „{SelectedTemplate.EmbeddedSoundFileName}“ zugeordnet – mit „Speichern“ übernehmen.";
+        MarkDirty();
+    }
+
+    [RelayCommand]
+    private void MergeEmbeddedSoundsFromList()
+    {
+        if (SelectedTemplate is null)
+        {
+            StatusMessage = "Bitte zuerst eine Haltestelle auswählen.";
+            return;
+        }
+
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
             StatusMessage = "Kein Route-Paket geladen.";
             return;
+        }
+
+        if (!AppServices.IsInitialized)
+        {
+            StatusMessage = "Workspace nicht initialisiert – Route-Paket erneut laden.";
+            return;
+        }
+
+        var names = TryListEmbeddedSoundNames(out var listError);
+        if (names is null)
+        {
+            StatusMessage = listError ?? "Keine Ansagen verfügbar.";
+            return;
+        }
+
+        if (!TryParsePauseSeconds(AnnouncementMergePauseSeconds, out var pauseSeconds, out var pauseError))
+        {
+            StatusMessage = pauseError ?? "Pause ungültig.";
+            return;
+        }
+
+        var prefill = SelectedTemplate.EmbeddedSoundFileName?.Trim();
+        if (string.IsNullOrEmpty(prefill))
+        {
+            prefill = SelectedTemplate.StopNameItcs?.Trim();
+        }
+
+        var owner = ResolveDialogOwner();
+        var dialog = new EmbeddedSoundMultiPickerDialog(names, prefill) { Owner = owner };
+        if (dialog.ShowDialog() != true || dialog.SelectedFileNames.Count < 2)
+        {
+            return;
+        }
+
+        var sourcePaths = new List<string>();
+        foreach (var fileName in dialog.SelectedFileNames)
+        {
+            var path = EmbeddedSoundPathResolver.TryResolveLocalPath(
+                fileName,
+                editor.PackageRoot,
+                AppServices.Workspace);
+            if (path is null)
+            {
+                StatusMessage = $"Ansage „{fileName}“ konnte nicht geladen werden.";
+                return;
+            }
+
+            sourcePaths.Add(path);
+        }
+
+        var outputFileName = BuildMergedEmbeddedFileName(SelectedTemplate);
+        var outputPath = Path.Combine(
+            PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(AppServices.Workspace),
+            outputFileName);
+
+        try
+        {
+            EmbeddedSoundConcatenator.ConcatenateToWav(
+                sourcePaths,
+                outputPath,
+                TimeSpan.FromSeconds(pauseSeconds));
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Zusammenfügen fehlgeschlagen: {ex.Message}";
+            return;
+        }
+
+        SelectedTemplate.LocalAudioPath = outputPath;
+        SelectedTemplate.EmbeddedSoundFileName = outputFileName;
+        RefreshSelectedTemplateBinding();
+        StatusMessage =
+            $"{dialog.SelectedFileNames.Count} Schnipsel zu „{outputFileName}“ zusammengefügt" +
+            (pauseSeconds > 0 ? $" (Pause {pauseSeconds:0.###} s)" : string.Empty) +
+            " – mit „Speichern“ übernehmen.";
+        MarkDirty();
+    }
+
+    private IReadOnlyList<string>? TryListEmbeddedSoundNames(out string? error)
+    {
+        error = null;
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            error = "Kein Route-Paket geladen.";
+            return null;
         }
 
         var extra = editor.AnnouncementTemplates
@@ -425,32 +607,69 @@ public partial class StopsLibraryViewModel : ObservableObject
 
         if (names.Count == 0)
         {
-            StatusMessage = "Keine eingebetteten Ansagen – zuerst unter „Ansagen“ Tondatei anlegen und speichern.";
-            return;
+            error = "Keine eingebetteten Ansagen – zuerst unter „Ansagen“ Tondatei anlegen und speichern.";
+            return null;
         }
 
-        var prefill = SelectedTemplate.EmbeddedSoundFileName?.Trim();
-        if (string.IsNullOrEmpty(prefill))
-        {
-            prefill = SelectedTemplate.StopNameItcs?.Trim();
-        }
+        return names;
+    }
 
+    private static Window? ResolveDialogOwner()
+    {
         var owner = Application.Current?.MainWindow;
         if (owner is not null && !owner.IsLoaded)
         {
             owner = null;
         }
 
-        var dialog = new EmbeddedSoundPickerDialog(names, prefill) { Owner = owner };
-        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.SelectedFileName))
+        return owner;
+    }
+
+    private static bool TryParsePauseSeconds(string raw, out double seconds, out string? error)
+    {
+        error = null;
+        seconds = 0;
+        var trimmed = raw.Trim();
+        if (string.IsNullOrEmpty(trimmed))
         {
-            return;
+            return true;
         }
 
-        SelectedTemplate.EmbeddedSoundFileName = dialog.SelectedFileName.Trim();
-        SelectedTemplate.LocalAudioPath = null;
-        RefreshSelectedTemplateBinding();
-        StatusMessage = $"Ansage „{SelectedTemplate.EmbeddedSoundFileName}“ zugeordnet – mit „Speichern“ übernehmen.";
+        trimmed = trimmed.Replace(',', '.');
+        if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out seconds) ||
+            seconds < 0 ||
+            seconds > 30)
+        {
+            error = "Pause: Zahl von 0 bis 30 Sekunden, z. B. 0,3";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string BuildMergedEmbeddedFileName(ManagedStopTemplateItem template)
+    {
+        var code = PlannerStopCode.Normalize(template.StopCode);
+        if (string.IsNullOrEmpty(code))
+        {
+            code = "00000";
+        }
+
+        var safeName = string.Concat(
+            (template.StopNameItcs ?? "ansage").Trim()
+                .Select(c => char.IsLetterOrDigit(c) ? char.ToUpperInvariant(c) : '_'));
+        if (string.IsNullOrEmpty(safeName))
+        {
+            safeName = "ANSAGE";
+        }
+
+        if (safeName.Length > 20)
+        {
+            safeName = safeName[..20];
+        }
+
+        return $"{code}_{safeName}_zusammen.wav";
     }
 
     [RelayCommand]
@@ -488,6 +707,7 @@ public partial class StopsLibraryViewModel : ObservableObject
         RefreshSelectedTemplateBinding();
         StatusMessage =
             $"Ton gewählt – mit „Speichern“ wird „{fileName}“ in embeddedSounds eingetragen.";
+        MarkDirty();
     }
 
     private static string BuildEmbeddedFileName(string? stopName, string extension)
@@ -520,6 +740,7 @@ public partial class StopsLibraryViewModel : ObservableObject
         SelectedTemplate.LocalAudioPath = null;
         RefreshSelectedTemplateBinding();
         StatusMessage = "Tonzuordnung entfernt – „Speichern“ nicht vergessen.";
+        MarkDirty();
     }
 
     [RelayCommand]
@@ -570,6 +791,10 @@ public partial class StopsLibraryViewModel : ObservableObject
         StatusMessage = merge.Added > 0
             ? $"{merge.Added} neue Vorlage(n) aus allen Routen – insgesamt {_allTemplates.Count}. Bitte „Speichern“."
             : $"Keine neuen Haltestellen – {_allTemplates.Count} Vorlagen, {merge.RouteStopCount} Haltestellen in Routen bereits abgeglichen.";
+        if (merge.Added > 0)
+        {
+            MarkDirty();
+        }
     }
 
     [RelayCommand]
@@ -597,6 +822,10 @@ public partial class StopsLibraryViewModel : ObservableObject
         StatusMessage = merge.Added > 0
             ? $"{merge.Added} neue Vorlage(n) aus „{SelectedRouteForInsert}“ – insgesamt {_allTemplates.Count}. Bitte „Speichern“."
             : $"Route „{SelectedRouteForInsert}“ abgeglichen ({merge.RouteStopCount} Haltestellen, keine neuen Einträge).";
+        if (merge.Added > 0)
+        {
+            MarkDirty();
+        }
     }
 
     private void ApplyFilter()

@@ -1,25 +1,52 @@
 using System.ComponentModel;
 using System.Windows;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 
 namespace SmartOepnv.AppShared;
 
 public partial class MainShellWindow : Window
 {
+    private bool _closeConfirmed;
+
     public MainShellWindow()
     {
         InitializeComponent();
         Closing += OnWindowClosing;
     }
 
-    private void OnWindowClosing(object? sender, CancelEventArgs e)
+    private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
-        if (!AppServices.IsInitialized)
+        if (_closeConfirmed || !AppServices.IsInitialized)
         {
             return;
         }
 
-        AppServices.FlushAllPendingEdits();
-        SmartOepnvDataBackupService.BackupAllProfiles("app-exit");
+        e.Cancel = true;
+
+        var savingDialog = new AppExitSavingDialog
+        {
+            Owner = this
+        };
+        savingDialog.Show();
+        IsEnabled = false;
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                AppServices.FlushAllPendingEdits();
+                SmartOepnvDataBackupService.BackupAllProfiles("app-exit");
+            }).ConfigureAwait(true);
+        }
+        catch
+        {
+            // Beenden trotzdem erlauben
+        }
+
+        savingDialog.PrepareToClose();
+        savingDialog.Close();
+        _closeConfirmed = true;
+        Close();
     }
 }

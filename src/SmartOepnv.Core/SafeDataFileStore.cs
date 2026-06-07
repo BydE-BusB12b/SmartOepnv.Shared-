@@ -9,7 +9,7 @@ public static class SafeDataFileStore
 {
     public const int DefaultMaxBackups = 50;
 
-    public static void WriteAllText(string filePath, string content, int maxBackups = DefaultMaxBackups)
+    public static void WriteAllText(string filePath, string content, int maxBackups = DefaultMaxBackups, bool archivePrevious = true)
     {
         var directory = Path.GetDirectoryName(filePath);
         if (string.IsNullOrEmpty(directory))
@@ -19,7 +19,7 @@ public static class SafeDataFileStore
 
         Directory.CreateDirectory(directory);
 
-        if (File.Exists(filePath))
+        if (archivePrevious && File.Exists(filePath))
         {
             ArchiveExistingFile(filePath, maxBackups);
         }

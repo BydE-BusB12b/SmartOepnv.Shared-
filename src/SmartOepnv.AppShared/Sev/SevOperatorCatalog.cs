@@ -132,9 +132,13 @@ public static class SevOperatorCatalog
 
             DisplayName = "Deutsche Bahn",
 
-            PreviewAssetFileName = "operator_re13_db_329x159.png",
+            PreviewAssetFileName = "operator_deutsche_bahn.png",
 
-            PdfLogoAssetFileNames = ["operator_re13_db_329x159.png"]
+            PdfLogoAssetFileNames = ["operator_deutsche_bahn.png", "operator_deutsche_bahn_310x163.png"],
+
+            OperatorLogoWidthMm = 109.4f,
+
+            OperatorLogoHeightMm = 30.2f
 
         },
 
@@ -204,6 +208,50 @@ public static class SevOperatorCatalog
 
         {
 
+            Kind = SevOperatorKind.Westfalenbahn,
+
+            DisplayName = "WestfalenBahn",
+
+            PreviewAssetFileName = "operator_westfalenbahn.png",
+
+            PdfLogoAssetFileNames = ["operator_westfalenbahn.png"],
+
+            OperatorLogoWidthMm = 73f,
+
+            OperatorLogoHeightMm = 30.6f,
+
+            UseLargeOperatorLogo = false,
+
+            FooterSortOrder = 42
+
+        },
+
+        new()
+
+        {
+
+            Kind = SevOperatorKind.Vias,
+
+            DisplayName = "VIAS",
+
+            PreviewAssetFileName = "operator_vias.png",
+
+            PdfLogoAssetFileNames = ["operator_vias.png"],
+
+            OperatorLogoWidthMm = 40f,
+
+            OperatorLogoHeightMm = 30.6f,
+
+            UseLargeOperatorLogo = false,
+
+            FooterSortOrder = 45
+
+        },
+
+        new()
+
+        {
+
             Kind = SevOperatorKind.SBahnRheinRuhr,
 
             DisplayName = "S-Bahn Rhein-Ruhr",
@@ -234,7 +282,7 @@ public static class SevOperatorCatalog
 
             PdfLogoAssetFileNames = ["footer_vrr.png"],
 
-            OperatorLogoWidthMm = 62.5f,
+            OperatorLogoWidthMm = 40.8f,
 
             OperatorLogoHeightMm = 30.6f,
 
@@ -252,17 +300,61 @@ public static class SevOperatorCatalog
 
             DisplayName = "mobil.nrw",
 
-            PreviewAssetFileName = "re10_img6_122x105.jpeg",
+            PreviewAssetFileName = "mobil_nrw_logo.png",
 
-            PdfLogoAssetFileNames = ["re10_img6_122x105.jpeg"],
+            PdfLogoAssetFileNames = ["mobil_nrw_logo.png"],
 
-            OperatorLogoWidthMm = 36f,
+            OperatorLogoWidthMm = 37.6f,
 
             OperatorLogoHeightMm = 30.6f,
 
             UseLargeOperatorLogo = false,
 
             FooterSortOrder = 190
+
+        },
+
+        new()
+
+        {
+
+            Kind = SevOperatorKind.Arriva,
+
+            DisplayName = "Arriva",
+
+            PreviewAssetFileName = "operator_arriva.png",
+
+            PdfLogoAssetFileNames = ["operator_arriva.png"],
+
+            OperatorLogoWidthMm = 42f,
+
+            OperatorLogoHeightMm = 30.6f,
+
+            UseLargeOperatorLogo = false,
+
+            FooterSortOrder = 43
+
+        },
+
+        new()
+
+        {
+
+            Kind = SevOperatorKind.Ns,
+
+            DisplayName = "NS",
+
+            PreviewAssetFileName = "operator_ns.png",
+
+            PdfLogoAssetFileNames = ["operator_ns.png"],
+
+            OperatorLogoWidthMm = 78f,
+
+            OperatorLogoHeightMm = 30.6f,
+
+            UseLargeOperatorLogo = false,
+
+            FooterSortOrder = 44
 
         }
 

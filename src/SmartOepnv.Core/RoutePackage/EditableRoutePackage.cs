@@ -346,6 +346,10 @@ public sealed class EditableRoutePackage
         IEnumerable<(string? FileName, string? LocalPath)> items,
         LocalWorkspaceStore? workspace)
     {
+        var existingNames = new HashSet<string>(
+            EmbeddedSoundsEditor.ListFileNames(_root),
+            StringComparer.OrdinalIgnoreCase);
+
         foreach (var (fileName, localPath) in items)
         {
             var name = fileName?.Trim();
@@ -357,11 +361,17 @@ public sealed class EditableRoutePackage
             if (!string.IsNullOrWhiteSpace(localPath) && File.Exists(localPath))
             {
                 EmbeddedSoundsEditor.UpsertFromFile(_root, name, localPath);
+                existingNames.Add(name);
                 if (workspace is not null)
                 {
                     CopyToWorkspace(workspace, name, localPath);
                 }
 
+                continue;
+            }
+
+            if (existingNames.Contains(name))
+            {
                 continue;
             }
 
@@ -371,6 +381,7 @@ public sealed class EditableRoutePackage
                 if (wsPath is not null)
                 {
                     EmbeddedSoundsEditor.UpsertFromFile(_root, name, wsPath);
+                    existingNames.Add(name);
                 }
             }
         }

@@ -129,7 +129,7 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Routen")
         {
-            _routesViewModel.RefreshFromEditor();
+            _routesViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Navidaten")
         {
@@ -137,7 +137,7 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Personalverwaltung")
         {
-            _employeesViewModel.RefreshFromEditor();
+            _employeesViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Fahrerdisposition")
         {
@@ -145,19 +145,19 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Fahrzeugdisposition")
         {
-            _fahrzeugdispoViewModel.RefreshFromEditor();
+            _fahrzeugdispoViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Haltestellen")
         {
-            _stopsLibraryViewModel.RefreshFromEditor();
+            _stopsLibraryViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Ansagen")
         {
-            _announcementsLibraryViewModel.RefreshFromEditor();
+            _announcementsLibraryViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Fahrzeugverwaltung")
         {
-            _vehicleManagementViewModel.RefreshFromEditor();
+            _vehicleManagementViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Nachrichten")
         {
@@ -169,7 +169,7 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                _messagesViewModel.RefreshFromEditor();
+                _messagesViewModel.RefreshFromEditorIfNeeded();
             }
         }
         else if (value.Title == "Nachricht senden")
@@ -178,7 +178,7 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Anzeigen & Hinweise")
         {
-            _displaysOperationsViewModel.RefreshFromEditor();
+            _displaysOperationsViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Fahrzeuge")
         {
@@ -215,36 +215,36 @@ public partial class MainViewModel : ObservableObject
         switch (leaving.Title)
         {
             case "Routen":
-                _routesViewModel.CommitChanges();
+                _routesViewModel.CommitChangesIfDirty();
                 break;
             case "Navidaten":
-                _routePathEditorViewModel.CommitDraftToWorkspace();
+                _routePathEditorViewModel.CommitDraftIfDirty();
                 break;
             case "Personalverwaltung":
-                _employeesViewModel.CommitChanges();
+                _employeesViewModel.CommitChangesIfDirty();
                 _dataTransferViewModel.RefreshDriverCredentialWarnings();
                 break;
             case "Haltestellen":
-                _stopsLibraryViewModel.CommitChanges();
+                _stopsLibraryViewModel.CommitChangesIfDirty();
                 break;
             case "Ansagen":
-                _announcementsLibraryViewModel.CommitChanges();
+                _announcementsLibraryViewModel.CommitChangesIfDirty();
                 break;
             case "Fahrzeugverwaltung":
-                _vehicleManagementViewModel.CommitChanges();
+                _vehicleManagementViewModel.CommitChangesIfDirty();
                 _dataTransferViewModel.RefreshInspectionWarnings();
                 break;
             case "Nachrichten":
                 if (!_profile.IsLeitstelle)
                 {
-                    _messagesViewModel.CommitChanges();
+                    _messagesViewModel.CommitChangesIfDirty();
                 }
                 break;
             case "Anzeigen & Hinweise":
-                _displaysOperationsViewModel.CommitChanges();
+                _displaysOperationsViewModel.CommitChangesIfDirty();
                 break;
             case "Fahrzeugdisposition":
-                _fahrzeugdispoViewModel.CommitChanges();
+                _fahrzeugdispoViewModel.CommitChangesIfDirty();
                 break;
         }
     }

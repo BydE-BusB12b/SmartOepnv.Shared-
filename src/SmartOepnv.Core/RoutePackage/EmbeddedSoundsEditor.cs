@@ -7,7 +7,8 @@ namespace SmartOepnv.Core.RoutePackage;
 /// </summary>
 public static class EmbeddedSoundsEditor
 {
-    private const int MaxBytes = 5 * 1024 * 1024;
+    public const int MaxEmbeddedBytes = 5 * 1024 * 1024;
+    private const int MaxBytes = MaxEmbeddedBytes;
 
     public static void UpsertFromFile(JsonObject root, string fileName, string localPath)
     {

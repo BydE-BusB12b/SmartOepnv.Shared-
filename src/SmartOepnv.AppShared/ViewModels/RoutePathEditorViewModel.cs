@@ -1727,6 +1727,17 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
     }
 
+    public bool HasPendingDraftChanges =>
+        SaveButtonState == RoutePathSaveButtonState.Unsaved;
+
+    public void CommitDraftIfDirty()
+    {
+        if (HasPendingDraftChanges)
+        {
+            CommitDraftToWorkspace();
+        }
+    }
+
     public bool CommitDraftToWorkspace()
     {
         var editor = AppServices.Routes.Editor;

@@ -53,6 +53,20 @@
                                                            Opacity="0.65"
                                                            FontSize="11"
                                                            Margin="0,2,0,4" />
+                                                <TextBlock FontSize="10" Opacity="0.75" Margin="0,0,0,4">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="ITCS-Liste: aus" />
+                                                            <Setter Property="Foreground" Value="#FFB0B0B0" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsListEnabled}" Value="True">
+                                                                    <Setter Property="Text" Value="ITCS-Liste: an" />
+                                                                    <Setter Property="Foreground" Value="#FF81C784" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                                 <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
                                                     <Run Text="Front: " FontWeight="SemiBold" />
                                                     <Run Text="{Binding FrontPreview, Mode=OneWay}" />
@@ -97,6 +111,10 @@
                                             Margin="0,0,8,6" />
                                     <Button Content="Auswahl löschen"
                                             Command="{Binding RemoveOutsideProgramCommand}"
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                                            Margin="0,0,8,6" />
+                                    <Button Content="Alle in ITCS-Liste"
+                                            Command="{Binding EnableAllInItcsListCommand}"
                                             Style="{StaticResource MaterialDesignOutlinedButton}"
                                             Margin="0,0,8,6" />
                                     <Button Content="Speichern"
@@ -153,6 +171,7 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
 
                                         <CheckBox Grid.Row="0" Grid.ColumnSpan="2"
@@ -160,33 +179,42 @@
                                                   IsChecked="{Binding IsStartTarget, UpdateSourceTrigger=PropertyChanged}"
                                                   Margin="0,0,0,10" />
 
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Anzeigename" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="1" Grid.Column="1"
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Liste" VerticalAlignment="Center" Margin="0,0,8,10" />
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                                            <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                          IsChecked="{Binding IsListEnabled, UpdateSourceTrigger=PropertyChanged}"
+                                                          VerticalAlignment="Center" />
+                                            <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Opacity="0.75" FontSize="11"
+                                                       Text="In ITCS-Anzeigenliste (wie Slider „Liste“ auf dem Handy)" />
+                                        </StackPanel>
+
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Anzeigename" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="2" Grid.Column="1"
                                                  Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8" />
 
-                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Front Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="2" Grid.Column="1"
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Front Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="3" Grid.Column="1"
                                                  Text="{Binding FrontLine1, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8" />
 
-                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="3" Grid.Column="1"
+                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="4" Grid.Column="1"
                                                  Text="{Binding FrontLine2, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8" />
 
-                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="4" Grid.Column="1"
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="5" Grid.Column="1"
                                                  Text="{Binding SideLine1, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8" />
 
-                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="5" Grid.Column="1"
+                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="6" Grid.Column="1"
                                                  Text="{Binding SideLine2, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8" />
 
-                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="DS001 Typ" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <ComboBox Grid.Row="6" Grid.Column="1"
+                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="DS001 Typ" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <ComboBox Grid.Row="7" Grid.Column="1"
                                                   SelectedValue="{Binding Ds001Type}"
                                                   SelectedValuePath="Content"
                                                   Margin="0,0,0,8">
@@ -194,12 +222,12 @@
                                             <ComboBoxItem Content="special" />
                                         </ComboBox>
 
-                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="DS001 Wert" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="7" Grid.Column="1"
+                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="DS001 Wert" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="8" Grid.Column="1"
                                                  Text="{Binding Ds001Value, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8" />
 
-                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Intervall (Sek.)" VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <TextBlock Grid.Row="9" Grid.Column="0" Text="Intervall (Sek.)" VerticalAlignment="Center" Margin="0,0,8,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Style.Triggers>
@@ -210,7 +238,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="8" Grid.Column="1"
+                                        <TextBox Grid.Row="9" Grid.Column="1"
                                                  Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8">
                                             <TextBox.Style>
@@ -224,7 +252,7 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <TextBlock Grid.Row="9" Grid.Column="0" Text="DS001 Sonderz." VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <TextBlock Grid.Row="10" Grid.Column="0" Text="DS001 Sonderz." VerticalAlignment="Center" Margin="0,0,8,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -236,7 +264,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="9" Grid.Column="1"
+                                        <TextBox Grid.Row="10" Grid.Column="1"
                                                  Text="{Binding Ds001Spec, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8">
                                             <TextBox.Style>
@@ -251,7 +279,7 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <TextBlock Grid.Row="10" Grid.Column="0" Text="Steuerblock" VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <TextBlock Grid.Row="11" Grid.Column="0" Text="Steuerblock" VerticalAlignment="Center" Margin="0,0,8,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -263,7 +291,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="10" Grid.Column="1"
+                                        <TextBox Grid.Row="11" Grid.Column="1"
                                                  materialDesign:HintAssist.Hint="leer = DG5DG7DG7DG7"
                                                  Text="{Binding ControlCodes, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8">
@@ -279,7 +307,7 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <StackPanel Grid.Row="11" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,4">
+                                        <StackPanel Grid.Row="12" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,4">
                                             <StackPanel.Style>
                                                 <Style TargetType="StackPanel">
                                                     <Setter Property="Visibility" Value="Collapsed" />

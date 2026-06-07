@@ -338,6 +338,30 @@
 
                                         Margin="0,0,0,8" />
 
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Pause zwischen Schnipseln (Sek.):"
+                                               Foreground="White"
+                                               VerticalAlignment="Center"
+                                               Opacity="0.9"
+                                               Margin="0,0,8,0"
+                                               FontSize="12" />
+                                    <TextBox Text="{Binding AnnouncementMergePauseSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                             Width="72"
+                                             Padding="6,4"
+                                             VerticalContentAlignment="Center"
+                                             ToolTip="Stille zwischen den Ansagen, z. B. 0,3 – 0 = keine Pause" />
+                                </StackPanel>
+
+                                <Button Content="Mehrere zusammenfügen…"
+
+                                        Command="{Binding MergeEmbeddedSoundsFromListCommand}"
+
+                                        Style="{StaticResource MaterialDesignRaisedLightButton}"
+
+                                        Margin="0,0,0,8"
+
+                                        ToolTip="Mehrere Ansagen nacheinander zu einer WAV-Datei zusammenfügen" />
+
                                 <Button Content="Aus Routen importieren"
 
                                         Command="{Binding ImportFromRoutesCommand}"

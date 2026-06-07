@@ -8,7 +8,11 @@ public enum SevOperatorKind
     Eurobahn,
     NationalExpress,
     GoRheinland,
+    Westfalenbahn,
+    Vias,
     SBahnRheinRuhr,
     Vrr,
-    MobilNrw
+    MobilNrw,
+    Arriva,
+    Ns
 }

@@ -586,7 +586,20 @@
 
                                     </Grid>
 
-                                    <StackPanel Orientation="Horizontal">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <TextBlock Text="Pause zwischen Schnipseln (Sek.):"
+                                                   VerticalAlignment="Center"
+                                                   Opacity="0.9"
+                                                   Margin="0,0,8,0"
+                                                   FontSize="12" />
+                                        <TextBox Text="{Binding DataContext.AnnouncementMergePauseSeconds, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
+                                                 Width="72"
+                                                 Padding="6,4"
+                                                 VerticalContentAlignment="Center"
+                                                 ToolTip="Stille zwischen den Ansagen, z. B. 0,3 – 0 = keine Pause" />
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
 
                                         <Button Content="Aus Liste wählen…"
 
@@ -598,7 +611,19 @@
 
                                                 Padding="10,4"
 
-                                                ToolTip="Eingebettete Ansagen aus dem Route-Paket (wie Android)" />
+                                                ToolTip="Eine eingebettete Ansage aus dem Route-Paket wählen" />
+
+                                        <Button Content="Mehrere zusammenfügen…"
+
+                                                Command="{Binding DataContext.MergeEmbeddedSoundsFromListCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+
+                                                Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                                Margin="0,0,6,0"
+
+                                                Padding="10,4"
+
+                                                ToolTip="Mehrere Ansagen nacheinander zu einer Datei zusammenfügen" />
 
                                         <Button Content="Datei wählen…"
 

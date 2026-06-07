@@ -58,6 +58,9 @@ public sealed class PlannerLocalOverlayStore
             Directory.CreateDirectory(dir);
         }
 
-        SafeDataFileStore.WriteAllText(_overlayPath, JsonSerializer.Serialize(data, JsonOptions));
+        SafeDataFileStore.WriteAllText(
+            _overlayPath,
+            JsonSerializer.Serialize(data, JsonOptions),
+            archivePrevious: false);
     }
 }

@@ -11,6 +11,13 @@ using System.Windows;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
+public enum DropboxExportButtonState
+{
+    Idle,
+    Sending,
+    Sent
+}
+
 public partial class DataTransferViewModel : ObservableObject
 {
     public event Action? RoutePackageImported;
@@ -20,6 +27,7 @@ public partial class DataTransferViewModel : ObservableObject
     [ObservableProperty] private bool hasLoadedPackage;
     [ObservableProperty] private string lastActionMessage = "Noch kein Route-Paket geladen.";
     [ObservableProperty] private bool isBusy;
+    [ObservableProperty] private DropboxExportButtonState dropboxExportButtonState = DropboxExportButtonState.Idle;
     [ObservableProperty] private bool isDropboxConnected;
     [ObservableProperty] private string localWorkspaceHint = string.Empty;
     [ObservableProperty] private bool hasInspectionWarnings;
@@ -250,7 +258,7 @@ public partial class DataTransferViewModel : ObservableObject
         return true;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanExportToDropbox))]
     private async Task ExportToDropboxAsync()
     {
         if (!AppServices.Dropbox.Settings.IsConnected)
@@ -265,12 +273,24 @@ public partial class DataTransferViewModel : ObservableObject
             return;
         }
 
-        await RunAsync(async () =>
+        DropboxExportButtonState = DropboxExportButtonState.Sending;
+        IsBusy = true;
+        try
         {
             var json = AppServices.Routes.PrepareExportJson();
             await AppServices.Dropbox.UploadRouteFileAsync(json);
             LastActionMessage = $"Nach Dropbox hochgeladen: {AppServices.Dropbox.GetRouteFilePath()}";
-        });
+            DropboxExportButtonState = DropboxExportButtonState.Sent;
+        }
+        catch (Exception ex)
+        {
+            LastActionMessage = $"Fehler: {ex.Message}";
+            DropboxExportButtonState = DropboxExportButtonState.Idle;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -437,4 +457,13 @@ public partial class DataTransferViewModel : ObservableObject
             IsBusy = false;
         }
     }
+
+    partial void OnDropboxExportButtonStateChanged(DropboxExportButtonState value) =>
+        ExportToDropboxCommand.NotifyCanExecuteChanged();
+
+    partial void OnIsBusyChanged(bool value) =>
+        ExportToDropboxCommand.NotifyCanExecuteChanged();
+
+    private bool CanExportToDropbox() =>
+        !IsBusy && DropboxExportButtonState != DropboxExportButtonState.Sending;
 }

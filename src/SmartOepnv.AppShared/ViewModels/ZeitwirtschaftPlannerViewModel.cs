@@ -55,8 +55,11 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
     partial void OnSelectedMonthChanged(ZeitwirtschaftMonthOption? value) =>
         RefreshTimeRows();
 
-    partial void OnSelectedTimeRowChanged(ZeitwirtschaftTimeTableRow? value) =>
+    partial void OnSelectedTimeRowChanged(ZeitwirtschaftTimeTableRow? value)
+    {
         CorrectTimeCommand.NotifyCanExecuteChanged();
+        VoidEntryCommand.NotifyCanExecuteChanged();
+    }
 
     public void RefreshFromEditor()
     {
@@ -224,6 +227,47 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         !IsBusy &&
         SelectedEmployee is not null &&
         SelectedTimeRow is not null &&
+        SelectedTimeRow is { IsVoided: false } &&
+        AppServices.Dropbox.Settings.IsConnected;
+
+    [RelayCommand(CanExecute = nameof(CanVoidEntry))]
+    private void VoidEntry(Window? owner)
+    {
+        if (SelectedEmployee is null || SelectedTimeRow is null)
+        {
+            return;
+        }
+
+        if (SelectedTimeRow.IsVoided)
+        {
+            StatusMessage = "Eintrag ist bereits storniert.";
+            return;
+        }
+
+        var entry = SelectedEmployee.Entries.FirstOrDefault(e => e.EntryId == SelectedTimeRow.EntryId);
+        if (entry is null)
+        {
+            StatusMessage = "Eintrag nicht gefunden.";
+            return;
+        }
+
+        var dialog = new ZeitwirtschaftVoidDialog(SelectedTimeRow)
+        {
+            Owner = owner
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _ = ApplyVoidAndUploadAsync(entry, dialog.VoidReason);
+    }
+
+    private bool CanVoidEntry() =>
+        !IsBusy &&
+        SelectedEmployee is not null &&
+        SelectedTimeRow is not null &&
+        SelectedTimeRow is { IsVoided: false } &&
         AppServices.Dropbox.Settings.IsConnected;
 
     [RelayCommand(CanExecute = nameof(CanExportPdf))]
@@ -338,7 +382,7 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         try
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Personalnummer;Name;Fahrzeug;Kommen;Gehen;Arbeitszeit;Lohnstunden;EintragId");
+            sb.AppendLine("Personalnummer;Name;Fahrzeug;Kommen;Gehen;Arbeitszeit;Lohnstunden;Storno;StornoGrund;EintragId");
             foreach (var employee in _mergedData.Employees)
             {
                 foreach (var row in ZeitwirtschaftMergeService.BuildTableRows(employee, vehicleLabels: _vehicleLabels))
@@ -350,6 +394,8 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
                         .Append(Csv(row.Gehen)).Append(';')
                         .Append(Csv(row.Arbeitszeit)).Append(';')
                         .Append(Csv(row.Lohnstunden)).Append(';')
+                        .Append(Csv(row.IsVoided ? "ja" : "nein")).Append(';')
+                        .Append(Csv(row.VoidReason)).Append(';')
                         .Append(Csv(row.EntryId))
                         .AppendLine();
                 }
@@ -416,6 +462,60 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         {
             IsBusy = false;
             CorrectTimeCommand.NotifyCanExecuteChanged();
+            VoidEntryCommand.NotifyCanExecuteChanged();
+            ExportPdfCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private async Task ApplyVoidAndUploadAsync(ZeitwirtschaftMergedEntry entry, string voidReason)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var phone = entry.DevicePhone;
+        if (!_documentsByPhone.TryGetValue(phone, out var root))
+        {
+            StatusMessage = $"Keine JSON für Fahrzeug {phone} geladen.";
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = "Speichere Storno nach Dropbox…";
+        try
+        {
+            if (!ZeitwirtschaftDocumentEditor.TryApplyVoid(
+                    root,
+                    entry.PersonnelNumber,
+                    entry.EntryId,
+                    voidReason,
+                    "planer",
+                    out var error))
+            {
+                StatusMessage = error ?? "Storno fehlgeschlagen.";
+                return;
+            }
+
+            var json = ZeitwirtschaftDocumentEditor.Serialize(root);
+            var fileName = ZeitwirtschaftMergeService.BuildFileName(phone);
+            await AppServices.Dropbox.UploadNamedFileAsync(fileName, json);
+            TryWriteLocalSyncCopy(fileName, json);
+
+            RebuildMergedData(_documentsByPhone.Count);
+            StatusMessage =
+                $"Storno in zeitwirtschaft_{phone}.json gespeichert (Grund: {voidReason.Trim()}). " +
+                "Apps holen alle Fahrzeug-JSONs beim Anmelden per Abgleich.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Speichern fehlgeschlagen: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            CorrectTimeCommand.NotifyCanExecuteChanged();
+            VoidEntryCommand.NotifyCanExecuteChanged();
             ExportPdfCommand.NotifyCanExecuteChanged();
         }
     }
@@ -455,6 +555,7 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         {
             TotalDuration = "—";
             CorrectTimeCommand.NotifyCanExecuteChanged();
+            VoidEntryCommand.NotifyCanExecuteChanged();
             ExportPdfCommand.NotifyCanExecuteChanged();
             return;
         }
@@ -468,6 +569,7 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         TotalDuration = ZeitwirtschaftMergeService.SumDurationHhMm(rows);
 
         CorrectTimeCommand.NotifyCanExecuteChanged();
+        VoidEntryCommand.NotifyCanExecuteChanged();
         ExportPdfCommand.NotifyCanExecuteChanged();
     }
 
@@ -520,6 +622,7 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
     partial void OnIsBusyChanged(bool value)
     {
         CorrectTimeCommand.NotifyCanExecuteChanged();
+        VoidEntryCommand.NotifyCanExecuteChanged();
         ExportPdfCommand.NotifyCanExecuteChanged();
     }
 

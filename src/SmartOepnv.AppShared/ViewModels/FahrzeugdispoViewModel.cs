@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Text.Json;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -37,6 +38,10 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
     private bool _flushRegistered;
 
+    private readonly EditorAreaSyncState _sync = new();
+
+    private string? _loadedFingerprint;
+
     public FahrzeugdispoViewModel()
         : base("Kalenderschnur: Fahrzeuge links, Tage rechts – Tag anklicken für Stundenansicht.")
     {
@@ -51,12 +56,29 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             return;
         }
 
-        AppServices.RegisterFlushBeforeExport(() => PersistAssignments());
+        AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
         _flushRegistered = true;
     }
 
+    public bool HasPendingChanges => _sync.HasPendingChanges;
+
     /// <summary>Beim Verlassen der Ansicht oder App-Ende: Fahrten sicher auf Platte schreiben.</summary>
-    public void CommitChanges() => PersistAssignments();
+    public void CommitChangesIfDirty()
+    {
+        var fingerprint = ComputeFingerprint();
+        if (!_sync.ShouldCommit(fingerprint, _loadedFingerprint))
+        {
+            return;
+        }
+
+        if (PersistAssignments())
+        {
+            _sync.AfterCommit();
+            _loadedFingerprint = fingerprint;
+        }
+    }
+
+    public void CommitChanges() => CommitChangesIfDirty();
 
     [ObservableProperty] private DateTime viewStartDate;
 
@@ -76,7 +98,19 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
     partial void OnShowOnlyActiveVehiclesChanged(bool value) => RebuildGrid();
 
-    public void RefreshFromEditor()
+    public void RefreshFromEditorIfNeeded()
+    {
+        if (!_sync.ShouldRefresh(_assignments.Count > 0))
+        {
+            return;
+        }
+
+        RefreshFromEditorCore();
+    }
+
+    public void RefreshFromEditor() => RefreshFromEditorCore();
+
+    private void RefreshFromEditorCore()
     {
         EnsureFlushRegistered();
         _assignments.Clear();
@@ -93,10 +127,14 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             DayHeaders.Clear();
             VisibleVehicleCount = 0;
             StatusMessage = "Kein Route-Paket geladen – bitte unter Übersicht importieren.";
+            _sync.AfterRefresh();
+            _loadedFingerprint = ComputeFingerprint();
             return;
         }
 
         RebuildGrid();
+        _sync.AfterRefresh();
+        _loadedFingerprint = ComputeFingerprint();
     }
 
     [RelayCommand]
@@ -322,11 +360,6 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
     private void SaveAndRefresh(long? focusStartEpochMs, string message)
     {
-        if (!PersistAssignments())
-        {
-            return;
-        }
-
         if (focusStartEpochMs is not null)
         {
             EnsureWeekVisible(focusStartEpochMs.Value);
@@ -334,6 +367,17 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
         RebuildGrid();
         ReportSaveSuccess(message);
+        _ = PersistAssignmentsAsync();
+    }
+
+    private async Task PersistAssignmentsAsync()
+    {
+        var success = await Task.Run(PersistAssignments).ConfigureAwait(true);
+        if (success)
+        {
+            _sync.AfterCommit();
+            _loadedFingerprint = ComputeFingerprint();
+        }
     }
 
     private bool TryShowTripDialog(
@@ -363,6 +407,18 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
         return true;
     }
 
+    private string ComputeFingerprint() =>
+        JsonSerializer.Serialize(_assignments
+            .OrderBy(a => a.Id, StringComparer.Ordinal)
+            .Select(a => new
+            {
+                a.Id,
+                a.VehiclePhone,
+                a.StartEpochMs,
+                a.EndEpochMs,
+                a.Label
+            }));
+
     private bool PersistAssignments()
     {
         if (AppServices.PlannerLocal is null)
@@ -374,14 +430,6 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
         try
         {
             AppServices.PlannerLocal.SaveVehicleDisposition(_assignments);
-            var savedCount = AppServices.PlannerLocal.LoadVehicleDisposition().Count;
-            if (savedCount != _assignments.Count)
-            {
-                ReportSaveError(
-                    $"Speichern fehlgeschlagen: {_assignments.Count} Fahrten im Speicher, {savedCount} auf Platte.");
-                return false;
-            }
-
             return true;
         }
         catch (Exception ex)

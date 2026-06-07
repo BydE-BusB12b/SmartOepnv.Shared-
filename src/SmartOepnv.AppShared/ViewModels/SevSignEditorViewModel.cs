@@ -25,12 +25,16 @@ public partial class SevOperatorSelectionItem(SevOperatorOption option) : Observ
 
 public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 {
+    private string? _loadedDraftId;
+
     public SevSignEditorViewModel() : base("SEV-Schilder als PDF im NRW-Standardlayout erstellen.")
     {
         foreach (var option in SevOperatorCatalog.All)
         {
             OperatorSelections.Add(new SevOperatorSelectionItem(option));
         }
+
+        ReloadDraftList();
     }
 
     [ObservableProperty] private string line = "S 28";
@@ -39,11 +43,15 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 
     [ObservableProperty] private string newStopName = string.Empty;
 
+    [ObservableProperty] private string draftName = string.Empty;
+
     [ObservableProperty] private SevStopItem? selectedStop;
 
     [ObservableProperty] private string? selectedRoute;
 
     [ObservableProperty] private bool importRouteReverse;
+
+    [ObservableProperty] private SevSignDraft? selectedDraft;
 
     public ObservableCollection<SevOperatorSelectionItem> OperatorSelections { get; } = [];
 
@@ -51,12 +59,43 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 
     public ObservableCollection<string> Routes { get; } = [];
 
+    public ObservableCollection<SevSignDraft> SavedDrafts { get; } = [];
+
     public bool HasRoutes => Routes.Count > 0;
+
+    public bool HasSavedDrafts => SavedDrafts.Count > 0;
+
+    public bool CanUpdateLoadedDraft => !string.IsNullOrEmpty(_loadedDraftId);
+
+    partial void OnSelectedDraftChanged(SevSignDraft? value)
+    {
+        if (value is not null)
+        {
+            DraftName = value.Name;
+        }
+    }
+
+    partial void OnDraftNameChanged(string value)
+    {
+        if (_loadedDraftId is null)
+        {
+            return;
+        }
+
+        var loaded = SavedDrafts.FirstOrDefault(d => d.Id == _loadedDraftId);
+        if (loaded is not null &&
+            !string.Equals(loaded.Name, value.Trim(), StringComparison.Ordinal))
+        {
+            _loadedDraftId = null;
+            NotifyDraftCommands();
+        }
+    }
 
     public void RefreshFromEditor()
     {
         Routes.Clear();
         OnPropertyChanged(nameof(HasRoutes));
+        ReloadDraftList();
 
         var editor = AppServices.Routes.Editor;
         if (editor is null)
@@ -77,6 +116,246 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 
         OnPropertyChanged(nameof(HasRoutes));
         SelectedRoute ??= Routes.FirstOrDefault();
+    }
+
+    private SevSignDraftStore? TryGetDraftStore()
+    {
+        if (!AppServices.IsInitialized || AppServices.SevSignDrafts is null)
+        {
+            StatusMessage = "Lokale Vorlagen sind nur im Planer verfügbar.";
+            return null;
+        }
+
+        return AppServices.SevSignDrafts;
+    }
+
+    private void ReloadDraftList()
+    {
+        SavedDrafts.Clear();
+        OnPropertyChanged(nameof(HasSavedDrafts));
+
+        if (!AppServices.IsInitialized || AppServices.SevSignDrafts is null)
+        {
+            return;
+        }
+
+        foreach (var draft in AppServices.SevSignDrafts.LoadAll())
+        {
+            SavedDrafts.Add(draft);
+        }
+
+        OnPropertyChanged(nameof(HasSavedDrafts));
+        if (SelectedDraft is not null)
+        {
+            SelectedDraft = SavedDrafts.FirstOrDefault(d => d.Id == SelectedDraft.Id);
+        }
+    }
+
+    [RelayCommand]
+    private void SaveDraftAsNew()
+    {
+        PersistDraft(Guid.NewGuid().ToString("N"), isNew: true);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUpdateLoadedDraft))]
+    private void UpdateDraft()
+    {
+        if (_loadedDraftId is null)
+        {
+            StatusMessage = "Keine geladene Vorlage – bitte „Neue Vorlage speichern“ verwenden.";
+            return;
+        }
+
+        PersistDraft(_loadedDraftId, isNew: false);
+    }
+
+    private void PersistDraft(string id, bool isNew)
+    {
+        var store = TryGetDraftStore();
+        if (store is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Line) && string.IsNullOrWhiteSpace(Destination) && Stops.Count == 0)
+        {
+            StatusMessage = "Nichts zu speichern – bitte Linie, Ziel oder Haltestellen eingeben.";
+            return;
+        }
+
+        var name = DraftName.Trim();
+        if (name.Length == 0)
+        {
+            name = SevSignDraft.SuggestName(Line, Destination);
+        }
+
+        if (!isNew)
+        {
+            var duplicateName = SavedDrafts.FirstOrDefault(d =>
+                d.Id != id &&
+                string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (duplicateName is not null)
+            {
+                StatusMessage =
+                    $"Der Name „{name}“ ist bereits vergeben – bitte anderen Namen wählen oder „Neue Vorlage speichern“.";
+                return;
+            }
+        }
+        else if (SavedDrafts.Any(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            name = CreateUniqueDraftName(name);
+        }
+
+        var draft = BuildDraftFromEditor(id);
+        draft.Name = name;
+        store.Save(draft);
+        _loadedDraftId = draft.Id;
+        DraftName = draft.Name;
+        ReloadDraftList();
+        SelectedDraft = SavedDrafts.FirstOrDefault(d => d.Id == draft.Id);
+        NotifyDraftCommands();
+        ReportSaveSuccess(isNew
+            ? $"Neue Vorlage „{draft.Name}“ gespeichert."
+            : $"Vorlage „{draft.Name}“ aktualisiert.");
+    }
+
+    private static string CreateUniqueDraftName(string baseName)
+    {
+        var trimmed = baseName.Trim();
+        if (trimmed.Length == 0)
+        {
+            trimmed = "SEV-Vorlage";
+        }
+
+        return $"{trimmed} ({DateTime.Now:dd.MM.yyyy HH:mm})";
+    }
+
+    private void NotifyDraftCommands()
+    {
+        OnPropertyChanged(nameof(CanUpdateLoadedDraft));
+        UpdateDraftCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void LoadDraft()
+    {
+        if (SelectedDraft is null)
+        {
+            StatusMessage = "Bitte zuerst eine gespeicherte Vorlage auswählen.";
+            return;
+        }
+
+        ApplyDraft(SelectedDraft);
+        NotifyDraftCommands();
+        StatusMessage = $"Vorlage „{SelectedDraft.Name}“ geladen – „Vorlage aktualisieren“ überschreibt nur diese Vorlage.";
+    }
+
+    [RelayCommand]
+    private void DeleteDraft()
+    {
+        var store = TryGetDraftStore();
+        if (store is null)
+        {
+            return;
+        }
+
+        if (SelectedDraft is null)
+        {
+            StatusMessage = "Bitte zuerst eine Vorlage zum Löschen auswählen.";
+            return;
+        }
+
+        var name = SelectedDraft.Name;
+        var id = SelectedDraft.Id;
+        if (!store.Delete(id))
+        {
+            StatusMessage = "Vorlage konnte nicht gelöscht werden.";
+            return;
+        }
+
+        if (string.Equals(_loadedDraftId, id, StringComparison.Ordinal))
+        {
+            _loadedDraftId = null;
+        }
+
+        ReloadDraftList();
+        SelectedDraft = null;
+        NotifyDraftCommands();
+        StatusMessage = $"Vorlage „{name}“ gelöscht.";
+    }
+
+    [RelayCommand]
+    private void NewDraft()
+    {
+        _loadedDraftId = null;
+        DraftName = string.Empty;
+        SelectedDraft = null;
+        Line = string.Empty;
+        Destination = string.Empty;
+        NewStopName = string.Empty;
+        SelectedRoute = Routes.FirstOrDefault();
+        ImportRouteReverse = false;
+        Stops.Clear();
+        SelectedStop = null;
+        ResetOperatorSelections([SevOperatorKind.RegioBahn]);
+        NotifyDraftCommands();
+        StatusMessage = "Neue leere Vorlage – Daten eingeben und „Neue Vorlage speichern“.";
+    }
+
+    private SevSignDraft BuildDraftFromEditor(string id) =>
+        new()
+        {
+            Id = id,
+            Line = Line.Trim(),
+            Destination = Destination.Trim(),
+            Stops = Stops.Select(s => s.Name).ToList(),
+            Operators = OperatorSelections
+                .Where(s => s.IsSelected)
+                .Select(s => s.Option.Kind)
+                .ToList(),
+            SourceRoute = SelectedRoute,
+            ImportRouteReverse = ImportRouteReverse
+        };
+
+    private void ApplyDraft(SevSignDraft draft)
+    {
+        _loadedDraftId = draft.Id;
+        DraftName = draft.Name;
+        Line = draft.Line;
+        Destination = draft.Destination;
+        ImportRouteReverse = draft.ImportRouteReverse;
+        SelectedRoute = string.IsNullOrWhiteSpace(draft.SourceRoute)
+            ? Routes.FirstOrDefault()
+            : Routes.Contains(draft.SourceRoute)
+                ? draft.SourceRoute
+                : draft.SourceRoute;
+
+        Stops.Clear();
+        foreach (var stop in draft.Stops)
+        {
+            if (string.IsNullOrWhiteSpace(stop))
+            {
+                continue;
+            }
+
+            Stops.Add(new SevStopItem(stop.Trim()));
+        }
+
+        SelectedStop = Stops.FirstOrDefault();
+        ResetOperatorSelections(draft.Operators);
+        NotifyDraftCommands();
+    }
+
+    private void ResetOperatorSelections(IReadOnlyList<SevOperatorKind> selectedKinds)
+    {
+        var selected = selectedKinds.Count > 0
+            ? selectedKinds.ToHashSet()
+            : [SevOperatorKind.RegioBahn];
+
+        foreach (var item in OperatorSelections)
+        {
+            item.IsSelected = selected.Contains(item.Option.Kind);
+        }
     }
 
     [RelayCommand]
@@ -147,6 +426,29 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 
         Stops.Move(index, index + 1);
         StatusMessage = "Haltestelle nach unten verschoben.";
+    }
+
+    [RelayCommand]
+    private void ReverseStopsDirection()
+    {
+        if (Stops.Count < 2)
+        {
+            StatusMessage = "Mindestens zwei Haltestellen nötig, um die Richtung umzukehren.";
+            return;
+        }
+
+        var selectedName = SelectedStop?.Name;
+        var reversed = Stops.Reverse().ToList();
+        Stops.Clear();
+        foreach (var stop in reversed)
+        {
+            Stops.Add(stop);
+        }
+
+        SelectedStop = selectedName is null
+            ? null
+            : Stops.FirstOrDefault(s => s.Name == selectedName);
+        StatusMessage = "Haltestellenreihenfolge umgekehrt (Fahrtrichtung gedreht).";
     }
 
     [RelayCommand]

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmartOepnv.Core;
@@ -8,8 +9,10 @@ namespace SmartOepnv.AppShared.ViewModels;
 
 public sealed record DispoRowColorOption(string Hex, string Label);
 
-public partial class VehicleManagementViewModel : ObservableObject
+public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaViewModel
 {
+    private readonly EditorAreaSyncState _sync = new();
+    private string? _loadedFingerprint;
     public static IReadOnlyList<DispoRowColorOption> DispoRowColorOptions { get; } =
     [
         new(string.Empty, "Standard"),
@@ -31,11 +34,25 @@ public partial class VehicleManagementViewModel : ObservableObject
     {
         if (AppServices.IsInitialized)
         {
-            AppServices.RegisterFlushBeforeExport(CommitChanges);
+            AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
         }
     }
 
-    public void RefreshFromEditor()
+    public bool HasPendingChanges => _sync.HasPendingChanges;
+
+    public void RefreshFromEditorIfNeeded()
+    {
+        if (!_sync.ShouldRefresh(Vehicles.Count > 0))
+        {
+            return;
+        }
+
+        RefreshFromEditorCore();
+    }
+
+    public void RefreshFromEditor() => RefreshFromEditorCore();
+
+    private void RefreshFromEditorCore()
     {
         Vehicles.Clear();
         SelectedVehicle = null;
@@ -56,6 +73,19 @@ public partial class VehicleManagementViewModel : ObservableObject
         var redirectCount = editor.RegisteredVehiclePhoneRedirects.Count;
         StatusMessage =
             $"{Vehicles.Count} Fahrzeuge – KOM für die App; Planer-Zusatzdaten und Nummern-Historie ({redirectCount} Umleitung/en) im Paket (Dropbox).";
+        _sync.AfterRefresh();
+        _loadedFingerprint = ComputeFingerprint();
+    }
+
+    public void CommitChangesIfDirty()
+    {
+        var fingerprint = ComputeFingerprint();
+        if (!_sync.ShouldCommit(fingerprint, _loadedFingerprint))
+        {
+            return;
+        }
+
+        CommitChanges();
     }
 
     /// <summary>Wählt das Fahrzeug mit passender Telefonnummer (nur Ziffern). Keine Aktion, wenn keine Übereinstimmung.</summary>
@@ -102,6 +132,8 @@ public partial class VehicleManagementViewModel : ObservableObject
         AppServices.PlannerLocal?.PersistFromEditor(editor);
         StatusMessage =
             $"{Vehicles.Count} Fahrzeuge im Planer gespeichert (lokal, höchste Priorität) – KOM und Planer-Daten gehen mit Routen-Export/Dropbox.";
+        _sync.AfterCommit();
+        _loadedFingerprint = ComputeFingerprint();
     }
 
     [RelayCommand]
@@ -121,6 +153,7 @@ public partial class VehicleManagementViewModel : ObservableObject
         };
         Vehicles.Add(item);
         SelectedVehicle = item;
+        _sync.MarkDirty();
         StatusMessage = "Neues Fahrzeug – Name und Telefonnummer ergänzen, dann speichern.";
     }
 
@@ -143,11 +176,26 @@ public partial class VehicleManagementViewModel : ObservableObject
         SelectedVehicle = Vehicles.Count == 0
             ? null
             : Vehicles[Math.Clamp(idx, 0, Vehicles.Count - 1)];
+        _sync.MarkDirty();
         StatusMessage = "Fahrzeug entfernt – „Speichern“ nicht vergessen.";
     }
 
     [RelayCommand]
     private void SaveChanges() => CommitChanges();
+
+    private string ComputeFingerprint() =>
+        JsonSerializer.Serialize(Vehicles.Select(v => new
+        {
+            v.Name,
+            v.PhoneNumber,
+            v.PersonnelNumber,
+            v.Password,
+            v.LicenseExpiry,
+            v.FqnExpiry,
+            v.DriverCardExpiry,
+            v.LoginAsMainDevice,
+            v.PlannerDetails
+        }));
 
     private static RegisteredVehicleItem Clone(RegisteredVehicleItem v)
     {

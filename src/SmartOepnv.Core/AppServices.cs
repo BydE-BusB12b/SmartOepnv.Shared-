@@ -1,5 +1,6 @@
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.Core.Sev;
 using SmartOepnv.Core.VehicleTracking;
 
 namespace SmartOepnv.Core;
@@ -39,9 +40,12 @@ public static class AppServices
 
     public static DeviceRegistrationDropboxService? DeviceRegistration => _deviceRegistration;
 
+    public static SevSignDraftStore? SevSignDrafts => _sevSignDrafts;
+
     private static PlannerLocalOverlayService? _plannerLocal;
     private static PlannerPackageVersionStore? _plannerVersions;
     private static DeviceRegistrationDropboxService? _deviceRegistration;
+    private static SevSignDraftStore? _sevSignDrafts;
 
     private static readonly List<Action> _flushBeforeExport = [];
 
@@ -75,6 +79,7 @@ public static class AppServices
             _plannerLocal = new PlannerLocalOverlayService(settingsSubfolder);
             _plannerVersions = new PlannerPackageVersionStore(settingsSubfolder);
             _deviceRegistration = new DeviceRegistrationDropboxService();
+            _sevSignDrafts = new SevSignDraftStore(settingsSubfolder);
         }
         _initialized = true;
     }

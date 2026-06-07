@@ -10,10 +10,12 @@ namespace SmartOepnv.Core.RoutePackage;
 public sealed class PlannerLocalOverlayService
 {
     private readonly PlannerLocalOverlayStore _store;
+    private readonly VehicleDispositionStore _dispositionStore;
 
     public PlannerLocalOverlayService(string appSubfolder)
     {
         _store = new PlannerLocalOverlayStore(appSubfolder);
+        _dispositionStore = new VehicleDispositionStore(appSubfolder);
     }
 
     public string OverlayFilePath => _store.OverlayFilePath;
@@ -67,7 +69,7 @@ public sealed class PlannerLocalOverlayService
         overlay.DeletedVehiclePhoneKeys = MergeUnique(
             previous.DeletedVehiclePhoneKeys,
             overlay.DeletedVehiclePhoneKeys);
-        overlay.VehicleDispositionAssignments = previous.VehicleDispositionAssignments
+        overlay.VehicleDispositionAssignments = LoadVehicleDisposition()
             .Select(a => a.Clone())
             .ToList();
         _store.Save(overlay);
@@ -106,27 +108,40 @@ public sealed class PlannerLocalOverlayService
             phoneKeys.Contains(NormalizePhone(a.VehiclePhone)));
 
         _store.Save(overlay);
+
+        if (_dispositionStore.Exists)
+        {
+            var assignments = _dispositionStore.Load().ToList();
+            var removed = assignments.RemoveAll(a => phoneKeys.Contains(NormalizePhone(a.VehiclePhone)));
+            if (removed > 0)
+            {
+                _dispositionStore.Save(assignments);
+            }
+        }
     }
 
     public IReadOnlyList<VehicleDispositionAssignment> LoadVehicleDisposition()
     {
-        return _store.LoadOrEmpty()
+        if (_dispositionStore.Exists)
+        {
+            return _dispositionStore.Load().Select(a => a.Clone()).ToList();
+        }
+
+        var fromOverlay = _store.LoadOrEmpty()
             .VehicleDispositionAssignments
             .Select(a => a.Clone())
             .ToList();
+        if (fromOverlay.Count > 0)
+        {
+            _dispositionStore.Save(fromOverlay);
+        }
+
+        return fromOverlay;
     }
 
     public void SaveVehicleDisposition(IEnumerable<VehicleDispositionAssignment> assignments)
     {
-        var list = assignments.Select(a => a.Clone()).ToList();
-        var overlay = _store.LoadOrEmpty();
-        overlay.VehicleDispositionAssignments = list;
-        _store.Save(overlay);
-
-        if (AppServices.IsPlannerApp)
-        {
-            SmartOepnvDataBackupService.BackupAppData(AppServices.SettingsSubfolder, "vehicle-dispo");
-        }
+        _dispositionStore.Save(assignments);
     }
 
     /// <summary>

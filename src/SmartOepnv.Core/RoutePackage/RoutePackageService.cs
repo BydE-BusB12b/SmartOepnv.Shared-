@@ -27,6 +27,9 @@ public sealed class RoutePackageService
 
     public EditableRoutePackage? Editor { get; private set; }
 
+    /// <summary>Erhöht sich bei Load/Apply – für verzögertes Refresh in UI-Bereichen.</summary>
+    public int EditorDataRevision { get; private set; }
+
     public void LoadFromJson(string json, bool persistLocally = true, string source = "import")
     {
         Validate(json);
@@ -38,6 +41,7 @@ public sealed class RoutePackageService
         _currentJson = json;
         Editor = EditableRoutePackage.FromJson(json);
         Stats = ParseStats(json);
+        EditorDataRevision++;
 
         if (AppServices.IsPlannerApp && AppServices.PlannerLocal is not null && Editor is not null)
         {
@@ -57,7 +61,7 @@ public sealed class RoutePackageService
 
         if (persistLocally && AppServices.IsInitialized)
         {
-            AppServices.Workspace.SavePackage(GetPersistableJson(), source);
+            AppServices.Workspace.SavePackage(GetPersistableJson(), source, archivePrevious: true);
         }
     }
 
@@ -96,7 +100,7 @@ public sealed class RoutePackageService
             Stats = ParseStats(_currentJson);
             if (AppServices.IsInitialized)
             {
-                AppServices.Workspace.SavePackage(_currentJson, "export");
+                AppServices.Workspace.SavePackage(_currentJson, "export", archivePrevious: true);
             }
 
             return _currentJson;
@@ -152,7 +156,7 @@ public sealed class RoutePackageService
         return _currentJson;
     }
 
-    public void ApplyEditorChanges(string source = "editor")
+    public void ApplyEditorChanges(string source = "editor", bool archivePreviousSave = false)
     {
         if (Editor is null)
         {
@@ -161,10 +165,11 @@ public sealed class RoutePackageService
 
         _currentJson = Editor.ToJson();
         Stats = ParseStats(_currentJson);
+        EditorDataRevision++;
 
         if (AppServices.IsInitialized)
         {
-            AppServices.Workspace.SavePackage(_currentJson, source);
+            AppServices.Workspace.SavePackage(_currentJson, source, archivePreviousSave);
         }
     }
 

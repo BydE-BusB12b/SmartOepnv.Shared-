@@ -308,23 +308,19 @@ public static class ZeitwirtschaftMergeService
 
             var effectiveEnd = EffectiveEndMs(entry);
 
-            var (arbeitszeit, lohnstunden) = CalcDuration(effectiveStart, effectiveEnd);
+            var isVoided = IsVoided(entry);
+
+            var (arbeitszeit, lohnstunden) = isVoided
+
+                ? ("—", "—")
+
+                : CalcDuration(effectiveStart, effectiveEnd);
 
             var hasCorrection = HasCorrection(entry);
 
-            rows.Add(new ZeitwirtschaftTimeTableRow
+            var kommen = FormatCellWithCorrection(entry.StartEpochMs, entry.StartIso, entry.CorrectedStartEpochMs, entry.CorrectedStartIso);
 
-            {
-
-                VehiclePhone = entry.DevicePhone,
-
-                VehicleDisplayName = ZeitwirtschaftVehicleLabelResolver.Resolve(entry.DevicePhone, vehicleLabels),
-
-                PersonnelNumber = employee.PersonnelNumber,
-
-                Kommen = FormatCellWithCorrection(entry.StartEpochMs, entry.StartIso, entry.CorrectedStartEpochMs, entry.CorrectedStartIso),
-
-                Gehen = entry.EndEpochMs is > 0 || entry.CorrectedEndEpochMs is > 0
+            var gehen = entry.EndEpochMs is > 0 || entry.CorrectedEndEpochMs is > 0
 
                     ? FormatCellWithCorrection(
 
@@ -338,7 +334,37 @@ public static class ZeitwirtschaftMergeService
 
                         emptyWhenMissing: entry.EndEpochMs is not > 0 && entry.CorrectedEndEpochMs is not > 0)
 
-                    : "(offen)",
+                    : "(offen)";
+
+            if (isVoided)
+
+            {
+
+                var reason = string.IsNullOrWhiteSpace(entry.VoidReason) ? "Storno" : entry.VoidReason.Trim();
+
+                kommen = $"{kommen}\n(Storno: {reason})";
+
+                gehen = entry.EndEpochMs is > 0 || entry.CorrectedEndEpochMs is > 0
+
+                    ? $"{gehen}\n(Storno: {reason})"
+
+                    : gehen;
+
+            }
+
+            rows.Add(new ZeitwirtschaftTimeTableRow
+
+            {
+
+                VehiclePhone = entry.DevicePhone,
+
+                VehicleDisplayName = ZeitwirtschaftVehicleLabelResolver.Resolve(entry.DevicePhone, vehicleLabels),
+
+                PersonnelNumber = employee.PersonnelNumber,
+
+                Kommen = kommen,
+
+                Gehen = gehen,
 
                 Arbeitszeit = arbeitszeit,
 
@@ -346,7 +372,11 @@ public static class ZeitwirtschaftMergeService
 
                 EntryId = entry.EntryId,
 
-                HasCorrection = hasCorrection
+                HasCorrection = hasCorrection,
+
+                IsVoided = isVoided,
+
+                VoidReason = entry.VoidReason
 
             });
 
@@ -389,6 +419,10 @@ public static class ZeitwirtschaftMergeService
     public static bool HasCorrection(ZeitwirtschaftMergedEntry entry) =>
 
         entry.CorrectedStartEpochMs is > 0 || entry.CorrectedEndEpochMs is > 0;
+
+
+
+    public static bool IsVoided(ZeitwirtschaftMergedEntry entry) => entry.Voided;
 
 
 
@@ -488,7 +522,9 @@ public static class ZeitwirtschaftMergeService
 
 
 
-        var formatted = FormatDurationHhMm(endMs.Value - startMs);
+        var totalMinutes = WholeMinutesBetween(startMs, endMs.Value);
+
+        var formatted = FormatMinutesHhMm(totalMinutes);
 
         return (formatted, formatted);
 
@@ -496,11 +532,25 @@ public static class ZeitwirtschaftMergeService
 
 
 
+    /// <summary>
+    /// Differenz nur über volle Minuten (wie in Kommen/Gehen angezeigt), Sekunden werden ignoriert.
+    /// </summary>
+    public static int WholeMinutesBetween(long startMs, long endMs)
+    {
+        var start = DateTimeOffset.FromUnixTimeMilliseconds(startMs).ToLocalTime();
+        var end = DateTimeOffset.FromUnixTimeMilliseconds(endMs).ToLocalTime();
+        var startMinute = new DateTimeOffset(
+            start.Year, start.Month, start.Day, start.Hour, start.Minute, 0, start.Offset);
+        var endMinute = new DateTimeOffset(
+            end.Year, end.Month, end.Day, end.Hour, end.Minute, 0, end.Offset);
+        return Math.Max(0, (int)(endMinute - startMinute).TotalMinutes);
+    }
+
+
+
     public static string FormatDurationHhMm(long durationMs)
     {
-        var totalMinutes = (int)Math.Round(
-            TimeSpan.FromMilliseconds(durationMs).TotalMinutes,
-            MidpointRounding.AwayFromZero);
+        var totalMinutes = (int)Math.Floor(TimeSpan.FromMilliseconds(durationMs).TotalMinutes);
         return FormatMinutesHhMm(totalMinutes);
     }
 
@@ -528,6 +578,7 @@ public static class ZeitwirtschaftMergeService
     public static string SumDurationHhMm(IEnumerable<ZeitwirtschaftTimeTableRow> rows)
     {
         var totalMinutes = rows
+            .Where(r => !r.IsVoided)
             .Select(r => ParseHhMmToMinutes(r.Arbeitszeit))
             .Where(v => v.HasValue)
             .Sum(v => v!.Value);
@@ -568,6 +619,10 @@ public static class ZeitwirtschaftMergeService
 
         long? correctedAt = ReadPositiveLong(entryObj, "correctedAtMs");
 
+        var voided = entryObj["voided"]?.GetValue<bool>() == true;
+
+        long? voidedAt = ReadPositiveLong(entryObj, "voidedAtMs");
+
 
 
         var recorded = entryObj["recordedOnDevice"]?.GetValue<string>()?.Trim();
@@ -602,7 +657,15 @@ public static class ZeitwirtschaftMergeService
 
             CorrectedAtMs = correctedAt,
 
-            CorrectedBy = entryObj["correctedBy"]?.GetValue<string>()
+            CorrectedBy = entryObj["correctedBy"]?.GetValue<string>(),
+
+            Voided = voided,
+
+            VoidedAtMs = voidedAt,
+
+            VoidedBy = entryObj["voidedBy"]?.GetValue<string>(),
+
+            VoidReason = entryObj["voidReason"]?.GetValue<string>()
 
         };
 
@@ -666,6 +729,14 @@ public static class ZeitwirtschaftMergeService
 
         var correctedBy = existing.CorrectedBy;
 
+        var voided = existing.Voided;
+
+        var voidedAt = existing.VoidedAtMs;
+
+        var voidedBy = existing.VoidedBy;
+
+        var voidReason = existing.VoidReason;
+
         if (incoming.CorrectedAtMs is > 0 &&
 
             (existing.CorrectedAtMs is null or 0 || incoming.CorrectedAtMs > existing.CorrectedAtMs))
@@ -688,6 +759,24 @@ public static class ZeitwirtschaftMergeService
 
 
 
+        if (incoming.VoidedAtMs is > 0 &&
+
+            (existing.VoidedAtMs is null or 0 || incoming.VoidedAtMs > existing.VoidedAtMs))
+
+        {
+
+            voided = incoming.Voided;
+
+            voidedAt = incoming.VoidedAtMs;
+
+            voidedBy = incoming.VoidedBy;
+
+            voidReason = incoming.VoidReason;
+
+        }
+
+
+
         if (endEpochMs == existing.EndEpochMs &&
 
             endIso == existing.EndIso &&
@@ -696,7 +785,13 @@ public static class ZeitwirtschaftMergeService
 
             correctedEnd == existing.CorrectedEndEpochMs &&
 
-            correctedAt == existing.CorrectedAtMs)
+            correctedAt == existing.CorrectedAtMs &&
+
+            voided == existing.Voided &&
+
+            voidedAt == existing.VoidedAtMs &&
+
+            voidReason == existing.VoidReason)
 
         {
 
@@ -736,7 +831,15 @@ public static class ZeitwirtschaftMergeService
 
             CorrectedAtMs = correctedAt,
 
-            CorrectedBy = correctedBy
+            CorrectedBy = correctedBy,
+
+            Voided = voided,
+
+            VoidedAtMs = voidedAt,
+
+            VoidedBy = voidedBy,
+
+            VoidReason = voidReason
 
         };
 

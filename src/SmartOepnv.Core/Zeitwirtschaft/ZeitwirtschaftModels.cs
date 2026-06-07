@@ -34,6 +34,14 @@ public sealed class ZeitwirtschaftMergedEntry
 
     public string? CorrectedBy { get; init; }
 
+    public bool Voided { get; init; }
+
+    public long? VoidedAtMs { get; init; }
+
+    public string? VoidedBy { get; init; }
+
+    public string? VoidReason { get; init; }
+
 }
 
 
@@ -97,6 +105,10 @@ public sealed class ZeitwirtschaftTimeTableRow
     public required string EntryId { get; init; }
 
     public bool HasCorrection { get; init; }
+
+    public bool IsVoided { get; init; }
+
+    public string? VoidReason { get; init; }
 
 }
 

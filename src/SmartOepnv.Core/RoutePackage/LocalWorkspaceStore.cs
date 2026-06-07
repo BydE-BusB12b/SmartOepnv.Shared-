@@ -68,7 +68,7 @@ public sealed class LocalWorkspaceStore
         }
     }
 
-    public void SavePackage(string json, string source)
+    public void SavePackage(string json, string source, bool archivePrevious = false)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -81,7 +81,7 @@ public sealed class LocalWorkspaceStore
             Directory.CreateDirectory(dir);
         }
 
-        SafeDataFileStore.WriteAllText(_packagePath, json);
+        SafeDataFileStore.WriteAllText(_packagePath, json, archivePrevious: archivePrevious);
         var meta = new WorkspaceMeta
         {
             LastSavedUtc = DateTimeOffset.UtcNow,
