@@ -19,8 +19,10 @@ public static class SpecialAnnouncementsEditor
         IList<ManagedAnnouncementTemplateItem> templates,
         LocalWorkspaceStore? workspace)
     {
+        AnnouncementSoundFileResolver.ApplyResolvedFileNames(templates, root, workspace);
+
         var active = templates
-            .Where(t => t.IncludeInSpecialAnnouncements && !string.IsNullOrWhiteSpace(t.EmbeddedSoundFileName))
+            .Where(t => t.IncludeInSpecialAnnouncements)
             .ToList();
 
         if (active.Count == 0)
@@ -33,15 +35,24 @@ public static class SpecialAnnouncementsEditor
         var obj = new JsonObject();
         foreach (var t in active)
         {
+            var fileName = AnnouncementSoundFileResolver.TryResolve(t, root, workspace)?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(t.EmbeddedSoundFileName))
+            {
+                t.EmbeddedSoundFileName = fileName;
+            }
+
             var name = string.IsNullOrWhiteSpace(t.DisplayName)
-                ? t.EmbeddedSoundFileName.Trim()
+                ? fileName
                 : t.DisplayName.Trim();
             if (obj.ContainsKey(name))
             {
                 name = $"{name} ({t.AnnouncementCode})";
             }
-
-            var fileName = t.EmbeddedSoundFileName.Trim();
             var entry = new JsonObject
             {
                 ["id"] = t.Id,
@@ -58,11 +69,19 @@ public static class SpecialAnnouncementsEditor
             else if (workspace is not null)
             {
                 var path = PlanerEmbeddedSoundsWorkspace.TryGetLocalFilePath(workspace, fileName);
+                if (path is null && !string.IsNullOrWhiteSpace(t.LocalAudioPath) && File.Exists(t.LocalAudioPath))
+                {
+                    path = t.LocalAudioPath;
+                }
+
                 if (path is not null && File.Exists(path))
                 {
                     var bytes = File.ReadAllBytes(path);
-                    entry["audioData"] = Convert.ToBase64String(bytes);
-                    entry["audioSize"] = bytes.Length;
+                    if (bytes.Length > 0)
+                    {
+                        entry["audioData"] = Convert.ToBase64String(bytes);
+                        entry["audioSize"] = bytes.Length;
+                    }
                 }
             }
 

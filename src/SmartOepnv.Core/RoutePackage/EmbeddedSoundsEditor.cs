@@ -33,11 +33,42 @@ public static class EmbeddedSoundsEditor
 
     public static void UpsertBase64(JsonObject root, string fileName, string base64, int fileSize)
     {
+        var normalizedName = fileName.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            return;
+        }
+
+        if (root["embeddedSounds"] is JsonObject soundsObj)
+        {
+            soundsObj[normalizedName] = new JsonObject
+            {
+                ["data"] = base64,
+                ["size"] = fileSize
+            };
+            return;
+        }
+
+        // Array-Format (Legacy) oder neu anlegen: zuerst vorhandene Einträge übernehmen
         var arr = root["embeddedSounds"] as JsonArray ?? new JsonArray();
+        if (root["embeddedSounds"] is not JsonArray)
+        {
+            arr = new JsonArray();
+            foreach (var (existingName, payload) in GpsAnsagenEmbeddedSoundsJson.ReadAllEntries(root))
+            {
+                arr.Add(new JsonObject
+                {
+                    ["fileName"] = existingName,
+                    ["soundData"] = payload.Base64,
+                    ["fileSize"] = payload.Size
+                });
+            }
+        }
+
         JsonObject? existing = null;
         foreach (var node in arr.OfType<JsonObject>())
         {
-            if (string.Equals(node["fileName"]?.GetValue<string>(), fileName, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(node["fileName"]?.GetValue<string>(), normalizedName, StringComparison.OrdinalIgnoreCase))
             {
                 existing = node;
                 break;
@@ -46,7 +77,7 @@ public static class EmbeddedSoundsEditor
 
         var entry = new JsonObject
         {
-            ["fileName"] = fileName,
+            ["fileName"] = normalizedName,
             ["soundData"] = base64,
             ["fileSize"] = fileSize,
             ["base64Length"] = base64.Length

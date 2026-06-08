@@ -214,7 +214,13 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        CommitChanges();
+        if (!CommitChanges())
+
+        {
+
+            throw new InvalidOperationException(StatusMessage ?? "Ansagen konnten nicht gespeichert werden.");
+
+        }
 
     }
 
@@ -274,7 +280,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-    public void CommitChanges()
+    public bool CommitChanges()
 
     {
 
@@ -286,7 +292,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             StatusMessage = "Kein Route-Paket geladen.";
 
-            return;
+            return false;
 
         }
 
@@ -308,7 +314,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             StatusMessage = validation;
 
-            return;
+            return false;
 
         }
 
@@ -322,7 +328,23 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         editor.ReplaceAnnouncementTemplates(announcementClones);
 
-        editor.SyncEmbeddedSoundsFromTemplates(announcementClones, AppServices.Workspace);
+        try
+
+        {
+
+            editor.SyncEmbeddedSoundsFromTemplates(announcementClones, AppServices.Workspace);
+
+        }
+
+        catch (Exception ex)
+
+        {
+
+            StatusMessage = $"Tondatei konnte nicht eingebettet werden: {ex.Message}";
+
+            return false;
+
+        }
 
         AppServices.Routes.ApplyEditorChanges("ansagen");
 
@@ -344,11 +366,15 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         UpdateSelectedAudioHint();
 
-        StatusMessage = $"{_allAnnouncements.Count} Ansagen gespeichert – bereit für Dropbox.";
+        StatusMessage =
+
+            $"{_allAnnouncements.Count} Ansagen gespeichert – jetzt unter „Datenübertragung“ nach Dropbox exportieren.";
 
         _sync.AfterCommit();
 
         _loadedFingerprint = ComputeFingerprint();
+
+        return true;
 
     }
 
@@ -420,7 +446,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             Category = "haltestelle",
 
-            EmbeddedSoundFileName = ManagedAnnouncementTemplateItem.DefaultEmbeddedFileName(code, "Ansage"),
+            EmbeddedSoundFileName = string.Empty,
 
             IncludeInSpecialAnnouncements = false
 
@@ -618,17 +644,37 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        SelectedAnnouncement.LocalAudioPath = dialog.FileName;
+        var baseName = Path.GetFileNameWithoutExtension(dialog.FileName).Trim().TrimStart('_');
 
-        var baseName = Path.GetFileNameWithoutExtension(dialog.FileName);
+        if (string.IsNullOrEmpty(baseName))
+
+        {
+
+            baseName = "ansage";
+
+        }
+
+
 
         SelectedAnnouncement.EmbeddedSoundFileName = $"{code}_{baseName}{ext}";
+
+        if (!StageAnnouncementAudio(SelectedAnnouncement, dialog.FileName))
+
+        {
+
+            return;
+
+        }
+
+
+
+        MarkDirty();
 
         UpdateSelectedAudioHint();
 
         StatusMessage =
 
-            $"Ton gewählt – mit „Speichern & JSON“ wird „{SelectedAnnouncement.EmbeddedSoundFileName}“ eingetragen.";
+            $"Ton „{SelectedAnnouncement.EmbeddedSoundFileName}“ bereit – bitte „Speichern & JSON“, danach Dropbox-Export.";
 
     }
 
@@ -798,9 +844,19 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        SelectedAnnouncement.LocalAudioPath = outputPath;
-
         SelectedAnnouncement.EmbeddedSoundFileName = outputFileName;
+
+        if (!StageAnnouncementAudio(SelectedAnnouncement, outputPath))
+
+        {
+
+            return;
+
+        }
+
+
+
+        MarkDirty();
 
         UpdateSelectedAudioHint();
 
@@ -810,7 +866,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             (pauseSeconds > 0 ? $" (Pause {pauseSeconds:0.###} s)" : string.Empty) +
 
-            " – mit „Speichern & JSON“ übernehmen.";
+            " – bitte „Speichern & JSON“, danach Dropbox-Export.";
 
     }
 
@@ -1295,6 +1351,92 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
+    /// <summary>Kopiert gewählte Tondatei in den Workspace und bettet sie vorab ins JSON ein.</summary>
+
+    private bool StageAnnouncementAudio(ManagedAnnouncementTemplateItem item, string sourcePath)
+
+    {
+
+        if (!File.Exists(sourcePath))
+
+        {
+
+            StatusMessage = "Tondatei nicht gefunden.";
+
+            return false;
+
+        }
+
+
+
+        try
+
+        {
+
+            if (AppServices.IsInitialized)
+
+            {
+
+                var target = Path.Combine(
+
+                    PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(AppServices.Workspace),
+
+                    item.EmbeddedSoundFileName.Trim());
+
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+
+                File.Copy(sourcePath, target, overwrite: true);
+
+                item.LocalAudioPath = target;
+
+            }
+
+            else
+
+            {
+
+                item.LocalAudioPath = sourcePath;
+
+            }
+
+
+
+            var editor = AppServices.Routes.Editor;
+
+            if (editor is not null)
+
+            {
+
+                EmbeddedSoundsEditor.UpsertFromFile(
+
+                    editor.PackageRoot,
+
+                    item.EmbeddedSoundFileName.Trim(),
+
+                    item.LocalAudioPath);
+
+            }
+
+
+
+            return true;
+
+        }
+
+        catch (Exception ex)
+
+        {
+
+            StatusMessage = $"Tondatei zu groß oder ungültig (max. {EmbeddedSoundsEditor.MaxEmbeddedBytes / (1024 * 1024)} MB): {ex.Message}";
+
+            return false;
+
+        }
+
+    }
+
+
+
     private void UpdateSelectedAudioHint()
 
     {
@@ -1311,6 +1453,28 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
+        if (TemplateHasAudio(SelectedAnnouncement, AppServices.Routes.Editor.PackageRoot))
+
+        {
+
+            var inJson = PlanerEmbeddedSoundsWorkspace.HasSoundInPackage(
+
+                AppServices.Routes.Editor.PackageRoot,
+
+                SelectedAnnouncement.EmbeddedSoundFileName);
+
+            SelectedAnnouncementAudioHint = inJson
+
+                ? $"Ton im JSON: {SelectedAnnouncement.EmbeddedSoundFileName}"
+
+                : $"Ton bereit: {SelectedAnnouncement.EmbeddedSoundFileName} – bitte „Speichern & JSON“.";
+
+            return;
+
+        }
+
+
+
         if (!string.IsNullOrWhiteSpace(SelectedAnnouncement.LocalAudioPath) &&
 
             File.Exists(SelectedAnnouncement.LocalAudioPath))
@@ -1319,19 +1483,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             SelectedAnnouncementAudioHint =
 
-                $"Ton: {Path.GetFileName(SelectedAnnouncement.LocalAudioPath)} (wird beim Speichern eingebettet)";
-
-            return;
-
-        }
-
-
-
-        if (TemplateHasAudio(SelectedAnnouncement, AppServices.Routes.Editor.PackageRoot))
-
-        {
-
-            SelectedAnnouncementAudioHint = $"Ton im JSON: {SelectedAnnouncement.EmbeddedSoundFileName}";
+                $"Ton: {Path.GetFileName(SelectedAnnouncement.LocalAudioPath)} – bitte „Speichern & JSON“.";
 
             return;
 
@@ -1585,21 +1737,27 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-            if (string.IsNullOrWhiteSpace(t.EmbeddedSoundFileName))
+            if (t.IncludeInSpecialAnnouncements)
 
             {
 
-                return $"„{t.DisplayName}“ ({code}): Dateiname fehlt – Tondatei wählen.";
+                if (string.IsNullOrWhiteSpace(t.EmbeddedSoundFileName))
 
-            }
+                {
+
+                    return $"„{t.DisplayName}“ ({code}): Sonderansage ohne Dateiname – „Tondatei wählen“.";
+
+                }
 
 
 
-            if (!TemplateHasAudio(t, packageRoot))
+                if (!TemplateHasAudio(t, packageRoot))
 
-            {
+                {
 
-                return $"„{t.DisplayName}“ ({code}): Keine Tondatei – bitte wählen und speichern.";
+                    return $"„{t.DisplayName}“ ({code}): Sonderansage ohne Ton – „Tondatei wählen“, dann „Speichern & JSON“.";
+
+                }
 
             }
 

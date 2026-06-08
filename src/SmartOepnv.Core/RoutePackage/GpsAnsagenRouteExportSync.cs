@@ -38,9 +38,65 @@ public static class GpsAnsagenRouteExportSync
             package.RegisteredVehiclePhoneRedirects);
         MessageTemplatesEditor.SaveToRoot(root, package.MessageTemplates, package.MailTemplates);
         ManagedStopTemplateEditor.SaveToRoot(root, package.StopTemplates);
+        AnnouncementSoundFileResolver.ApplyResolvedFileNames(
+            package.AnnouncementTemplates,
+            root,
+            workspace);
+        EnsureAnnouncementSoundsFromWorkspace(root, package, workspace);
         ManagedAnnouncementTemplateEditor.SaveToRoot(root, package.AnnouncementTemplates);
         SyncEmbeddedSounds(package, root, workspace);
         SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
+    }
+
+    /// <summary>
+    /// Legt fehlende Ansagen-Töne aus dem Workspace in <c>embeddedSounds</c> ab (Sonderansagen inkl.).
+    /// </summary>
+    private static void EnsureAnnouncementSoundsFromWorkspace(
+        JsonObject root,
+        EditableRoutePackage package,
+        LocalWorkspaceStore? workspace)
+    {
+        if (workspace is null)
+        {
+            return;
+        }
+
+        var existing = GpsAnsagenEmbeddedSoundsJson.ReadAllEntries(root);
+        foreach (var template in package.AnnouncementTemplates)
+        {
+            var name = AnnouncementSoundFileResolver.TryResolve(template, root, workspace)?.Trim();
+            if (!string.IsNullOrWhiteSpace(name) &&
+                string.IsNullOrWhiteSpace(template.EmbeddedSoundFileName))
+            {
+                template.EmbeddedSoundFileName = name;
+            }
+
+            if (string.IsNullOrWhiteSpace(name) || existing.ContainsKey(name))
+            {
+                continue;
+            }
+
+            var path = PlanerEmbeddedSoundsWorkspace.TryGetLocalFilePath(workspace, name);
+            if (path is null && !string.IsNullOrWhiteSpace(template.LocalAudioPath) && File.Exists(template.LocalAudioPath))
+            {
+                path = template.LocalAudioPath;
+            }
+
+            if (path is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                EmbeddedSoundsEditor.UpsertFromFile(root, name, path);
+                existing = GpsAnsagenEmbeddedSoundsJson.ReadAllEntries(root);
+            }
+            catch
+            {
+                // Einzelne Datei überspringen
+            }
+        }
     }
 
     private static void SyncRoutesAndLineCourse(IEnumerable<string> routesToExport, JsonObject root)
@@ -112,7 +168,10 @@ public static class GpsAnsagenRouteExportSync
             .SelectMany(stops => stops)
             .Select(s => s.EmbeddedSoundFileName)
             .Concat(package.StopTemplates.Select(t => t.EmbeddedSoundFileName))
-            .Concat(package.AnnouncementTemplates.Select(t => t.EmbeddedSoundFileName));
+            .Concat(package.AnnouncementTemplates.Select(t => t.EmbeddedSoundFileName))
+            .Concat(package.AnnouncementTemplates
+                .Where(t => t.IncludeInSpecialAnnouncements)
+                .Select(t => t.EmbeddedSoundFileName));
 
         GpsAnsagenEmbeddedSoundsJson.SyncToRoot(root, names, workspace);
     }

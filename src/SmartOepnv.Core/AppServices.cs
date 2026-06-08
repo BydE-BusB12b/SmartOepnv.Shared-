@@ -54,16 +54,22 @@ public static class AppServices
 
     public static void FlushAllPendingEdits()
     {
+        var errors = new List<string>();
         foreach (var flush in _flushBeforeExport.ToArray())
         {
             try
             {
                 flush();
             }
-            catch
+            catch (Exception ex)
             {
-                // Einzelbereich darf Export nicht blockieren
+                errors.Add(ex.Message);
             }
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new InvalidOperationException(string.Join(" ", errors));
         }
     }
 

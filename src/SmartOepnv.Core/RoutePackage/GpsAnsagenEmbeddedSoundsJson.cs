@@ -21,7 +21,10 @@ public static class GpsAnsagenEmbeddedSoundsJson
 
         if (names.Count == 0)
         {
-            root.Remove("embeddedSounds");
+            if (ReadAllEntries(root).Count == 0)
+            {
+                root.Remove("embeddedSounds");
+            }
             return;
         }
 
@@ -33,6 +36,17 @@ public static class GpsAnsagenEmbeddedSoundsJson
             if (TryResolveEntry(fileName, existing, root, workspace, out var entry))
             {
                 output[fileName] = entry;
+                continue;
+            }
+
+            // Bereits eingebettete Töne behalten (z. B. nach „Tondatei wählen“, bevor Workspace-Kopie da ist)
+            if (existing.TryGetValue(fileName, out var cached) && !string.IsNullOrWhiteSpace(cached.Base64))
+            {
+                output[fileName] = new JsonObject
+                {
+                    ["data"] = cached.Base64,
+                    ["size"] = cached.Size > 0 ? cached.Size : EstimateSize(cached.Base64)
+                };
             }
         }
 
@@ -55,6 +69,10 @@ public static class GpsAnsagenEmbeddedSoundsJson
                 var data = JsonNodeReading.GetString(soundObj["data"], JsonNodeReading.GetString(soundObj["soundData"]));
                 if (string.IsNullOrWhiteSpace(data))
                 {
+                    data = JsonNodeReading.GetString(soundObj["audioData"]);
+                }
+                if (string.IsNullOrWhiteSpace(data))
+                {
                     continue;
                 }
 
@@ -74,6 +92,10 @@ public static class GpsAnsagenEmbeddedSoundsJson
         {
             var fileName = JsonNodeReading.GetString(node["fileName"]);
             var data = JsonNodeReading.GetString(node["soundData"], JsonNodeReading.GetString(node["data"]));
+            if (string.IsNullOrWhiteSpace(data))
+            {
+                data = JsonNodeReading.GetString(node["audioData"]);
+            }
             if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(data))
             {
                 continue;
@@ -104,7 +126,8 @@ public static class GpsAnsagenEmbeddedSoundsJson
 
         if (workspace is not null)
         {
-            var path = PlanerEmbeddedSoundsWorkspace.TryGetLocalFilePath(workspace, fileName);
+            var path = PlanerEmbeddedSoundsWorkspace.TryGetLocalFilePath(workspace, fileName)
+                ?? TryFindWorkspaceAudio(workspace, fileName);
             if (path is not null && File.Exists(path))
             {
                 var bytes = File.ReadAllBytes(path);
@@ -118,6 +141,53 @@ public static class GpsAnsagenEmbeddedSoundsJson
         }
 
         return false;
+    }
+
+    private static string? TryFindWorkspaceAudio(LocalWorkspaceStore workspace, string fileName)
+    {
+        try
+        {
+            var dir = PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(workspace);
+            var stem = Path.GetFileNameWithoutExtension(fileName);
+            if (string.IsNullOrEmpty(stem))
+            {
+                return null;
+            }
+
+            foreach (var path in Directory.EnumerateFiles(dir))
+            {
+                if (!EmbeddedSoundCatalog.IsAudioFile(path))
+                {
+                    continue;
+                }
+
+                if (string.Equals(Path.GetFileName(path), fileName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetFileNameWithoutExtension(path), stem, StringComparison.OrdinalIgnoreCase))
+                {
+                    return path;
+                }
+            }
+
+            var digits = new string(stem.TakeWhile(char.IsDigit).ToArray());
+            if (digits.Length >= 4)
+            {
+                var code = digits[^4..];
+                foreach (var path in Directory.EnumerateFiles(dir))
+                {
+                    if (EmbeddedSoundCatalog.IsAudioFile(path) &&
+                        Path.GetFileName(path).StartsWith(code, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return path;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Workspace optional
+        }
+
+        return null;
     }
 
     private static int EstimateSize(string base64)

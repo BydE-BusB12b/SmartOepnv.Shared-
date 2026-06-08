@@ -28,9 +28,7 @@ public sealed class ManagedAnnouncementTemplateItem
     /// <summary>Nur Planer: lokale Audiodatei vor dem Einbetten in embeddedSounds.</summary>
     public string? LocalAudioPath { get; set; }
 
-    public bool HasAssignedAudio =>
-        !string.IsNullOrWhiteSpace(EmbeddedSoundFileName) ||
-        !string.IsNullOrWhiteSpace(LocalAudioPath);
+    public bool HasAssignedAudio => !string.IsNullOrWhiteSpace(LocalAudioPath);
 
     /// <summary>Anzeige in der Liste (✓ = Ton zugeordnet, ⚠ = noch keine Tondatei).</summary>
     public string FormatDisplayLabel(bool hasAudio)
