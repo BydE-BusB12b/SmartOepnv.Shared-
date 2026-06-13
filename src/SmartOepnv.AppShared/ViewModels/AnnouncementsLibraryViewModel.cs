@@ -14,6 +14,8 @@ using Microsoft.Win32;
 
 using System.Windows;
 
+using SmartOepnv.AppShared.Models;
+
 using SmartOepnv.AppShared.Views;
 
 using SmartOepnv.Core;
@@ -62,11 +64,26 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     [ObservableProperty] private string? selectedAnnouncementAudioHint;
 
-    [ObservableProperty] private string announcementMergePauseSeconds = "0,3";
+    [ObservableProperty] private string announcementMergePauseSeconds = "0,5";
+
+    [ObservableProperty] private bool includeGongInAnnouncementMerge;
+
+    [ObservableProperty] private bool includeNextStopInAnnouncementMerge;
+
+    [ObservableProperty] private bool includeNextStopMp3InAnnouncementMerge;
+
+    [ObservableProperty] private bool includeEndStopInAnnouncementMerge;
+
+    [ObservableProperty] private AnnouncementAudioSequenceItem? selectedSequenceItem;
 
 
 
     public ObservableCollection<ManagedAnnouncementTemplateItem> FilteredAnnouncements { get; } = [];
+
+    public bool HasSelectedSequencePauseItem =>
+        SelectedSequenceItem?.Kind == AnnouncementSequenceEntryKind.Pause;
+
+    public IReadOnlyList<string> AnnouncementMergePausePresets { get; } = ["0,5", "1", "2", "3"];
 
 
 
@@ -121,6 +138,20 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         _allStops.Clear();
 
         _allAnnouncements.Clear();
+
+        _sequenceByAnnouncementId.Clear();
+
+        _gongByAnnouncementId.Clear();
+
+        _nextStopByAnnouncementId.Clear();
+
+        _nextStopMp3ByAnnouncementId.Clear();
+
+        _endStopByAnnouncementId.Clear();
+
+        _sequenceLoadedForAnnouncementId = null;
+
+        AnnouncementSequence.Clear();
 
         FilteredAnnouncements.Clear();
 
@@ -226,9 +257,13 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-    private string ComputeFingerprint() =>
+    private string ComputeFingerprint()
 
-        JsonSerializer.Serialize(new
+    {
+
+        PersistCurrentAnnouncementSequence();
+
+        return JsonSerializer.Serialize(new
 
         {
 
@@ -270,9 +305,37 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
                 a.LocalAudioPath
 
-            })
+            }),
+
+            Sequences = _sequenceByAnnouncementId.ToDictionary(
+
+                kv => kv.Key,
+
+                kv => kv.Value.Select(i => new
+
+                {
+
+                    i.Kind,
+
+                    i.DisplayName,
+
+                    i.SourcePath,
+
+                    i.PauseSeconds
+
+                }).ToList()),
+
+            GongFlags = _gongByAnnouncementId,
+
+            NextStopFlags = _nextStopByAnnouncementId,
+
+            NextStopMp3Flags = _nextStopMp3ByAnnouncementId,
+
+            EndStopFlags = _endStopByAnnouncementId
 
         });
+
+    }
 
 
 
@@ -303,6 +366,14 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         EnsureStopCodesAndLinks();
 
         SyncStopMetadataFromAnnouncements();
+
+        if (!ApplyAnnouncementSequencesBeforeCommit())
+
+        {
+
+            return false;
+
+        }
 
 
 
@@ -370,9 +441,21 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             $"{_allAnnouncements.Count} Ansagen gespeichert – jetzt unter „Datenübertragung“ nach Dropbox exportieren.";
 
+        _sequenceByAnnouncementId.Clear();
+
+        _gongByAnnouncementId.Clear();
+
+        _nextStopByAnnouncementId.Clear();
+
+        _nextStopMp3ByAnnouncementId.Clear();
+
+        _endStopByAnnouncementId.Clear();
+
         _sync.AfterCommit();
 
         _loadedFingerprint = ComputeFingerprint();
+
+        LoadAnnouncementSequenceForSelection();
 
         return true;
 
@@ -382,25 +465,25 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     partial void OnSearchQueryChanged(string value) => ApplyFilter();
 
-
-
     partial void OnSelectedAnnouncementChanged(ManagedAnnouncementTemplateItem? value)
-
     {
+        PersistCurrentAnnouncementSequence();
 
         if (value is not null)
-
         {
-
             value.AnnouncementCode = ManagedAnnouncementTemplateItem.NormalizeCode(value.AnnouncementCode);
-
         }
 
-
-
+        LoadAnnouncementSequenceForSelection();
+        OnPropertyChanged(nameof(PickAudioButtonLabel));
         UpdateSelectedAudioHint();
-
     }
+
+    partial void OnSelectedSequenceItemChanged(AnnouncementAudioSequenceItem? value) =>
+        OnPropertyChanged(nameof(HasSelectedSequencePauseItem));
+
+
+
 
 
 
@@ -562,6 +645,16 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _allAnnouncements.RemoveAll(a => a.Id == announcementId);
 
+        _sequenceByAnnouncementId.Remove(announcementId);
+
+        _gongByAnnouncementId.Remove(announcementId);
+
+        _nextStopByAnnouncementId.Remove(announcementId);
+
+        _nextStopMp3ByAnnouncementId.Remove(announcementId);
+
+        _endStopByAnnouncementId.Remove(announcementId);
+
         ApplyFilter();
 
         SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault();
@@ -618,18 +711,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        var ext = Path.GetExtension(dialog.FileName);
-
-        if (string.IsNullOrEmpty(ext))
-
-        {
-
-            ext = ".mp3";
-
-        }
-
-
-
         var code = ManagedAnnouncementTemplateItem.NormalizeCode(SelectedAnnouncement.AnnouncementCode);
 
         if (code.Length != 4)
@@ -644,37 +725,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        var baseName = Path.GetFileNameWithoutExtension(dialog.FileName).Trim().TrimStart('_');
-
-        if (string.IsNullOrEmpty(baseName))
-
-        {
-
-            baseName = "ansage";
-
-        }
-
-
-
-        SelectedAnnouncement.EmbeddedSoundFileName = $"{code}_{baseName}{ext}";
-
-        if (!StageAnnouncementAudio(SelectedAnnouncement, dialog.FileName))
-
-        {
-
-            return;
-
-        }
-
-
-
-        MarkDirty();
-
-        UpdateSelectedAudioHint();
-
-        StatusMessage =
-
-            $"Ton „{SelectedAnnouncement.EmbeddedSoundFileName}“ bereit – bitte „Speichern & JSON“, danach Dropbox-Export.";
+        AppendPickedAudioFile(dialog.FileName);
 
     }
 
@@ -682,7 +733,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     [RelayCommand]
 
-    private void MergeEmbeddedSoundsFromList()
+    private void PlayAnnouncementPreview()
 
     {
 
@@ -690,7 +741,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         {
 
-            StatusMessage = "Bitte zuerst eine Ansage auswählen (oder „Neue Ansage“ anlegen).";
+            StatusMessage = "Bitte zuerst eine Ansage auswählen.";
 
             return;
 
@@ -698,13 +749,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        var editor = AppServices.Routes.Editor;
-
-        if (editor is null)
+        if (!TryBuildPreviewPartsForSelection(out var parts, out var buildError))
 
         {
 
-            StatusMessage = "Kein Route-Paket geladen.";
+            StatusMessage = buildError ?? "Vorschau nicht möglich.";
 
             return;
 
@@ -712,109 +761,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        if (!AppServices.IsInitialized)
+        var previewDir = Path.Combine(Path.GetTempPath(), "SmartOepnv", "announcement_preview");
 
-        {
+        Directory.CreateDirectory(previewDir);
 
-            StatusMessage = "Workspace nicht initialisiert – Route-Paket erneut laden.";
-
-            return;
-
-        }
-
-
-
-        var names = TryListEmbeddedSoundNamesForMerge(out var listError);
-
-        if (names is null)
-
-        {
-
-            StatusMessage = listError ?? "Keine Ansagen verfügbar.";
-
-            return;
-
-        }
-
-
-
-        if (!TryParseMergePauseSeconds(AnnouncementMergePauseSeconds, out var pauseSeconds, out var pauseError))
-
-        {
-
-            StatusMessage = pauseError ?? "Pause ungültig.";
-
-            return;
-
-        }
-
-
-
-        var prefill = SelectedAnnouncement.EmbeddedSoundFileName?.Trim();
-
-        if (string.IsNullOrEmpty(prefill))
-
-        {
-
-            prefill = SelectedAnnouncement.DisplayName?.Trim();
-
-        }
-
-
-
-        var owner = ResolveMergeDialogOwner();
-
-        var dialog = new EmbeddedSoundMultiPickerDialog(names, prefill) { Owner = owner };
-
-        if (dialog.ShowDialog() != true || dialog.SelectedFileNames.Count < 2)
-
-        {
-
-            return;
-
-        }
-
-
-
-        var sourcePaths = new List<string>();
-
-        foreach (var fileName in dialog.SelectedFileNames)
-
-        {
-
-            var path = EmbeddedSoundPathResolver.TryResolveLocalPath(
-
-                fileName,
-
-                editor.PackageRoot,
-
-                AppServices.Workspace);
-
-            if (path is null)
-
-            {
-
-                StatusMessage = $"Ansage „{fileName}“ konnte nicht geladen werden.";
-
-                return;
-
-            }
-
-
-
-            sourcePaths.Add(path);
-
-        }
-
-
-
-        var outputFileName = BuildMergedAnnouncementFileName(SelectedAnnouncement);
-
-        var outputPath = Path.Combine(
-
-            PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(AppServices.Workspace),
-
-            outputFileName);
+        var previewPath = Path.Combine(previewDir, $"preview_{DateTime.UtcNow:yyyyMMddHHmmssfff}.wav");
 
 
 
@@ -822,13 +773,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         {
 
-            EmbeddedSoundConcatenator.ConcatenateToWav(
+            EmbeddedSoundConcatenator.ConcatenateSequenceToWav(parts, previewPath);
 
-                sourcePaths,
+            AnnouncementPreviewPlayer.Play(previewPath);
 
-                outputPath,
-
-                TimeSpan.FromSeconds(pauseSeconds));
+            StatusMessage = "Vorschau der Sequenz wird abgespielt…";
 
         }
 
@@ -836,37 +785,9 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         {
 
-            StatusMessage = $"Zusammenfügen fehlgeschlagen: {ex.Message}";
-
-            return;
+            StatusMessage = $"Vorschau fehlgeschlagen: {ex.Message}";
 
         }
-
-
-
-        SelectedAnnouncement.EmbeddedSoundFileName = outputFileName;
-
-        if (!StageAnnouncementAudio(SelectedAnnouncement, outputPath))
-
-        {
-
-            return;
-
-        }
-
-
-
-        MarkDirty();
-
-        UpdateSelectedAudioHint();
-
-        StatusMessage =
-
-            $"{dialog.SelectedFileNames.Count} Schnipsel zu „{outputFileName}“ zusammengefügt" +
-
-            (pauseSeconds > 0 ? $" (Pause {pauseSeconds:0.###} s)" : string.Empty) +
-
-            " – bitte „Speichern & JSON“, danach Dropbox-Export.";
 
     }
 
@@ -1491,6 +1412,34 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
+        if (AnnouncementSequence.Count > 0)
+
+        {
+
+            var audioCount = AnnouncementSequence.Count(i => i.Kind == AnnouncementSequenceEntryKind.Audio);
+
+            var pauseCount = AnnouncementSequence.Count(i => i.Kind == AnnouncementSequenceEntryKind.Pause);
+
+            var prefixPart = BuildPrefixSequenceLabel(
+
+                IncludeGongInAnnouncementMerge,
+
+                IncludeNextStopInAnnouncementMerge,
+
+                IncludeNextStopMp3InAnnouncementMerge,
+
+                IncludeEndStopInAnnouncementMerge);
+
+            SelectedAnnouncementAudioHint =
+
+                $"{prefixPart}{audioCount} Tondatei(en), {pauseCount} Pause(n) in der Sequenz – „Speichern & JSON“ erzeugt die fertige Ansage.";
+
+            return;
+
+        }
+
+
+
         SelectedAnnouncementAudioHint = "Keine Tondatei – bitte „Tondatei wählen“ und speichern.";
 
     }
@@ -1820,82 +1769,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
         return null;
-
-    }
-
-
-
-    private IReadOnlyList<string>? TryListEmbeddedSoundNamesForMerge(out string? error)
-
-    {
-
-        error = null;
-
-        var editor = AppServices.Routes.Editor;
-
-        if (editor is null)
-
-        {
-
-            error = "Kein Route-Paket geladen.";
-
-            return null;
-
-        }
-
-
-
-        var extra = editor.AnnouncementTemplates
-
-            .Select(t => t.EmbeddedSoundFileName)
-
-            .Concat(_allAnnouncements.Select(t => t.EmbeddedSoundFileName));
-
-        var names = EmbeddedSoundCatalog.ListAvailable(
-
-            editor.PackageRoot,
-
-            AppServices.IsInitialized ? AppServices.Workspace : null,
-
-            extra);
-
-
-
-        if (names.Count == 0)
-
-        {
-
-            error = "Keine eingebetteten Ansagen – zuerst einzelne Schnipsel anlegen und speichern.";
-
-            return null;
-
-        }
-
-
-
-        return names;
-
-    }
-
-
-
-    private static Window? ResolveMergeDialogOwner()
-
-    {
-
-        var owner = Application.Current?.MainWindow;
-
-        if (owner is not null && !owner.IsLoaded)
-
-        {
-
-            owner = null;
-
-        }
-
-
-
-        return owner;
 
     }
 

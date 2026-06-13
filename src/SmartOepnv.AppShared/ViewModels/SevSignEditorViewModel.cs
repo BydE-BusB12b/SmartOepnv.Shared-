@@ -26,6 +26,8 @@ public partial class SevOperatorSelectionItem(SevOperatorOption option) : Observ
 public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 {
     private string? _loadedDraftId;
+    private string _lastSuggestedDraftName = string.Empty;
+    private bool _suppressDraftNameSync;
 
     public SevSignEditorViewModel() : base("SEV-Schilder als PDF im NRW-Standardlayout erstellen.")
     {
@@ -77,12 +79,17 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 
     partial void OnDraftNameChanged(string value)
     {
+        if (_suppressDraftNameSync)
+        {
+            return;
+        }
+
         if (_loadedDraftId is null)
         {
             return;
         }
 
-        var loaded = SavedDrafts.FirstOrDefault(d => d.Id == _loadedDraftId);
+        var loaded = GetLoadedDraft();
         if (loaded is not null &&
             !string.Equals(loaded.Name, value.Trim(), StringComparison.Ordinal))
         {
@@ -90,6 +97,10 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
             NotifyDraftCommands();
         }
     }
+
+    partial void OnLineChanged(string value) => SyncDraftNameAfterContentChange();
+
+    partial void OnDestinationChanged(string value) => SyncDraftNameAfterContentChange();
 
     public void RefreshFromEditor()
     {
@@ -116,6 +127,68 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 
         OnPropertyChanged(nameof(HasRoutes));
         SelectedRoute ??= Routes.FirstOrDefault();
+    }
+
+    private SevSignDraft? GetLoadedDraft() =>
+        _loadedDraftId is null
+            ? null
+            : SavedDrafts.FirstOrDefault(d => d.Id == _loadedDraftId);
+
+    private void SetDraftNameSilently(string name)
+    {
+        _suppressDraftNameSync = true;
+        DraftName = name;
+        _suppressDraftNameSync = false;
+    }
+
+    private void SyncDraftNameAfterContentChange()
+    {
+        var suggested = SevSignDraft.SuggestName(Line, Destination);
+        var loaded = GetLoadedDraft();
+        var currentName = DraftName.Trim();
+
+        if (currentName.Length == 0 ||
+            (loaded is not null &&
+             string.Equals(currentName, loaded.Name, StringComparison.OrdinalIgnoreCase)) ||
+            string.Equals(currentName, _lastSuggestedDraftName, StringComparison.OrdinalIgnoreCase))
+        {
+            SetDraftNameSilently(suggested);
+        }
+
+        _lastSuggestedDraftName = suggested;
+
+        if (loaded is not null && !EditorContentEquals(loaded))
+        {
+            _loadedDraftId = null;
+            NotifyDraftCommands();
+        }
+    }
+
+    private bool EditorContentEquals(SevSignDraft draft)
+    {
+        if (!string.Equals(Line.Trim(), draft.Line, StringComparison.Ordinal) ||
+            !string.Equals(Destination.Trim(), draft.Destination, StringComparison.Ordinal) ||
+            ImportRouteReverse != draft.ImportRouteReverse ||
+            !string.Equals(SelectedRoute, draft.SourceRoute, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var stopNames = Stops.Select(s => s.Name).ToList();
+        if (stopNames.Count != draft.Stops.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < stopNames.Count; i++)
+        {
+            if (!string.Equals(stopNames[i], draft.Stops[i], StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private SevSignDraftStore? TryGetDraftStore()
@@ -288,7 +361,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
     private void NewDraft()
     {
         _loadedDraftId = null;
-        DraftName = string.Empty;
+        _lastSuggestedDraftName = string.Empty;
+        SetDraftNameSilently(string.Empty);
         SelectedDraft = null;
         Line = string.Empty;
         Destination = string.Empty;
@@ -320,7 +394,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
     private void ApplyDraft(SevSignDraft draft)
     {
         _loadedDraftId = draft.Id;
-        DraftName = draft.Name;
+        SetDraftNameSilently(draft.Name);
+        _lastSuggestedDraftName = SevSignDraft.SuggestName(draft.Line, draft.Destination);
         Line = draft.Line;
         Destination = draft.Destination;
         ImportRouteReverse = draft.ImportRouteReverse;
@@ -437,6 +512,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
             return;
         }
 
+        var previousLast = Stops[^1].Name;
+        var previousFirst = Stops[0].Name;
         var selectedName = SelectedStop?.Name;
         var reversed = Stops.Reverse().ToList();
         Stops.Clear();
@@ -445,9 +522,18 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
             Stops.Add(stop);
         }
 
+        var dest = Destination.Trim();
+        if (dest.Length == 0 ||
+            string.Equals(dest, previousLast, StringComparison.OrdinalIgnoreCase) ||
+            dest.Contains(previousLast, StringComparison.OrdinalIgnoreCase))
+        {
+            Destination = previousFirst;
+        }
+
         SelectedStop = selectedName is null
             ? null
             : Stops.FirstOrDefault(s => s.Name == selectedName);
+        SyncDraftNameAfterContentChange();
         StatusMessage = "Haltestellenreihenfolge umgekehrt (Fahrtrichtung gedreht).";
     }
 
@@ -497,6 +583,7 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         }
 
         SelectedStop = Stops.FirstOrDefault();
+        SyncDraftNameAfterContentChange();
         StatusMessage = ImportRouteReverse
             ? $"{imported.Summary} (Richtung umgekehrt)"
             : imported.Summary;

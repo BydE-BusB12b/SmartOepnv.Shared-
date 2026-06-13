@@ -17,7 +17,7 @@ public sealed class SmartOepnvAppProfile
         ProductSubtitle = "Verwaltung · Routen · Ansagen · Navidaten",
         DashboardHint = "Route-Paket laden, bearbeiten und an GPSAnsagen-Fahrzeuge über Dropbox verteilen.",
         IsLeitstelle = false,
-        AutoLoadDropboxOnStartup = true
+        AutoLoadDropboxOnStartup = false
     };
 
     public static SmartOepnvAppProfile Leitstelle { get; } = new()

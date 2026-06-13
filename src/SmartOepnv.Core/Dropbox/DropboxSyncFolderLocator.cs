@@ -46,6 +46,18 @@ public static class DropboxSyncFolderLocator
             : Array.Empty<string>();
     }
 
+    public static string? FindMaengelkarteJsonFile(string? configuredApiFolderPath = null)
+    {
+        var folder = TryResolveSmartOepnvFolder(configuredApiFolderPath);
+        if (folder is null)
+        {
+            return null;
+        }
+
+        var path = Path.Combine(folder, DropboxConstants.MaengelkarteFileName);
+        return File.Exists(path) ? path : null;
+    }
+
     private static string NormalizeRelativeFolder(string? configuredApiFolderPath)
     {
         var path = string.IsNullOrWhiteSpace(configuredApiFolderPath)

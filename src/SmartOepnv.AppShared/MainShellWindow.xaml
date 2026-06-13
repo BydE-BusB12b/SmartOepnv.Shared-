@@ -47,6 +47,13 @@
                                 DockPanel.Dock="Right"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center">
+                        <Button x:Name="LogoutButton"
+                                Style="{StaticResource MaterialDesignIconForegroundButton}"
+                                ToolTip="Abmelden"
+                                Click="Logout_Click"
+                                Visibility="Collapsed">
+                            <materialDesign:PackIcon Kind="Logout" />
+                        </Button>
                         <Button Style="{StaticResource MaterialDesignIconForegroundButton}"
                                 ToolTip="Einstellungen"
                                 Command="{Binding OpenSettingsCommand}">
@@ -89,43 +96,38 @@
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                        <materialDesign:PackIcon Kind="{Binding Icon}"
-                                                                 Width="22" Height="22"
-                                                                 VerticalAlignment="Center"
-                                                                 Margin="0,0,14,0"
-                                                                 Foreground="{StaticResource SmartAccentBrush}" />
-                                        <TextBlock Text="{Binding Title}"
-                                                   VerticalAlignment="Center"
-                                                   FontSize="15" />
-                                        </StackPanel>
-                                        <Border Grid.Column="1"
-                                                Width="20" Height="20"
-                                                CornerRadius="10"
-                                                Background="#FBC02D"
-                                                Margin="8,0,0,0"
-                                                VerticalAlignment="Center">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding BadgeText}" Value="">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
-                                            <TextBlock Text="{Binding BadgeText}"
-                                                       HorizontalAlignment="Center"
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Width="22" Height="22"
+                                                    CornerRadius="11"
+                                                    Background="#FBC02D"
+                                                    Margin="0,0,8,0"
+                                                    VerticalAlignment="Center">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding BadgeText}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Text="{Binding BadgeText}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           FontWeight="Bold"
+                                                           FontSize="10"
+                                                           Foreground="#1B1B1B" />
+                                            </Border>
+                                            <materialDesign:PackIcon Kind="{Binding Icon}"
+                                                                     Width="22" Height="22"
+                                                                     VerticalAlignment="Center"
+                                                                     Margin="0,0,14,0"
+                                                                     Foreground="{StaticResource SmartAccentBrush}" />
+                                            <TextBlock Text="{Binding Title}"
                                                        VerticalAlignment="Center"
-                                                       FontWeight="Bold"
-                                                       FontSize="11"
-                                                       Foreground="#1B1B1B" />
-                                        </Border>
+                                                       FontSize="15" />
+                                        </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

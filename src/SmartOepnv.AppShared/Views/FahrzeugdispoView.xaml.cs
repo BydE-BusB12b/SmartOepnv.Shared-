@@ -22,11 +22,7 @@ public partial class FahrzeugdispoView : UserControl
             return;
         }
 
-        var clickX = e.GetPosition(element).X;
-        var absoluteX = bar.Left + clickX;
-        var dayIndex = Math.Max(0, (int)(absoluteX / FahrzeugdispoViewModel.DayCellWidth));
-        var targetDate = viewModel.ViewStartDate.Date.AddDays(dayIndex);
-        viewModel.OpenHourViewFromAssignmentBar(bar.VehiclePhoneKey, targetDate);
+        viewModel.OpenHourViewFromAssignmentBar(bar.VehiclePhoneKey, bar.FirstVisibleDate);
         e.Handled = true;
     }
 

@@ -110,6 +110,92 @@ public sealed class PlannerPackageVersionStore
         return removed || !File.Exists(filePath);
     }
 
+    public IReadOnlyList<PlannerPackageVersionSnapshotData> ExportAllSnapshots()
+    {
+        var index = LoadIndex();
+        var snapshots = new List<PlannerPackageVersionSnapshotData>(index.Count);
+        foreach (var info in index)
+        {
+            var packageJson = TryLoadPackageJson(info.Id);
+            if (string.IsNullOrWhiteSpace(packageJson))
+            {
+                continue;
+            }
+
+            snapshots.Add(new PlannerPackageVersionSnapshotData
+            {
+                Id = info.Id,
+                Label = info.Label,
+                SavedAtUtc = info.SavedAtUtc,
+                ByteSize = info.ByteSize,
+                RouteCount = info.RouteCount,
+                PackageTimestampMs = info.PackageTimestampMs,
+                PackageJson = packageJson
+            });
+        }
+
+        return snapshots;
+    }
+
+    public int MergeFromWorkspace(IReadOnlyList<PlannerPackageVersionSnapshotData> incoming)
+    {
+        if (incoming.Count == 0)
+        {
+            return 0;
+        }
+
+        var index = LoadIndex();
+        var merged = 0;
+
+        foreach (var snap in incoming)
+        {
+            if (string.IsNullOrWhiteSpace(snap.Id) || string.IsNullOrWhiteSpace(snap.PackageJson))
+            {
+                continue;
+            }
+
+            var safeId = Path.GetFileName(snap.Id);
+            var filePath = Path.Combine(_versionsDir, $"{safeId}.json");
+            var existing = index.FirstOrDefault(v => string.Equals(v.Id, safeId, StringComparison.Ordinal));
+            if (existing is not null &&
+                File.Exists(filePath) &&
+                snap.SavedAtUtc <= existing.SavedAtUtc)
+            {
+                continue;
+            }
+
+            try
+            {
+                File.WriteAllText(filePath, snap.PackageJson);
+            }
+            catch
+            {
+                continue;
+            }
+
+            index.RemoveAll(v => string.Equals(v.Id, safeId, StringComparison.Ordinal));
+            index.Add(new PlannerPackageVersionInfo
+            {
+                Id = safeId,
+                Label = snap.Label?.Trim() ?? string.Empty,
+                SavedAtUtc = snap.SavedAtUtc,
+                ByteSize = snap.ByteSize > 0
+                    ? snap.ByteSize
+                    : System.Text.Encoding.UTF8.GetByteCount(snap.PackageJson),
+                RouteCount = snap.RouteCount,
+                PackageTimestampMs = snap.PackageTimestampMs
+            });
+            merged++;
+        }
+
+        if (merged > 0)
+        {
+            SaveIndex(index);
+        }
+
+        return merged;
+    }
+
     private List<PlannerPackageVersionInfo> LoadIndex()
     {
         if (!File.Exists(_indexPath))

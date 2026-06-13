@@ -30,6 +30,8 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
 
     public ObservableCollection<RegisteredVehicleItem> Vehicles { get; } = [];
 
+    public MaengelkartePlannerViewModel Maengelkarte { get; } = new();
+
     public VehicleManagementViewModel()
     {
         if (AppServices.IsInitialized)
@@ -70,6 +72,7 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
         }
 
         SelectedVehicle = Vehicles.FirstOrDefault();
+        Maengelkarte.RefreshVehicleFilterOptions();
         var redirectCount = editor.RegisteredVehiclePhoneRedirects.Count;
         StatusMessage =
             $"{Vehicles.Count} Fahrzeuge – KOM für die App; Planer-Zusatzdaten und Nummern-Historie ({redirectCount} Umleitung/en) im Paket (Dropbox).";
@@ -223,6 +226,6 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
         FqnExpiry = v.FqnExpiry,
         DriverCardExpiry = v.DriverCardExpiry,
         LoginAsMainDevice = v.LoginAsMainDevice,
-        PlannerDetails = v.PlannerDetails.Clone()
+        PlannerDetails = v.PlannerDetails?.Clone() ?? new RegisteredVehiclePlannerDetails()
     };
 }

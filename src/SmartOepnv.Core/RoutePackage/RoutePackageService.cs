@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SmartOepnv.Core;
 
 namespace SmartOepnv.Core.RoutePackage;
@@ -97,6 +98,11 @@ public sealed class RoutePackageService
         if (Editor is not null)
         {
             _currentJson = Editor.ToJson();
+            if (AppServices.IsPlannerApp)
+            {
+                _currentJson = StripPlannerSecretsFromExportJson(_currentJson);
+            }
+
             Stats = ParseStats(_currentJson);
             if (AppServices.IsInitialized)
             {
@@ -174,6 +180,18 @@ public sealed class RoutePackageService
     }
 
     private string GetPersistableJson() => Editor is not null ? Editor.ToJson() : _currentJson!;
+
+    private static string StripPlannerSecretsFromExportJson(string json)
+    {
+        var node = JsonNode.Parse(json);
+        if (node is not JsonObject root)
+        {
+            return json;
+        }
+
+        EmployeeRosterEditor.StripPlannerSecretsFromRoot(root);
+        return root.ToJsonString();
+    }
 
     private static void Validate(string json)
     {

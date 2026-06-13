@@ -3,230 +3,297 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
+             xmlns:views="clr-namespace:SmartOepnv.AppShared.Views"
              VerticalAlignment="Stretch"
-             HorizontalAlignment="Stretch">
+             HorizontalAlignment="Stretch"
+             Foreground="White"
+             TextElement.Foreground="White">
     <UserControl.Resources>
         <conv:InspectionDateConverter x:Key="InspectionDateConverter" />
+        <conv:VehicleInspectionBrushConverter x:Key="VehicleInspectionBrushConverter" />
+        <Style x:Key="VehicleMgmtTabItemStyle" TargetType="TabItem">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabHeaderBorder"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="{TemplateBinding Padding}"
+                                Margin="{TemplateBinding Margin}">
+                            <ContentPresenter x:Name="HeaderPresenter"
+                                              ContentSource="Header"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabHeaderBorder" Property="Background" Value="{StaticResource SmartAccentBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,0,2">
-        <Grid Margin="0,2,0,4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="320" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+    <TabControl Background="{StaticResource SmartPrimaryDarkBrush}"
+                BorderThickness="0"
+                ItemContainerStyle="{StaticResource VehicleMgmtTabItemStyle}"
+                VerticalAlignment="Stretch">
+        <TabItem Header="Fahrzeuge">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,8,0,2">
+                <Grid Margin="0,2,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="320" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
 
-            <materialDesign:Card Grid.Column="0" Margin="0,0,10,0" Padding="12,10" UniformCornerRadius="10"
-                                 Background="{StaticResource SmartSurfaceBrush}">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Fahrzeugverwaltung"
-                               FontWeight="SemiBold" FontSize="15" Margin="0,0,0,2" />
-                    <TextBlock DockPanel.Dock="Top"
-                               Text="KOM: Name + Telefon → App. Zusatzdaten und Nummern-Historie im Planer-Paket (Dropbox, nicht Handy)."
-                               Opacity="0.65" FontSize="10" LineHeight="14" Margin="0,0,0,8" TextWrapping="Wrap" />
-                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-                        <Button Content="Fahrzeug hinzufügen"
-                                Command="{Binding AddVehicleCommand}"
-                                Style="{StaticResource MaterialDesignRaisedButton}"
-                                Margin="0,0,0,4"
-                                Padding="12,4" />
-                        <Button Content="Auswahl löschen"
-                                Command="{Binding RemoveVehicleCommand}"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                Margin="0,0,0,4"
-                                Padding="12,4" />
-                        <Button Content="Speichern"
-                                Command="{Binding SaveChangesCommand}"
-                                Style="{StaticResource MaterialDesignRaisedButton}"
-                                Padding="12,4" />
-                    </StackPanel>
-                    <ListBox ItemsSource="{Binding Vehicles}"
-                             SelectedItem="{Binding SelectedVehicle}"
-                             DisplayMemberPath="DisplayLabel"
-                             BorderThickness="0"
-                             Background="Transparent" />
-                </DockPanel>
-            </materialDesign:Card>
+                    <materialDesign:Card Grid.Column="0" Margin="0,0,10,0" Padding="12,10" UniformCornerRadius="10"
+                                         Background="{StaticResource SmartSurfaceBrush}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="Fahrzeugverwaltung"
+                                       FontWeight="SemiBold" FontSize="15" Margin="0,0,0,2" />
+                            <TextBlock DockPanel.Dock="Top"
+                                       Text="KOM: Name + Telefon → App. Zusatzdaten und Nummern-Historie im Planer-Paket (Dropbox, nicht Handy)."
+                                       Opacity="0.65" FontSize="10" LineHeight="14" Margin="0,0,0,8" TextWrapping="Wrap" />
+                            <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                                <Button Content="Fahrzeug hinzufügen"
+                                        Command="{Binding AddVehicleCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Foreground="White"
+                                        Margin="0,0,0,4"
+                                        Padding="12,4" />
+                                <Button Content="Auswahl löschen"
+                                        Command="{Binding RemoveVehicleCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        Margin="0,0,0,4"
+                                        Padding="12,4" />
+                                <Button Content="Speichern"
+                                        Command="{Binding SaveChangesCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Foreground="White"
+                                        Padding="12,4" />
+                            </StackPanel>
+                            <ListBox ItemsSource="{Binding Vehicles}"
+                                     SelectedItem="{Binding SelectedVehicle}"
+                                     DisplayMemberPath="DisplayLabel"
+                                     BorderThickness="0"
+                                     Background="Transparent">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Padding" Value="8,6" />
+                                        <Setter Property="Margin" Value="0,0,0,4" />
+                                        <Setter Property="Background"
+                                                Value="{Binding Converter={StaticResource VehicleInspectionBrushConverter}}" />
+                                        <Setter Property="Foreground"
+                                                Value="{Binding Converter={StaticResource VehicleInspectionBrushConverter}, ConverterParameter=Foreground}" />
+                                        <Style.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                            </ListBox>
+                        </DockPanel>
+                    </materialDesign:Card>
 
-            <materialDesign:Card Grid.Column="1" Padding="12,10" UniformCornerRadius="10"
-                                 Background="{StaticResource SmartSurfaceBrush}">
-                <DockPanel DataContext="{Binding SelectedVehicle}">
-                    <TextBlock DockPanel.Dock="Top" Text="Fahrzeug-Stammdaten"
-                               FontWeight="SemiBold" FontSize="15" Margin="0,0,0,6" />
-                    <TextBlock DockPanel.Dock="Bottom"
-                               Text="{Binding DataContext.StatusMessage, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                               Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.82" FontSize="11" LineHeight="15" />
+                    <materialDesign:Card Grid.Column="1" Padding="12,10" UniformCornerRadius="10"
+                                         Background="{StaticResource SmartSurfaceBrush}">
+                        <DockPanel DataContext="{Binding SelectedVehicle}">
+                            <TextBlock DockPanel.Dock="Top" Text="Fahrzeug-Stammdaten"
+                                       FontWeight="SemiBold" FontSize="15" Margin="0,0,0,6" />
+                            <TextBlock DockPanel.Dock="Bottom"
+                                       Text="{Binding DataContext.StatusMessage, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                       Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.82" FontSize="11" LineHeight="15" />
 
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  Padding="0,0,4,4">
-                    <StackPanel>
-                        <TextBlock Text="Links ein Fahrzeug wählen oder neu anlegen."
-                                   Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,8">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding}" Value="{x:Null}">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          Padding="0,0,4,4">
+                                <StackPanel>
+                                    <TextBlock Text="Links ein Fahrzeug wählen oder neu anlegen."
+                                               Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,8">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
 
-                        <Grid>
-                            <Grid.Style>
-                                <Style TargetType="Grid">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding}" Value="{x:Null}">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Grid.Style>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                                    <Grid>
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-                                       Text="An App / KOM übertragen (registeredVehicles)"
-                                       FontWeight="SemiBold" Opacity="0.85" FontSize="13" Margin="0,0,0,6" />
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                                                   Text="An App / KOM übertragen"
+                                                   FontWeight="SemiBold" Opacity="0.85" FontSize="13" Margin="0,0,0,6" />
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Name / Bezeichnung:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" MinWidth="152" FontSize="12" />
-                            <TextBox Grid.Row="1" Grid.Column="1"
-                                     Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,0,5"
-                                     VerticalContentAlignment="Center"
-                                     Padding="6,4" />
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Name / Bezeichnung:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" MinWidth="152" FontSize="12" />
+                                        <TextBox Grid.Row="1" Grid.Column="1"
+                                                 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="0,0,0,5"
+                                                 VerticalContentAlignment="Center"
+                                                 Padding="6,4" />
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Telefonnummer:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
-                            <TextBox Grid.Row="2" Grid.Column="1"
-                                     Text="{Binding PhoneNumber, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,0,5"
-                                     VerticalContentAlignment="Center"
-                                     Padding="6,4" />
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Telefonnummer:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
+                                        <TextBox Grid.Row="2" Grid.Column="1"
+                                                 Text="{Binding PhoneNumber, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="0,0,0,5"
+                                                 VerticalContentAlignment="Center"
+                                                 Padding="6,4" />
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
-                                       Text="Nur Planer (registeredVehiclesPlannerMeta)"
-                                       FontWeight="SemiBold" Opacity="0.85" FontSize="13" Margin="0,4,0,6" />
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                                                   Text="Nur Planer"
+                                                   FontWeight="SemiBold" Opacity="0.85" FontSize="13" Margin="0,4,0,6" />
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Fahrzeugtyp:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
-                            <TextBox Grid.Row="4" Grid.Column="1"
-                                     materialDesign:HintAssist.Hint="z. B. Gelenkbus, Solobus"
-                                     Text="{Binding PlannerDetails.VehicleType, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,0,5"
-                                     VerticalContentAlignment="Center"
-                                     Padding="6,4" />
+                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Fahrzeugtyp:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
+                                        <TextBox Grid.Row="4" Grid.Column="1"
+                                                 materialDesign:HintAssist.Hint="z. B. Gelenkbus, Solobus"
+                                                 Text="{Binding PlannerDetails.VehicleType, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="0,0,0,5"
+                                                 VerticalContentAlignment="Center"
+                                                 Padding="6,4" />
 
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="VIN:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
-                            <TextBox Grid.Row="5" Grid.Column="1"
-                                     Text="{Binding PlannerDetails.Vin, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,0,5"
-                                     VerticalContentAlignment="Center"
-                                     Padding="6,4" />
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="VIN:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
+                                        <TextBox Grid.Row="5" Grid.Column="1"
+                                                 Text="{Binding PlannerDetails.Vin, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="0,0,0,5"
+                                                 VerticalContentAlignment="Center"
+                                                 Padding="6,4" />
 
-                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Gurte:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
-                            <TextBox Grid.Row="6" Grid.Column="1"
-                                     materialDesign:HintAssist.Hint="Anzahl / Bemerkung"
-                                     Text="{Binding PlannerDetails.SeatBelts, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,0,5"
-                                     VerticalContentAlignment="Center"
-                                     Padding="6,4" />
+                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Gurte:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
+                                        <TextBox Grid.Row="6" Grid.Column="1"
+                                                 materialDesign:HintAssist.Hint="Anzahl / Bemerkung"
+                                                 Text="{Binding PlannerDetails.SeatBelts, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="0,0,0,5"
+                                                 VerticalContentAlignment="Center"
+                                                 Padding="6,4" />
 
-                            <TextBlock Grid.Row="7" Grid.Column="0" Text="Klima:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
-                            <TextBox Grid.Row="7" Grid.Column="1"
-                                     materialDesign:HintAssist.Hint="z. B. ja, nein, Klimaanlage defekt"
-                                     Text="{Binding PlannerDetails.Climate, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,0,5"
-                                     VerticalContentAlignment="Center"
-                                     Padding="6,4" />
+                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Klima:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
+                                        <TextBox Grid.Row="7" Grid.Column="1"
+                                                 materialDesign:HintAssist.Hint="z. B. ja, nein, Klimaanlage defekt"
+                                                 Text="{Binding PlannerDetails.Climate, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="0,0,0,5"
+                                                 VerticalContentAlignment="Center"
+                                                 Padding="6,4" />
 
-                            <TextBlock Grid.Row="8" Grid.Column="0" Text="Zul. Gesamtmasse:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
-                            <TextBox Grid.Row="8" Grid.Column="1"
-                                     materialDesign:HintAssist.Hint="kg"
-                                     Text="{Binding PlannerDetails.PermittedTotalMassKg, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,0,5"
-                                     VerticalContentAlignment="Center"
-                                     Padding="6,4" />
+                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Zul. Gesamtmasse:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
+                                        <TextBox Grid.Row="8" Grid.Column="1"
+                                                 materialDesign:HintAssist.Hint="kg"
+                                                 Text="{Binding PlannerDetails.PermittedTotalMassKg, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="0,0,0,5"
+                                                 VerticalContentAlignment="Center"
+                                                 Padding="6,4" />
 
-                            <TextBlock Grid.Row="9" Grid.Column="0" Text="Leergewicht:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
-                            <TextBox Grid.Row="9" Grid.Column="1"
-                                     materialDesign:HintAssist.Hint="kg"
-                                     Text="{Binding PlannerDetails.EmptyWeightKg, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,0,5"
-                                     VerticalContentAlignment="Center"
-                                     Padding="6,4" />
+                                        <TextBlock Grid.Row="9" Grid.Column="0" Text="Leergewicht:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
+                                        <TextBox Grid.Row="9" Grid.Column="1"
+                                                 materialDesign:HintAssist.Hint="kg"
+                                                 Text="{Binding PlannerDetails.EmptyWeightKg, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="0,0,0,5"
+                                                 VerticalContentAlignment="Center"
+                                                 Padding="6,4" />
 
-                            <TextBlock Grid.Row="10" Grid.Column="0" Text="Nächste HU:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
-                            <DatePicker Grid.Row="10" Grid.Column="1"
-                                        SelectedDate="{Binding PlannerDetails.NextMainInspection, Converter={StaticResource InspectionDateConverter}, UpdateSourceTrigger=PropertyChanged}"
-                                        SelectedDateFormat="Short"
-                                        materialDesign:HintAssist.Hint="Hauptuntersuchung"
-                                        Margin="0,0,0,5"
-                                        Padding="4,2" />
+                                        <TextBlock Grid.Row="10" Grid.Column="0" Text="Nächste HU:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
+                                        <DatePicker Grid.Row="10" Grid.Column="1"
+                                                    SelectedDate="{Binding PlannerDetails.NextMainInspection, Converter={StaticResource InspectionDateConverter}, UpdateSourceTrigger=PropertyChanged}"
+                                                    SelectedDateFormat="Short"
+                                                    materialDesign:HintAssist.Hint="Hauptuntersuchung"
+                                                    Margin="0,0,0,5"
+                                                    Padding="4,2" />
 
-                            <TextBlock Grid.Row="11" Grid.Column="0" Text="Nächste SP:"
-                                       VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
-                            <DatePicker Grid.Row="11" Grid.Column="1"
-                                        SelectedDate="{Binding PlannerDetails.NextSpInspection, Converter={StaticResource InspectionDateConverter}, UpdateSourceTrigger=PropertyChanged}"
-                                        SelectedDateFormat="Short"
-                                        materialDesign:HintAssist.Hint="Sicherheitsprüfung"
-                                        Margin="0,0,0,5"
-                                        Padding="4,2" />
+                                        <TextBlock Grid.Row="11" Grid.Column="0" Text="Nächste SP:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,5" Opacity="0.9" FontSize="12" />
+                                        <DatePicker Grid.Row="11" Grid.Column="1"
+                                                    SelectedDate="{Binding PlannerDetails.NextSpInspection, Converter={StaticResource InspectionDateConverter}, UpdateSourceTrigger=PropertyChanged}"
+                                                    SelectedDateFormat="Short"
+                                                    materialDesign:HintAssist.Hint="Sicherheitsprüfung"
+                                                    Margin="0,0,0,5"
+                                                    Padding="4,2" />
 
-                            <TextBlock Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="2"
-                                       Text="Fahrzeugdisposition"
-                                       FontWeight="SemiBold" Opacity="0.85" FontSize="13" Margin="0,4,0,6" />
+                                        <TextBlock Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="2"
+                                                   Text="Fahrzeugdisposition"
+                                                   FontWeight="SemiBold" Opacity="0.85" FontSize="13" Margin="0,4,0,6" />
 
-                            <TextBlock Grid.Row="13" Grid.Column="0" Text="Aktiv in Dispo:"
-                                       VerticalAlignment="Center" Margin="0,0,10,8" Opacity="0.9" MinWidth="152" FontSize="12" />
-                            <CheckBox Grid.Row="13" Grid.Column="1"
-                                      Content="In Kalenderschnur anzeigen"
-                                      IsChecked="{Binding PlannerDetails.IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,0,8" />
+                                        <TextBlock Grid.Row="13" Grid.Column="0" Text="Aktiv in Dispo:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,8" Opacity="0.9" MinWidth="152" FontSize="12" />
+                                        <CheckBox Grid.Row="13" Grid.Column="1"
+                                                  Content="In Kalenderschnur anzeigen"
+                                                  IsChecked="{Binding PlannerDetails.IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="0,0,0,8" />
 
-                            <TextBlock Grid.Row="14" Grid.Column="0" Text="Zeilenfarbe:"
-                                       VerticalAlignment="Center" Margin="0,0,10,4" Opacity="0.9" MinWidth="152" FontSize="12" />
-                            <ComboBox Grid.Row="14" Grid.Column="1"
-                                      ItemsSource="{Binding DataContext.RowColorOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                      DisplayMemberPath="Label"
-                                      SelectedValuePath="Hex"
-                                      SelectedValue="{Binding PlannerDetails.DispoRowColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                      Margin="0,0,0,4"
-                                      Padding="6,4" />
-                        </Grid>
-                    </StackPanel>
-                    </ScrollViewer>
-                </DockPanel>
-            </materialDesign:Card>
-        </Grid>
-    </ScrollViewer>
+                                        <TextBlock Grid.Row="14" Grid.Column="0" Text="Zeilenfarbe:"
+                                                   VerticalAlignment="Center" Margin="0,0,10,4" Opacity="0.9" MinWidth="152" FontSize="12" />
+                                        <ComboBox Grid.Row="14" Grid.Column="1"
+                                                  ItemsSource="{Binding DataContext.RowColorOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                  DisplayMemberPath="Label"
+                                                  SelectedValuePath="Hex"
+                                                  SelectedValue="{Binding PlannerDetails.DispoRowColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  Margin="0,0,0,4"
+                                                  Padding="6,4" />
+                                    </Grid>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </materialDesign:Card>
+                </Grid>
+            </ScrollViewer>
+        </TabItem>
+        <TabItem Header="Mängelkarte">
+            <views:MaengelkartePlannerView DataContext="{Binding Maengelkarte}" />
+        </TabItem>
+    </TabControl>
 </UserControl>

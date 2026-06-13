@@ -8,6 +8,8 @@ public sealed partial class FahrzeugdispoVehicleRowVm : ObservableObject
 {
     public string PhoneKey { get; init; } = string.Empty;
 
+    public string PersonnelNumber { get; init; } = string.Empty;
+
     public string Title { get; init; } = string.Empty;
 
     public string Subtitle { get; init; } = string.Empty;
@@ -50,6 +52,20 @@ public sealed partial class FahrzeugdispoAssignmentBarVm : ObservableObject
     public string TimeLabel { get; init; } = string.Empty;
 
     public string Label { get; init; } = string.Empty;
+
+    public double Work1Ratio { get; init; } = 1;
+
+    public double GapRatio { get; init; }
+
+    public double Work2Ratio { get; init; }
+
+    public double Work1Width { get; init; }
+
+    public double GapWidth { get; init; }
+
+    public double Work2Width { get; init; }
+
+    public bool IsSplitShiftBar { get; init; }
 
     public string Tooltip { get; init; } = string.Empty;
 }

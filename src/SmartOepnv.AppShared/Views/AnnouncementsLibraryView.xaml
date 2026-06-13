@@ -64,7 +64,7 @@
 
                             Padding="10,6"
 
-                            ToolTip="Schreibt Ansagen und Tondateien ins routes_export.json – danach unter Übersicht/Datenübertragung nach Dropbox exportieren" />
+                            ToolTip="Fügt Tonsequenz zusammen und schreibt Ansagen ins routes_export.json" />
 
                     <Button Content="Neue Ansage mit Tondatei"
 
@@ -304,7 +304,11 @@
 
                             <TextBox Grid.Row="5" Grid.Column="1"
 
-                                     Text="{Binding EmbeddedSoundFileName, UpdateSourceTrigger=PropertyChanged}" />
+                                     Text="{Binding EmbeddedSoundFileName, UpdateSourceTrigger=PropertyChanged}"
+
+                                     IsReadOnly="True" Opacity="0.85"
+
+                                     ToolTip="Wird beim Speichern aus der Sequenz erzeugt" />
 
                         </Grid>
 
@@ -336,9 +340,79 @@
 
                                         Padding="12,6"
 
-                                        ToolTip="Pflicht nach Tondatei wählen: schreibt ins routes_export.json" />
+                                        ToolTip="Sequenz zusammenfügen und ins routes_export.json schreiben" />
 
-                                <Button Content="Tondatei wählen…"
+                                <CheckBox Content="Gong"
+
+                                          IsChecked="{Binding IncludeGongInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+
+                                          Foreground="White"
+
+                                          Margin="0,0,0,8"
+
+                                          ToolTip="Hambloch Gong.wav vor die Sequenz setzen" />
+
+                                <CheckBox Content="Nächste Haltestelle einfügen"
+
+                                          IsChecked="{Binding IncludeNextStopInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+
+                                          Foreground="White"
+
+                                          Margin="0,0,0,8"
+
+                                          ToolTip="Nächste Haltestelle.wav nach dem Gong (1 s Pause dazwischen)" />
+
+                                <CheckBox Content="Next Stop einfügen"
+
+                                          IsChecked="{Binding IncludeNextStopMp3InAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+
+                                          Foreground="White"
+
+                                          Margin="0,0,0,8"
+
+                                          ToolTip="Next Stop.mp3 nach Nächste Haltestelle (1 s Pause dazwischen)" />
+
+                                <CheckBox Content="Endhaltestelle einfügen"
+
+                                          IsChecked="{Binding IncludeEndStopInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+
+                                          Foreground="White"
+
+                                          Margin="0,0,0,8"
+
+                                          ToolTip="Endhalestelle.wav am Ende der Sequenz (Dropbox/Ansagen)" />
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+
+                                    <TextBlock Text="Standard-Pause (Sek.):"
+
+                                               Foreground="White"
+
+                                               VerticalAlignment="Center"
+
+                                               Opacity="0.9"
+
+                                               Margin="0,0,8,0"
+
+                                               FontSize="12" />
+
+                                    <ComboBox IsEditable="True"
+
+                                              ItemsSource="{Binding AnnouncementMergePausePresets}"
+
+                                              Text="{Binding AnnouncementMergePauseSeconds, UpdateSourceTrigger=PropertyChanged}"
+
+                                              Width="88"
+
+                                              Padding="6,4"
+
+                                              VerticalContentAlignment="Center"
+
+                                              ToolTip="Wird beim Hinzufügen weiterer Tondateien automatisch eingefügt" />
+
+                                </StackPanel>
+
+                                <Button Content="{Binding PickAudioButtonLabel}"
 
                                         Command="{Binding PickAudioFileCommand}"
 
@@ -346,29 +420,145 @@
 
                                         Margin="0,0,0,8" />
 
+                                <Button Content="Pause einfügen"
+
+                                        Command="{Binding AddPauseToSequenceCommand}"
+
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                        Foreground="White"
+
+                                        Margin="0,0,0,8" />
+
+                                <TextBlock Text="Tonsequenz (Reihenfolge)"
+
+                                           Foreground="White"
+
+                                           Opacity="0.9"
+
+                                           FontSize="12"
+
+                                           Margin="0,0,0,4" />
+
+                                <ListBox ItemsSource="{Binding AnnouncementSequence}"
+
+                                         SelectedItem="{Binding SelectedSequenceItem}"
+
+                                         DisplayMemberPath="ListLabel"
+
+                                         MinHeight="88"
+
+                                         MaxHeight="180"
+
+                                         Margin="0,0,0,8"
+
+                                         BorderThickness="1"
+
+                                         BorderBrush="#475569"
+
+                                         Background="#1E293B" />
+
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <TextBlock Text="Pause zwischen Schnipseln (Sek.):"
-                                               Foreground="White"
-                                               VerticalAlignment="Center"
-                                               Opacity="0.9"
-                                               Margin="0,0,8,0"
-                                               FontSize="12" />
-                                    <TextBox Text="{Binding AnnouncementMergePauseSeconds, UpdateSourceTrigger=PropertyChanged}"
-                                             Width="72"
-                                             Padding="6,4"
-                                             VerticalContentAlignment="Center"
-                                             ToolTip="Stille zwischen den Ansagen, z. B. 0,3 – 0 = keine Pause" />
+
+                                    <Button Content="↑"
+
+                                            Command="{Binding MoveSequenceItemUpCommand}"
+
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                            Foreground="White"
+
+                                            MinWidth="36"
+
+                                            Margin="0,0,6,0"
+
+                                            ToolTip="Nach oben" />
+
+                                    <Button Content="↓"
+
+                                            Command="{Binding MoveSequenceItemDownCommand}"
+
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                            Foreground="White"
+
+                                            MinWidth="36"
+
+                                            Margin="0,0,6,0"
+
+                                            ToolTip="Nach unten" />
+
+                                    <Button Content="Ersetzen"
+
+                                            Command="{Binding ReplaceSequenceItemCommand}"
+
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                            Foreground="White"
+
+                                            MinWidth="72"
+
+                                            Margin="0,0,6,0"
+
+                                            ToolTip="Tondatei ersetzen" />
+
+                                    <Button Content="Löschen"
+
+                                            Command="{Binding RemoveSequenceItemCommand}"
+
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                            Foreground="White"
+
+                                            MinWidth="72"
+
+                                            ToolTip="Eintrag entfernen" />
+
                                 </StackPanel>
 
-                                <Button Content="Mehrere zusammenfügen…"
+                                <StackPanel Margin="0,0,0,8">
 
-                                        Command="{Binding MergeEmbeddedSoundsFromListCommand}"
+                                    <StackPanel.Style>
+
+                                        <Style TargetType="StackPanel">
+
+                                            <Setter Property="Visibility" Value="Collapsed" />
+
+                                            <Style.Triggers>
+
+                                                <DataTrigger Binding="{Binding HasSelectedSequencePauseItem}" Value="True">
+
+                                                    <Setter Property="Visibility" Value="Visible" />
+
+                                                </DataTrigger>
+
+                                            </Style.Triggers>
+
+                                        </Style>
+
+                                    </StackPanel.Style>
+
+                                    <TextBlock Text="Pause (Sek.):" Foreground="White" Opacity="0.9" FontSize="12" Margin="0,0,0,4" />
+
+                                    <TextBox Text="{Binding SelectedSequenceItem.PauseSeconds, UpdateSourceTrigger=PropertyChanged}"
+
+                                             Width="88"
+
+                                             Padding="6,4"
+
+                                             HorizontalAlignment="Left" />
+
+                                </StackPanel>
+
+                                <Button Content="Vorschau abspielen"
+
+                                        Command="{Binding PlayAnnouncementPreviewCommand}"
 
                                         Style="{StaticResource MaterialDesignRaisedLightButton}"
 
                                         Margin="0,0,0,8"
 
-                                        ToolTip="Mehrere Ansagen nacheinander zu einer WAV-Datei zusammenfügen" />
+                                        ToolTip="Gong + Sequenz anhören – ohne Speichern" />
 
                                 <Button Content="Aus Routen importieren"
 

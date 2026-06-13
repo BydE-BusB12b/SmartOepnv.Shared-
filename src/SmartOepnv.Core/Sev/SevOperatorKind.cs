@@ -14,5 +14,6 @@ public enum SevOperatorKind
     Vrr,
     MobilNrw,
     Arriva,
-    Ns
+    Ns,
+    Nwl
 }

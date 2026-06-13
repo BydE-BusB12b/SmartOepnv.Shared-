@@ -48,7 +48,7 @@
                                    FontSize="12"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,6" />
-                        <TextBlock Text="Vorlagen werden lokal im Planer gespeichert und können jederzeit weiter bearbeitet werden."
+                        <TextBlock Text="Vorlagen werden im Planer gespeichert und mit planer_workspace.json über Dropbox auf andere PCs übertragen (beim Beenden/Abmelden)."
                                    Opacity="0.6"
                                    FontSize="10"
                                    TextWrapping="Wrap"

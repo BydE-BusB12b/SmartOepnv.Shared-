@@ -22,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="Assets\planer_sync_solaris_bus.png" />
     <Content Include="Assets\route_path_map.html">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

@@ -765,35 +765,44 @@ public static class SevSignPdfGenerator
         IReadOnlyList<SevOperatorOption> selectedOperators,
         string assets)
     {
-        foreach (var op in selectedOperators.Where(o => o.UseLargeOperatorLogo))
-        {
-            var alignToFooterRow = op.OperatorLogoHeightMm <= FooterLogoRowHeightMm + 4f;
-            var logoTopMm = alignToFooterRow ? FooterLogoRowTopMm : op.OperatorLogoTopMm;
-            var logoHeightMm = alignToFooterRow ? FooterLogoRowHeightMm : op.OperatorLogoHeightMm;
+        var rowSlots = BuildFooterLogoRowSlots(selectedOperators);
+        var useFullWidthRow = rowSlots.Count >= 4;
 
-            foreach (var asset in op.PdfLogoAssetFileNames)
+        if (!useFullWidthRow)
+        {
+            foreach (var op in selectedOperators.Where(o => o.UseLargeOperatorLogo))
             {
-                layers.Layer()
-                    .Unconstrained()
-                    .AlignTop()
-                    .AlignLeft()
-                    .PaddingTop(logoTopMm, Mm)
-                    .PaddingLeft(op.OperatorLogoLeftMm, Mm)
-                    .Width(op.OperatorLogoWidthMm, Mm)
-                    .Height(logoHeightMm, Mm)
-                    .Element(c => DrawOperatorLogo(
-                        c,
-                        assets,
-                        asset,
-                        op.OperatorLogoWidthMm,
-                        logoHeightMm,
-                        alignBottom: !alignToFooterRow,
-                        alignMiddle: alignToFooterRow));
+                var alignToFooterRow = op.OperatorLogoHeightMm <= FooterLogoRowHeightMm + 4f;
+                var logoTopMm = alignToFooterRow ? FooterLogoRowTopMm : op.OperatorLogoTopMm;
+                var logoHeightMm = alignToFooterRow ? FooterLogoRowHeightMm : op.OperatorLogoHeightMm;
+
+                foreach (var asset in op.PdfLogoAssetFileNames)
+                {
+                    layers.Layer()
+                        .Unconstrained()
+                        .AlignTop()
+                        .AlignLeft()
+                        .PaddingTop(logoTopMm, Mm)
+                        .PaddingLeft(op.OperatorLogoLeftMm, Mm)
+                        .Width(op.OperatorLogoWidthMm, Mm)
+                        .Height(logoHeightMm, Mm)
+                        .Element(c => DrawOperatorLogo(
+                            c,
+                            assets,
+                            asset,
+                            op.OperatorLogoWidthMm,
+                            logoHeightMm,
+                            alignBottom: !alignToFooterRow,
+                            alignMiddle: alignToFooterRow));
+                }
             }
         }
+        else
+        {
+            rowSlots = BuildFooterLogoRowSlotsFromAll(selectedOperators);
+        }
 
-        var rowLeft = ResolveFooterRowLeftMm(selectedOperators);
-        var rowSlots = BuildFooterLogoRowSlots(selectedOperators);
+        var rowLeft = useFullWidthRow ? FooterLineLeftMm : ResolveFooterRowLeftMm(selectedOperators);
         foreach (var placement in LayoutFooterLogoRow(rowSlots, rowLeft))
         {
             layers.Layer()
@@ -814,6 +823,32 @@ public static class SevSignPdfGenerator
         }
     }
 
+    private static List<FooterLogoSlot> BuildFooterLogoRowSlotsFromAll(IReadOnlyList<SevOperatorOption> selectedOperators)
+    {
+        var slots = new List<FooterLogoSlot>();
+
+        foreach (var op in selectedOperators
+                     .Select((op, index) => (op, index))
+                     .OrderBy(x => x.op.FooterSortOrder)
+                     .ThenBy(x => x.index)
+                     .Select(x => x.op))
+        {
+            var asset = op.PdfLogoAssetFileNames.FirstOrDefault();
+            if (string.IsNullOrEmpty(asset))
+            {
+                continue;
+            }
+
+            slots.Add(new FooterLogoSlot(
+                asset,
+                op.OperatorLogoWidthMm,
+                op.OperatorLogoHeightMm,
+                AlignBottom: false));
+        }
+
+        return slots;
+    }
+
     private static List<FooterLogoSlot> BuildFooterLogoRowSlots(IReadOnlyList<SevOperatorOption> selectedOperators)
     {
         var slots = new List<FooterLogoSlot>();
@@ -827,14 +862,17 @@ public static class SevSignPdfGenerator
 
         foreach (var op in rowOperators)
         {
-            foreach (var asset in op.PdfLogoAssetFileNames)
+            var asset = op.PdfLogoAssetFileNames.FirstOrDefault();
+            if (string.IsNullOrEmpty(asset))
             {
-                slots.Add(new FooterLogoSlot(
-                    asset,
-                    op.OperatorLogoWidthMm,
-                    op.OperatorLogoHeightMm,
-                    AlignBottom: false));
+                continue;
             }
+
+            slots.Add(new FooterLogoSlot(
+                asset,
+                op.OperatorLogoWidthMm,
+                op.OperatorLogoHeightMm,
+                AlignBottom: false));
         }
 
         return slots;
@@ -857,13 +895,24 @@ public static class SevSignPdfGenerator
             return [];
         }
 
+        var gapCount = Math.Max(0, slots.Count - 1);
+        var totalGapMm = gapCount * FooterLogoSlotGapMm;
+        var slotWidth = (available - totalGapMm) / slots.Count;
+        if (slotWidth <= 0f)
+        {
+            return [];
+        }
+
         var nominalWidths = slots.Select(s => s.WidthMm).ToList();
         var totalNominal = nominalWidths.Sum();
-        var scale = totalNominal > available ? available / totalNominal : 1f;
+        var globalScale = totalNominal > available - totalGapMm
+            ? (available - totalGapMm) / totalNominal
+            : 1f;
+        var slotScale = nominalWidths.Min(w => slotWidth / w);
+        var scale = Math.Min(globalScale, slotScale);
         scale = Math.Min(scale, 1f);
 
         var widths = nominalWidths.Select(w => w * scale).ToList();
-
         var placements = new List<FooterLogoPlacement>();
 
         if (slots.Count == 1)
@@ -873,10 +922,9 @@ public static class SevSignPdfGenerator
             return placements;
         }
 
-        var slotWidth = available / slots.Count;
         for (var i = 0; i < slots.Count; i++)
         {
-            var slotLeft = left + i * slotWidth;
+            var slotLeft = left + i * (slotWidth + FooterLogoSlotGapMm);
             var x = slotLeft + (slotWidth - widths[i]) / 2f;
             AddFooterLogoPlacement(placements, slots[i], x, widths[i], scale);
         }
@@ -948,12 +996,12 @@ public static class SevSignPdfGenerator
         }
 
         var fileName = Path.GetFileName(path);
-        if (!ShouldStripWhiteBackground(fileName))
+        if (ShouldStripWhiteBackground(fileName))
         {
-            return File.ReadAllBytes(path);
+            return LoadImageStrippingNearWhiteBackground(path) ?? File.ReadAllBytes(path);
         }
 
-        return LoadImageStrippingNearWhiteBackground(path) ?? File.ReadAllBytes(path);
+        return File.ReadAllBytes(path);
     }
 
     private static bool ShouldStripWhiteBackground(string fileName) =>

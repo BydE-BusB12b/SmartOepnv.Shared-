@@ -36,7 +36,9 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task ConnectDropboxAsync()
     {
-        var owner = System.Windows.Application.Current.MainWindow;
+        var owner = System.Windows.Window.GetWindow(
+            System.Windows.Application.Current.Windows.OfType<System.Windows.Window>()
+                .FirstOrDefault(w => w.IsActive) ?? System.Windows.Application.Current.MainWindow);
         var dialog = new DropboxOAuthWindow { Owner = owner };
         var ok = dialog.ShowDialog();
         if (ok == true)
@@ -60,12 +62,38 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void SaveFolderPath()
     {
-        var s = AppServices.Dropbox.Settings;
-        s.FolderPath = string.IsNullOrWhiteSpace(FolderPath)
-            ? DropboxConstants.DefaultFolderPath
-            : FolderPath.Trim();
-        AppServices.Dropbox.SaveSettings(s);
-        TestResult = "Ordnerpfad gespeichert.";
+        if (PersistFolderPath())
+        {
+            TestResult = "Ordnerpfad gespeichert.";
+        }
+    }
+
+    /// <summary>Speichert den Ordnerpfad aus der Eingabe (z. B. beim Schließen des Setup-Dialogs).</summary>
+    public bool PersistFolderPath()
+    {
+        var normalized = NormalizeFolderPath(FolderPath);
+        var stored = AppServices.Dropbox.Settings;
+        if (string.Equals(stored.FolderPath, normalized, StringComparison.Ordinal))
+        {
+            FolderPath = normalized;
+            return false;
+        }
+
+        stored.FolderPath = normalized;
+        AppServices.Dropbox.SaveSettings(stored);
+        FolderPath = normalized;
+        return true;
+    }
+
+    private static string NormalizeFolderPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return DropboxConstants.DefaultFolderPath;
+        }
+
+        var trimmed = path.Trim();
+        return trimmed.StartsWith('/') ? trimmed : $"/{trimmed}";
     }
 
     [RelayCommand]
@@ -76,6 +104,8 @@ public partial class SettingsViewModel : ObservableObject
             TestResult = "Bitte zuerst mit Dropbox verbinden.";
             return;
         }
+
+        PersistFolderPath();
 
         IsBusy = true;
         try

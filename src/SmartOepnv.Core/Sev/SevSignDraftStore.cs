@@ -12,7 +12,8 @@ public sealed class SevSignDraftStore
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     private readonly string _catalogPath;
@@ -61,6 +62,40 @@ public sealed class SevSignDraftStore
 
         WriteCatalog(items);
         return draft;
+    }
+
+    public void ReplaceAll(IEnumerable<SevSignDraft> drafts)
+    {
+        WriteCatalog(drafts.OrderByDescending(d => d.UpdatedAtUtcMs).ToList());
+    }
+
+    /// <summary>
+    /// Übernimmt Dropbox-Vorlagen ohne lokale zu löschen (ältere Workspace-Dateien hatten oft kein sevSignDrafts).
+    /// </summary>
+    public void MergeIncoming(IEnumerable<SevSignDraft> incoming)
+    {
+        var incomingList = incoming.ToList();
+        if (incomingList.Count == 0)
+        {
+            return;
+        }
+
+        var merged = LoadAll().ToDictionary(d => d.Id, d => d);
+        foreach (var draft in incomingList)
+        {
+            if (string.IsNullOrWhiteSpace(draft.Id))
+            {
+                continue;
+            }
+
+            if (!merged.TryGetValue(draft.Id, out var existing) ||
+                draft.UpdatedAtUtcMs >= existing.UpdatedAtUtcMs)
+            {
+                merged[draft.Id] = draft;
+            }
+        }
+
+        WriteCatalog(merged.Values.OrderByDescending(d => d.UpdatedAtUtcMs).ToList());
     }
 
     public bool Delete(string id)

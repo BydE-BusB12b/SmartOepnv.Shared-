@@ -64,6 +64,11 @@ public static class PlanerEmbeddedSoundsWorkspace
                     }
 
                     var target = Path.Combine(dir, fileName);
+                    if (File.Exists(target))
+                    {
+                        continue;
+                    }
+
                     File.WriteAllBytes(target, bytes);
                     count++;
                 }

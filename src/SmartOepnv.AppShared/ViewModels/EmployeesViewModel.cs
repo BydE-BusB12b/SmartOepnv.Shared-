@@ -17,6 +17,14 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
 
     public ObservableCollection<EmployeeRosterItem> Employees { get; } = [];
 
+    public EmployeesViewModel()
+    {
+        if (AppServices.IsInitialized)
+        {
+            AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
+        }
+    }
+
     public bool HasPendingChanges => _sync.HasPendingChanges;
 
     public void TrySelectEmployeeByPersonnelNumber(string? personnelDigits)
@@ -29,6 +37,20 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
         var norm = EmployeeRosterItem.NormalizePersonnelDigits(personnelDigits);
         var match = Employees.FirstOrDefault(e =>
             EmployeeRosterItem.NormalizePersonnelDigits(e.PersonnelNumber) == norm);
+        if (match is not null)
+        {
+            SelectedEmployee = match;
+        }
+    }
+
+    public void TrySelectEmployeeByDispoKey(string? driverKey)
+    {
+        if (string.IsNullOrWhiteSpace(driverKey))
+        {
+            return;
+        }
+
+        var match = Employees.FirstOrDefault(e => EmployeeDispoKeys.KeysMatch(driverKey, e));
         if (match is not null)
         {
             SelectedEmployee = match;
@@ -147,6 +169,28 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
     [RelayCommand]
     private void SaveChanges() => CommitChanges();
 
+    public void NotifyDocumentCheckChanged()
+    {
+        _sync.MarkDirty();
+        RefreshSelectedEmployeeBindings();
+        if (SelectedEmployee is not null)
+        {
+            StatusMessage = $"„{SelectedEmployee.Name}“ – Kontrolle bestätigt, bitte „Speichern“.";
+        }
+    }
+
+    private void RefreshSelectedEmployeeBindings()
+    {
+        var employee = SelectedEmployee;
+        if (employee is null)
+        {
+            return;
+        }
+
+        SelectedEmployee = null;
+        SelectedEmployee = employee;
+    }
+
     partial void OnSelectedEmployeeChanged(EmployeeRosterItem? value)
     {
         if (value is null)
@@ -195,7 +239,12 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
             e.LicenseExpiry,
             e.FqnExpiry,
             e.DriverCardExpiry,
-            e.LoginAsMainDevice
+            e.LoginAsMainDevice,
+            e.PlannerLoginEnabled,
+            e.PlannerPassword,
+            e.LicenseCheckConfirmedAtUtcMs,
+            e.FqnCheckConfirmedAtUtcMs,
+            e.DriverCardCheckConfirmedAtUtcMs
         }));
 
     private static EmployeeRosterItem Clone(EmployeeRosterItem e) => new()
@@ -207,6 +256,11 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
         LicenseExpiry = e.LicenseExpiry,
         FqnExpiry = e.FqnExpiry,
         DriverCardExpiry = e.DriverCardExpiry,
-        LoginAsMainDevice = e.LoginAsMainDevice
+        LoginAsMainDevice = e.LoginAsMainDevice,
+        PlannerLoginEnabled = e.PlannerLoginEnabled,
+        PlannerPassword = e.PlannerPassword,
+        LicenseCheckConfirmedAtUtcMs = e.LicenseCheckConfirmedAtUtcMs,
+        FqnCheckConfirmedAtUtcMs = e.FqnCheckConfirmedAtUtcMs,
+        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs
     };
 }

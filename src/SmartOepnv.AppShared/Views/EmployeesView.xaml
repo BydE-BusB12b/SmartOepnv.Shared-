@@ -98,6 +98,13 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Name:"
@@ -142,12 +149,104 @@
                                      Text="{Binding DriverCardExpiry, UpdateSourceTrigger=PropertyChanged}"
                                      Margin="0,0,0,12" />
 
-                            <CheckBox Grid.Row="7" Grid.ColumnSpan="2"
-                                      Content="Anmeldung als Hauptgerät (loginAsMainDevice)"
-                                      IsChecked="{Binding LoginAsMainDevice}"
+                            <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
+                                       Text="Kontrollen (alle 3 Monate)"
+                                       FontWeight="SemiBold" Opacity="0.85" FontSize="13" Margin="0,0,0,8" />
+
+                            <TextBlock Grid.Row="8" Grid.Column="0" Text="Führerscheinkontrolle:"
+                                       VerticalAlignment="Top" Margin="0,2,12,6" Opacity="0.9" MinWidth="150" />
+                            <StackPanel Grid.Row="8" Grid.Column="1" Margin="0,0,0,6">
+                                <CheckBox Content="Kontrolle bestätigt"
+                                          IsChecked="{Binding LicenseCheckConfirmed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEnabled="{Binding LicenseCheckConfirmationDue}"
+                                          Checked="DocumentCheck_Changed" />
+                                <TextBlock Text="{Binding LicenseCheckStatusText}"
+                                           Opacity="0.75" FontSize="11" TextWrapping="Wrap" Margin="28,2,0,0" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="9" Grid.Column="0" Text="FQN-Kontrolle:"
+                                       VerticalAlignment="Top" Margin="0,2,12,6" Opacity="0.9" />
+                            <StackPanel Grid.Row="9" Grid.Column="1" Margin="0,0,0,6">
+                                <CheckBox Content="Kontrolle bestätigt"
+                                          IsChecked="{Binding FqnCheckConfirmed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEnabled="{Binding FqnCheckConfirmationDue}"
+                                          Checked="DocumentCheck_Changed" />
+                                <TextBlock Text="{Binding FqnCheckStatusText}"
+                                           Opacity="0.75" FontSize="11" TextWrapping="Wrap" Margin="28,2,0,0" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="10" Grid.Column="0" Text="Fahrerkartenkontrolle:"
+                                       VerticalAlignment="Top" Margin="0,2,12,10" Opacity="0.9" />
+                            <StackPanel Grid.Row="10" Grid.Column="1" Margin="0,0,0,10">
+                                <CheckBox Content="Kontrolle bestätigt"
+                                          IsChecked="{Binding DriverCardCheckConfirmed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEnabled="{Binding DriverCardCheckConfirmationDue}"
+                                          Checked="DocumentCheck_Changed" />
+                                <TextBlock Text="{Binding DriverCardCheckStatusText}"
+                                           Opacity="0.75" FontSize="11" TextWrapping="Wrap" Margin="28,2,0,0" />
+                            </StackPanel>
+
+                            <CheckBox Grid.Row="11" Grid.ColumnSpan="2"
+                                      Content="App (Handy/Tablet) – Hauptnutzer am Bus-Gerät"
+                                      IsChecked="{Binding LoginAsMainDevice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       Margin="0,0,0,8" />
-                            <TextBlock Grid.Row="8" Grid.ColumnSpan="2"
-                                       Text="Speichern schreibt employeeRoster in den lokalen Workspace und den Routen-Export."
+
+                            <CheckBox Grid.Row="12" Grid.ColumnSpan="2"
+                                      Content="Planer"
+                                      IsChecked="{Binding PlannerLoginEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      Margin="0,0,0,8" />
+
+                            <StackPanel Grid.Row="13" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PlannerLoginEnabled}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Planer-Benutzername:"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,12,0"
+                                               Opacity="0.9"
+                                               MinWidth="150" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding Name}"
+                                               VerticalAlignment="Center"
+                                               FontWeight="SemiBold"
+                                               Opacity="0.95" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Planerpasswort:"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,12,0"
+                                               Opacity="0.9"
+                                               MinWidth="150" />
+                                    <TextBox Grid.Column="1"
+                                             Text="{Binding PlannerPassword, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                                <TextBlock Text="Anmeldung im Planer mit Vor- und Nachname (Feld Name) und diesem Passwort."
+                                           Opacity="0.65"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,8,0,0" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="14" Grid.ColumnSpan="2"
+                                       Text="Speichern überträgt die Daten in den Planer-Workspace (Dropbox-Sync). Planer-Zugang und -Passwort werden nur im Planer gespeichert, nicht in routes_export.json für Apps."
                                        Opacity="0.7" FontSize="11" TextWrapping="Wrap" />
                         </Grid>
                     </StackPanel>

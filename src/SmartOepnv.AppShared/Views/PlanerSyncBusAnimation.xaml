@@ -1,0 +1,40 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.PlanerSyncBusAnimation"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Height="96"
+             Background="Transparent">
+    <Border CornerRadius="8"
+            ClipToBounds="True"
+            Background="#1A2332"
+            BorderBrush="#334155"
+            BorderThickness="1">
+        <Canvas x:Name="RoadCanvas"
+                Width="520"
+                Height="96">
+            <Rectangle x:Name="RoadLine"
+                       Canvas.Top="74"
+                       Width="520"
+                       Height="4"
+                       Fill="#64748B"
+                       RadiusX="1"
+                       RadiusY="1" />
+            <Rectangle Canvas.Top="76"
+                       Width="520"
+                       Height="2"
+                       Fill="#94A3B8"
+                       Opacity="0.5" />
+
+            <Image x:Name="BusImage"
+                   Height="44"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True"
+                   RenderOptions.BitmapScalingMode="HighQuality"
+                   Source="pack://application:,,,/SmartOepnv.AppShared;component/Assets/planer_sync_solaris_bus.png"
+                   RenderTransformOrigin="0,1">
+                <Image.RenderTransform>
+                    <TranslateTransform x:Name="BusTransform" X="-520" />
+                </Image.RenderTransform>
+            </Image>
+        </Canvas>
+    </Border>
+</UserControl>

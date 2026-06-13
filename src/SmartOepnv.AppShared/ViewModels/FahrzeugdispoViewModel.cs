@@ -14,6 +14,8 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 {
     public const int VisibleDayCount = 7;
 
+    private const int MaxVisibleDayCount = 42;
+
     public const double DayCellWidth = 96;
 
     public const double HourCellWidth = 24;
@@ -46,7 +48,11 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
         : base("Kalenderschnur: Fahrzeuge links, Tage rechts – Tag anklicken für Stundenansicht.")
     {
         ViewStartDate = GetWeekStart(DateTime.Today);
-        EnsureFlushRegistered();
+        if (AppServices.IsInitialized)
+        {
+            AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
+            _flushRegistered = true;
+        }
     }
 
     private void EnsureFlushRegistered()
@@ -162,7 +168,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             return;
         }
 
-        if (!TryShowTripDialog(editor.RegisteredVehicles.ToList(), ViewStartDate, existing: null, out var result))
+        if (!TryShowTripDialog(editor.RegisteredVehicles.ToList(), DateTime.Today, existing: null, out var result))
         {
             return;
         }
@@ -267,15 +273,13 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             return;
         }
 
-        var days = Enumerable.Range(0, VisibleDayCount)
-            .Select(i => ViewStartDate.Date.AddDays(i))
-            .ToList();
-
         var vehicles = editor.RegisteredVehicles
             .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(v => v.PhoneNumber, StringComparer.OrdinalIgnoreCase)
             .Where(v => !ShowOnlyActiveVehicles || v.PlannerDetails.IsActive)
             .ToList();
+
+        var days = BuildVisibleDays(vehicles);
 
         VisibleVehicleCount = vehicles.Count;
         HasExpandedRow = _expandedPhoneKey is not null && _expandedDate is not null;
@@ -318,7 +322,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
                 Subtitle = BuildVehicleSubtitle(vehicle),
                 RowColorHex = vehicle.PlannerDetails.DispoRowColor,
                 PhoneKey = dispoKey,
-                IsHourMode = _expandedPhoneKey == dispoKey && _expandedDate is not null,
+                IsHourMode = MatchesExpandedHourView(vehicle),
                 HourModeDateLabel = _expandedDate?.ToString("dd.MM.yyyy", DeCulture) ?? string.Empty
             };
 
@@ -330,7 +334,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
                     row.Cells.Add(CreateHourCell(dispoKey, _expandedDate.Value, hour));
                 }
 
-                foreach (var bar in BuildHourAssignmentBars(dispoKey, _expandedDate.Value))
+                foreach (var bar in BuildHourAssignmentBars(vehicle, _expandedDate.Value))
                 {
                     row.AssignmentBars.Add(bar);
                 }
@@ -342,7 +346,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
                     row.Cells.Add(CreateDayCell(dispoKey, day));
                 }
 
-                foreach (var bar in BuildAssignmentBars(dispoKey, days))
+                foreach (var bar in BuildAssignmentBars(vehicle, days))
                 {
                     row.AssignmentBars.Add(bar);
                 }
@@ -366,17 +370,11 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
         }
 
         RebuildGrid();
-        ReportSaveSuccess(message);
-        _ = PersistAssignmentsAsync();
-    }
-
-    private async Task PersistAssignmentsAsync()
-    {
-        var success = await Task.Run(PersistAssignments).ConfigureAwait(true);
-        if (success)
+        if (PersistAssignments())
         {
             _sync.AfterCommit();
             _loadedFingerprint = ComputeFingerprint();
+            ReportSaveSuccess(message);
         }
     }
 
@@ -483,15 +481,58 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             CellWidth = HourCellWidth
         };
 
-    private IEnumerable<FahrzeugdispoAssignmentBarVm> BuildHourAssignmentBars(string dispoKey, DateTime date)
+    private IReadOnlyList<DateTime> BuildVisibleDays(IReadOnlyList<RegisteredVehicleItem> vehicles)
     {
+        var rangeStart = ViewStartDate.Date;
+        var rangeEnd = rangeStart.AddDays(VisibleDayCount - 1);
+
+        foreach (var vehicle in vehicles)
+        {
+            foreach (var assignment in _assignments.Where(a => MatchesVehicle(a, vehicle)))
+            {
+                var start = DateTimeOffset.FromUnixTimeMilliseconds(assignment.StartEpochMs).LocalDateTime.Date;
+                var end = DateTimeOffset.FromUnixTimeMilliseconds(assignment.EndEpochMs).LocalDateTime.Date;
+                if (start < rangeStart)
+                {
+                    rangeStart = start;
+                }
+
+                if (end > rangeEnd)
+                {
+                    rangeEnd = end;
+                }
+            }
+        }
+
+        var dayCount = (int)(rangeEnd - rangeStart).TotalDays + 1;
+        if (dayCount > MaxVisibleDayCount)
+        {
+            rangeEnd = rangeStart.AddDays(MaxVisibleDayCount - 1);
+        }
+
+        return Enumerable.Range(0, (int)(rangeEnd - rangeStart).TotalDays + 1)
+            .Select(i => rangeStart.AddDays(i))
+            .ToList();
+    }
+
+    private static bool MatchesVehicle(VehicleDispositionAssignment assignment, RegisteredVehicleItem vehicle) =>
+        RegisteredVehicleDispoKeys.KeysMatch(assignment.VehiclePhone, vehicle);
+
+    private bool MatchesExpandedHourView(RegisteredVehicleItem vehicle) =>
+        _expandedDate is not null &&
+        _expandedPhoneKey is not null &&
+        RegisteredVehicleDispoKeys.KeysMatch(_expandedPhoneKey, vehicle);
+
+    private IEnumerable<FahrzeugdispoAssignmentBarVm> BuildHourAssignmentBars(RegisteredVehicleItem vehicle, DateTime date)
+    {
+        var dispoKey = RegisteredVehicleDispoKeys.FromVehicle(vehicle);
         var dayStart = date.Date;
         var dayEnd = dayStart.AddDays(1);
         var dayStartMs = new DateTimeOffset(dayStart).ToUnixTimeMilliseconds();
         var dayEndMs = new DateTimeOffset(dayEnd).ToUnixTimeMilliseconds();
 
         var visibleAssignments = _assignments
-            .Where(a => string.Equals(a.VehiclePhone, dispoKey, StringComparison.Ordinal))
+            .Where(a => MatchesVehicle(a, vehicle))
             .Where(a => a.StartEpochMs < dayEndMs && a.EndEpochMs > dayStartMs)
             .OrderBy(a => a.StartEpochMs)
             .ToList();
@@ -559,7 +600,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
     }
 
     private IEnumerable<FahrzeugdispoAssignmentBarVm> BuildAssignmentBars(
-        string dispoKey,
+        RegisteredVehicleItem vehicle,
         IReadOnlyList<DateTime> days)
     {
         if (days.Count == 0)
@@ -567,13 +608,14 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             yield break;
         }
 
+        var dispoKey = RegisteredVehicleDispoKeys.FromVehicle(vehicle);
         var weekStart = days[0].Date;
         var weekEnd = days[^1].Date;
         var weekStartMs = new DateTimeOffset(weekStart).ToUnixTimeMilliseconds();
         var weekEndMs = new DateTimeOffset(weekEnd.AddDays(1)).ToUnixTimeMilliseconds();
 
         var visibleAssignments = _assignments
-            .Where(a => string.Equals(a.VehiclePhone, dispoKey, StringComparison.Ordinal))
+            .Where(a => MatchesVehicle(a, vehicle))
             .Where(a => a.StartEpochMs < weekEndMs && a.EndEpochMs > weekStartMs)
             .OrderBy(a => a.StartEpochMs)
             .ToList();

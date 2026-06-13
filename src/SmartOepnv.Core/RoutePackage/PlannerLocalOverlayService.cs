@@ -9,13 +9,17 @@ namespace SmartOepnv.Core.RoutePackage;
 /// </summary>
 public sealed class PlannerLocalOverlayService
 {
+    private readonly string _appSubfolder;
     private readonly PlannerLocalOverlayStore _store;
     private readonly VehicleDispositionStore _dispositionStore;
+    private readonly DriverDispositionStore _driverDispositionStore;
 
     public PlannerLocalOverlayService(string appSubfolder)
     {
+        _appSubfolder = appSubfolder;
         _store = new PlannerLocalOverlayStore(appSubfolder);
         _dispositionStore = new VehicleDispositionStore(appSubfolder);
+        _driverDispositionStore = new DriverDispositionStore(appSubfolder);
     }
 
     public string OverlayFilePath => _store.OverlayFilePath;
@@ -36,6 +40,8 @@ public sealed class PlannerLocalOverlayService
         if (overlay.HasContent || overlay.DeletedEmployeePersonnel.Count > 0 ||
             overlay.DeletedEmployeePhones.Count > 0 || overlay.DeletedVehiclePhoneKeys.Count > 0)
         {
+            var packageEmployees = editor.Employees.Select(CloneEmployee).ToList();
+            overlay.Employees = EmployeePlannerCredentialMerge.MergeLists(overlay.Employees, packageEmployees);
             ApplyToEditor(editor, overlay);
         }
     }
@@ -60,6 +66,7 @@ public sealed class PlannerLocalOverlayService
     {
         var overlay = CaptureFromEditor(editor);
         var previous = _store.LoadOrEmpty();
+        overlay.Employees = EmployeePlannerCredentialMerge.MergeLists(overlay.Employees, previous.Employees);
         overlay.DeletedEmployeePersonnel = MergeUnique(
             previous.DeletedEmployeePersonnel,
             overlay.DeletedEmployeePersonnel);
@@ -70,6 +77,9 @@ public sealed class PlannerLocalOverlayService
             previous.DeletedVehiclePhoneKeys,
             overlay.DeletedVehiclePhoneKeys);
         overlay.VehicleDispositionAssignments = LoadVehicleDisposition()
+            .Select(a => a.Clone())
+            .ToList();
+        overlay.DriverDispositionAssignments = LoadDriverDisposition()
             .Select(a => a.Clone())
             .ToList();
         _store.Save(overlay);
@@ -142,6 +152,48 @@ public sealed class PlannerLocalOverlayService
     public void SaveVehicleDisposition(IEnumerable<VehicleDispositionAssignment> assignments)
     {
         _dispositionStore.Save(assignments);
+    }
+
+    public IReadOnlyList<DriverDispositionAssignment> LoadDriverDisposition()
+    {
+        if (_driverDispositionStore.Exists)
+        {
+            var fromFile = _driverDispositionStore.Load();
+            if (fromFile.Count > 0)
+            {
+                return fromFile.Select(a => a.Clone()).ToList();
+            }
+        }
+
+        var fromOverlay = _store.LoadOrEmpty()
+            .DriverDispositionAssignments
+            .Select(a => a.Clone())
+            .ToList();
+        if (fromOverlay.Count > 0)
+        {
+            _driverDispositionStore.Save(fromOverlay);
+            return fromOverlay;
+        }
+
+        var workspace = new PlanerWorkspaceService(_appSubfolder).TryReadLocalDocument();
+        if (workspace?.DriverDispositionAssignments is { Count: > 0 } fromWorkspace)
+        {
+            var migrated = fromWorkspace.Select(a => a.Clone()).ToList();
+            _driverDispositionStore.Save(migrated);
+            return migrated;
+        }
+
+        return [];
+    }
+
+    public void SaveDriverDisposition(IEnumerable<DriverDispositionAssignment> assignments)
+    {
+        var list = assignments.Select(a => a.Clone()).ToList();
+        _driverDispositionStore.Save(list);
+
+        var overlay = _store.LoadOrEmpty();
+        overlay.DriverDispositionAssignments = list.Select(a => a.Clone()).ToList();
+        _store.Save(overlay);
     }
 
     /// <summary>
@@ -333,7 +385,12 @@ public sealed class PlannerLocalOverlayService
         LicenseExpiry = e.LicenseExpiry,
         FqnExpiry = e.FqnExpiry,
         DriverCardExpiry = e.DriverCardExpiry,
-        LoginAsMainDevice = e.LoginAsMainDevice
+        LoginAsMainDevice = e.LoginAsMainDevice,
+        PlannerLoginEnabled = e.PlannerLoginEnabled,
+        PlannerPassword = e.PlannerPassword,
+        LicenseCheckConfirmedAtUtcMs = e.LicenseCheckConfirmedAtUtcMs,
+        FqnCheckConfirmedAtUtcMs = e.FqnCheckConfirmedAtUtcMs,
+        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs
     };
 
     private static RegisteredVehicleItem CloneVehicle(RegisteredVehicleItem v) => new()

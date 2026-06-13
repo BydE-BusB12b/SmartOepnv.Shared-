@@ -26,6 +26,28 @@ public static class VehicleInspectionWarningEvaluator
             .ToList();
     }
 
+    /// <summary>Strengste HU-/SP-Warnstufe für ein Fahrzeug (null = kein Hinweis in den nächsten 30 Tagen).</summary>
+    public static VehicleInspectionWarningLevel? GetWorstWarningLevel(
+        RegisteredVehicleItem vehicle,
+        DateOnly? today = null)
+    {
+        var reference = today ?? DateOnly.FromDateTime(DateTime.Today);
+        VehicleInspectionWarningLevel? worst = null;
+
+        void Consider(string? dateRaw)
+        {
+            var level = ResolveWarningLevel(dateRaw, reference);
+            if (level is not null && (worst is null || level > worst))
+            {
+                worst = level;
+            }
+        }
+
+        Consider(vehicle.PlannerDetails.NextMainInspection);
+        Consider(vehicle.PlannerDetails.NextSpInspection);
+        return worst;
+    }
+
     private static void TryAddWarning(
         ICollection<VehicleInspectionWarning> warnings,
         RegisteredVehicleItem vehicle,
@@ -42,30 +64,31 @@ public static class VehicleInspectionWarningEvaluator
         var phoneNorm = RegisteredVehiclesEditor.NormalizePhoneKey(vehicle.PhoneNumber);
 
         var daysUntil = dueDate.DayNumber - today.DayNumber;
-        if (daysUntil > 30)
+        var level = ResolveWarningLevel(dateRaw, today);
+        if (level is not VehicleInspectionWarningLevel resolvedLevel)
         {
             return;
         }
 
-        VehicleInspectionWarning? warning = daysUntil switch
+        VehicleInspectionWarning? warning = resolvedLevel switch
         {
-            >= 16 and <= 30 => Create(
-                VehicleInspectionWarningLevel.Notice30To16Days,
+            VehicleInspectionWarningLevel.Notice30To16Days => Create(
+                resolvedLevel,
                 $"!Hinweis: {inspectionKind} für Fahrzeug {label} in {daysUntil} Tagen.",
                 100 + daysUntil,
                 phoneNorm),
-            >= 5 and <= 15 => Create(
-                VehicleInspectionWarningLevel.Notice15To5Days,
+            VehicleInspectionWarningLevel.Notice15To5Days => Create(
+                resolvedLevel,
                 $"!Hinweis: {inspectionKind} für Fahrzeug {label} in {daysUntil} Tagen.",
                 200 + daysUntil,
                 phoneNorm),
-            >= 1 and <= 4 => Create(
-                VehicleInspectionWarningLevel.Urgent4To1Days,
+            VehicleInspectionWarningLevel.Urgent4To1Days => Create(
+                resolvedLevel,
                 $"!Achtung: {inspectionKind} für Fahrzeug {label} fällig in {daysUntil} Tagen.",
                 400 - daysUntil,
                 phoneNorm),
-            <= 0 => Create(
-                VehicleInspectionWarningLevel.Overdue,
+            VehicleInspectionWarningLevel.Overdue => Create(
+                resolvedLevel,
                 $"!ACHTUNG: {inspectionKind} für Fahrzeug {label} jetzt fällig (seit {Math.Abs(daysUntil)} Tagen abgelaufen)",
                 1000 + Math.Abs(daysUntil),
                 phoneNorm),
@@ -76,6 +99,24 @@ public static class VehicleInspectionWarningEvaluator
         {
             warnings.Add(warning);
         }
+    }
+
+    private static VehicleInspectionWarningLevel? ResolveWarningLevel(string? dateRaw, DateOnly today)
+    {
+        if (!TryParseInspectionDate(dateRaw, out var dueDate))
+        {
+            return null;
+        }
+
+        var daysUntil = dueDate.DayNumber - today.DayNumber;
+        return daysUntil switch
+        {
+            >= 16 and <= 30 => VehicleInspectionWarningLevel.Notice30To16Days,
+            >= 5 and <= 15 => VehicleInspectionWarningLevel.Notice15To5Days,
+            >= 1 and <= 4 => VehicleInspectionWarningLevel.Urgent4To1Days,
+            <= 0 => VehicleInspectionWarningLevel.Overdue,
+            _ => null
+        };
     }
 
     private static VehicleInspectionWarning Create(

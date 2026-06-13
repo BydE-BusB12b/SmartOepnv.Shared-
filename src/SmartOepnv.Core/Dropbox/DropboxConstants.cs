@@ -7,6 +7,10 @@ public static class DropboxConstants
     public const string DefaultFolderPath = "/App/Smart ÖPNV";
     public const string RouteFileName = "routes_export.json";
     public const string LeitstelleStandFileName = "leitstelle_stand.json";
+    public const string MaengelkarteFileName = "maengelkarte.json";
+    public const string PlanerSessionFileName = "planer_session.json";
+    /// <summary>Vollständiger Planer-Arbeitsstand (nicht routes_export.json – die lesen die Apps).</summary>
+    public const string PlanerWorkspaceFileName = "planer_workspace.json";
     public const string OAuthRedirectUri = "https://www.dropbox.com";
 
     public const string AuthorizeUrl = "https://www.dropbox.com/oauth2/authorize";

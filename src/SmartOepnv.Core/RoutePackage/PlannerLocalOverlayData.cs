@@ -32,6 +32,9 @@ public sealed class PlannerLocalOverlayData
     /// <summary>Fahrzeugdisposition: Touren/Einsätze (nur Planer).</summary>
     public List<VehicleDispositionAssignment> VehicleDispositionAssignments { get; set; } = [];
 
+    /// <summary>Fahrerdisposition: Dienste/Einsätze (nur Planer).</summary>
+    public List<DriverDispositionAssignment> DriverDispositionAssignments { get; set; } = [];
+
     [JsonIgnore]
     public bool HasContent =>
         Employees.Count > 0 ||
@@ -40,5 +43,6 @@ public sealed class PlannerLocalOverlayData
         DeletedEmployeePersonnel.Count > 0 ||
         DeletedEmployeePhones.Count > 0 ||
         DeletedVehiclePhoneKeys.Count > 0 ||
-        VehicleDispositionAssignments.Count > 0;
+        VehicleDispositionAssignments.Count > 0 ||
+        DriverDispositionAssignments.Count > 0;
 }

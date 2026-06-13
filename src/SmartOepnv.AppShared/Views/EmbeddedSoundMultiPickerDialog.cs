@@ -11,16 +11,24 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
     private readonly ObservableCollection<string> _filtered = [];
     private readonly ObservableCollection<string> _selected = [];
     private readonly List<string> _allNames;
+    private readonly int _minimumSelectedCount;
     private readonly TextBlock _status;
     private string _pendingQuery = string.Empty;
 
     public IReadOnlyList<string> SelectedFileNames => _selected.ToList();
 
-    public EmbeddedSoundMultiPickerDialog(IReadOnlyList<string> soundFileNames, string? initialSearch = null)
+    public EmbeddedSoundMultiPickerDialog(
+        IReadOnlyList<string> soundFileNames,
+        string? initialSearch = null,
+        int minimumSelectedCount = 2,
+        string? dialogTitle = null,
+        string? instructionHint = null,
+        IReadOnlyList<string>? initialSelected = null)
     {
+        _minimumSelectedCount = Math.Max(1, minimumSelectedCount);
         _allNames = soundFileNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
 
-        Title = "Mehrere Ansagen zusammenfügen";
+        Title = dialogTitle ?? "Mehrere Ansagen zusammenfügen";
         Width = 760;
         Height = 520;
         MinWidth = 560;
@@ -46,7 +54,7 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
 
         var hint = new TextBlock
         {
-            Text = "Links antippen oder doppelklicken → rechts. Mindestens zwei Ansagen.",
+            Text = instructionHint ?? "Links antippen oder doppelklicken → rechts. Mindestens zwei Ansagen.",
             Opacity = 0.75,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 10)
@@ -179,6 +187,19 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
 
         Loaded += (_, _) =>
         {
+            if (initialSelected is not null)
+            {
+                foreach (var name in initialSelected)
+                {
+                    if (!string.IsNullOrWhiteSpace(name) &&
+                        _allNames.Contains(name, StringComparer.OrdinalIgnoreCase) &&
+                        !_selected.Contains(name))
+                    {
+                        _selected.Add(name);
+                    }
+                }
+            }
+
             ApplyFilter(queryBox.Text.Trim());
             queryBox.Focus();
             if (!string.IsNullOrEmpty(queryBox.Text))
@@ -232,11 +253,12 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
 
     private void ConfirmSelection()
     {
-        if (_selected.Count < 2)
+        if (_selected.Count < _minimumSelectedCount)
         {
+            var countLabel = _minimumSelectedCount == 1 ? "eine Ansage" : $"{_minimumSelectedCount} Ansagen";
             MessageBox.Show(
                 this,
-                "Bitte mindestens zwei Ansagen in der Reihenfolge-Liste wählen.",
+                $"Bitte mindestens {countLabel} in der Reihenfolge-Liste wählen.",
                 Title,
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -266,7 +288,9 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
 
     private void UpdateStatus(string? query = null, int? filteredCount = null)
     {
-        var suffix = _selected.Count >= 2 ? string.Empty : " (mind. 2)";
+        var suffix = _selected.Count >= _minimumSelectedCount
+            ? string.Empty
+            : $" (mind. {_minimumSelectedCount})";
         if (string.IsNullOrWhiteSpace(query))
         {
             _status.Text = $"{_selected.Count} gewählt{suffix} · {_allNames.Count} verfügbar";

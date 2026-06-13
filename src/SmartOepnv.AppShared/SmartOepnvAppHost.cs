@@ -2,13 +2,17 @@ using System.Windows;
 using System.Windows.Media;
 using MaterialDesignColors;
 using MaterialDesignThemes.Wpf;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
-using SmartOepnv.Core.Dropbox;
+using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.Core.Session;
 
 namespace SmartOepnv.AppShared;
 
 public static class SmartOepnvAppHost
 {
+    private static bool _shutdownHandlersRegistered;
+
     public static SmartOepnvAppProfile Profile { get; private set; } = SmartOepnvAppProfile.Planer;
 
     public static void Initialize(SmartOepnvAppProfile profile)
@@ -16,6 +20,25 @@ public static class SmartOepnvAppHost
         Profile = profile;
         var settingsFolder = profile.IsLeitstelle ? "Leitstelle" : "Planer";
         AppServices.Initialize(settingsFolder);
+        RegisterShutdownHandlersIfNeeded();
+    }
+
+    private static void RegisterShutdownHandlersIfNeeded()
+    {
+        if (_shutdownHandlersRegistered || Profile.IsLeitstelle)
+        {
+            return;
+        }
+
+        var app = Application.Current;
+        if (app is null)
+        {
+            return;
+        }
+
+        app.Exit += (_, _) => EnsurePlanerShutdownSaveAndRelease();
+        app.SessionEnding += (_, _) => EnsurePlanerShutdownSaveAndRelease();
+        _shutdownHandlersRegistered = true;
     }
 
     public static void ApplyApplicationResources(Application application, SmartOepnvAppProfile profile)
@@ -55,6 +78,7 @@ public static class SmartOepnvAppHost
 
     public static MainShellWindow CreateMainWindow()
     {
+        RegisterShutdownHandlersIfNeeded();
         var window = new MainShellWindow();
         window.DataContext = new ViewModels.MainViewModel(Profile);
         window.Title = Profile.ProductName;
@@ -70,6 +94,84 @@ public static class SmartOepnvAppHost
 
         return window;
     }
+
+    /// <summary>Planer: Sperre prüfen, Login-Dialog über verschwommenem Hauptfenster.</summary>
+    public static async Task<bool> RunPlanerLoginGateAsync(MainShellWindow owner)
+    {
+        if (Profile.IsLeitstelle || AppServices.PlanerSession is null)
+        {
+            return true;
+        }
+
+        var session = AppServices.PlanerSession;
+        await session.TryReleasePendingLocalSessionAsync().ConfigureAwait(true);
+
+        var (availability, activeUser) = await session.InspectLockAsync().ConfigureAwait(true);
+
+        string? lockWarning = null;
+        if (availability == PlanerSessionAvailability.InUseByOther)
+        {
+            lockWarning = "Planer gesperrt – anderer Nutzer ist angemeldet" +
+                          (string.IsNullOrWhiteSpace(activeUser) ? "." : $": {activeUser}.") +
+                          " Bitte dort abmelden oder Sperre freigeben.";
+        }
+
+        var login = new LoginWindow(lockWarning)
+        {
+            Owner = owner,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ShowInTaskbar = false
+        };
+        return login.ShowDialog() == true;
+    }
+
+    public static async Task ReleasePlanerSessionAsync()
+    {
+        if (AppServices.PlanerSession is null)
+        {
+            return;
+        }
+
+        await AppServices.PlanerSession.ReleaseLockAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>Beim Beenden synchron speichern und Dropbox-Sperre freigeben (blockiert bis Upload fertig).</summary>
+    public static void EnsurePlanerShutdownSaveAndRelease()
+    {
+        if (!AppServices.IsPlannerApp || !AppServices.IsInitialized)
+        {
+            return;
+        }
+
+        if (AppServices.PlanerSession is null ||
+            AppServices.PlanerSession.NeedsExitHandling() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            AppServices.FlushAllPendingEditsBestEffort();
+            SmartOepnvDataBackupService.BackupAllProfiles("app-exit-sync");
+        }
+        catch
+        {
+            // trotzdem exportieren/freigeben
+        }
+
+        try
+        {
+            PlanerDropboxWorkspaceSync.TryExportAsync().GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // trotzdem Sperre freigeben
+        }
+
+        AppServices.PlanerSession.ReleaseLockBestEffortSync();
+    }
+
+    public static void SaveAndReleasePlanerSessionSync() => EnsurePlanerShutdownSaveAndRelease();
 
     private static Color Blend(Color a, Color b, double amount)
     {

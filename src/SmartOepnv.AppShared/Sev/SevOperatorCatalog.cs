@@ -356,6 +356,28 @@ public static class SevOperatorCatalog
 
             FooterSortOrder = 44
 
+        },
+
+        new()
+
+        {
+
+            Kind = SevOperatorKind.Nwl,
+
+            DisplayName = "NWL",
+
+            PreviewAssetFileName = "operator_nwl.png",
+
+            PdfLogoAssetFileNames = ["operator_nwl.png"],
+
+            OperatorLogoWidthMm = 48f,
+
+            OperatorLogoHeightMm = 30.6f,
+
+            UseLargeOperatorLogo = false,
+
+            FooterSortOrder = 195
+
         }
 
     ];
