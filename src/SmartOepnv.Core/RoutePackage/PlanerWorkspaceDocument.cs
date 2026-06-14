@@ -1,3 +1,4 @@
+using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.Sev;
 
 namespace SmartOepnv.Core.RoutePackage;
@@ -27,6 +28,8 @@ public sealed class PlanerWorkspaceDocument
     public List<DriverDispositionAssignment> DriverDispositionAssignments { get; set; } = [];
 
     public List<SevSignDraft> SevSignDrafts { get; set; } = [];
+
+    public List<DutyTemplate> DutyTemplates { get; set; } = [];
 
     /// <summary>Gespeicherte Planer-Snapshots (Übersicht → Versionen).</summary>
     public List<PlannerPackageVersionSnapshotData> PackageVersionSnapshots { get; set; } = [];

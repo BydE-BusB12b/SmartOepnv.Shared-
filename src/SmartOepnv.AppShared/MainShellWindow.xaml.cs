@@ -240,7 +240,15 @@ public partial class MainShellWindow : Window
         }
         finally
         {
-            SmartOepnvAppHost.EnsurePlanerShutdownSaveAndRelease();
+            if (!PlanerWorkspaceSaveCoordinator.WasPersistedRecently())
+            {
+                SmartOepnvAppHost.EnsurePlanerShutdownSaveAndRelease();
+            }
+            else if (AppServices.PlanerSession?.IsLoggedIn == true)
+            {
+                AppServices.PlanerSession.ReleaseLockBestEffortSync();
+            }
+
             savingDialog.PrepareToClose();
             savingDialog.Close();
             IsEnabled = true;

@@ -149,6 +149,12 @@ public static class SmartOepnvAppHost
             return;
         }
 
+        if (PlanerWorkspaceSaveCoordinator.WasPersistedRecently())
+        {
+            AppServices.PlanerSession.ReleaseLockBestEffortSync();
+            return;
+        }
+
         try
         {
             AppServices.FlushAllPendingEditsBestEffort();
@@ -168,6 +174,7 @@ public static class SmartOepnvAppHost
             // trotzdem Sperre freigeben
         }
 
+        PlanerWorkspaceSaveCoordinator.MarkPersisted();
         AppServices.PlanerSession.ReleaseLockBestEffortSync();
     }
 

@@ -84,16 +84,18 @@ public static class PlanerDropboxWorkspaceSync
             return new ExportResult(false, "Nur im Planer verfügbar.");
         }
 
-        if (!AppServices.Dropbox.Settings.IsConnected)
-        {
-            return new ExportResult(false, "Dropbox nicht verbunden.");
-        }
-
         try
         {
             var document = Workspace.CaptureCurrent();
             var json = PlanerWorkspaceService.Serialize(document);
             Workspace.WriteLocalCopy(document);
+            PlanerWorkspaceSaveCoordinator.MarkPersisted();
+
+            if (!AppServices.Dropbox.Settings.IsConnected)
+            {
+                return new ExportResult(false, "Dropbox nicht verbunden – lokal gespeichert.");
+            }
+
             await AppServices.Dropbox
                 .UploadNamedFileAsync(DropboxConstants.PlanerWorkspaceFileName, json, ct)
                 .ConfigureAwait(false);

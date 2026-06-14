@@ -1,3 +1,4 @@
+using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.Sev;
@@ -43,13 +44,22 @@ public static class AppServices
 
     public static SevSignDraftStore? SevSignDrafts => _sevSignDrafts;
 
+    public static DutyTemplateStore? DutyTemplates => _dutyTemplates;
+
+    public static DutyTemplateEditorSessionStore? DutyTemplateEditorSession => _dutyTemplateEditorSession;
+
     public static PlanerSessionService? PlanerSession => _planerSession;
+
+    public static PlanerAppSettingsStore? PlanerAppSettings => _planerAppSettings;
 
     private static PlannerLocalOverlayService? _plannerLocal;
     private static PlannerPackageVersionStore? _plannerVersions;
     private static DeviceRegistrationDropboxService? _deviceRegistration;
     private static SevSignDraftStore? _sevSignDrafts;
+    private static DutyTemplateStore? _dutyTemplates;
+    private static DutyTemplateEditorSessionStore? _dutyTemplateEditorSession;
     private static PlanerSessionService? _planerSession;
+    private static PlanerAppSettingsStore? _planerAppSettings;
 
     private static readonly List<Action> _flushBeforeExport = [];
 
@@ -102,7 +112,10 @@ public static class AppServices
             _plannerVersions = new PlannerPackageVersionStore(settingsSubfolder);
             _deviceRegistration = new DeviceRegistrationDropboxService();
             _sevSignDrafts = new SevSignDraftStore(settingsSubfolder);
+            _dutyTemplates = new DutyTemplateStore(settingsSubfolder);
+            _dutyTemplateEditorSession = new DutyTemplateEditorSessionStore(settingsSubfolder);
             _planerSession = new PlanerSessionService(_dropbox);
+            _planerAppSettings = new PlanerAppSettingsStore(settingsSubfolder);
         }
         _initialized = true;
     }

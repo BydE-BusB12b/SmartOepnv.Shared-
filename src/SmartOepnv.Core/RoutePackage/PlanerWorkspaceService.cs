@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.Sev;
 
@@ -17,11 +18,20 @@ public sealed class PlanerWorkspaceService
         Converters = { new JsonStringEnumConverter() }
     };
 
+    private static readonly JsonSerializerOptions CompactJsonOptions = new()
+    {
+        WriteIndented = false,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     private readonly string _localPath;
     private readonly PlannerLocalOverlayStore _overlayStore;
     private readonly VehicleDispositionStore _dispositionStore;
     private readonly DriverDispositionStore _driverDispositionStore;
     private readonly SevSignDraftStore _sevStore;
+    private readonly DutyTemplateStore _dutyTemplateStore;
 
     public PlanerWorkspaceService(string appSubfolder)
     {
@@ -32,6 +42,7 @@ public sealed class PlanerWorkspaceService
         _dispositionStore = new VehicleDispositionStore(appSubfolder);
         _driverDispositionStore = new DriverDispositionStore(appSubfolder);
         _sevStore = new SevSignDraftStore(appSubfolder);
+        _dutyTemplateStore = new DutyTemplateStore(appSubfolder);
     }
 
     public string LocalFilePath => _localPath;
@@ -68,6 +79,7 @@ public sealed class PlanerWorkspaceService
             VehicleDispositionAssignments = _dispositionStore.Load().Select(a => a.Clone()).ToList(),
             DriverDispositionAssignments = _driverDispositionStore.Load().Select(a => a.Clone()).ToList(),
             SevSignDrafts = _sevStore.LoadAll().Select(CloneSevDraft).ToList(),
+            DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
             PackageVersionSnapshots = CapturePackageVersionSnapshots()
         };
     }
@@ -98,6 +110,7 @@ public sealed class PlanerWorkspaceService
         ApplyVehicleDisposition(document.VehicleDispositionAssignments);
         ApplyDriverDisposition(document.DriverDispositionAssignments ?? []);
         _sevStore.MergeIncoming(document.SevSignDrafts);
+        _dutyTemplateStore.MergeIncoming(document.DutyTemplates ?? []);
         MergePackageVersionSnapshots(document.PackageVersionSnapshots);
 
         if (!string.IsNullOrWhiteSpace(document.RoutesPackageJson))
@@ -209,12 +222,13 @@ public sealed class PlanerWorkspaceService
             VehicleDispositionAssignments = _dispositionStore.Load().Select(a => a.Clone()).ToList(),
             DriverDispositionAssignments = _driverDispositionStore.Load().Select(a => a.Clone()).ToList(),
             SevSignDrafts = _sevStore.LoadAll().Select(CloneSevDraft).ToList(),
+            DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
             PackageVersionSnapshots = CapturePackageVersionSnapshots()
         };
 
     public void WriteLocalCopy(PlanerWorkspaceDocument document)
     {
-        SafeDataFileStore.WriteAllText(_localPath, Serialize(document), archivePrevious: true);
+        SafeDataFileStore.WriteAllText(_localPath, Serialize(document), archivePrevious: false);
     }
 
     /// <summary>
@@ -278,7 +292,7 @@ public sealed class PlanerWorkspaceService
     }
 
     public static string Serialize(PlanerWorkspaceDocument document) =>
-        JsonSerializer.Serialize(document, JsonOptions);
+        JsonSerializer.Serialize(document, CompactJsonOptions);
 
     private string? ReadLocalJson()
     {
@@ -309,4 +323,6 @@ public sealed class PlanerWorkspaceService
         SourceRoute = draft.SourceRoute,
         ImportRouteReverse = draft.ImportRouteReverse
     };
+
+    private static DutyTemplate CloneDutyTemplate(DutyTemplate template) => template.Clone();
 }

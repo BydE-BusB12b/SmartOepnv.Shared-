@@ -1,10 +1,31 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
+using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.AppShared.Views;
 
 namespace SmartOepnv.AppShared.ViewModels;
+
+public sealed partial class CompanyLogoListItem : ObservableObject
+{
+    private readonly string _id;
+
+    public CompanyLogoListItem(CompanyLogoEntry entry, string filePath)
+    {
+        _id = entry.Id;
+        _name = entry.Name;
+        FilePath = filePath;
+    }
+
+    public string Id => _id;
+
+    public string FilePath { get; }
+
+    [ObservableProperty] private string _name;
+}
 
 public partial class SettingsViewModel : ObservableObject
 {
@@ -16,6 +37,14 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string folderFilesSummary = "—";
     [ObservableProperty] private bool isConnected;
     [ObservableProperty] private bool isBusy;
+    [ObservableProperty] private string brandingStatus = string.Empty;
+    [ObservableProperty] private CompanyLogoListItem? selectedCompanyLogo;
+
+    public ObservableCollection<CompanyLogoListItem> CompanyLogos { get; } = [];
+
+    public bool ShowBrandingSection => AppServices.IsPlannerApp;
+
+    public bool HasCompanyLogos => CompanyLogos.Count > 0;
 
     public SettingsViewModel()
     {
@@ -31,6 +60,134 @@ public partial class SettingsViewModel : ObservableObject
             ? $"{s.ConnectedAccountName} ({s.ConnectedAccountEmail})"
             : "—";
         ConnectionStatus = s.IsConnected ? "Verbunden" : "Nicht verbunden";
+        ReloadBranding();
+    }
+
+    private void ReloadBranding()
+    {
+        CompanyLogos.Clear();
+        SelectedCompanyLogo = null;
+
+        if (!AppServices.IsPlannerApp)
+        {
+            OnPropertyChanged(nameof(HasCompanyLogos));
+            return;
+        }
+
+        foreach (var entry in PlanerBrandingWorkspace.GetLogos(AppServices.SettingsSubfolder))
+        {
+            var path = PlanerBrandingWorkspace.TryGetLogoPath(AppServices.SettingsSubfolder, entry.Id);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            CompanyLogos.Add(new CompanyLogoListItem(entry, path));
+        }
+
+        SelectedCompanyLogo = CompanyLogos.FirstOrDefault();
+        BrandingStatus = HasCompanyLogos
+            ? $"{CompanyLogos.Count} Logo(s) gespeichert – in Dienstvorlagen auswählbar."
+            : "Noch kein Firmenlogo hinterlegt.";
+        OnPropertyChanged(nameof(HasCompanyLogos));
+    }
+
+    [RelayCommand]
+    private void ChooseCompanyLogo()
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Firmenlogo hinzufügen",
+            Filter = "Bilder (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp|Alle Dateien (*.*)|*.*"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var entry = PlanerBrandingWorkspace.AddLogoFromFile(
+                AppServices.SettingsSubfolder,
+                dialog.FileName);
+            var path = PlanerBrandingWorkspace.TryGetLogoPath(AppServices.SettingsSubfolder, entry.Id);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new InvalidOperationException("Logo wurde gespeichert, ist aber nicht auffindbar.");
+            }
+
+            var item = new CompanyLogoListItem(entry, path);
+            CompanyLogos.Add(item);
+            SelectedCompanyLogo = item;
+            BrandingStatus = $"Logo „{entry.Name}“ hinzugefügt.";
+            OnPropertyChanged(nameof(HasCompanyLogos));
+        }
+        catch (Exception ex)
+        {
+            BrandingStatus = $"Logo konnte nicht gespeichert werden: {ex.Message}";
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRemoveSelectedCompanyLogo))]
+    private void RemoveSelectedCompanyLogo()
+    {
+        if (!AppServices.IsPlannerApp || SelectedCompanyLogo is null)
+        {
+            return;
+        }
+
+        var id = SelectedCompanyLogo.Id;
+        var name = SelectedCompanyLogo.Name;
+        if (!PlanerBrandingWorkspace.RemoveLogo(AppServices.SettingsSubfolder, id))
+        {
+            BrandingStatus = "Logo konnte nicht entfernt werden.";
+            return;
+        }
+
+        var index = CompanyLogos.IndexOf(SelectedCompanyLogo);
+        CompanyLogos.Remove(SelectedCompanyLogo);
+        SelectedCompanyLogo = CompanyLogos.Count == 0
+            ? null
+            : CompanyLogos[Math.Min(index, CompanyLogos.Count - 1)];
+        BrandingStatus = $"Logo „{name}“ entfernt.";
+        OnPropertyChanged(nameof(HasCompanyLogos));
+    }
+
+    private bool CanRemoveSelectedCompanyLogo() => SelectedCompanyLogo is not null;
+
+    [RelayCommand(CanExecute = nameof(CanSaveSelectedLogoName))]
+    private void SaveSelectedLogoName()
+    {
+        if (SelectedCompanyLogo is null)
+        {
+            return;
+        }
+
+        PersistSelectedLogoName(SelectedCompanyLogo);
+    }
+
+    private bool CanSaveSelectedLogoName() => SelectedCompanyLogo is not null;
+
+    private void PersistSelectedLogoName(CompanyLogoListItem item)
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return;
+        }
+
+        if (!PlanerBrandingWorkspace.UpdateLogoName(AppServices.SettingsSubfolder, item.Id, item.Name))
+        {
+            BrandingStatus = "Logo-Bezeichnung konnte nicht gespeichert werden.";
+            return;
+        }
+
+        BrandingStatus = "Logo-Bezeichnung gespeichert.";
     }
 
     [RelayCommand]

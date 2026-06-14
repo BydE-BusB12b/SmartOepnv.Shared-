@@ -1,0 +1,1186 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.DienstvorlagenView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:controls="clr-namespace:SmartOepnv.AppShared.Views.Controls"
+             xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels"
+             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
+             VerticalAlignment="Stretch"
+             HorizontalAlignment="Stretch">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        <conv:RemarkDisplayConverter x:Key="RemarkDisplayConverter" />
+
+        <Style x:Key="DutySectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource SmartPrimaryLightBrush}" />
+            <Setter Property="Margin" Value="0,10,0,8" />
+        </Style>
+
+        <Style x:Key="DutyHintStyle" TargetType="TextBlock">
+            <Setter Property="Opacity" Value="0.68" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="LineHeight" Value="14" />
+        </Style>
+
+        <Style x:Key="DutyStatCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SmartPrimaryDarkBrush}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,2" />
+        </Style>
+
+        <Style x:Key="DutyListBoxStyle" TargetType="ListBox">
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#334B7A" />
+            <Setter Property="Background" Value="#141E36" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+                        <Setter Property="Foreground" Value="White" />
+                        <Setter Property="Padding" Value="4,3" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DutyDataGridStyle" TargetType="DataGrid">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#141E36" />
+            <Setter Property="BorderBrush" Value="#334B7A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="RowBackground" Value="Transparent" />
+            <Setter Property="AlternatingRowBackground" Value="#2A4880" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+            <Setter Property="HorizontalGridLinesBrush" Value="#2A3F6B" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="MinRowHeight" Value="36" />
+        </Style>
+
+        <Style x:Key="DutyDataGridCellStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style x:Key="DutyDataGridEditingStyle" TargetType="TextBox">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#1A2744" />
+            <Setter Property="CaretBrush" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+            <Setter Property="Padding" Value="4,2" />
+        </Style>
+
+        <Style x:Key="DutyDataGridRowStyle" TargetType="DataGridRow">
+            <Setter Property="Foreground" Value="White" />
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SmartPrimaryBrush}" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  PanningMode="VerticalOnly">
+        <Grid Margin="8,4,8,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                <TextBlock Text="Dienstvorlagen"
+                           Style="{StaticResource SmartPageTitleStyle}"
+                           FontSize="22"
+                           Margin="0,0,0,2" />
+                <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
+                           Margin="0,0,0,0"
+                           FontSize="12"
+                           Text="Fahrplan importieren, Fahrten bearbeiten und als moderne Dienstvorlage exportieren." />
+            </StackPanel>
+
+            <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340" MinWidth="280" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="*" MinWidth="420" />
+            </Grid.ColumnDefinitions>
+
+            <materialDesign:Card Grid.Column="0"
+                                 Padding="14,12"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 VerticalAlignment="Top">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <materialDesign:PackIcon Kind="FileDocumentEditOutline"
+                                                         Width="20" Height="20"
+                                                         Foreground="{StaticResource SmartAccentBrush}"
+                                                         VerticalAlignment="Center"
+                                                         Margin="0,0,8,0" />
+                                <TextBlock Text="Vorlage &amp; Dienst-Kopf"
+                                           FontWeight="SemiBold"
+                                           FontSize="14"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <TextBox materialDesign:HintAssist.Hint="Vorlagenname (z. B. Frühdienst 001)"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     Text="{Binding TemplateName, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,8" />
+
+                            <TextBlock Text="PDF-Kopfzeile"
+                                       Style="{StaticResource DutySectionTitleStyle}"
+                                       Margin="0,0,0,6" />
+
+                            <ComboBox materialDesign:HintAssist.Hint="Firmenlogo"
+                                      Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                                      ItemsSource="{Binding CompanyLogoOptions}"
+                                      DisplayMemberPath="Name"
+                                      SelectedValuePath="Id"
+                                      SelectedValue="{Binding SelectedCompanyLogoId, UpdateSourceTrigger=PropertyChanged}"
+                                      Margin="0,0,0,8"
+                                      Visibility="{Binding HasCompanyLogos, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                            <TextBox Text="{Binding DutyNumber, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,6">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                        <Setter Property="materialDesign:HintAssist.Hint" Value="Dienstnummer (z. B. 12803)" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSplitDuty}" Value="True">
+                                                <Setter Property="materialDesign:HintAssist.Hint" Value="Dienstnummer Teil 1 (z. B. 12803)" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                            <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     materialDesign:HintAssist.Hint="Dienstnummer Teil 2 (z. B. 12804)"
+                                     Text="{Binding DutyNumberPart2, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,6"
+                                     Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     materialDesign:HintAssist.Hint="Dienstnummer Teil 3 (z. B. 12805)"
+                                     Text="{Binding DutyNumberPart3, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,6"
+                                     Visibility="{Binding IsThreePartDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock Text="Betriebstag"
+                                       Style="{StaticResource DutySectionTitleStyle}"
+                                       Margin="0,0,0,4" />
+                            <ItemsControl ItemsSource="{Binding OperatingDaySelections}"
+                                          Margin="0,0,0,4">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding Label}"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  Margin="0,0,10,4"
+                                                  Foreground="White"
+                                                  FontSize="11" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding OperatingDay}"
+                                       Style="{StaticResource DutyHintStyle}"
+                                       Margin="0,0,0,6"
+                                       Visibility="{Binding HasOperatingDayDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBox materialDesign:HintAssist.Hint="Fahrzeug/Bus (z. B. 3)"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     Text="{Binding VehicleNumber, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,8" />
+
+                            <TextBlock Text="Gespeicherte Vorlagen"
+                                       Style="{StaticResource DutySectionTitleStyle}"
+                                       Margin="0,0,0,6" />
+
+                            <ListBox ItemsSource="{Binding SavedTemplates}"
+                                     SelectedItem="{Binding SelectedTemplate}"
+                                     Style="{StaticResource DutyListBoxStyle}"
+                                     MinHeight="72"
+                                     MaxHeight="120"
+                                     Margin="0,0,0,10">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="2,4">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" />
+                                            <TextBlock Text="{Binding Summary}" Style="{StaticResource DutyHintStyle}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <WrapPanel Margin="0,0,0,4">
+                                <Button Content="Neu"
+                                        Command="{Binding NewTemplateCommand}"
+                                        Margin="0,0,6,6"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}" />
+                                <Button Content="Vorlage laden"
+                                        Command="{Binding LoadSelectedTemplateCommand}"
+                                        Margin="0,0,6,6"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}" />
+                                <Button Content="Speichern"
+                                        Command="{Binding SaveTemplateCommand}"
+                                        Margin="0,0,6,6"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Background="{StaticResource SmartPrimaryBrush}" />
+                                <Button Content="Aktualisieren"
+                                        Command="{Binding UpdateLoadedTemplateCommand}"
+                                        Margin="0,0,6,6"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}" />
+                                <Button Content="Löschen"
+                                        Command="{Binding DeleteSelectedTemplateCommand}"
+                                        Margin="0,0,6,6"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}" />
+                            </WrapPanel>
+
+                            <Border Height="1" Background="#334B7A" Margin="0,4,0,8" Opacity="0.6" />
+
+                            <TextBlock Text="Kennzahlen"
+                                       Style="{StaticResource DutySectionTitleStyle}"
+                                       Margin="0,0,0,6" />
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         materialDesign:HintAssist.Hint="Arbeitsvorbereitung (Min.)"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Text="{Binding WorkPreparationMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Grid.Column="2"
+                                         materialDesign:HintAssist.Hint="Arbeitsnachbereitung (Min.)"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Text="{Binding WorkFollowUpMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+                            <TextBlock Style="{StaticResource DutyHintStyle}"
+                                       Text="Standard: 10 Min. Vorbereitung, 5 Min. Nachbereitung pro Dienst – werden zur Dienstlänge addiert. Aufteilung über „Intelligent Aufteilen“ oder „Dienst trennen“ (jeder Teil mit Vorbereitung und Nachbereitung)."
+                                       Margin="0,0,0,8" />
+                            <TextBlock Style="{StaticResource DutyHintStyle}"
+                                       Text="Bei geteiltem Dienst: Kennzahlen und 30-Min.-Pausenabzug je Dienstteil im Fahrten-Bereich."
+                                       Margin="0,0,0,8"
+                                       Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBox materialDesign:HintAssist.Hint="Zusätzlicher Pausenabzug (Min.)"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     Text="{Binding CustomUnpaidBreakDeductionMinutes, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,8"
+                                     Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <StackPanel Visibility="{Binding IsSplitDuty, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Dienstanfang" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding ServiceStartDisplay}"
+                                                   FontWeight="Bold"
+                                                   FontSize="16"
+                                                   Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Dienstende" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding ServiceEndDisplay}"
+                                                   FontWeight="Bold"
+                                                   FontSize="16"
+                                                   Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Dienstlänge" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding ServiceDurationDisplay}"
+                                                   FontWeight="Bold"
+                                                   FontSize="16"
+                                                   Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Lohnstunden" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding PayHoursDisplay}"
+                                                   FontWeight="Bold"
+                                                   FontSize="16"
+                                                   Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="4" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Pausen" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding BreaksDisplay}"
+                                                   FontWeight="Bold"
+                                                   FontSize="16"
+                                                   Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Reine Lenkzeit" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding PureDrivingDisplay}"
+                                                   FontWeight="Bold"
+                                                   FontSize="16"
+                                                   Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Reine Pausenzeit" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding PureBreakDisplay}"
+                                                   FontWeight="Bold"
+                                                   FontSize="16"
+                                                   Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <CheckBox Content="30 Min. unbezahlte Pause abziehen (Pausen zwischen Fahrten zählen mit)"
+                                      IsChecked="{Binding SubtractUnpaidBreak30Minutes}"
+                                      Margin="0,0,0,6"
+                                      Foreground="White"
+                                      FontSize="11" />
+                            <TextBox materialDesign:HintAssist.Hint="Zusätzlicher Pausenabzug (Min.)"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     Text="{Binding CustomUnpaidBreakDeductionMinutes, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,4" />
+                            <TextBlock Style="{StaticResource DutyHintStyle}"
+                                       Text="Checkbox: 30 Min. Abzug. Zusätzliches Feld für weiteren flexiblen Abzug von den Lohnstunden (z. B. 15 Min.)."
+                                       Margin="0,0,0,10" />
+                            </StackPanel>
+
+                            <TextBox materialDesign:HintAssist.Hint="Notizen (optional)"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     MinHeight="48"
+                                     Margin="0,0,0,8" />
+
+                            <Border Height="1" Background="#334B7A" Margin="0,0,0,8" Opacity="0.6" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <materialDesign:PackIcon Kind="FileImportOutline"
+                                                         Width="18" Height="18"
+                                                         Foreground="{StaticResource SmartAccentBrush}"
+                                                         VerticalAlignment="Center"
+                                                         Margin="0,0,8,0" />
+                                <TextBlock Text="Fahrplan importieren"
+                                           FontWeight="SemiBold"
+                                           FontSize="12"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource DutyHintStyle}"
+                                       Text="Pro Fahrt nur erste und letzte Haltestelle. Unterstützt: Excel (.xlsx), PDF-Ersatzfahrplan, CSV/TXT. Leerfahrten danach manuell einfügen."
+                                       Margin="0,0,0,8" />
+                            <Button Command="{Binding ImportFahrplanCommand}"
+                                    Margin="0,0,0,6"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    BorderBrush="{StaticResource SmartAccentBrush}">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="FolderOpenOutline" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <TextBlock Text="Fahrplan-Datei öffnen…" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="{Binding ImportFileName}"
+                                       Style="{StaticResource DutyHintStyle}"
+                                       Margin="0,0,0,6" />
+
+                            <ListBox ItemsSource="{Binding ImportRows}"
+                                     Style="{StaticResource DutyListBoxStyle}"
+                                     MaxHeight="160"
+                                     Margin="0,0,0,6"
+                                     Visibility="{Binding HasImportRows, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel LastChildFill="True" Margin="0,2">
+                                            <CheckBox DockPanel.Dock="Left"
+                                                      IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
+                                                      VerticalAlignment="Center"
+                                                      Margin="0,0,8,0" />
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Preview}" FontSize="11" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding RawLine}" Style="{StaticResource DutyHintStyle}" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <WrapPanel Visibility="{Binding HasImportRows, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Button Content="Alle auswählen"
+                                        Command="{Binding SelectAllImportRowsCommand}"
+                                        Margin="0,0,6,6"
+                                        Style="{StaticResource MaterialDesignFlatButton}" />
+                                <Button Content="Alle abwählen"
+                                        Command="{Binding DeselectAllImportRowsCommand}"
+                                        Margin="0,0,6,6"
+                                        Style="{StaticResource MaterialDesignFlatButton}" />
+                                <Button Content="Auswahl übernehmen"
+                                        Command="{Binding ApplySelectedImportRowsCommand}"
+                                        Margin="0,0,6,6"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Background="{StaticResource SmartPrimaryBrush}" />
+                            </WrapPanel>
+
+                    <controls:EditorStatusBanner Margin="0,10,0,0"
+                                                 Message="{Binding StatusMessage}"
+                                                 IsSuccess="{Binding StatusMessageIsSuccess}" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Grid.Column="2"
+                                 Padding="14,12"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 VerticalAlignment="Top">
+                <StackPanel>
+                    <Border Background="{StaticResource SmartPrimaryDarkBrush}"
+                            CornerRadius="8"
+                            Padding="12,10"
+                            Margin="0,0,0,10">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="BusClock"
+                                                         Width="22" Height="22"
+                                                         Foreground="{StaticResource SmartAccentBrush}"
+                                                         VerticalAlignment="Center"
+                                                         Margin="0,0,8,0" />
+                                <TextBlock Text="Fahrten"
+                                           FontWeight="SemiBold"
+                                           FontSize="16"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="Linie/Kurs"
+                                           FontSize="11"
+                                           Opacity="0.85"
+                                           VerticalAlignment="Center" />
+                                <TextBox Grid.Column="2"
+                                         materialDesign:HintAssist.Hint="z. B. 128/03"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Text="{Binding DefaultLineCourse, UpdateSourceTrigger=PropertyChanged}"
+                                         VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="4"
+                                            VerticalAlignment="Center"
+                                            Margin="4,0,0,0"
+                                            Visibility="{Binding HasImportedLine, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <TextBlock Text="Fahrplan"
+                                               Opacity="0.65"
+                                               FontSize="9" />
+                                    <TextBlock Text="{Binding ImportedLine}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               Foreground="{StaticResource SmartAccentBrush}" />
+                                </StackPanel>
+                                <Button Grid.Column="6"
+                                        Content="Auf alle anwenden"
+                                        Command="{Binding ApplyLineCourseToAllRowsCommand}"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}" />
+                            </Grid>
+
+                            <TextBlock Text="Bearbeitbar – Leerfahrten/Leerzeilen einfügen, verschieben oder löschen. Zwei Zeilen markieren und „Dienst trennen“, oder „Intelligent Aufteilen“ für max. 9 h pro Teil."
+                                       Opacity="0.8"
+                                       FontSize="10"
+                                       Margin="30,4,0,0" />
+                            <WrapPanel Margin="30,8,0,0">
+                                <Button Content="Fahrt hinzufügen"
+                                        Command="{Binding AddRowCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}" />
+                                <Button Content="Leerfahrt"
+                                        Command="{Binding AddEmptyTripRowCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}" />
+                                <Button Content="Leerzeile"
+                                        Command="{Binding AddEmptyLineRowCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}" />
+                                <Button Content="↑"
+                                        Command="{Binding MoveSelectedRowUpCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
+                                        ToolTip="Ausgewählte Zeile nach oben" />
+                                <Button Content="↓"
+                                        Command="{Binding MoveSelectedRowDownCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
+                                        ToolTip="Ausgewählte Zeile nach unten" />
+                                <Button Content="Zeile entfernen"
+                                        Command="{Binding RemoveSelectedRowCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}" />
+                                <Button Content="Intelligent Aufteilen"
+                                        Command="{Binding IntelligentSplitDutyCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
+                                        Visibility="{Binding IsSplitDuty, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                <Button Content="Dienst trennen"
+                                        Command="{Binding SplitDutyAtSelectionCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
+                                        ToolTip="Genau zwei Zeilen im gleichen Teil markieren" />
+                                <Button Content="→ Teil 2"
+                                        Command="{Binding MoveSelectedRowToPart2Command}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
+                                        Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Button Content="← Teil 1"
+                                        Command="{Binding MoveSelectedRowToPart1Command}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
+                                        Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Button Content="Zusammenführen"
+                                        Command="{Binding MergeSplitDutyCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignFlatButton}"
+                                        Foreground="{StaticResource SmartAccentBrush}"
+                                        Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Button Content="Kennzahlen aktualisieren"
+                                        Command="{Binding RecalculateStatsCommand}"
+                                        Focusable="False"
+                                        Style="{StaticResource MaterialDesignFlatButton}"
+                                        Foreground="{StaticResource SmartAccentBrush}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#1A2744"
+                            BorderBrush="#334B7A"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="12,10"
+                            Margin="0,0,0,8"
+                            Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="Teil 1 – Kennzahlen"
+                                       FontWeight="SemiBold"
+                                       FontSize="13"
+                                       Foreground="{StaticResource SmartAccentBrush}"
+                                       Margin="0,0,0,8" />
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Dienstdauer" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part1ServiceDurationDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Lohnstunden" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part1PayHoursDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="4" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Pausen" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part1BreaksDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Reine Lenkzeit" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part1PureDrivingDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Reine Pausenzeit" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part1PureBreakDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <CheckBox Content="30 Min. unbezahlte Pause abziehen (Teil 1)"
+                                      IsChecked="{Binding SubtractUnpaidBreak30Minutes}"
+                                      Margin="0,0,0,4"
+                                      Foreground="White"
+                                      FontSize="11" />
+                        </StackPanel>
+                    </Border>
+
+                    <DataGrid x:Name="Part1RowsGrid"
+                              ItemsSource="{Binding Rows}"
+                              SelectedItem="{Binding SelectedRow}"
+                              GotFocus="Part1RowsGrid_GotFocus"
+                              SelectionChanged="Part1RowsGrid_SelectionChanged"
+                              Style="{StaticResource DutyDataGridStyle}"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              CanUserReorderColumns="False"
+                              SelectionMode="Extended"
+                              IsReadOnly="False"
+                              Margin="0,0,0,10"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              RowStyle="{StaticResource DutyDataGridRowStyle}">
+                        <DataGrid.CellStyle>
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="BorderThickness" Value="0" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Foreground" Value="White" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.CellStyle>
+                        <DataGrid.ColumnHeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="{StaticResource SmartPrimaryBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Setter Property="Padding" Value="8,6" />
+                                <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+                                <Setter Property="BorderThickness" Value="0,0,1,0" />
+                            </Style>
+                        </DataGrid.ColumnHeaderStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Fahrtnr."
+                                                Binding="{Binding TripNumber, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="0.75*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Linie/Kurs"
+                                                Binding="{Binding LineCourse, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="0.85*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTemplateColumn Header="Bemerkung" Width="1.1*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Remark, Converter={StaticResource RemarkDisplayConverter}}"
+                                                   Style="{StaticResource DutyDataGridCellStyle}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Remark, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{StaticResource DutyDataGridEditingStyle}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Ziel"
+                                                Binding="{Binding Destination, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="0.9*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="ab Zeit"
+                                                Binding="{Binding FromTime, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="0.65*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="ab Haltestelle"
+                                                Binding="{Binding FromStop, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="1.3*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="an Zeit"
+                                                Binding="{Binding ToTime, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="0.65*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="an Haltestelle"
+                                                Binding="{Binding ToStop, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="1.3*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <StackPanel HorizontalAlignment="Right"
+                                Margin="0,0,0,10">
+                        <Button Command="{Binding ExportPart1PdfCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Background="{StaticResource SmartPrimaryDarkBrush}">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="FilePdfBox" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBlock Text="{Binding ExportPart1ButtonLabel}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <Border Background="#1A2744"
+                            BorderBrush="#334B7A"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="12,10"
+                            Margin="0,0,0,8"
+                            Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="Teil 2 – Kennzahlen"
+                                       FontWeight="SemiBold"
+                                       FontSize="13"
+                                       Foreground="{StaticResource SmartAccentBrush}"
+                                       Margin="0,0,0,8" />
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Dienstdauer" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part2ServiceDurationDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Lohnstunden" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part2PayHoursDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="4" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Pausen" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part2BreaksDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Reine Lenkzeit" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part2PureDrivingDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Reine Pausenzeit" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part2PureBreakDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <CheckBox Content="30 Min. unbezahlte Pause abziehen (Teil 2)"
+                                      IsChecked="{Binding SubtractUnpaidBreak30MinutesPart2}"
+                                      Margin="0,0,0,4"
+                                      Foreground="White"
+                                      FontSize="11" />
+                        </StackPanel>
+                    </Border>
+
+                    <DataGrid x:Name="Part2RowsGrid"
+                              ItemsSource="{Binding Part2Rows}"
+                              SelectedItem="{Binding SelectedPart2Row}"
+                              GotFocus="Part2RowsGrid_GotFocus"
+                              SelectionChanged="Part2RowsGrid_SelectionChanged"
+                              Style="{StaticResource DutyDataGridStyle}"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              CanUserReorderColumns="False"
+                              SelectionMode="Extended"
+                              IsReadOnly="False"
+                              Margin="0,0,0,10"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              RowStyle="{StaticResource DutyDataGridRowStyle}"
+                              Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <DataGrid.CellStyle>
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="BorderThickness" Value="0" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Foreground" Value="White" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.CellStyle>
+                        <DataGrid.ColumnHeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="{StaticResource SmartPrimaryBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Setter Property="Padding" Value="8,6" />
+                                <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+                                <Setter Property="BorderThickness" Value="0,0,1,0" />
+                            </Style>
+                        </DataGrid.ColumnHeaderStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Fahrtnr." Binding="{Binding TripNumber, UpdateSourceTrigger=PropertyChanged}" Width="0.75*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Linie/Kurs" Binding="{Binding LineCourse, UpdateSourceTrigger=PropertyChanged}" Width="0.85*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTemplateColumn Header="Bemerkung" Width="1.1*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Remark, Converter={StaticResource RemarkDisplayConverter}}"
+                                                   Style="{StaticResource DutyDataGridCellStyle}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Remark, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{StaticResource DutyDataGridEditingStyle}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Ziel" Binding="{Binding Destination, UpdateSourceTrigger=PropertyChanged}" Width="0.9*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="ab Zeit" Binding="{Binding FromTime, UpdateSourceTrigger=PropertyChanged}" Width="0.65*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="ab Haltestelle" Binding="{Binding FromStop, UpdateSourceTrigger=PropertyChanged}" Width="1.3*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="an Zeit" Binding="{Binding ToTime, UpdateSourceTrigger=PropertyChanged}" Width="0.65*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="an Haltestelle" Binding="{Binding ToStop, UpdateSourceTrigger=PropertyChanged}" Width="1.3*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DutyDataGridCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource DutyDataGridEditingStyle}" />
+                                </DataGridTextColumn.EditingElementStyle>
+                            </DataGridTextColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <StackPanel HorizontalAlignment="Right"
+                                Margin="0,0,0,10"
+                                Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button Command="{Binding ExportPart2PdfCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Background="{StaticResource SmartPrimaryDarkBrush}">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="FilePdfBox" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBlock Text="Dienstvorlage erstellen (Teil 2)" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <Border Background="#1A2744"
+                            BorderBrush="#334B7A"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="12,10"
+                            Margin="0,0,0,8"
+                            Visibility="{Binding IsThreePartDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="Teil 3 – Kennzahlen"
+                                       FontWeight="SemiBold"
+                                       FontSize="13"
+                                       Foreground="{StaticResource SmartAccentBrush}"
+                                       Margin="0,0,0,8" />
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Dienstlänge" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part3ServiceDurationDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Lohnstunden" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part3PayHoursDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="4" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Pausen" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part3BreaksDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Reine Lenkzeit" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part3PureDrivingDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="Reine Pausenzeit" Opacity="0.75" FontSize="10" />
+                                        <TextBlock Text="{Binding Part3PureBreakDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <CheckBox Content="30 Min. unbezahlte Pause abziehen (Teil 3)"
+                                      IsChecked="{Binding SubtractUnpaidBreak30MinutesPart3}"
+                                      Margin="0,0,0,4"
+                                      Foreground="White"
+                                      FontSize="11" />
+                        </StackPanel>
+                    </Border>
+
+                    <DataGrid x:Name="Part3RowsGrid"
+                              ItemsSource="{Binding Part3Rows}"
+                              SelectedItem="{Binding SelectedPart3Row}"
+                              GotFocus="Part3RowsGrid_GotFocus"
+                              SelectionChanged="Part3RowsGrid_SelectionChanged"
+                              Style="{StaticResource DutyDataGridStyle}"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              CanUserReorderColumns="False"
+                              SelectionMode="Extended"
+                              IsReadOnly="False"
+                              Margin="0,0,0,10"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              RowStyle="{StaticResource DutyDataGridRowStyle}"
+                              Visibility="{Binding IsThreePartDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <DataGrid.CellStyle>
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="BorderThickness" Value="0" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Foreground" Value="White" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.CellStyle>
+                        <DataGrid.ColumnHeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="{StaticResource SmartPrimaryBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Setter Property="Padding" Value="8,6" />
+                                <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+                                <Setter Property="BorderThickness" Value="0,0,1,0" />
+                            </Style>
+                        </DataGrid.ColumnHeaderStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Fahrtnr." Binding="{Binding TripNumber, UpdateSourceTrigger=PropertyChanged}" Width="0.75*" />
+                            <DataGridTextColumn Header="Linie/Kurs" Binding="{Binding LineCourse, UpdateSourceTrigger=PropertyChanged}" Width="0.85*" />
+                            <DataGridTextColumn Header="Bemerkung" Binding="{Binding Remark, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" />
+                            <DataGridTextColumn Header="Ziel" Binding="{Binding Destination, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" />
+                            <DataGridTextColumn Header="ab Zeit" Binding="{Binding FromTime, UpdateSourceTrigger=PropertyChanged}" Width="0.65*" />
+                            <DataGridTextColumn Header="ab Haltestelle" Binding="{Binding FromStop, UpdateSourceTrigger=PropertyChanged}" Width="1.3*" />
+                            <DataGridTextColumn Header="an Zeit" Binding="{Binding ToTime, UpdateSourceTrigger=PropertyChanged}" Width="0.65*" />
+                            <DataGridTextColumn Header="an Haltestelle" Binding="{Binding ToStop, UpdateSourceTrigger=PropertyChanged}" Width="1.3*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <StackPanel HorizontalAlignment="Right"
+                                Margin="0,0,0,10"
+                                Visibility="{Binding IsThreePartDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button Command="{Binding ExportPart3PdfCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Background="{StaticResource SmartPrimaryDarkBrush}">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="FilePdfBox" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBlock Text="Dienstvorlage erstellen (Teil 3)" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <Border Padding="12,10"
+                            Background="#1A5472D3"
+                            CornerRadius="8"
+                            Visibility="{Binding HasRemarkLegend, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="Bemerkungen"
+                                       Style="{StaticResource DutySectionTitleStyle}"
+                                       Margin="0,0,0,6" />
+                            <ItemsControl ItemsSource="{Binding RemarkLegend}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Margin="0,2,0,0">
+                                            <Run Text="{Binding Code}"
+                                                 FontWeight="SemiBold"
+                                                 Foreground="{StaticResource SmartPrimaryLightBrush}" />
+                                            <Run Text=" " />
+                                            <Run Text="{Binding Text}" />
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </materialDesign:Card>
+        </Grid>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

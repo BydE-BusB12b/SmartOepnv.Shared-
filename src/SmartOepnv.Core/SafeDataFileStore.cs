@@ -85,6 +85,11 @@ public static class SafeDataFileStore
         foreach (var file in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(sourceDirectory, file);
+            if (IsUnderBackupsFolder(relative))
+            {
+                continue;
+            }
+
             var target = Path.Combine(destinationDirectory, relative);
             var targetDir = Path.GetDirectoryName(target);
             if (!string.IsNullOrEmpty(targetDir))
@@ -94,6 +99,19 @@ public static class SafeDataFileStore
 
             File.Copy(file, target, overwrite: true);
         }
+    }
+
+    private static bool IsUnderBackupsFolder(string relativePath)
+    {
+        foreach (var segment in relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (segment.Equals("backups", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void PruneOldBackups(string backupDir, string originalFileName, int maxBackups)

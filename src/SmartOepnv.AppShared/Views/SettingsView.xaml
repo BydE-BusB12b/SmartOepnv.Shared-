@@ -1,12 +1,76 @@
 <UserControl x:Class="SmartOepnv.AppShared.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <conv:FilePathToImageConverter x:Key="FilePathToImageConverter" />
+    </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel MaxWidth="820">
             <TextBlock Text="Einstellungen" Style="{StaticResource SmartPageTitleStyle}" />
             <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
-                       Text="Dropbox-Verbindung und Ordnerpfad – kompatibel zur GPSAnsagen-App (routes_export.json)." />
+                       Text="Dropbox-Verbindung, Firmenlogos und Ordnerpfad – kompatibel zur GPSAnsagen-App (routes_export.json)." />
+
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
+                                 Visibility="{Binding ShowBrandingSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Firmenlogos" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Mehrere Logos speichern und in Dienstvorlagen je PDF auswählen. Ersetzt das Feld „Auftraggeber“ in der PDF-Kopfzeile." />
+
+                    <ListBox ItemsSource="{Binding CompanyLogos}"
+                             SelectedItem="{Binding SelectedCompanyLogo}"
+                             MinHeight="72"
+                             MaxHeight="140"
+                             Margin="0,0,0,10">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Name}" FontSize="12" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Border Background="{StaticResource SmartPrimaryDarkBrush}"
+                            CornerRadius="8"
+                            Padding="16"
+                            MinHeight="96"
+                            Margin="0,0,0,12"
+                            Visibility="{Binding HasCompanyLogos, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Image Source="{Binding SelectedCompanyLogo.FilePath, Converter={StaticResource FilePathToImageConverter}}"
+                               Stretch="Uniform"
+                               MaxHeight="72"
+                               HorizontalAlignment="Left" />
+                    </Border>
+
+                    <TextBox materialDesign:HintAssist.Hint="Bezeichnung des ausgewählten Logos"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding SelectedCompanyLogo.Name, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8"
+                             Visibility="{Binding HasCompanyLogos, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                    <TextBlock Text="{Binding BrandingStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Logo hinzufügen…"
+                                Command="{Binding ChooseCompanyLogoCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="Logo entfernen"
+                                Command="{Binding RemoveSelectedCompanyLogoCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,8,0"
+                                Visibility="{Binding HasCompanyLogos, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <Button Content="Bezeichnung speichern"
+                                Command="{Binding SaveSelectedLogoNameCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Visibility="{Binding HasCompanyLogos, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+                </StackPanel>
+            </materialDesign:Card>
 
             <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16">
                 <StackPanel>

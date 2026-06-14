@@ -31,6 +31,7 @@ public partial class MainViewModel : ObservableObject
     private readonly SevSignEditorViewModel _sevSignEditorViewModel = new();
     private readonly FahrerdispoViewModel _fahrerdispoViewModel = new();
     private readonly FahrzeugdispoViewModel _fahrzeugdispoViewModel = new();
+    private readonly DienstvorlagenViewModel _dienstvorlagenViewModel = new();
 
     private NavigationItem? _previousNavigationItem;
     private NavigationItem? _leitstelleMessagesNavItem;
@@ -110,6 +111,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         StatusText = "Lade Arbeitsstand…";
+        PlanerWorkspaceSaveCoordinator.Reset();
         try
         {
             await SyncDropboxAfterLoginAsync().ConfigureAwait(true);
@@ -235,6 +237,10 @@ public partial class MainViewModel : ObservableObject
         else if (value.Title == "SEV-Schilder")
         {
             _sevSignEditorViewModel.RefreshFromEditor();
+        }
+        else if (value.Title == "Dienstvorlagen")
+        {
+            _dienstvorlagenViewModel.RefreshFromEditor();
         }
         else
         {
@@ -554,7 +560,6 @@ public partial class MainViewModel : ObservableObject
                 Description = "Mitarbeiterregister (employeeRoster)",
                 CreateContent = () => new EmployeesView { DataContext = _employeesViewModel }
             },
-            _fahrzeugverwaltungNavItem,
             new()
             {
                 Title = _profile.IsLeitstelle ? "Nachricht senden" : "Nachrichten",
@@ -600,6 +605,14 @@ public partial class MainViewModel : ObservableObject
                     Icon = PackIconKind.BusMultiple,
                     Description = "Fahrzeuge den Linien und Fahrten zuordnen",
                     CreateContent = () => new FahrzeugdispoView { DataContext = _fahrzeugdispoViewModel }
+                });
+                items.Insert(personalIdx + 3, _fahrzeugverwaltungNavItem);
+                items.Insert(personalIdx + 4, new NavigationItem
+                {
+                    Title = "Dienstvorlagen",
+                    Icon = PackIconKind.CalendarClock,
+                    Description = "Dienstschablonen erstellen, aus Fahrplan importieren und als PDF exportieren",
+                    CreateContent = () => new DienstvorlagenView { DataContext = _dienstvorlagenViewModel }
                 });
             }
 
@@ -656,6 +669,12 @@ public partial class MainViewModel : ObservableObject
 
         if (_profile.IsLeitstelle)
         {
+            var personalIdx = items.FindIndex(i => i.Title == "Personalverwaltung");
+            if (personalIdx >= 0)
+            {
+                items.Insert(personalIdx + 1, _fahrzeugverwaltungNavItem);
+            }
+
             _leitstelleMessagesNavItem = new NavigationItem
             {
                 Title = "Nachrichten",
