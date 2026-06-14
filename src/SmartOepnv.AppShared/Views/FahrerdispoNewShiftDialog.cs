@@ -4,6 +4,8 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using MaterialDesignThemes.Wpf;
 using SmartOepnv.AppShared.Helpers;
+using SmartOepnv.Core;
+using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.Views;
@@ -17,6 +19,10 @@ public sealed class FahrerdispoNewShiftDialog : Window
     private static readonly Brush DateFieldBackground = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
 
     private readonly ComboBox _employeeBox;
+    private readonly ComboBox _templateBox;
+    private readonly CheckBox _allPartsCheck;
+    private readonly TextBlock _allPartsHint;
+    private readonly IReadOnlyList<DutyTemplate> _templates;
     private readonly TextBox _shiftNameBox;
     private readonly DialogDateField _dateFromField;
     private readonly DialogDateField _dateToField;
@@ -38,6 +44,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
     private readonly StackPanel _errorPanel;
     private readonly TextBlock _errorText;
     private readonly IReadOnlyList<DriverDispositionAssignment> _existingAssignments;
+    private readonly IReadOnlyList<EmployeeRosterItem> _employees;
     private readonly string? _editingAssignmentId;
     private readonly bool _isEdit;
 
@@ -63,6 +70,14 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
     public long Part2StartEpochMs { get; private set; }
 
+    public string SelectedDutyTemplateId { get; private set; } = string.Empty;
+
+    public int SelectedDutyTemplatePartIndex { get; private set; } = 1;
+
+    public bool CreateAllTemplateParts { get; private set; }
+
+    public string SelectedDutyNumber { get; private set; } = string.Empty;
+
     public bool DeleteRequested { get; private set; }
 
     public FahrerdispoNewShiftDialog(
@@ -72,6 +87,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
         IReadOnlyList<DriverDispositionAssignment>? existingAssignments = null)
     {
         _existingAssignments = existingAssignments ?? [];
+        _employees = employees;
         _editingAssignmentId = existing?.Id;
         _isEdit = existing is not null;
         var isEdit = _isEdit;
@@ -94,8 +110,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
         WindowTitleBarHelper.ApplySmartOepnvTitleBar(this);
 
         Title = isEdit ? "Dienst bearbeiten" : "Neuer Dienst";
-        Width = 460;
-        MinWidth = 420;
+        Width = 500;
+        MinWidth = 460;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
@@ -110,14 +126,14 @@ public sealed class FahrerdispoNewShiftDialog : Window
             .Where(o => o.Key.Length > 0)
             .ToList();
 
-        var root = new StackPanel { Margin = new Thickness(24) };
+        var root = new StackPanel { Margin = new Thickness(20) };
         root.Children.Add(new TextBlock
         {
             Text = isEdit ? "Dienst bearbeiten" : "Neuer Dienst",
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
             Foreground = LabelForeground,
-            Margin = new Thickness(0, 0, 0, 16)
+            Margin = new Thickness(0, 0, 0, 12)
         });
 
         root.Children.Add(MakeLabel("Fahrerauswahl"));
@@ -144,9 +160,92 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
         root.Children.Add(_employeeBox);
 
-        root.Children.Add(MakeLabel("Dienstname"));
-        _shiftNameBox = MakeInput("z. B. Frühdienst Linie 1", isEdit ? existing!.Label : string.Empty);
-        root.Children.Add(_shiftNameBox);
+        _templates = AppServices.DutyTemplates?.LoadAll()
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
+        var templateOptions = new List<TemplateOption> { new(string.Empty, string.Empty, 0, "(keine Vorlage)") };
+        foreach (var template in _templates)
+        {
+            foreach (var partIndex in DutyTemplateDispositionMapper.EnumeratePartIndexes(template))
+            {
+                templateOptions.Add(new TemplateOption(
+                    $"{template.Id}:{partIndex}",
+                    template.Id,
+                    partIndex,
+                    FormatTemplatePartLabel(template, partIndex)));
+            }
+        }
+
+        var templateDutyRow = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+        templateDutyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        templateDutyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        templateDutyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(112) });
+
+        var templatePanel = new StackPanel();
+        templatePanel.Children.Add(MakeLabel("Dienstvorlage (optional)"));
+        _templateBox = new ComboBox
+        {
+            ItemsSource = templateOptions,
+            DisplayMemberPath = nameof(TemplateOption.Label),
+            SelectedValuePath = nameof(TemplateOption.Key),
+            MinHeight = 34,
+            MaxDropDownHeight = 320,
+            Background = InputBackground,
+            Foreground = InputForeground,
+            Padding = new Thickness(8, 4, 8, 4),
+            ItemContainerStyle = CreateComboBoxItemStyle()
+        };
+        if (isEdit && !string.IsNullOrWhiteSpace(existing!.DutyTemplateId))
+        {
+            _templateBox.SelectedValue = $"{existing.DutyTemplateId}:{existing.DutyTemplatePartIndex}";
+        }
+        else
+        {
+            _templateBox.SelectedIndex = 0;
+        }
+
+        _templateBox.SelectionChanged += (_, _) =>
+        {
+            UpdateAllPartsOptionVisibility();
+            ApplySelectedTemplate();
+        };
+        templatePanel.Children.Add(_templateBox);
+        Grid.SetColumn(templatePanel, 0);
+        templateDutyRow.Children.Add(templatePanel);
+
+        var dutyNumberPanel = new StackPanel();
+        dutyNumberPanel.Children.Add(MakeLabel("Dienstnummer"));
+        var existingDutyNumber = isEdit
+            ? (!string.IsNullOrWhiteSpace(existing!.DutyNumber) ? existing.DutyNumber : existing.Label)
+            : string.Empty;
+        _shiftNameBox = MakeInput("301", existingDutyNumber);
+        dutyNumberPanel.Children.Add(_shiftNameBox);
+        Grid.SetColumn(dutyNumberPanel, 2);
+        templateDutyRow.Children.Add(dutyNumberPanel);
+
+        root.Children.Add(templateDutyRow);
+
+        _allPartsCheck = new CheckBox
+        {
+            Content = "Alle Teile einzeln disponieren (301 + 302 getrennt)",
+            Foreground = LabelForeground,
+            Margin = new Thickness(0, 6, 0, 0),
+            Visibility = Visibility.Collapsed
+        };
+        _allPartsCheck.Checked += (_, _) => UpdateAllPartsOptionVisibility();
+        _allPartsCheck.Unchecked += (_, _) => UpdateAllPartsOptionVisibility();
+        root.Children.Add(_allPartsCheck);
+
+        _allPartsHint = new TextBlock
+        {
+            Foreground = LabelForeground,
+            Opacity = 0.7,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Margin = new Thickness(0, 4, 0, 0),
+            Visibility = Visibility.Collapsed
+        };
+        root.Children.Add(_allPartsHint);
 
         _splitShiftCheck = new CheckBox
         {
@@ -183,7 +282,11 @@ public sealed class FahrerdispoNewShiftDialog : Window
         dateRow.Children.Add(dateToPanel);
         _singleShiftPanel.Children.Add(dateRow);
 
-        _dateFromField.DateChanged += date => _dateToField.SetDate(date);
+        _dateFromField.DateChanged += date =>
+        {
+            _dateToField.SetDate(date);
+            ApplySelectedTemplateIfActive();
+        };
 
         var timeRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         timeRow.ColumnDefinitions.Add(new ColumnDefinition());
@@ -316,7 +419,11 @@ public sealed class FahrerdispoNewShiftDialog : Window
         _dateToField.DateChanged += _ => UpdateComplianceHints(autoFillTime: false);
         _timeFromBox.TextChanged += (_, _) => UpdateComplianceHints(autoFillTime: false);
         _timeToBox.TextChanged += (_, _) => UpdateComplianceHints(autoFillTime: false);
-        _splitDateField.DateChanged += _ => UpdateComplianceHints(autoFillTime: false);
+        _splitDateField.DateChanged += _ =>
+        {
+            ApplySelectedTemplateIfActive();
+            UpdateComplianceHints(autoFillTime: false);
+        };
         _part1FromBox.TextChanged += (_, _) => UpdateComplianceHints(autoFillTime: false);
         _part1ToBox.TextChanged += (_, _) => UpdateComplianceHints(autoFillTime: false);
         _part2FromBox.TextChanged += (_, _) => UpdateComplianceHints(autoFillTime: false);
@@ -371,6 +478,23 @@ public sealed class FahrerdispoNewShiftDialog : Window
                 return;
             }
 
+            if (!CreateAllTemplateParts && !TryValidateUniqueDutyNumber(out error))
+            {
+                ShowError(error);
+                return;
+            }
+
+            if (CreateAllTemplateParts)
+            {
+                ReducedRestBefore = _reducedRestCheck.IsChecked == true;
+                ExtendedDrivingDay = _extendedDrivingCheck.IsChecked == true;
+                ReducedWeeklyRestBefore = _reducedWeeklyRestCheck.IsChecked == true;
+                IsSplitShift = false;
+                DialogResult = true;
+                Close();
+                return;
+            }
+
             if (!DriverDispositionCompliance.TryValidate(
                     _existingAssignments,
                     SelectedDriverKey,
@@ -422,6 +546,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
         root.Children.Add(buttons);
 
         Content = root;
+        UpdateAllPartsOptionVisibility();
         UpdateComplianceHints(autoFillTime: !_isEdit);
     }
 
@@ -542,6 +667,142 @@ public sealed class FahrerdispoNewShiftDialog : Window
         }
     }
 
+    private void UpdateAllPartsOptionVisibility()
+    {
+        if (_isEdit)
+        {
+            _allPartsCheck.Visibility = Visibility.Collapsed;
+            _allPartsHint.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var option = GetSelectedTemplateOption();
+        if (option is null || option.PartIndex <= 0)
+        {
+            _allPartsCheck.Visibility = Visibility.Collapsed;
+            _allPartsHint.Visibility = Visibility.Collapsed;
+            _allPartsCheck.IsChecked = false;
+            return;
+        }
+
+        var template = _templates.FirstOrDefault(t => t.Id == option.TemplateId);
+        if (template is null || DutyTemplateDispositionMapper.CountDispatchParts(template) <= 1)
+        {
+            _allPartsCheck.Visibility = Visibility.Collapsed;
+            _allPartsHint.Visibility = Visibility.Collapsed;
+            _allPartsCheck.IsChecked = false;
+            return;
+        }
+
+        _allPartsCheck.Visibility = Visibility.Visible;
+        if (_allPartsCheck.IsChecked == true)
+        {
+            _allPartsHint.Visibility = Visibility.Visible;
+            _allPartsHint.Text =
+                $"Es werden {DutyTemplateDispositionMapper.CountDispatchParts(template)} einzelne Dienste angelegt: " +
+                DutyTemplateDispositionMapper.ResolveDutyNumberDisplay(template);
+            _shiftNameBox.IsEnabled = false;
+        }
+        else
+        {
+            _allPartsHint.Visibility = Visibility.Collapsed;
+            _shiftNameBox.IsEnabled = true;
+        }
+    }
+
+    private TemplateOption? GetSelectedTemplateOption()
+    {
+        if (_templateBox.SelectedItem is TemplateOption option)
+        {
+            return option;
+        }
+
+        return null;
+    }
+
+    private void ApplySelectedTemplateIfActive()
+    {
+        if (_templateBox.SelectedValue is string id && id.Length > 0)
+        {
+            ApplySelectedTemplate();
+        }
+    }
+
+    private void ApplySelectedTemplate()
+    {
+        var option = GetSelectedTemplateOption();
+        if (option is null || option.PartIndex <= 0 || option.TemplateId.Length == 0)
+        {
+            SelectedDutyTemplateId = string.Empty;
+            SelectedDutyTemplatePartIndex = 1;
+            UpdateAllPartsOptionVisibility();
+            return;
+        }
+
+        var template = _templates.FirstOrDefault(t => t.Id == option.TemplateId);
+        if (template is null)
+        {
+            SelectedDutyTemplateId = string.Empty;
+            SelectedDutyTemplatePartIndex = 1;
+            UpdateAllPartsOptionVisibility();
+            return;
+        }
+
+        SelectedDutyTemplateId = option.TemplateId;
+        SelectedDutyTemplatePartIndex = option.PartIndex;
+        UpdateAllPartsOptionVisibility();
+
+        if (_allPartsCheck.IsChecked == true)
+        {
+            _errorPanel.Visibility = Visibility.Collapsed;
+            _splitShiftCheck.IsChecked = false;
+            ToggleSplitMode(false);
+            var dutyDate = _dateFromField.SelectedDate?.Date ?? DateTime.Today;
+            var firstPart = DutyTemplateDispositionMapper.TryMapPart(template, dutyDate, 1)
+                ?? DutyTemplateDispositionMapper.TryMapAllParts(template, dutyDate).FirstOrDefault();
+            if (firstPart is null)
+            {
+                ShowError("Die Vorlage enthält keine gültigen Zeiten.");
+                return;
+            }
+
+            _dateFromField.SetDate(firstPart.StartLocal.Date);
+            _dateToField.SetDate(firstPart.EndLocal.Date);
+            _timeFromBox.Text = firstPart.StartLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
+            _timeToBox.Text = firstPart.EndLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
+            _shiftNameBox.Text = DutyTemplateDispositionMapper.ResolveDutyNumberDisplay(template);
+            SelectedDutyNumber = _shiftNameBox.Text;
+            UpdateComplianceHints(autoFillTime: false);
+            return;
+        }
+
+        var dutyDateSingle = _dateFromField.SelectedDate?.Date ?? DateTime.Today;
+        var mapped = DutyTemplateDispositionMapper.TryMapPart(template, dutyDateSingle, option.PartIndex);
+        if (mapped is null)
+        {
+            ShowError("Die Vorlage enthält keine gültigen Zeiten.");
+            return;
+        }
+
+        _errorPanel.Visibility = Visibility.Collapsed;
+        if (string.IsNullOrWhiteSpace(mapped.DutyNumber))
+        {
+            ShowError("Dieser Vorlagenteil hat keine Dienstnummer (z. B. 301).");
+            return;
+        }
+
+        _shiftNameBox.Text = mapped.DutyNumber;
+        SelectedDutyNumber = mapped.DutyNumber;
+        _splitShiftCheck.IsChecked = false;
+        ToggleSplitMode(false);
+        _dateFromField.SetDate(mapped.StartLocal.Date);
+        _dateToField.SetDate(mapped.EndLocal.Date);
+        _timeFromBox.Text = mapped.StartLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
+        _timeToBox.Text = mapped.EndLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
+
+        UpdateComplianceHints(autoFillTime: false);
+    }
+
     private void ToggleSplitMode(bool isSplit)
     {
         _singleShiftPanel.Visibility = isSplit ? Visibility.Collapsed : Visibility.Visible;
@@ -623,9 +884,41 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
         SelectedDriverKey = driverKey;
         ShiftName = _shiftNameBox.Text.Trim();
+        SelectedDutyNumber = ShiftName;
         DisplayLabel = ShiftName;
+        SelectedDutyTemplateId = _templateBox.SelectedValue as string ?? string.Empty;
+        var option = GetSelectedTemplateOption();
+        if (option is not null && option.PartIndex > 0)
+        {
+            SelectedDutyTemplateId = option.TemplateId;
+            SelectedDutyTemplatePartIndex = option.PartIndex;
+        }
+
+        CreateAllTemplateParts = !_isEdit && _allPartsCheck.IsChecked == true && SelectedDutyTemplateId.Length > 0;
         Part1EndEpochMs = 0;
         Part2StartEpochMs = 0;
+
+        if (string.IsNullOrWhiteSpace(ShiftName) && !CreateAllTemplateParts)
+        {
+            error = "Bitte eine Dienstnummer angeben (z. B. 301).";
+            return false;
+        }
+
+        if (CreateAllTemplateParts)
+        {
+            if (_dateFromField.SelectedDate is not DateTime dutyDate)
+            {
+                error = "Datum ist ungültig.";
+                return false;
+            }
+
+            StartEpochMs = new DateTimeOffset(dutyDate.Date).ToUnixTimeMilliseconds();
+            EndEpochMs = StartEpochMs;
+            Part1EndEpochMs = 0;
+            Part2StartEpochMs = 0;
+            IsSplitShift = false;
+            return true;
+        }
 
         if (_splitShiftCheck.IsChecked == true)
         {
@@ -699,6 +992,51 @@ public sealed class FahrerdispoNewShiftDialog : Window
         EndEpochMs = new DateTimeOffset(end).ToUnixTimeMilliseconds();
         IsSplitShift = false;
         return true;
+    }
+
+    private bool TryValidateUniqueDutyNumber(out string error)
+    {
+        error = string.Empty;
+        var dutyNumber = DriverDispositionDutyNumberRules.NormalizeDutyNumber(SelectedDutyNumber);
+        if (dutyNumber.Length == 0)
+        {
+            dutyNumber = DriverDispositionDutyNumberRules.NormalizeDutyNumber(ShiftName);
+        }
+
+        if (dutyNumber.Length == 0)
+        {
+            return true;
+        }
+
+        var dutyDate = DriverDispositionDutyNumberRules.GetDutyDateFromStartEpochMs(StartEpochMs);
+        if (!DriverDispositionDutyNumberRules.TryFindConflictingDutyNumber(
+                _existingAssignments,
+                dutyNumber,
+                dutyDate,
+                _editingAssignmentId,
+                out var conflict))
+        {
+            return true;
+        }
+
+        error = DriverDispositionDutyNumberRules.BuildDuplicateMessage(
+            dutyNumber,
+            dutyDate,
+            conflict is null ? null : ResolveDriverLabel(conflict.DriverKey));
+        return false;
+    }
+
+    private string? ResolveDriverLabel(string driverKey)
+    {
+        foreach (var employee in _employees)
+        {
+            if (string.Equals(EmployeeDispoKeys.FromEmployee(employee), driverKey, StringComparison.Ordinal))
+            {
+                return BuildEmployeeLabel(employee);
+            }
+        }
+
+        return null;
     }
 
     private static bool TryParseTime(string text, out TimeSpan time)
@@ -1097,6 +1435,16 @@ public sealed class FahrerdispoNewShiftDialog : Window
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 6, 8, 6)));
         return style;
     }
+
+    private static string FormatTemplatePartLabel(DutyTemplate template, int partIndex)
+    {
+        var dutyNumber = DutyTemplateDispositionMapper.ResolveDutyNumberForPart(template, partIndex);
+        var label = dutyNumber.Length > 0 ? dutyNumber : $"Teil {partIndex}";
+        var name = template.Name.Trim();
+        return name.Length > 0 ? $"{label} – {name}" : label;
+    }
+
+    private sealed record TemplateOption(string Key, string TemplateId, int PartIndex, string Label);
 
     private sealed record EmployeeOption(string Key, string Label);
 }

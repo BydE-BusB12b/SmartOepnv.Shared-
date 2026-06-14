@@ -172,23 +172,10 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
     public void NotifyDocumentCheckChanged()
     {
         _sync.MarkDirty();
-        RefreshSelectedEmployeeBindings();
         if (SelectedEmployee is not null)
         {
             StatusMessage = $"„{SelectedEmployee.Name}“ – Kontrolle bestätigt, bitte „Speichern“.";
         }
-    }
-
-    private void RefreshSelectedEmployeeBindings()
-    {
-        var employee = SelectedEmployee;
-        if (employee is null)
-        {
-            return;
-        }
-
-        SelectedEmployee = null;
-        SelectedEmployee = employee;
     }
 
     partial void OnSelectedEmployeeChanged(EmployeeRosterItem? value)

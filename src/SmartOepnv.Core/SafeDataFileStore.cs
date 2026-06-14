@@ -66,11 +66,18 @@ public static class SafeDataFileStore
 
         var backupDir = Path.Combine(directory, "backups");
         Directory.CreateDirectory(backupDir);
-        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmssfff");
         var backupPath = Path.Combine(
             backupDir,
             $"{Path.GetFileNameWithoutExtension(filePath)}_{stamp}{Path.GetExtension(filePath)}");
-        File.Copy(filePath, backupPath, overwrite: false);
+        if (File.Exists(backupPath))
+        {
+            backupPath = Path.Combine(
+                backupDir,
+                $"{Path.GetFileNameWithoutExtension(filePath)}_{stamp}_{Guid.NewGuid():N}{Path.GetExtension(filePath)}");
+        }
+
+        File.Copy(filePath, backupPath, overwrite: true);
         PruneOldBackups(backupDir, Path.GetFileName(filePath), maxBackups);
     }
 

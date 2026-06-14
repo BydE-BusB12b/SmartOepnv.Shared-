@@ -88,6 +88,38 @@ public static class DutyTemplateRemarkHelper
                && text.Contains("Leerzeile", StringComparison.OrdinalIgnoreCase);
     }
 
+    public static bool IsLeerfahrt(string? remark)
+    {
+        var text = GetDefinitionText(remark);
+        return !string.IsNullOrWhiteSpace(text)
+               && text.Contains("Leerfahrt", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string ResolveLeerfahrtRemark(IEnumerable<string?> remarks)
+    {
+        foreach (var remark in remarks)
+        {
+            if (!IsLeerfahrt(remark))
+            {
+                continue;
+            }
+
+            var definition = GetDefinitionText(remark);
+            if (!string.IsNullOrWhiteSpace(definition))
+            {
+                return remark!.Trim();
+            }
+
+            var code = GetDisplayCode(remark);
+            if (!string.IsNullOrWhiteSpace(code))
+            {
+                return $"{code}=Leerfahrt";
+            }
+        }
+
+        return $"{GetNextCode(remarks)}=Leerfahrt";
+    }
+
     private static int ParseCodeNumber(string code)
     {
         var match = Regex.Match(code, @"B(\d+)", RegexOptions.IgnoreCase);

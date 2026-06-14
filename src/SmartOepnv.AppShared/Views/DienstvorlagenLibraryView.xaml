@@ -1,0 +1,140 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.DienstvorlagenLibraryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             VerticalAlignment="Stretch"
+             HorizontalAlignment="Stretch">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <Style x:Key="DutyDataGridStyle" TargetType="DataGrid">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#141E36" />
+            <Setter Property="BorderBrush" Value="#334B7A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="RowBackground" Value="Transparent" />
+            <Setter Property="AlternatingRowBackground" Value="#2A4880" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+            <Setter Property="HorizontalGridLinesBrush" Value="#2A3F6B" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="CanUserDeleteRows" Value="False" />
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="MinRowHeight" Value="32" />
+        </Style>
+        <Style x:Key="DutyDataGridCellStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="0,2,0,4">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.1*" MinWidth="280" />
+            <ColumnDefinition Width="2*" MinWidth="420" />
+        </Grid.ColumnDefinitions>
+
+        <materialDesign:Card Grid.Column="0" Margin="0,0,10,0" Padding="12,10"
+                             UniformCornerRadius="10" Background="{StaticResource SmartSurfaceBrush}">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="Gespeicherte Dienstvorlagen"
+                               FontWeight="SemiBold" FontSize="15" Margin="0,0,0,4" />
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Opacity="0.7" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8" />
+                </StackPanel>
+                <ListBox ItemsSource="{Binding Templates}"
+                         SelectedItem="{Binding SelectedTemplate}"
+                         DisplayMemberPath="Name"
+                         BorderThickness="1"
+                         BorderBrush="#334B7A"
+                         Background="#141E36"
+                         Foreground="White" />
+            </DockPanel>
+        </materialDesign:Card>
+
+        <materialDesign:Card Grid.Column="1" Padding="12,10"
+                             UniformCornerRadius="10" Background="{StaticResource SmartSurfaceBrush}">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock Text="{Binding SelectedTemplate.Name, FallbackValue='Vorlage wählen'}"
+                               FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="{Binding SelectedSummary}"
+                               Opacity="0.75" FontSize="11" Margin="0,2,0,0" />
+                    <TextBlock Text="{Binding SelectedStatsLine}"
+                               Foreground="{StaticResource SmartAccentBrush}"
+                               FontSize="11" Margin="0,4,0,0" />
+                </StackPanel>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="Teil 1" FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{StaticResource SmartPrimaryLightBrush}"
+                                   Margin="0,0,0,6" />
+                        <DataGrid ItemsSource="{Binding DisplayRows}" Style="{StaticResource DutyDataGridStyle}"
+                                  MaxHeight="280" Margin="0,0,0,12">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Fahrt" Binding="{Binding TripNumber}" Width="56"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Von" Binding="{Binding FromTime}" Width="52"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Nach" Binding="{Binding ToTime}" Width="52"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Von Hst." Binding="{Binding FromStop}" Width="*"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Nach Hst." Binding="{Binding ToStop}" Width="*"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Linie" Binding="{Binding LineCourse}" Width="72"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <TextBlock Text="Teil 2" FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{StaticResource SmartPrimaryLightBrush}"
+                                   Margin="0,0,0,6"
+                                   Visibility="{Binding HasPart2, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <DataGrid ItemsSource="{Binding DisplayPart2Rows}" Style="{StaticResource DutyDataGridStyle}"
+                                  MaxHeight="220" Margin="0,0,0,12"
+                                  Visibility="{Binding HasPart2, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Fahrt" Binding="{Binding TripNumber}" Width="56"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Von" Binding="{Binding FromTime}" Width="52"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Nach" Binding="{Binding ToTime}" Width="52"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Von Hst." Binding="{Binding FromStop}" Width="*"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Nach Hst." Binding="{Binding ToStop}" Width="*"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <TextBlock Text="Teil 3" FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{StaticResource SmartPrimaryLightBrush}"
+                                   Margin="0,0,0,6"
+                                   Visibility="{Binding HasPart3, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <DataGrid ItemsSource="{Binding DisplayPart3Rows}" Style="{StaticResource DutyDataGridStyle}"
+                                  MaxHeight="220"
+                                  Visibility="{Binding HasPart3, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Fahrt" Binding="{Binding TripNumber}" Width="56"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Von" Binding="{Binding FromTime}" Width="52"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Nach" Binding="{Binding ToTime}" Width="52"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Von Hst." Binding="{Binding FromStop}" Width="*"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                                <DataGridTextColumn Header="Nach Hst." Binding="{Binding ToStop}" Width="*"
+                                                    ElementStyle="{StaticResource DutyDataGridCellStyle}" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </materialDesign:Card>
+    </Grid>
+</UserControl>

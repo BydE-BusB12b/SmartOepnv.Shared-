@@ -70,7 +70,6 @@ public static class DienstvorlagenPdfGenerator
         var serviceStart = DutyTemplateCalculator.GetServiceStartDisplay(rows, preparationMinutes) ?? "–";
         var serviceEnd = DutyTemplateCalculator.GetServiceEndDisplay(rows, followUpMinutes) ?? "–";
         var dutyDisplay = string.IsNullOrWhiteSpace(dutyNumber) ? "–" : dutyNumber.Trim();
-        var contractor = string.IsNullOrWhiteSpace(template.Contractor) ? "–" : template.Contractor.Trim();
         var operatingDay = string.IsNullOrWhiteSpace(template.OperatingDay) ? "–" : template.OperatingDay.Trim();
         var companyLogoPath = ResolveCompanyLogoPath(template.CompanyLogoId);
 
@@ -82,13 +81,11 @@ public static class DienstvorlagenPdfGenerator
 
             page.Content().Column(content =>
             {
-                content.Item().Background(DarkBlue).Padding(16).Column(header =>
+                content.Item().Background(DarkBlue).PaddingVertical(8).PaddingHorizontal(12).Column(header =>
                 {
-                    header.Item().PaddingTop(10).Row(row =>
+                    header.Item().Row(row =>
                     {
                         row.RelativeItem().Element(c => HeaderField(c, "Dienst", dutyDisplay));
-                        row.ConstantItem(12);
-                        row.RelativeItem().Element(c => HeaderField(c, "Auftraggeber", contractor));
                         row.ConstantItem(12);
                         row.RelativeItem().Element(c => HeaderField(c, "Betriebstag", operatingDay));
                     });
@@ -97,19 +94,16 @@ public static class DienstvorlagenPdfGenerator
                 content.Item().PaddingTop(10).Row(statsRow =>
                 {
                     statsRow.RelativeItem().Element(c => StatCard(c, "Dienstanfang", serviceStart));
-                    statsRow.ConstantItem(8);
+                    statsRow.ConstantItem(6);
                     statsRow.RelativeItem().Element(c => StatCard(c, "Dienstende", serviceEnd));
-                    statsRow.ConstantItem(8);
+                    statsRow.ConstantItem(6);
                     statsRow.RelativeItem().Element(c => StatCard(c, "Dienstlänge", stats.ServiceDurationDisplay));
-                    statsRow.ConstantItem(8);
+                    statsRow.ConstantItem(6);
                     statsRow.RelativeItem().Element(c => StatCard(c, "Lohn-Std.", stats.PayHoursDisplay));
-                });
-
-                content.Item().PaddingTop(8).Row(extraStatsRow =>
-                {
-                    extraStatsRow.RelativeItem().Element(c => StatCard(c, "Reine Lenkzeit", stats.PureDrivingDisplay));
-                    extraStatsRow.ConstantItem(8);
-                    extraStatsRow.RelativeItem().Element(c => StatCard(c, "Reine Pausenzeit", stats.PureBreakDisplay));
+                    statsRow.ConstantItem(6);
+                    statsRow.RelativeItem().Element(c => StatCard(c, "Lenkzeit", stats.PureDrivingDisplay));
+                    statsRow.ConstantItem(6);
+                    statsRow.RelativeItem().Element(c => StatCard(c, "Pausenzeit", stats.PureBreakDisplay));
                 });
 
                 if (preparationMinutes > 0 || followUpMinutes > 0)
@@ -272,10 +266,10 @@ public static class DienstvorlagenPdfGenerator
         container.Column(column =>
         {
             column.Item().Text(label.ToUpperInvariant())
-                .FontSize(8)
+                .FontSize(7)
                 .FontColor(AccentBlue);
-            column.Item().PaddingTop(2).Text(value)
-                .FontSize(12)
+            column.Item().PaddingTop(1).Text(value)
+                .FontSize(11)
                 .SemiBold()
                 .FontColor(Colors.White);
         });
@@ -287,11 +281,12 @@ public static class DienstvorlagenPdfGenerator
             .Background(SurfaceBlue)
             .Border(1)
             .BorderColor(LightBlue)
-            .Padding(8)
+            .PaddingVertical(6)
+            .PaddingHorizontal(5)
             .Column(column =>
             {
-                column.Item().Text(label).FontSize(8).FontColor(TextMuted);
-                column.Item().PaddingTop(2).Text(value).FontSize(13).SemiBold().FontColor(PrimaryBlue);
+                column.Item().Text(label).FontSize(7).FontColor(TextMuted);
+                column.Item().PaddingTop(1).Text(value).FontSize(11).SemiBold().FontColor(PrimaryBlue);
             });
     }
 

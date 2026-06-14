@@ -7,6 +7,12 @@ if (!File.Exists(path))
     return 1;
 }
 
+if (args.Contains("--debug"))
+{
+    PdfImportTest.ExcelDebug.Dump(path);
+    return 0;
+}
+
 Console.WriteLine($"PDF: {path}");
 Console.WriteLine();
 

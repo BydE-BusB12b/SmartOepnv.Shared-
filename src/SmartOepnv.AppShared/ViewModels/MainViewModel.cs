@@ -32,10 +32,12 @@ public partial class MainViewModel : ObservableObject
     private readonly FahrerdispoViewModel _fahrerdispoViewModel = new();
     private readonly FahrzeugdispoViewModel _fahrzeugdispoViewModel = new();
     private readonly DienstvorlagenViewModel _dienstvorlagenViewModel = new();
+    private readonly DienstvorlagenLibraryViewModel _dienstvorlagenLibraryViewModel = new();
 
     private NavigationItem? _previousNavigationItem;
     private NavigationItem? _leitstelleMessagesNavItem;
     private NavigationItem? _fahrzeugverwaltungNavItem;
+    private NavigationItem? _personalverwaltungNavItem;
 
     public MainViewModel(SmartOepnvAppProfile profile)
     {
@@ -181,6 +183,7 @@ public partial class MainViewModel : ObservableObject
         else if (value.Title == "Personalverwaltung")
         {
             _employeesViewModel.RefreshFromEditorIfNeeded();
+            UpdatePersonalverwaltungBadge();
         }
         else if (value.Title == "Fahrerdisposition")
         {
@@ -242,6 +245,10 @@ public partial class MainViewModel : ObservableObject
         {
             _dienstvorlagenViewModel.RefreshFromEditor();
         }
+        else if (value.Title == "Vorlagen-Bibliothek")
+        {
+            _dienstvorlagenLibraryViewModel.RefreshFromEditor();
+        }
         else
         {
             _vehicleTrackingViewModel.OnViewDeactivated();
@@ -272,6 +279,8 @@ public partial class MainViewModel : ObservableObject
             case "Personalverwaltung":
                 _employeesViewModel.CommitChangesIfDirty();
                 _dataTransferViewModel.RefreshDriverCredentialWarnings();
+                _dataTransferViewModel.RefreshDocumentCheckWarnings();
+                UpdatePersonalverwaltungBadge();
                 break;
             case "Haltestellen":
                 _stopsLibraryViewModel.CommitChangesIfDirty();
@@ -508,6 +517,8 @@ public partial class MainViewModel : ObservableObject
             _ = _leitstelleMessagesInboxViewModel.RefreshAsync();
             UpdateLeitstelleMessagesBadge();
         }
+
+        UpdatePersonalverwaltungBadge();
     }
 
     private async Task TryProcessDeviceRegistrationsFromDropboxAsync()
@@ -543,6 +554,13 @@ public partial class MainViewModel : ObservableObject
             Description = "KOM-Fahrzeuge und Mängelkarte (registeredVehicles / maengelkarte.json)",
             CreateContent = () => new VehicleManagementView { DataContext = _vehicleManagementViewModel }
         };
+        _personalverwaltungNavItem = new NavigationItem
+        {
+            Title = "Personalverwaltung",
+            Icon = PackIconKind.AccountGroup,
+            Description = "Mitarbeiterregister (employeeRoster)",
+            CreateContent = () => new EmployeesView { DataContext = _employeesViewModel }
+        };
 
         var items = new List<NavigationItem>
         {
@@ -553,13 +571,7 @@ public partial class MainViewModel : ObservableObject
                 Description = "Dashboard, Import und Export",
                 CreateContent = () => new DashboardView { DataContext = _dataTransferViewModel }
             },
-            new()
-            {
-                Title = "Personalverwaltung",
-                Icon = PackIconKind.AccountGroup,
-                Description = "Mitarbeiterregister (employeeRoster)",
-                CreateContent = () => new EmployeesView { DataContext = _employeesViewModel }
-            },
+            _personalverwaltungNavItem,
             new()
             {
                 Title = _profile.IsLeitstelle ? "Nachricht senden" : "Nachrichten",
@@ -613,6 +625,13 @@ public partial class MainViewModel : ObservableObject
                     Icon = PackIconKind.CalendarClock,
                     Description = "Dienstschablonen erstellen, aus Fahrplan importieren und als PDF exportieren",
                     CreateContent = () => new DienstvorlagenView { DataContext = _dienstvorlagenViewModel }
+                });
+                items.Insert(personalIdx + 5, new NavigationItem
+                {
+                    Title = "Vorlagen-Bibliothek",
+                    Icon = PackIconKind.BookOpenPageVariant,
+                    Description = "Gespeicherte Dienstvorlagen im App-Format anzeigen",
+                    CreateContent = () => new DienstvorlagenLibraryView { DataContext = _dienstvorlagenLibraryViewModel }
                 });
             }
 
@@ -736,6 +755,20 @@ public partial class MainViewModel : ObservableObject
 
         var count = _vehicleManagementViewModel.Maengelkarte.NewEntryCount;
         _fahrzeugverwaltungNavItem.BadgeText = count > 0 ? $"+{count}" : string.Empty;
+    }
+
+    private void UpdatePersonalverwaltungBadge()
+    {
+        if (_personalverwaltungNavItem is null)
+        {
+            return;
+        }
+
+        var employees = AppServices.Routes.Editor?.Employees;
+        var count = employees is null
+            ? 0
+            : EmployeeDocumentCheckWarningEvaluator.CountDueChecks(employees);
+        _personalverwaltungNavItem.BadgeText = count > 0 ? $"+{count}" : string.Empty;
     }
 
     private static string ResolveDisplayedAppVersion()

@@ -100,6 +100,26 @@ internal static class DutyTemplateExcelSheetReader
 
     private static string ReadCellValue(Cell cell, SharedStringTable? sharedStrings)
     {
+        var cellValueText = cell.CellValue?.Text?.Trim();
+        if (!string.IsNullOrEmpty(cellValueText))
+        {
+            if (cell.DataType?.Value == CellValues.SharedString && sharedStrings is not null)
+            {
+                if (int.TryParse(cellValueText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index))
+                {
+                    var item = sharedStrings.Elements<SharedStringItem>().ElementAtOrDefault(index);
+                    return item?.InnerText?.Trim() ?? string.Empty;
+                }
+            }
+
+            if (double.TryParse(cellValueText, NumberStyles.Float, CultureInfo.InvariantCulture, out var cachedNumber))
+            {
+                return FormatNumericCell(cachedNumber);
+            }
+
+            return cellValueText;
+        }
+
         var text = cell.InnerText?.Trim() ?? string.Empty;
         if (cell.DataType?.Value == CellValues.SharedString && sharedStrings is not null)
         {

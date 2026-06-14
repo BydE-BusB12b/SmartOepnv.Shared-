@@ -148,6 +148,72 @@
                     </TextBlock>
                 </StackPanel>
             </ScrollViewer>
+
+            <TextBlock Text="Kontrollen (alle 3 Monate)"
+                       FontWeight="SemiBold"
+                       FontSize="13"
+                       Margin="8,6,8,4"
+                       Foreground="White" />
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          MaxHeight="110"
+                          Margin="8,0,8,4">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding DocumentCheckWarnings}">
+                        <ItemsControl.Style>
+                            <Style TargetType="ItemsControl">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasDocumentCheckWarnings}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ItemsControl.Style>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding BackgroundBrush}"
+                                        CornerRadius="6"
+                                        Padding="8,6"
+                                        Margin="0,0,0,6"
+                                        Cursor="Hand"
+                                        SnapsToDevicePixels="True"
+                                        ToolTip="In der Personalverwaltung öffnen">
+                                    <Border.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                      Command="{Binding DataContext.OpenEmployeeFromDocumentCheckWarningCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      CommandParameter="{Binding}" />
+                                    </Border.InputBindings>
+                                    <TextBlock Text="{Binding Message}"
+                                               Foreground="{Binding ForegroundBrush}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               TextWrapping="Wrap" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Margin="0,0,0,2"
+                               Opacity="0.55"
+                               FontSize="11"
+                               Text="Alle 3-Monats-Kontrollen (Führerschein, FQN, Fahrerkarte) sind bestätigt."
+                               TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasLoadedPackage}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding HasDocumentCheckWarnings}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </ScrollViewer>
         </StackPanel>
 
         <local:DataTransferView DataContext="{Binding}" />

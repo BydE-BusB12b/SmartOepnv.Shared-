@@ -8,6 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>PdfImportTest</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="Assets\stops_vrr.csv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

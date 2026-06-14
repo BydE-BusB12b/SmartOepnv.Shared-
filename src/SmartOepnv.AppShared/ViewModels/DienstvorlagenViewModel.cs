@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using SmartOepnv.AppShared.Dienstvorlagen;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.RoutePackage;
@@ -389,6 +391,17 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     public void UpdateActiveGridSelection(IReadOnlyList<DutyTemplateRowItem> selectedRows)
     {
+        if (selectedRows.Count == 0)
+        {
+            return;
+        }
+
+        _activeGridSelection = selectedRows.ToList();
+        SplitDutyAtSelectionCommand.NotifyCanExecuteChanged();
+    }
+
+    public void CaptureActiveGridSelection(IReadOnlyList<DutyTemplateRowItem> selectedRows)
+    {
         _activeGridSelection = selectedRows.ToList();
         SplitDutyAtSelectionCommand.NotifyCanExecuteChanged();
     }
@@ -469,11 +482,125 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
     {
         var row = new DutyTemplateRowItem
         {
-            Remark = $"{DutyTemplateRemarkHelper.GetNextCode(AllRowModels().Select(item => item.Remark))}=Leerfahrt",
+            Remark = DutyTemplateRemarkHelper.ResolveLeerfahrtRemark(AllRowModels().Select(item => item.Remark)),
             LineCourse = DefaultLineCourse.Trim()
         };
         InsertRow(row);
         StatusMessage = "Leerfahrt eingefügt – Zeiten und Haltestellen eintragen.";
+    }
+
+    [RelayCommand]
+    private void ApplyIntelligentEmptyRuns()
+    {
+        var dialog = new DienstvorlagenEmptyRunDialog
+        {
+            Owner = Application.Current.MainWindow
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var inserted = ApplyIntelligentEmptyRunsWithRules(dialog.Rules);
+        if (inserted > 0)
+        {
+            StatusMessage = $"{inserted} Leerfahrt(en) automatisch eingefügt.";
+        }
+    }
+
+    private int ApplyIntelligentEmptyRunsWithRules(
+        IReadOnlyList<DutyTemplateEmptyRunRule> rules,
+        bool showNoMatchMessage = true)
+    {
+        var validRules = rules.Where(rule => rule.IsValid).ToList();
+        if (validRules.Count == 0)
+        {
+            if (showNoMatchMessage)
+            {
+                StatusMessage =
+                    "Bitte mindestens eine Leerfahrt-Regel angeben (von Haltestelle, nach Haltestelle, Minuten).";
+            }
+
+            return 0;
+        }
+
+        var leerfahrtRemark = DutyTemplateRemarkHelper.ResolveLeerfahrtRemark(AllRowModels().Select(item => item.Remark));
+        var lineCourse = DefaultLineCourse.Trim();
+        var inserted = 0;
+        inserted += ReplaceWithEmptyRuns(Rows, validRules, leerfahrtRemark, lineCourse);
+        inserted += ReplaceWithEmptyRuns(Part2Rows, validRules, leerfahrtRemark, lineCourse);
+        inserted += ReplaceWithEmptyRuns(Part3Rows, validRules, leerfahrtRemark, lineCourse);
+
+        if (inserted > 0)
+        {
+            RefreshStats();
+            ScheduleEditorSessionSave();
+        }
+        else if (showNoMatchMessage)
+        {
+            StatusMessage = BuildEmptyRunMissMessage(validRules);
+        }
+
+        return inserted;
+    }
+
+    private string BuildEmptyRunMissMessage(IReadOnlyList<DutyTemplateEmptyRunRule> rules)
+    {
+        var models = Rows.Select(row => row.ToModel()).ToList();
+        var diagnostics = DutyTemplateEmptyRunInserter.AnalyzeMisses(models, rules);
+
+        if (diagnostics.StopMatches == 0)
+        {
+            return
+                "Keine passende Lücke: Eine Fahrt muss an der Von-Haltestelle enden und die nächste an der Nach-Haltestelle starten. " +
+                "Zwischen 3087 und 3094 z. B. Vohwinkel Bstg 2 → Vohwinkel Bstg 1, nicht Gerresheim.";
+        }
+
+        if (diagnostics.TimeTooShort > 0)
+        {
+            var shortest = diagnostics.ShortestGapMinutes is int minutes
+                ? $" (kürzeste passende Haltestellen-Pause: {minutes} Min.)"
+                : string.Empty;
+            var required = rules.Max(rule => rule.DurationMinutes);
+            return
+                $"Haltestellen passen, aber die Pause ist zu kurz für {required} Min.{shortest} " +
+                "– an Gerresheim sind es meist 3 Min., an Vohwinkel z. B. 20 Min. zwischen 3087 und 3094.";
+        }
+
+        return "Keine passenden Lücken gefunden – evtl. sind die Leerfahrten bereits eingefügt.";
+    }
+
+    private int ReplaceWithEmptyRuns(
+        ObservableCollection<DutyTemplateRowItem> collection,
+        IReadOnlyList<DutyTemplateEmptyRunRule> rules,
+        string leerfahrtRemark,
+        string lineCourse)
+    {
+        if (collection.Count < 2)
+        {
+            return 0;
+        }
+
+        var models = collection.Select(row => row.ToModel()).ToList();
+        var (result, inserted) = DutyTemplateEmptyRunInserter.InsertEmptyRuns(
+            models,
+            rules,
+            leerfahrtRemark,
+            lineCourse);
+        if (inserted <= 0)
+        {
+            return 0;
+        }
+
+        collection.Clear();
+        foreach (var row in result)
+        {
+            var item = DutyTemplateRowItem.FromModel(row);
+            AttachRowHandler(item);
+            collection.Add(item);
+        }
+
+        return inserted;
     }
 
     [RelayCommand]
@@ -783,15 +910,13 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         StatusMessage = "Geteilter Dienst zusammengeführt.";
     }
 
-    [RelayCommand(CanExecute = nameof(CanIntelligentSplitDuty))]
+    [RelayCommand]
     private void IntelligentSplitDuty()
     {
         IntelligentSplitDutyInternal();
     }
 
-    private bool CanIntelligentSplitDuty() => !IsSplitDuty && Rows.Count >= 2;
-
-    [RelayCommand(CanExecute = nameof(CanSplitDutyAtSelection))]
+    [RelayCommand]
     private void SplitDutyAtSelection()
     {
         if (_activeGridSelection.Count != 2)
@@ -815,7 +940,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
         if (indices.Count != 2)
         {
-            StatusMessage = "Bitte zwei Zeilen im gleichen Dienstteil markieren.";
+            StatusMessage = "Bitte zwei Zeilen im gleichen Dienstteil markieren (Strg+Klick).";
             return;
         }
 
@@ -1213,6 +1338,13 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
     {
         if (IsSplitDuty)
         {
+            StatusMessage = "Dienst ist bereits geteilt – zuerst „Zusammenführen“ oder manuell trennen.";
+            return;
+        }
+
+        if (Rows.Count < 2)
+        {
+            StatusMessage = "Mindestens zwei Fahrten nötig für „Intelligent Aufteilen“.";
             return;
         }
 
@@ -1238,7 +1370,28 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             return;
         }
 
-        ApplySplitAt(result.SplitAfterIndex, orderedRows);
+        if (result.PartCount == 3)
+        {
+            if (!ApplyThreePartSplit(result.SplitAfterIndex, result.SecondSplitAfterIndex, orderedRows))
+            {
+                StatusMessage = "Aufteilung in 3 Teile fehlgeschlagen – bitte manuell trennen.";
+                return;
+            }
+
+            RefreshStats();
+            StatusMessage =
+                $"Dienst intelligent in 3 Teile aufgeteilt (max. 9 h pro Teil). " +
+                $"Teil 1: {Rows.Count}, Teil 2: {Part2Rows.Count}, Teil 3: {Part3Rows.Count} Fahrt(en).";
+            return;
+        }
+
+        if (!ApplySplitAt(result.SplitAfterIndex, orderedRows))
+        {
+            StatusMessage = "Aufteilung fehlgeschlagen – bitte zwei Zeilen markieren und „Dienst trennen“ verwenden.";
+            return;
+        }
+
+        RefreshStats();
         StatusMessage =
             $"Dienst intelligent in 2 Teile aufgeteilt (max. 9 h pro Teil). " +
             $"Teil 1: {Rows.Count} Fahrt(en), Teil 2: {Part2Rows.Count} Fahrt(en).";
@@ -1246,16 +1399,21 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     private void TryAutoSplitDuty() => IntelligentSplitDutyInternal();
 
-    private void ApplySplitAt(int splitAfterIndex, IReadOnlyList<DutyTemplateRow>? orderedRows = null)
+    private bool ApplySplitAt(int splitAfterIndex, IReadOnlyList<DutyTemplateRow>? orderedRows = null)
     {
         orderedRows ??= DutyTemplateCalculator.OrderRows(Rows.Select(row => row.ToModel()));
         if (splitAfterIndex <= 0 || splitAfterIndex >= orderedRows.Count)
         {
-            return;
+            return false;
         }
 
         var part1Ids = orderedRows.Take(splitAfterIndex).Select(row => row.Id).ToHashSet();
         var moveToPart2 = Rows.Where(row => !part1Ids.Contains(row.Id)).ToList();
+        if (moveToPart2.Count == 0 || part1Ids.Count == 0)
+        {
+            return false;
+        }
+
         foreach (var row in moveToPart2)
         {
             Rows.Remove(row);
@@ -1265,6 +1423,64 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         SortPart2RowsByOperatingDay();
         SuggestDutyNumberPart2();
         NotifySplitStateChanged();
+        return true;
+    }
+
+    private bool ApplyThreePartSplit(
+        int firstSplitIndex,
+        int secondSplitIndex,
+        IReadOnlyList<DutyTemplateRow>? orderedRows = null)
+    {
+        orderedRows ??= DutyTemplateCalculator.OrderRows(Rows.Select(row => row.ToModel()));
+        if (firstSplitIndex <= 0
+            || secondSplitIndex <= firstSplitIndex
+            || secondSplitIndex >= orderedRows.Count)
+        {
+            return false;
+        }
+
+        var part2Ids = orderedRows
+            .Skip(firstSplitIndex)
+            .Take(secondSplitIndex - firstSplitIndex)
+            .Select(row => row.Id)
+            .ToHashSet();
+        var part3Ids = orderedRows
+            .Skip(secondSplitIndex)
+            .Select(row => row.Id)
+            .ToHashSet();
+        if (part2Ids.Count == 0 || part3Ids.Count == 0)
+        {
+            return false;
+        }
+
+        var moveToPart2 = Rows.Where(row => part2Ids.Contains(row.Id)).ToList();
+        var moveToPart3 = Rows.Where(row => part3Ids.Contains(row.Id)).ToList();
+        if (moveToPart2.Count == 0 || moveToPart3.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var row in moveToPart2.Concat(moveToPart3).ToList())
+        {
+            Rows.Remove(row);
+        }
+
+        foreach (var row in moveToPart2)
+        {
+            Part2Rows.Add(row);
+        }
+
+        foreach (var row in moveToPart3)
+        {
+            Part3Rows.Add(row);
+        }
+
+        SortPart2RowsByOperatingDay();
+        SortPart3RowsByOperatingDay();
+        SuggestDutyNumberPart2();
+        SuggestDutyNumberPart3();
+        NotifySplitStateChanged();
+        return true;
     }
 
     private void SuggestDutyNumberPart3()
@@ -1511,7 +1727,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
     {
         _sessionSaveTimer ??= new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(750)
+            Interval = TimeSpan.FromSeconds(2)
         };
         _sessionSaveTimer.Tick -= OnSessionSaveTimerTick;
         _sessionSaveTimer.Tick += OnSessionSaveTimerTick;
@@ -1540,14 +1756,25 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             return;
         }
 
-        var session = BuildEditorSession();
-        if (!session.HasContent())
+        try
         {
-            store.Clear();
-            return;
-        }
+            var session = BuildEditorSession();
+            if (!session.HasContent())
+            {
+                store.Clear();
+                return;
+            }
 
-        store.Save(session);
+            store.Save(session);
+        }
+        catch (IOException ex)
+        {
+            StatusMessage = $"Entwurf konnte nicht gespeichert werden: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Entwurf konnte nicht gespeichert werden: {ex.Message}";
+        }
     }
 
     private void ClearEditorSession() => TryGetSessionStore()?.Clear();

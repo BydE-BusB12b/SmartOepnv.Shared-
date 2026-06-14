@@ -62,6 +62,11 @@
             <Setter Property="HorizontalGridLinesBrush" Value="#2A3F6B" />
             <Setter Property="HeadersVisibility" Value="Column" />
             <Setter Property="MinRowHeight" Value="36" />
+            <Setter Property="EnableRowVirtualization" Value="True" />
+            <Setter Property="EnableColumnVirtualization" Value="True" />
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
+            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
         </Style>
 
         <Style x:Key="DutyDataGridCellStyle" TargetType="TextBlock">
@@ -270,7 +275,7 @@
                                          Text="{Binding WorkFollowUpMinutes, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
                             <TextBlock Style="{StaticResource DutyHintStyle}"
-                                       Text="Standard: 10 Min. Vorbereitung, 5 Min. Nachbereitung pro Dienst – werden zur Dienstlänge addiert. Aufteilung über „Intelligent Aufteilen“ oder „Dienst trennen“ (jeder Teil mit Vorbereitung und Nachbereitung)."
+                                       Text="Standard: 10 Min. Vorbereitung, 5 Min. Nachbereitung pro Dienst – werden zur Dienstlänge addiert. „Intelligent Aufteilen“ teilt in 2 oder bei Bedarf 3 Teile (max. 9 h pro Teil)."
                                        Margin="0,0,0,8" />
                             <TextBlock Style="{StaticResource DutyHintStyle}"
                                        Text="Bei geteiltem Dienst: Kennzahlen und 30-Min.-Pausenabzug je Dienstteil im Fahrten-Bereich."
@@ -407,7 +412,7 @@
                                            VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBlock Style="{StaticResource DutyHintStyle}"
-                                       Text="Pro Fahrt nur erste und letzte Haltestelle. Unterstützt: Excel (.xlsx), PDF-Ersatzfahrplan, CSV/TXT. Leerfahrten danach manuell einfügen."
+                                       Text="Pro Fahrt nur erste und letzte Haltestelle. Unterstützt: Excel (.xlsx), PDF-Ersatzfahrplan, CSV/TXT. Leerfahrten über „Intelligente Leerfahrten“ in der Fahrten-Tabelle."
                                        Margin="0,0,0,8" />
                             <Button Command="{Binding ImportFahrplanCommand}"
                                     Margin="0,0,0,6"
@@ -529,7 +534,7 @@
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
                             </Grid>
 
-                            <TextBlock Text="Bearbeitbar – Leerfahrten/Leerzeilen einfügen, verschieben oder löschen. Zwei Zeilen markieren und „Dienst trennen“, oder „Intelligent Aufteilen“ für max. 9 h pro Teil."
+                            <TextBlock Text="Bearbeitbar – Leerfahrten/Leerzeilen einfügen, verschieben oder löschen. „Intelligente Leerfahrten“ öffnet ein Fenster zur Eingabe. „Intelligent Aufteilen“: 2 Teile, bei Bedarf 3 (max. 9 h). Oder zwei Zeilen markieren und „Dienst trennen“."
                                        Opacity="0.8"
                                        FontSize="10"
                                        Margin="30,4,0,0" />
@@ -548,6 +553,14 @@
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
                                         Foreground="White"
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
+                                <Button Content="Intelligente Leerfahrten"
+                                        Command="{Binding ApplyIntelligentEmptyRunsCommand}"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
+                                        ToolTip="Leerfahrt-Regeln eingeben und einfügen" />
                                 <Button Content="Leerzeile"
                                         Command="{Binding AddEmptyLineRowCommand}"
                                         Focusable="False"
@@ -580,7 +593,7 @@
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
                                 <Button Content="Intelligent Aufteilen"
                                         Command="{Binding IntelligentSplitDutyCommand}"
-                                        Focusable="False"
+                                        PreviewMouseDown="IntelligentSplitButton_PreviewMouseDown"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
                                         Foreground="White"
@@ -588,6 +601,7 @@
                                         Visibility="{Binding IsSplitDuty, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                 <Button Content="Dienst trennen"
                                         Command="{Binding SplitDutyAtSelectionCommand}"
+                                        PreviewMouseDown="SplitDutyButton_PreviewMouseDown"
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
@@ -623,6 +637,9 @@
                                         Style="{StaticResource MaterialDesignFlatButton}"
                                         Foreground="{StaticResource SmartAccentBrush}" />
                             </WrapPanel>
+                            <controls:EditorStatusBanner Margin="30,8,0,0"
+                                                         Message="{Binding StatusMessage}"
+                                                         IsSuccess="{Binding StatusMessageIsSuccess}" />
                         </StackPanel>
                     </Border>
 
@@ -706,8 +723,9 @@
                               SelectionMode="Extended"
                               IsReadOnly="False"
                               Margin="0,0,0,10"
-                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                               ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              MaxHeight="420"
                               RowStyle="{StaticResource DutyDataGridRowStyle}">
                         <DataGrid.CellStyle>
                             <Style TargetType="DataGridCell">
@@ -911,8 +929,9 @@
                               SelectionMode="Extended"
                               IsReadOnly="False"
                               Margin="0,0,0,10"
-                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                               ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              MaxHeight="420"
                               RowStyle="{StaticResource DutyDataGridRowStyle}"
                               Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <DataGrid.CellStyle>
@@ -1104,8 +1123,9 @@
                               SelectionMode="Extended"
                               IsReadOnly="False"
                               Margin="0,0,0,10"
-                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                               ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              MaxHeight="420"
                               RowStyle="{StaticResource DutyDataGridRowStyle}"
                               Visibility="{Binding IsThreePartDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <DataGrid.CellStyle>

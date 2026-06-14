@@ -44,11 +44,16 @@ public sealed class DriverDispositionAssignment
 
     public string Label { get; set; } = string.Empty;
 
-
+    /// <summary>Dienstnummer(n) z. B. 301 oder 301 + 302 (Fahrerdisposition).</summary>
+    public string DutyNumber { get; set; } = string.Empty;
 
     public string Notes { get; set; } = string.Empty;
 
+    /// <summary>Verknüpfte Dienstvorlage (wenn aus Vorlage disponiert).</summary>
+    public string DutyTemplateId { get; set; } = string.Empty;
 
+    /// <summary>Teil der Vorlage (1, 2 oder 3) – jeder Teil wird einzeln disponiert.</summary>
+    public int DutyTemplatePartIndex { get; set; } = 1;
 
     /// <summary>Ruhezeit vor diesem Dienst wurde auf 9 h verkürzt (max. 2× pro Kalenderwoche).</summary>
 
@@ -140,7 +145,13 @@ public sealed class DriverDispositionAssignment
 
         Label = Label,
 
+        DutyNumber = DutyNumber,
+
         Notes = Notes,
+
+        DutyTemplateId = DutyTemplateId,
+
+        DutyTemplatePartIndex = DutyTemplatePartIndex,
 
         ReducedRestBefore = ReducedRestBefore,
 

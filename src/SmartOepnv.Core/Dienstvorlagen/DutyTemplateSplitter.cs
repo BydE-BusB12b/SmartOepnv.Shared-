@@ -11,8 +11,13 @@ public static class DutyTemplateSplitter
 
         public bool FoundValidSplit { get; init; }
 
+        public int PartCount { get; init; } = 2;
+
         /// <summary>Teil 1 = Zeilen [0 .. SplitAfterIndex-1], Teil 2 ab Index SplitAfterIndex.</summary>
         public int SplitAfterIndex { get; init; }
+
+        /// <summary>Bei 3 Teilen: Teil 3 ab diesem Index. Teil 2 = [SplitAfterIndex .. SecondSplitAfterIndex-1].</summary>
+        public int SecondSplitAfterIndex { get; init; }
 
         public string? WarningMessage { get; init; }
     }
@@ -59,43 +64,128 @@ public static class DutyTemplateSplitter
             };
         }
 
-        int? bestIndex = null;
-        var bestBalance = int.MaxValue;
-
-        for (var splitIndex = 1; splitIndex < ordered.Count; splitIndex++)
-        {
-            var part1 = ordered.Take(splitIndex).ToList();
-            var part2 = ordered.Skip(splitIndex).ToList();
-            var dur1 = DutyTemplateCalculator.ComputePartDuration(part1, prep, followUp);
-            var dur2 = DutyTemplateCalculator.ComputePartDuration(part2, prep, followUp);
-
-            if (dur1 <= MaxDutyMinutes && dur2 <= MaxDutyMinutes)
-            {
-                var balance = Math.Abs(dur1 - dur2);
-                if (balance < bestBalance)
-                {
-                    bestBalance = balance;
-                    bestIndex = splitIndex;
-                }
-            }
-        }
-
-        if (bestIndex is null)
+        if (TryFindTwoPartSplit(ordered, prep, followUp, out var twoPartIndex))
         {
             return new SplitResult
             {
                 RequiresSplit = true,
-                WarningMessage =
-                    $"Dienst dauert {DutyTemplateCalculator.FormatMinutes(fullDuration)} – " +
-                    "kein gültiger Schnittpunkt unter 9 Stunden pro Teil gefunden."
+                FoundValidSplit = true,
+                PartCount = 2,
+                SplitAfterIndex = twoPartIndex
+            };
+        }
+
+        if (ordered.Count >= 3
+            && TryFindThreePartSplit(ordered, prep, followUp, out var firstSplit, out var secondSplit))
+        {
+            return new SplitResult
+            {
+                RequiresSplit = true,
+                FoundValidSplit = true,
+                PartCount = 3,
+                SplitAfterIndex = firstSplit,
+                SecondSplitAfterIndex = secondSplit
             };
         }
 
         return new SplitResult
         {
             RequiresSplit = true,
-            FoundValidSplit = true,
-            SplitAfterIndex = bestIndex.Value
+            WarningMessage =
+                $"Dienst dauert {DutyTemplateCalculator.FormatMinutes(fullDuration)} – " +
+                "kein gültiger Schnitt unter 9 Stunden pro Teil gefunden (weder in 2 noch in 3 Teile)."
         };
+    }
+
+    private static bool TryFindTwoPartSplit(
+        IReadOnlyList<DutyTemplateRow> ordered,
+        int preparationMinutes,
+        int followUpMinutes,
+        out int splitIndex)
+    {
+        splitIndex = 0;
+        int? bestIndex = null;
+        var bestBalance = int.MaxValue;
+
+        for (var candidate = 1; candidate < ordered.Count; candidate++)
+        {
+            var part1 = ordered.Take(candidate).ToList();
+            var part2 = ordered.Skip(candidate).ToList();
+            var duration1 = DutyTemplateCalculator.ComputePartDuration(part1, preparationMinutes, followUpMinutes);
+            var duration2 = DutyTemplateCalculator.ComputePartDuration(part2, preparationMinutes, followUpMinutes);
+
+            if (duration1 <= MaxDutyMinutes && duration2 <= MaxDutyMinutes)
+            {
+                var balance = Math.Abs(duration1 - duration2);
+                if (balance < bestBalance)
+                {
+                    bestBalance = balance;
+                    bestIndex = candidate;
+                }
+            }
+        }
+
+        if (bestIndex is null)
+        {
+            return false;
+        }
+
+        splitIndex = bestIndex.Value;
+        return true;
+    }
+
+    private static bool TryFindThreePartSplit(
+        IReadOnlyList<DutyTemplateRow> ordered,
+        int preparationMinutes,
+        int followUpMinutes,
+        out int firstSplitIndex,
+        out int secondSplitIndex)
+    {
+        firstSplitIndex = 0;
+        secondSplitIndex = 0;
+        int? bestFirst = null;
+        int? bestSecond = null;
+        var bestBalance = int.MaxValue;
+
+        for (var first = 1; first < ordered.Count - 1; first++)
+        {
+            for (var second = first + 1; second < ordered.Count; second++)
+            {
+                var part1 = ordered.Take(first).ToList();
+                var part2 = ordered.Skip(first).Take(second - first).ToList();
+                var part3 = ordered.Skip(second).ToList();
+                if (part1.Count == 0 || part2.Count == 0 || part3.Count == 0)
+                {
+                    continue;
+                }
+
+                var duration1 = DutyTemplateCalculator.ComputePartDuration(part1, preparationMinutes, followUpMinutes);
+                var duration2 = DutyTemplateCalculator.ComputePartDuration(part2, preparationMinutes, followUpMinutes);
+                var duration3 = DutyTemplateCalculator.ComputePartDuration(part3, preparationMinutes, followUpMinutes);
+                if (duration1 > MaxDutyMinutes || duration2 > MaxDutyMinutes || duration3 > MaxDutyMinutes)
+                {
+                    continue;
+                }
+
+                var min = Math.Min(duration1, Math.Min(duration2, duration3));
+                var max = Math.Max(duration1, Math.Max(duration2, duration3));
+                var balance = max - min;
+                if (balance < bestBalance)
+                {
+                    bestBalance = balance;
+                    bestFirst = first;
+                    bestSecond = second;
+                }
+            }
+        }
+
+        if (bestFirst is null || bestSecond is null)
+        {
+            return false;
+        }
+
+        firstSplitIndex = bestFirst.Value;
+        secondSplitIndex = bestSecond.Value;
+        return true;
     }
 }

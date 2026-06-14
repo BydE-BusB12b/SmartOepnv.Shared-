@@ -359,7 +359,7 @@ public static class DutyTemplateErsatzfahrplanParser
         return row with
         {
             ShortStop = DutyTemplateStopNameHelper.StripHaltestelleMarker(shortName),
-            LongStop = DutyTemplateStopNameHelper.StripHaltestelleMarker(longName)
+            LongStop = DutyTemplateStopNameHelper.ResolveImportStopName(shortName, longName)
         };
     }
 
@@ -392,11 +392,18 @@ public static class DutyTemplateErsatzfahrplanParser
                 return null;
             }
 
+            var shortStop = cells[0].Trim();
+            var longStop = cells[1].Trim();
+            if (IsGarbageStopRow(shortStop, longStop))
+            {
+                return null;
+            }
+
             return new ErsatzfahrplanTableRow(
                 0,
                 rawLine,
-                cells[0].Trim(),
-                cells[1].Trim(),
+                shortStop,
+                DutyTemplateStopNameHelper.ResolveImportStopName(shortStop, longStop),
                 cells[2].Trim().ToLowerInvariant(),
                 times);
         }
@@ -417,11 +424,9 @@ public static class DutyTemplateErsatzfahrplanParser
         }
 
         var stops = match.Groups["stops"].Value.Trim();
-        var parts = stops.Split("  ", StringSplitOptions.RemoveEmptyEntries);
-        var shortName = parts.Length > 0 ? parts[0].Trim() : stops;
-        var longName = parts.Length > 1 ? parts[^1].Trim() : stops;
+        var (shortName, longName) = DutyTemplateStopNameHelper.SplitBahnhofAndHaltestelle(stops);
 
-        if (IsGarbageStopRow(shortName, longName))
+        if (IsGarbageStopRow(shortName, longName) || IsBahnhofOnlyRow(shortName, longName))
         {
             return null;
         }
@@ -430,7 +435,7 @@ public static class DutyTemplateErsatzfahrplanParser
             0,
             rawLine,
             shortName,
-            longName,
+            DutyTemplateStopNameHelper.ResolveImportStopName(shortName, longName),
             match.Groups["dir"].Value.ToLowerInvariant(),
             timesFromRegex);
     }
@@ -490,6 +495,19 @@ public static class DutyTemplateErsatzfahrplanParser
 
         return combined.Contains("Haltestelle", StringComparison.OrdinalIgnoreCase) &&
                !TimeTokenRegex.IsMatch(combined);
+    }
+
+    internal static bool IsBahnhofOnlyRow(string shortStop, string longStop)
+    {
+        var combined = $"{shortStop} {longStop}".Trim();
+        if (combined.Length == 0)
+        {
+            return true;
+        }
+
+        return !combined.Contains("(H)", StringComparison.OrdinalIgnoreCase) &&
+               !combined.Contains("Bussteig", StringComparison.OrdinalIgnoreCase) &&
+               !combined.Contains("Bstg", StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<string> ParseTimes(string text) =>
@@ -568,86 +586,17 @@ public static class DutyTemplateErsatzfahrplanParser
         return parts.Length > 0 ? parts[^1] : routeLabel.Trim();
     }
 
-    private static bool SpansOperatingDayMidnight(
-        IReadOnlyList<(string Stop, string Time, string Direction)> courseStops)
+    private sealed record CourseStop(string Stop, string Time, string Direction, int RowIndex);
+
+    private static (CourseStop? Start, CourseStop End) ResolveTripEndpoints(IReadOnlyList<CourseStop> courseStops)
     {
-        var minutes = courseStops
-            .Select(stop => DutyTemplateCalculator.ParseMinutes(stop.Time))
-            .Where(value => value.HasValue)
-            .Select(value => value!.Value)
-            .ToList();
-
-        return minutes.Any(value => value >= 18 * 60)
-               && minutes.Any(value => value < DutyTemplateCalculator.OperatingDayStartMinutes);
-    }
-
-    private static int ToSortKey(int minutes, bool spansMidnight) =>
-        DutyTemplateCalculator.ToOperatingDaySortKey(minutes, spansMidnight);
-
-    private static (string Stop, string Time, string Direction) ResolveTripStart(
-        IReadOnlyList<(string Stop, string Time, string Direction)> courseStops)
-    {
-        var spansMidnight = SpansOperatingDayMidnight(courseStops);
-        return courseStops
-            .OrderBy(stop => ToSortKey(DutyTemplateCalculator.ParseMinutes(stop.Time) ?? int.MaxValue, spansMidnight))
-            .First();
-    }
-
-    private static (string Stop, string Time, string Direction) ResolveTripEnd(
-        IReadOnlyList<(string Stop, string Time, string Direction)> courseStops,
-        (string Stop, string Time, string Direction) start)
-    {
-        if (courseStops.Count <= 1)
+        if (courseStops.Count == 0)
         {
-            return start;
+            return (null, default!);
         }
 
-        const int maxTripMinutes = 8 * 60;
-        var spansMidnight = SpansOperatingDayMidnight(courseStops);
-        var startMinutes = DutyTemplateCalculator.ParseMinutes(start.Time) ?? 0;
-        var startKey = ToSortKey(startMinutes, spansMidnight);
-        var endWindow = startKey + maxTripMinutes;
-
-        (string Stop, string Time, string Direction)? lastAn = null;
-        (string Stop, string Time, string Direction)? lastAny = null;
-
-        foreach (var stop in courseStops)
-        {
-            var stopMinutes = DutyTemplateCalculator.ParseMinutes(stop.Time);
-            if (stopMinutes is null)
-            {
-                continue;
-            }
-
-            var stopKey = ToSortKey(stopMinutes.Value, spansMidnight);
-            if (stopKey < startKey || stopKey > endWindow)
-            {
-                continue;
-            }
-
-            if (DutyTemplateStopNameHelper.StopsEqual(stop.Stop, start.Stop) && stop.Time == start.Time)
-            {
-                continue;
-            }
-
-            lastAny = stop;
-            if (stop.Direction.Equals("an", StringComparison.OrdinalIgnoreCase))
-            {
-                lastAn = stop;
-            }
-        }
-
-        if (lastAn is not null)
-        {
-            return lastAn.Value;
-        }
-
-        if (lastAny is not null)
-        {
-            return lastAny.Value;
-        }
-
-        return start;
+        var ordered = courseStops.OrderBy(stop => stop.RowIndex).ToList();
+        return (ordered[0], ordered[^1]);
     }
 
     private static IEnumerable<DutyTemplateImportRow> BuildImportRowsForDirection(
@@ -683,9 +632,10 @@ public static class DutyTemplateErsatzfahrplanParser
                 continue;
             }
 
-            var courseStops = new List<(string Stop, string Time, string Direction)>();
-            foreach (var row in block.Rows)
+            var courseStops = new List<CourseStop>();
+            for (var rowIndex = 0; rowIndex < block.Rows.Count; rowIndex++)
             {
+                var row = block.Rows[rowIndex];
                 if (row.Times.Count <= courseIndex)
                 {
                     continue;
@@ -697,9 +647,8 @@ public static class DutyTemplateErsatzfahrplanParser
                     continue;
                 }
 
-                var stop = DutyTemplateStopNameHelper.StripHaltestelleMarker(
-                    string.IsNullOrWhiteSpace(row.LongStop) ? row.ShortStop : row.LongStop);
-                courseStops.Add((stop, time, row.Direction));
+                var stop = DutyTemplateStopNameHelper.ResolveImportStopName(row.ShortStop, row.LongStop);
+                courseStops.Add(new CourseStop(stop, time, row.Direction, rowIndex));
             }
 
             if (courseStops.Count < 1)
@@ -707,8 +656,11 @@ public static class DutyTemplateErsatzfahrplanParser
                 continue;
             }
 
-            var first = ResolveTripStart(courseStops);
-            var last = ResolveTripEnd(courseStops, first);
+            var (first, last) = ResolveTripEndpoints(courseStops);
+            if (first is null)
+            {
+                continue;
+            }
 
             if (string.IsNullOrWhiteSpace(first.Time) || string.IsNullOrWhiteSpace(last.Time))
             {
@@ -719,7 +671,7 @@ public static class DutyTemplateErsatzfahrplanParser
             var courseLabel = $"Fahrt {tripNumber} (Richtung {directionNo})";
             yield return new DutyTemplateImportRow
             {
-                SourceLineNumber = block.Rows[0].SourceLineNumber,
+                SourceLineNumber = block.Rows[first.RowIndex].SourceLineNumber,
                 RawLine = $"{first.Stop} → {last.Stop}",
                 ImportGroup = courseLabel,
                 TripNumber = tripNumber,

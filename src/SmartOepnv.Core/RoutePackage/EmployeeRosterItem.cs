@@ -1,8 +1,12 @@
 namespace SmartOepnv.Core.RoutePackage;
 
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 /// <summary>Mitarbeiter-Stammdaten (employeeRoster) – kompatibel zur Android-App.</summary>
-public sealed class EmployeeRosterItem
+public sealed class EmployeeRosterItem : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
     public string Name { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
     public string PersonnelNumber { get; set; } = string.Empty;
@@ -20,17 +24,23 @@ public sealed class EmployeeRosterItem
     /// <summary>Planer: letzte Fahrerkartenkontrolle bestätigt (UTC ms).</summary>
     public long DriverCardCheckConfirmedAtUtcMs { get; set; }
 
-    public bool LicenseCheckConfirmationDue => EmployeeDocumentCheck.IsDue(LicenseCheckConfirmedAtUtcMs);
+    public bool LicenseCheckConfirmationDue =>
+        EmployeeDocumentCheck.IsCheckRequired(LicenseExpiry, LicenseCheckConfirmedAtUtcMs);
 
-    public bool FqnCheckConfirmationDue => EmployeeDocumentCheck.IsDue(FqnCheckConfirmedAtUtcMs);
+    public bool FqnCheckConfirmationDue =>
+        EmployeeDocumentCheck.IsCheckRequired(FqnExpiry, FqnCheckConfirmedAtUtcMs);
 
-    public bool DriverCardCheckConfirmationDue => EmployeeDocumentCheck.IsDue(DriverCardCheckConfirmedAtUtcMs);
+    public bool DriverCardCheckConfirmationDue =>
+        EmployeeDocumentCheck.IsCheckRequired(DriverCardExpiry, DriverCardCheckConfirmedAtUtcMs);
 
-    public string LicenseCheckStatusText => EmployeeDocumentCheck.FormatStatus(LicenseCheckConfirmedAtUtcMs);
+    public string LicenseCheckStatusText =>
+        EmployeeDocumentCheck.FormatCheckStatus(LicenseExpiry, LicenseCheckConfirmedAtUtcMs);
 
-    public string FqnCheckStatusText => EmployeeDocumentCheck.FormatStatus(FqnCheckConfirmedAtUtcMs);
+    public string FqnCheckStatusText =>
+        EmployeeDocumentCheck.FormatCheckStatus(FqnExpiry, FqnCheckConfirmedAtUtcMs);
 
-    public string DriverCardCheckStatusText => EmployeeDocumentCheck.FormatStatus(DriverCardCheckConfirmedAtUtcMs);
+    public string DriverCardCheckStatusText =>
+        EmployeeDocumentCheck.FormatCheckStatus(DriverCardExpiry, DriverCardCheckConfirmedAtUtcMs);
 
     public bool LicenseCheckConfirmed
     {
@@ -43,6 +53,7 @@ public sealed class EmployeeRosterItem
             }
 
             LicenseCheckConfirmedAtUtcMs = EmployeeDocumentCheck.ConfirmNowUtcMs();
+            NotifyDocumentCheckChanged(nameof(LicenseCheckConfirmed));
         }
     }
 
@@ -57,6 +68,7 @@ public sealed class EmployeeRosterItem
             }
 
             FqnCheckConfirmedAtUtcMs = EmployeeDocumentCheck.ConfirmNowUtcMs();
+            NotifyDocumentCheckChanged(nameof(FqnCheckConfirmed));
         }
     }
 
@@ -71,8 +83,32 @@ public sealed class EmployeeRosterItem
             }
 
             DriverCardCheckConfirmedAtUtcMs = EmployeeDocumentCheck.ConfirmNowUtcMs();
+            NotifyDocumentCheckChanged(nameof(DriverCardCheckConfirmed));
         }
     }
+
+    private void NotifyDocumentCheckChanged(string confirmedPropertyName)
+    {
+        OnPropertyChanged(confirmedPropertyName);
+        switch (confirmedPropertyName)
+        {
+            case nameof(LicenseCheckConfirmed):
+                OnPropertyChanged(nameof(LicenseCheckConfirmationDue));
+                OnPropertyChanged(nameof(LicenseCheckStatusText));
+                break;
+            case nameof(FqnCheckConfirmed):
+                OnPropertyChanged(nameof(FqnCheckConfirmationDue));
+                OnPropertyChanged(nameof(FqnCheckStatusText));
+                break;
+            case nameof(DriverCardCheckConfirmed):
+                OnPropertyChanged(nameof(DriverCardCheckConfirmationDue));
+                OnPropertyChanged(nameof(DriverCardCheckStatusText));
+                break;
+        }
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     /// <summary>Hauptnutzer am Bus-Gerät (App auf Handy/Tablet).</summary>
     public bool LoginAsMainDevice { get; set; }

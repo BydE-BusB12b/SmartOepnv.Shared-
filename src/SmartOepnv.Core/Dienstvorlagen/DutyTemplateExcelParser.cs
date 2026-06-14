@@ -74,14 +74,14 @@ public static class DutyTemplateExcelParser
                 continue;
             }
 
-            var tableRow = TryParseTableRow(sheet, row, courseColumns);
-            if (tableRow is null)
+            current ??= new DutyTemplateErsatzfahrplanParser.DirectionBlock();
+            if (current.FahrtNumbers.Count == 0 || current.CourseColumns.Count == 0)
             {
                 continue;
             }
 
-            current ??= new DutyTemplateErsatzfahrplanParser.DirectionBlock();
-            if (current.FahrtNumbers.Count == 0)
+            var tableRow = TryParseTableRow(sheet, row, current.CourseColumns);
+            if (tableRow is null)
             {
                 continue;
             }
@@ -235,6 +235,22 @@ public static class DutyTemplateExcelParser
 
         fahrtNumbers = expandedNumbers;
         courseColumns = expandedColumns;
+
+        var compactNumbers = new List<string>();
+        var compactColumns = new List<int>();
+        for (var i = 0; i < fahrtNumbers.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(fahrtNumbers[i]))
+            {
+                continue;
+            }
+
+            compactNumbers.Add(fahrtNumbers[i]);
+            compactColumns.Add(courseColumns[i]);
+        }
+
+        fahrtNumbers = compactNumbers;
+        courseColumns = compactColumns;
     }
 
     private static DutyTemplateErsatzfahrplanParser.ErsatzfahrplanTableRow? TryParseTableRow(
@@ -256,47 +272,30 @@ public static class DutyTemplateExcelParser
         }
 
         var times = new List<string>();
-        if (courseColumns.Count > 0)
-        {
-            foreach (var col in courseColumns)
-            {
-                var value = sheet.GetCell(row, col);
-                times.Add(TimeTokenRegex.IsMatch(value) ? NormalizeTime(value) : string.Empty);
-            }
-        }
-        else
-        {
-            for (var col = 5; col <= Math.Max(sheet.MaxCol, 23); col++)
-            {
-                var value = sheet.GetCell(row, col);
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    continue;
-                }
-
-                if (TimeTokenRegex.IsMatch(value))
-                {
-                    times.Add(NormalizeTime(value));
-                }
-            }
-        }
-
-        if (times.All(string.IsNullOrWhiteSpace))
+        if (courseColumns.Count == 0)
         {
             return null;
         }
 
-        if (IsGarbageStopRow(shortStop, longStop))
+        foreach (var col in courseColumns)
+        {
+            var value = sheet.GetCell(row, col);
+            times.Add(TimeTokenRegex.IsMatch(value) ? NormalizeTime(value) : string.Empty);
+        }
+
+        if (IsGarbageStopRow(shortStop, longStop) ||
+            DutyTemplateErsatzfahrplanParser.IsBahnhofOnlyRow(shortStop, longStop))
         {
             return null;
         }
 
-        var rawLine = $"{shortStop} | {longStop} | {direction} | {string.Join(' ', times)}";
+        var resolvedStop = DutyTemplateStopNameHelper.ResolveImportStopName(shortStop, longStop);
+        var rawLine = $"{shortStop} | {resolvedStop} | {direction} | {string.Join(' ', times)}";
         return new DutyTemplateErsatzfahrplanParser.ErsatzfahrplanTableRow(
             row,
             rawLine,
             shortStop,
-            longStop,
+            resolvedStop,
             direction,
             times);
     }

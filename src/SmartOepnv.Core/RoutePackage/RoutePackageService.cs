@@ -190,7 +190,21 @@ public sealed class RoutePackageService
         }
 
         EmployeeRosterEditor.StripPlannerSecretsFromRoot(root);
+        EmbedDriverDutyDispatches(root);
         return root.ToJsonString();
+    }
+
+    private static void EmbedDriverDutyDispatches(JsonObject root)
+    {
+        if (!AppServices.IsInitialized || !AppServices.IsPlannerApp)
+        {
+            return;
+        }
+
+        var assignments = AppServices.PlannerLocal?.LoadDriverDisposition() ?? [];
+        var employees = AppServices.Routes.Editor?.Employees.ToList() ?? [];
+        var templates = AppServices.DutyTemplates?.LoadAll() ?? [];
+        DriverDutyDispatchExporter.EmbedIntoRoot(root, assignments, employees, templates);
     }
 
     private static void Validate(string json)

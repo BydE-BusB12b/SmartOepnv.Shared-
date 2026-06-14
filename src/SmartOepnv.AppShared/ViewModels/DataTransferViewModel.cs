@@ -32,11 +32,13 @@ public partial class DataTransferViewModel : ObservableObject
     [ObservableProperty] private string localWorkspaceHint = string.Empty;
     [ObservableProperty] private bool hasInspectionWarnings;
     [ObservableProperty] private bool hasDriverCredentialWarnings;
+    [ObservableProperty] private bool hasDocumentCheckWarnings;
     [ObservableProperty] private string newVersionLabel = string.Empty;
     [ObservableProperty] private PlannerPackageVersionInfo? selectedPackageVersion;
 
     public ObservableCollection<VehicleInspectionWarningItem> InspectionWarnings { get; } = [];
     public ObservableCollection<DriverCredentialWarningItem> DriverCredentialWarnings { get; } = [];
+    public ObservableCollection<EmployeeDocumentCheckWarningItem> DocumentCheckWarnings { get; } = [];
     public ObservableCollection<PlannerPackageVersionInfo> PackageVersions { get; } = [];
 
     /// <summary>Wird beim Klick auf einen HU-/SP-Hinweis ausgelöst (normalisierte Telefonnummer oder leer).</summary>
@@ -112,6 +114,7 @@ public partial class DataTransferViewModel : ObservableObject
         UpdateLocalWorkspaceHint();
         RefreshInspectionWarnings();
         RefreshDriverCredentialWarnings();
+        RefreshDocumentCheckWarnings();
     }
 
     public void RefreshInspectionWarnings()
@@ -150,6 +153,24 @@ public partial class DataTransferViewModel : ObservableObject
         HasDriverCredentialWarnings = DriverCredentialWarnings.Count > 0;
     }
 
+    public void RefreshDocumentCheckWarnings()
+    {
+        DocumentCheckWarnings.Clear();
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            HasDocumentCheckWarnings = false;
+            return;
+        }
+
+        foreach (var warning in EmployeeDocumentCheckWarningEvaluator.Evaluate(editor.Employees))
+        {
+            DocumentCheckWarnings.Add(EmployeeDocumentCheckWarningItem.FromWarning(warning));
+        }
+
+        HasDocumentCheckWarnings = DocumentCheckWarnings.Count > 0;
+    }
+
     [RelayCommand]
     private void OpenVehicleFromInspectionWarning(VehicleInspectionWarningItem? item)
     {
@@ -160,6 +181,14 @@ public partial class DataTransferViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenEmployeeFromCredentialWarning(DriverCredentialWarningItem? item)
+    {
+        var key = item?.PersonnelNumberNormalized;
+        NavigateToEmployeeManagementRequested?.Invoke(
+            string.IsNullOrWhiteSpace(key) ? null : key);
+    }
+
+    [RelayCommand]
+    private void OpenEmployeeFromDocumentCheckWarning(EmployeeDocumentCheckWarningItem? item)
     {
         var key = item?.PersonnelNumberNormalized;
         NavigateToEmployeeManagementRequested?.Invoke(

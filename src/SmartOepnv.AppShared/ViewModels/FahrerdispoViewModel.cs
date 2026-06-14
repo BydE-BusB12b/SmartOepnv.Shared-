@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
@@ -180,6 +181,18 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             return;
         }
 
+        if (result.CreateAllTemplateParts)
+        {
+            if (!TryAddAllTemplateParts(result, out var multiMessage))
+            {
+                return;
+            }
+
+            _sync.MarkDirty();
+            SaveAndRefresh(result.StartEpochMs, multiMessage);
+            return;
+        }
+
         _assignments.Add(new DriverDispositionAssignment
         {
             DriverKey = result.DriverKey,
@@ -188,6 +201,9 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             Part1EndEpochMs = result.Part1EndEpochMs,
             Part2StartEpochMs = result.Part2StartEpochMs,
             Label = result.DisplayLabel,
+            DutyNumber = result.DutyNumber,
+            DutyTemplateId = result.DutyTemplateId,
+            DutyTemplatePartIndex = result.DutyTemplatePartIndex,
             ReducedRestBefore = result.ReducedRestBefore,
             ExtendedDrivingDay = result.ExtendedDrivingDay,
             ReducedWeeklyRestBefore = result.ReducedWeeklyRestBefore
@@ -231,6 +247,9 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
         existing.Part1EndEpochMs = result.Part1EndEpochMs;
         existing.Part2StartEpochMs = result.Part2StartEpochMs;
         existing.Label = result.DisplayLabel;
+        existing.DutyNumber = result.DutyNumber;
+        existing.DutyTemplateId = result.DutyTemplateId;
+        existing.DutyTemplatePartIndex = result.DutyTemplatePartIndex;
         existing.ReducedRestBefore = result.ReducedRestBefore;
         existing.ExtendedDrivingDay = result.ExtendedDrivingDay;
         existing.ReducedWeeklyRestBefore = result.ReducedWeeklyRestBefore;
@@ -440,10 +459,100 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             Part1EndEpochMs = dialog.Part1EndEpochMs,
             Part2StartEpochMs = dialog.Part2StartEpochMs,
             DisplayLabel = dialog.ShiftName,
+            DutyNumber = dialog.SelectedDutyNumber,
+            DutyTemplateId = dialog.SelectedDutyTemplateId,
+            DutyTemplatePartIndex = dialog.SelectedDutyTemplatePartIndex,
+            CreateAllTemplateParts = dialog.CreateAllTemplateParts,
             ReducedRestBefore = dialog.ReducedRestBefore,
             ExtendedDrivingDay = dialog.ExtendedDrivingDay,
             ReducedWeeklyRestBefore = dialog.ReducedWeeklyRestBefore
         };
+        return true;
+    }
+
+    private bool TryAddAllTemplateParts(FahrerdispoShiftDialogResult result, out string message)
+    {
+        message = string.Empty;
+        var template = AppServices.DutyTemplates?.LoadAll()
+            .FirstOrDefault(t => t.Id == result.DutyTemplateId);
+        if (template is null)
+        {
+            StatusMessage = "Vorlage nicht gefunden.";
+            return false;
+        }
+
+        var dutyDate = DateTimeOffset.FromUnixTimeMilliseconds(result.StartEpochMs).LocalDateTime.Date;
+        var parts = DutyTemplateDispositionMapper.TryMapAllParts(template, dutyDate);
+        if (parts.Count == 0)
+        {
+            StatusMessage = "Vorlage enthält keine gültigen Dienstteile.";
+            return false;
+        }
+
+        var added = new List<DriverDispositionAssignment>();
+        var employees = AppServices.Routes.Editor?.Employees ?? [];
+        foreach (var part in parts)
+        {
+            if (string.IsNullOrWhiteSpace(part.DutyNumber))
+            {
+                StatusMessage = $"Teil {part.PartIndex} hat keine Dienstnummer.";
+                return false;
+            }
+
+            if (DriverDispositionDutyNumberRules.TryFindConflictingDutyNumber(
+                    _assignments.Concat(added),
+                    part.DutyNumber,
+                    dutyDate,
+                    excludeAssignmentId: null,
+                    out var conflict))
+            {
+                var driverLabel = ResolveDriverLabel(conflict!.DriverKey, employees);
+                StatusMessage = DriverDispositionDutyNumberRules.BuildDuplicateMessage(
+                    part.DutyNumber,
+                    dutyDate,
+                    driverLabel);
+                return false;
+            }
+
+            var startMs = new DateTimeOffset(part.StartLocal).ToUnixTimeMilliseconds();
+            var endMs = new DateTimeOffset(part.EndLocal).ToUnixTimeMilliseconds();
+            if (!DriverDispositionCompliance.TryValidate(
+                    _assignments.Concat(added),
+                    result.DriverKey,
+                    startMs,
+                    endMs,
+                    excludeAssignmentId: null,
+                    result.ReducedRestBefore,
+                    result.ExtendedDrivingDay,
+                    result.ReducedWeeklyRestBefore,
+                    out var appliedReducedRest,
+                    out var appliedExtendedDriving,
+                    out var appliedReducedWeeklyRest,
+                    out var complianceError))
+            {
+                StatusMessage = $"Dienst {part.DutyNumber}: {complianceError}";
+                return false;
+            }
+
+            added.Add(new DriverDispositionAssignment
+            {
+                DriverKey = result.DriverKey,
+                StartEpochMs = startMs,
+                EndEpochMs = endMs,
+                Label = part.DutyNumber,
+                DutyNumber = part.DutyNumber,
+                DutyTemplateId = result.DutyTemplateId,
+                DutyTemplatePartIndex = part.PartIndex,
+                ReducedRestBefore = appliedReducedRest,
+                ExtendedDrivingDay = appliedExtendedDriving,
+                ReducedWeeklyRestBefore = appliedReducedWeeklyRest
+            });
+        }
+
+        _assignments.AddRange(added);
+        message = added.Count == 1
+            ? $"Dienst {added[0].DutyNumber} gespeichert."
+            : $"{added.Count} Dienste gespeichert ({string.Join(", ", added.Select(a => a.DutyNumber))}).";
         return true;
     }
 
@@ -459,6 +568,9 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                 a.Part1EndEpochMs,
                 a.Part2StartEpochMs,
                 a.Label,
+                a.DutyNumber,
+                a.DutyTemplateId,
+                a.DutyTemplatePartIndex,
                 a.ReducedRestBefore,
                 a.ExtendedDrivingDay,
                 a.ReducedWeeklyRestBefore
@@ -499,6 +611,14 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
         public long Part2StartEpochMs { get; init; }
 
         public string DisplayLabel { get; init; } = string.Empty;
+
+        public string DutyNumber { get; init; } = string.Empty;
+
+        public string DutyTemplateId { get; init; } = string.Empty;
+
+        public int DutyTemplatePartIndex { get; init; } = 1;
+
+        public bool CreateAllTemplateParts { get; init; }
 
         public bool ReducedRestBefore { get; init; }
 
@@ -597,7 +717,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             var startOffsetHours = (visibleStart - dayStart).TotalHours;
             var durationHours = (visibleEnd - visibleStart).TotalHours;
             var timeLabel = FormatAssignmentRange(assignment);
-            var shiftName = string.IsNullOrWhiteSpace(assignment.Label) ? string.Empty : assignment.Label;
+            var shiftName = ResolveAssignmentDutyNumber(assignment);
 
             var laneIndex = laneById.GetValueOrDefault(assignment.Id, 0);
             var hasOverlap = visibleAssignments.Any(other =>
@@ -702,9 +822,11 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
             var startOffsetDays = (visibleStart - weekStart).TotalDays;
             var durationDays = (visibleEnd - visibleStart).TotalDays;
-            var label = string.IsNullOrWhiteSpace(assignment.Label)
-                ? FormatAssignmentRange(assignment)
-                : assignment.Label;
+            var label = ResolveAssignmentDutyNumber(assignment);
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                label = FormatAssignmentRange(assignment);
+            }
 
             barLayouts.Add((
                 assignment,
@@ -824,6 +946,11 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
         return (top, height);
     }
 
+    private static string ResolveAssignmentDutyNumber(DriverDispositionAssignment assignment) =>
+        !string.IsNullOrWhiteSpace(assignment.DutyNumber)
+            ? assignment.DutyNumber.Trim()
+            : assignment.Label.Trim();
+
     private static string FormatAssignmentRange(DriverDispositionAssignment assignment)
     {
         if (assignment.IsSplitShift)
@@ -894,6 +1021,33 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
     {
         var personnel = EmployeeRosterItem.NormalizePersonnelDigits(employee.PersonnelNumber);
         return personnel.Length > 0 ? $"PN {personnel}" : employee.PhoneNumber.Trim();
+    }
+
+    private static string? ResolveDriverLabel(string driverKey, IEnumerable<EmployeeRosterItem> employees)
+    {
+        foreach (var employee in employees)
+        {
+            if (!string.Equals(EmployeeDispoKeys.FromEmployee(employee), driverKey, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var name = employee.Name.Trim();
+            var personnel = EmployeeRosterItem.NormalizePersonnelDigits(employee.PersonnelNumber);
+            if (name.Length > 0 && personnel.Length > 0)
+            {
+                return $"{name} (PN {personnel})";
+            }
+
+            if (name.Length > 0)
+            {
+                return name;
+            }
+
+            return personnel.Length > 0 ? $"PN {personnel}" : employee.PhoneNumber.Trim();
+        }
+
+        return null;
     }
 
     private static string FormatDayHeader(DateTime d) =>
