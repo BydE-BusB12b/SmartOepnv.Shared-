@@ -22,6 +22,7 @@ public sealed class VehicleLiveState
     public string? StopName { get; init; }
     public string? Destination { get; init; }
     public string? DriverName { get; init; }
+    public string? DriverPersonnelNumber { get; init; }
     public int? BatteryLevel { get; init; }
     public int? DelaySeconds { get; init; }
     public long TimestampEpochMs { get; init; }

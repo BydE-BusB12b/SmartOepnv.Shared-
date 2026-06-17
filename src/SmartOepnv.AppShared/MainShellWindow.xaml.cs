@@ -75,7 +75,7 @@ public partial class MainShellWindow : Window
         SetLoginOverlay(true);
 
         var savingDialog = new AppExitSavingDialog(
-            "Planer-Arbeitsstand wird lokal gespeichert und als planer_workspace.json nach Dropbox hochgeladen…")
+            "Planer-Arbeitsstand wird lokal gespeichert, planer_workspace.json und leitstelle_stand.json nach Dropbox hochgeladen…")
         {
             Owner = this
         };

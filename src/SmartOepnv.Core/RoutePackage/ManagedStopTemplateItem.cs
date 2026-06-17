@@ -101,7 +101,7 @@ public sealed class ManagedStopTemplateItem
         return new RouteStopItem
         {
             RouteName = routeName,
-            PlannerStopCode = StopCode,
+            PlannerStopCode = PlannerStopCode.Normalize(StopCode),
             Name = StopNameItcs.Trim(),
             StopDisplay = StopDisplay.Trim(),
             VrrStopId = VrrStopId.Trim(),

@@ -50,9 +50,13 @@ public static class GpsAnsagenStopJson
 
             Destination = JsonNodeReading.GetString(obj["destination"]),
 
+            Ds003aDestination = JsonNodeReading.GetString(obj["ds003aDestination"]),
+
             LineNumber = JsonNodeReading.GetString(obj["lineNumber"]),
 
             EndDestination = JsonNodeReading.GetString(obj["endDestination"]),
+
+            Ds003aEndDestination = JsonNodeReading.GetString(obj["ds003aEndDestination"]),
 
             IsEndStop = JsonNodeReading.GetBoolean(obj["isEndStop"]),
 
@@ -90,7 +94,7 @@ public static class GpsAnsagenStopJson
 
     {
 
-        return new JsonObject
+        var obj = new JsonObject
 
         {
 
@@ -138,9 +142,13 @@ public static class GpsAnsagenStopJson
 
             ["destination"] = stop.Destination,
 
+            ["ds003aDestination"] = stop.Ds003aDestination,
+
             ["lineNumber"] = stop.LineNumber,
 
             ["endDestination"] = stop.EndDestination,
+
+            ["ds003aEndDestination"] = stop.Ds003aEndDestination,
 
             ["isEndStop"] = stop.IsEndStop,
 
@@ -151,6 +159,20 @@ public static class GpsAnsagenStopJson
             ["endDestinationCoordinates"] = stop.EndDestinationCoordinates
 
         };
+
+        var plannerCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
+
+        if (!string.IsNullOrEmpty(plannerCode))
+
+        {
+
+            obj["plannerStopCode"] = plannerCode;
+
+            obj["stopCode"] = plannerCode;
+
+        }
+
+        return obj;
 
     }
 

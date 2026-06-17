@@ -274,11 +274,11 @@ public partial class DataTransferViewModel : ObservableObject
         AppServices.Routes.LoadFromJson(json, persistLocally: true, source: "dropbox-import");
         if (_isLeitstelleProfile)
         {
-            var stand = await AppServices.Dropbox.TryDownloadLeitstelleStandAsync(cancellationToken)
+            var standResult = await LeitstelleStandDropboxSync.TryMergeFromDropboxAsync(cancellationToken)
                 .ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(stand))
+            if (standResult.Imported)
             {
-                AppServices.Routes.TryMergeLeitstelleStandJson(stand);
+                LastActionMessage += $" {standResult.Message}";
             }
         }
 
@@ -382,10 +382,10 @@ public partial class DataTransferViewModel : ObservableObject
         await RunAsync(async () =>
         {
             AppServices.FlushAllPendingEdits();
-            var json = AppServices.Routes.BuildLeitstelleStandJson();
-            await AppServices.Dropbox.UploadLeitstelleStandAsync(json);
-            LastActionMessage =
-                $"Für Leitstelle gespeichert: {DropboxConstants.LeitstelleStandFileName} (Fahrer, Fahrzeuge, Vorlagen, Fahrwege).";
+            var result = await LeitstelleStandDropboxSync.TryExportAsync();
+            LastActionMessage = result.Exported
+                ? $"Für Leitstelle gespeichert: {DropboxConstants.LeitstelleStandFileName} (Fahrer, Fahrzeuge, Vorlagen, Fahrwege)."
+                : result.Message;
         });
     }
 

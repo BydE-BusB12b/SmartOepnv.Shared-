@@ -188,6 +188,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
         var persistable = _allTemplates.Where(t => !t.IsEmptyDraft()).Select(Clone).ToList();
         editor.ReplaceStopTemplates(persistable);
+        var routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, persistable);
         var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
         editor.SyncEmbeddedSoundsFromStopTemplates(_allTemplates, workspace);
         AppServices.Routes.ApplyEditorChanges("haltestellen");
@@ -199,8 +200,9 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
         SyncCoordinateFieldsFromSelected();
         RefreshTemplateListLabels();
-        StatusMessage =
-            $"{_allTemplates.Count} Vorlagen lokal gespeichert – werden mit Routen-Export/Dropbox übertragen.";
+        StatusMessage = routeStopsUpdated > 0
+            ? $"{_allTemplates.Count} Vorlagen gespeichert – {routeStopsUpdated} Haltestelle(n) in Routen aktualisiert (ID, Name, GPS, Ton …)."
+            : $"{_allTemplates.Count} Vorlagen lokal gespeichert – werden mit Routen-Export/Dropbox übertragen.";
         _sync.AfterCommit();
         _loadedFingerprint = ComputeFingerprint();
     }
@@ -773,8 +775,10 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
         editor.AddStopFromTemplate(SelectedRouteForInsert, Clone(SelectedTemplate));
         AppServices.Routes.ApplyEditorChanges("haltestellen-route");
+        var code = PlannerStopCode.Normalize(SelectedTemplate.StopCode);
+        var codeHint = string.IsNullOrEmpty(code) ? string.Empty : $" (ID {code})";
         StatusMessage =
-            $"„{SelectedTemplate.StopNameItcs}“ in Route „{SelectedRouteForInsert}“ eingefügt – unter „Routen“ bearbeitbar.";
+            $"„{SelectedTemplate.StopNameItcs}“{codeHint} in Route „{SelectedRouteForInsert}“ eingefügt – unter „Routen“ bearbeitbar.";
     }
 
     [RelayCommand]

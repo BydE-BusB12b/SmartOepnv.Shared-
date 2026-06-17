@@ -3,7 +3,7 @@ using SmartOepnv.Core.Dropbox;
 namespace SmartOepnv.Core.RoutePackage;
 
 /// <summary>
-/// Planer: planer_workspace.json mit Dropbox abgleichen (Anmeldung laden, Beenden speichern).
+/// Planer: planer_workspace.json und leitstelle_stand.json mit Dropbox abgleichen (Anmeldung laden, Beenden speichern).
 /// routes_export.json bleibt unberührt – die wird nur manuell für die Apps exportiert.
 /// </summary>
 public static class PlanerDropboxWorkspaceSync
@@ -99,9 +99,14 @@ public static class PlanerDropboxWorkspaceSync
             await AppServices.Dropbox
                 .UploadNamedFileAsync(DropboxConstants.PlanerWorkspaceFileName, json, ct)
                 .ConfigureAwait(false);
+
+            var leitstelleResult = await LeitstelleStandDropboxSync.TryExportAsync(ct).ConfigureAwait(false);
+            var leitstelleHint = leitstelleResult.Exported
+                ? $" {DropboxConstants.LeitstelleStandFileName} aktualisiert."
+                : string.Empty;
             return new ExportResult(
                 true,
-                $"Planer-Arbeitsstand in Dropbox gespeichert ({DropboxConstants.PlanerWorkspaceFileName}).");
+                $"Planer-Arbeitsstand in Dropbox gespeichert ({DropboxConstants.PlanerWorkspaceFileName}).{leitstelleHint}");
         }
         catch (Exception ex)
         {

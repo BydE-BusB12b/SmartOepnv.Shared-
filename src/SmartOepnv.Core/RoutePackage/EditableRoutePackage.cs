@@ -237,8 +237,10 @@ public sealed class EditableRoutePackage
             IsAnnouncementEnabled = source.IsAnnouncementEnabled,
             EmbeddedSoundFileName = source.EmbeddedSoundFileName,
             Destination = source.Destination,
+            Ds003aDestination = source.Ds003aDestination,
             LineNumber = source.LineNumber,
             EndDestination = source.EndDestination,
+            Ds003aEndDestination = source.Ds003aEndDestination,
             IsEndStop = source.IsEndStop,
             RouteChangeEnabled = source.RouteChangeEnabled,
             SelectedLineCourseTrip = source.SelectedLineCourseTrip,
@@ -269,6 +271,7 @@ public sealed class EditableRoutePackage
 
         var stop = template ?? new RouteStopItem { RouteName = routeName, Name = "Neue Haltestelle" };
         stop.RouteName = routeName;
+        stop.PlannerStopCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
         if (string.IsNullOrWhiteSpace(stop.PlannerStopCode))
         {
             stop.PlannerStopCode = PlannerStopCode.SuggestNext(
@@ -290,6 +293,31 @@ public sealed class EditableRoutePackage
         {
             list.Remove(stop);
         }
+    }
+
+    public bool TryMoveStop(string routeName, RouteStopItem stop, int direction)
+    {
+        if (direction is not (-1) and not 1 ||
+            !StopsByRoute.TryGetValue(routeName, out var list))
+        {
+            return false;
+        }
+
+        var index = list.IndexOf(stop);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        var newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= list.Count)
+        {
+            return false;
+        }
+
+        list.RemoveAt(index);
+        list.Insert(newIndex, stop);
+        return true;
     }
 
     private void AddRouteNameIfMissing(string routeName)

@@ -74,6 +74,101 @@ public static class StopTemplateRouteMerger
         return new MergeResult(added, enriched, routeStopCount);
     }
 
+    /// <summary>
+    /// Überträgt Stammdaten aus der Haltestellenbibliothek auf alle passenden Haltestellen in Routen
+    /// (gleiche ID, VRR-ID oder Name+Koordinaten). Routenspezifische Felder (Start/Ende, Ziele, …) bleiben unverändert.
+    /// </summary>
+    public static int ApplyTemplatesToRouteStops(
+        EditableRoutePackage editor,
+        IEnumerable<ManagedStopTemplateItem> templates)
+    {
+        var updated = 0;
+        foreach (var template in templates)
+        {
+            if (template.IsEmptyDraft())
+            {
+                continue;
+            }
+
+            foreach (var routeName in editor.RouteNames)
+            {
+                foreach (var stop in editor.GetStops(routeName))
+                {
+                    if (stop.IsWaypoint || !MatchesRouteStop(template, stop))
+                    {
+                        continue;
+                    }
+
+                    if (ApplySharedFieldsFromTemplate(stop, template, routeName))
+                    {
+                        updated++;
+                    }
+                }
+            }
+        }
+
+        return updated;
+    }
+
+    private static bool ApplySharedFieldsFromTemplate(
+        RouteStopItem stop,
+        ManagedStopTemplateItem template,
+        string routeName)
+    {
+        var source = template.ToRouteStop(routeName);
+        var changed = false;
+
+        if (!string.Equals(stop.PlannerStopCode, source.PlannerStopCode, StringComparison.Ordinal))
+        {
+            stop.PlannerStopCode = source.PlannerStopCode;
+            changed = true;
+        }
+
+        if (!string.Equals(stop.Name, source.Name, StringComparison.Ordinal))
+        {
+            stop.Name = source.Name;
+            changed = true;
+        }
+
+        if (!string.Equals(stop.StopDisplay, source.StopDisplay, StringComparison.Ordinal))
+        {
+            stop.StopDisplay = source.StopDisplay;
+            changed = true;
+        }
+
+        if (!string.Equals(stop.VrrStopId, source.VrrStopId, StringComparison.OrdinalIgnoreCase))
+        {
+            stop.VrrStopId = source.VrrStopId;
+            changed = true;
+        }
+
+        if (!string.Equals(stop.GpsCoordinates, source.GpsCoordinates, StringComparison.Ordinal))
+        {
+            stop.GpsCoordinates = source.GpsCoordinates;
+            changed = true;
+        }
+
+        if (!string.Equals(stop.StopCoordinates, source.StopCoordinates, StringComparison.Ordinal))
+        {
+            stop.StopCoordinates = source.StopCoordinates;
+            changed = true;
+        }
+
+        if (stop.Radius != source.Radius)
+        {
+            stop.Radius = source.Radius;
+            changed = true;
+        }
+
+        if (!string.Equals(stop.EmbeddedSoundFileName, source.EmbeddedSoundFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            stop.EmbeddedSoundFileName = source.EmbeddedSoundFileName;
+            changed = true;
+        }
+
+        return changed;
+    }
+
     private static bool TryFindMatch(
         IEnumerable<ManagedStopTemplateItem> templates,
         RouteStopItem stop,

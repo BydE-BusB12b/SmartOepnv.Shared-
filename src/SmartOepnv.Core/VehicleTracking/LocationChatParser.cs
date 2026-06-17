@@ -69,6 +69,7 @@ public static class LocationChatParser
                 StopName = ReadOptionalString(loc, "stop"),
                 Destination = ReadOptionalString(loc, "destination"),
                 DriverName = ReadOptionalString(loc, "driverName"),
+                DriverPersonnelNumber = ReadOptionalString(loc, "driverPersonnelNumber"),
                 BatteryLevel = loc.TryGetProperty("batteryLevel", out var bat) && bat.TryGetInt32(out var b) && b >= 0 ? b : null,
                 DelaySeconds = loc.TryGetProperty("delaySeconds", out var delay) && delay.TryGetInt32(out var d) ? d : null,
                 TimestampEpochMs = timestamp,

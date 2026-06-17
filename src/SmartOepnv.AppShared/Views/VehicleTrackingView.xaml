@@ -3,11 +3,12 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-             VerticalAlignment="Stretch">
-    <Grid VerticalAlignment="Stretch">
+             VerticalAlignment="Stretch"
+             ClipToBounds="True">
+    <Grid VerticalAlignment="Stretch" ClipToBounds="True">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="*" MinHeight="0" />
         </Grid.RowDefinitions>
 
         <materialDesign:Card Grid.Row="0" Padding="16" Margin="0,0,0,8" UniformCornerRadius="12"
@@ -25,47 +26,112 @@
             </DockPanel>
         </materialDesign:Card>
 
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="1" ClipToBounds="True">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" MinWidth="0" />
                 <ColumnDefinition Width="320" />
             </Grid.ColumnDefinitions>
 
-            <materialDesign:Card Grid.Column="0" Padding="0" UniformCornerRadius="12" Margin="0,0,8,0"
-                                 Background="{StaticResource SmartSurfaceBrush}" MinHeight="480">
-                <wv2:WebView2 x:Name="MapWebView" MinHeight="480" />
+            <materialDesign:Card Grid.Column="0"
+                                 Padding="0"
+                                 UniformCornerRadius="12"
+                                 Margin="0,0,8,0"
+                                 VerticalAlignment="Stretch"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 ClipToBounds="True">
+                <Grid x:Name="MapHost" ClipToBounds="True">
+                    <wv2:WebView2 x:Name="MapWebView"
+                                  VerticalAlignment="Stretch"
+                                  HorizontalAlignment="Stretch" />
+                </Grid>
             </materialDesign:Card>
 
-            <materialDesign:Card Grid.Column="1" Padding="12" UniformCornerRadius="12"
-                                 Background="{StaticResource SmartPrimaryDarkBrush}">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Fahrzeugliste" Foreground="White"
-                               FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8" />
-                    <ListBox ItemsSource="{Binding Vehicles}"
-                             SelectedItem="{Binding SelectedVehicle}"
-                             Background="Transparent" BorderThickness="0">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Padding="8" Margin="0,0,0,6" CornerRadius="8"
-                                        Background="#22000000" BorderBrush="#44FFFFFF" BorderThickness="1">
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding DisplayName}" Foreground="White" FontWeight="Bold" />
-                                        <TextBlock Foreground="#BBDEFB">
-                                            <Run Text="Linie/Kurs: " />
-                                            <Run Text="{Binding LineCourse}" FontWeight="SemiBold" />
-                                        </TextBlock>
-                                        <TextBlock Text="{Binding DetailLine}" Foreground="#E3F2FD" TextWrapping="Wrap" FontSize="12" />
-                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                            <TextBlock Text="{Binding StatusLabel}" Foreground="#C8E6C9" FontSize="11" Margin="0,0,8,0" />
-                                            <TextBlock Text="{Binding LastUpdateLabel}" Foreground="#B0BEC5" FontSize="11" />
+            <Grid Grid.Column="1">
+                <materialDesign:Card Padding="12"
+                                     UniformCornerRadius="12"
+                                     VerticalAlignment="Stretch"
+                                     Background="{StaticResource SmartPrimaryDarkBrush}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="Fahrzeugliste" Foreground="White"
+                                   FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="Einfachklick: Karte · Doppelklick: Info · Rechtsklick: Fernsteuerung"
+                                   Foreground="#90CAF9" FontSize="11" Margin="0,0,0,8" Opacity="0.85" />
+                        <ListBox x:Name="VehicleListBox"
+                                 ItemsSource="{Binding Vehicles}"
+                                 SelectedItem="{Binding SelectedVehicle}"
+                                 MouseDoubleClick="VehicleList_MouseDoubleClick"
+                                 PreviewMouseRightButtonDown="VehicleList_PreviewMouseRightButtonDown"
+                                 Background="Transparent" BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="8" Margin="0,0,0,6" CornerRadius="8"
+                                            Background="#22000000" BorderBrush="#44FFFFFF" BorderThickness="1">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding DisplayName}" Foreground="White" FontWeight="Bold" />
+                                            <TextBlock Foreground="#BBDEFB">
+                                                <Run Text="Linie/Kurs: " />
+                                                <Run Text="{Binding LineCourse}" FontWeight="SemiBold" />
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding DetailLine}" Foreground="#E3F2FD" TextWrapping="Wrap" FontSize="12" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock Text="{Binding StatusLabel}" Foreground="#C8E6C9" FontSize="11" Margin="0,0,8,0" />
+                                                <TextBlock Text="{Binding LastUpdateLabel}" Foreground="#B0BEC5" FontSize="11" />
+                                            </StackPanel>
                                         </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
-            </materialDesign:Card>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </materialDesign:Card>
+
+                <materialDesign:Card x:Name="VehicleDetailOverlay"
+                                     Visibility="Collapsed"
+                                     Panel.ZIndex="2"
+                                     Padding="12"
+                                     UniformCornerRadius="12"
+                                     VerticalAlignment="Stretch"
+                                     Background="{StaticResource SmartPrimaryDarkBrush}">
+                    <DockPanel>
+                        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <TextBlock x:Name="VehicleDetailTitle"
+                                       Text="KOM-Info"
+                                       Foreground="White"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <Button x:Name="VehicleDetailCloseButton"
+                                    Content="✕"
+                                    Width="32"
+                                    Height="32"
+                                    Padding="0"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Top"
+                                    Background="#1E5A9E"
+                                    Foreground="White"
+                                    BorderBrush="#42A5F5"
+                                    BorderThickness="1"
+                                    Click="VehicleDetailClose_Click"
+                                    ToolTip="Schließen" />
+                        </Grid>
+                        <Button DockPanel.Dock="Bottom"
+                                Content="Schließen"
+                                Margin="0,12,0,0"
+                                MinHeight="36"
+                                Background="#0D47A1"
+                                Foreground="White"
+                                BorderBrush="#42A5F5"
+                                BorderThickness="1"
+                                IsCancel="True"
+                                Click="VehicleDetailClose_Click" />
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="VehicleDetailContent" />
+                        </ScrollViewer>
+                    </DockPanel>
+                </materialDesign:Card>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

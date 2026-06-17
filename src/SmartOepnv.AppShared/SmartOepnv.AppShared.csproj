@@ -17,6 +17,7 @@
     <PackageReference Include="MaterialDesignColors" Version="5.2.1" />
     <PackageReference Include="MaterialDesignThemes" Version="5.2.1" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="QuestPDF" Version="2024.12.3" />
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
   </ItemGroup>

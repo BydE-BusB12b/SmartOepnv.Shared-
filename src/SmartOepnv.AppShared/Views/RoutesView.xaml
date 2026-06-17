@@ -4,7 +4,7 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
     <Grid Margin="0,0,0,8">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="280" />
+            <ColumnDefinition Width="260" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
@@ -30,32 +30,58 @@
                              VerticalAlignment="Stretch"
                              Background="{StaticResource SmartSurfaceBrush}">
             <DockPanel LastChildFill="True">
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
-                    <TextBlock Text="Haltestellen" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center" />
-                    <Button Content="Haltestelle +" Command="{Binding AddStopCommand}" Margin="16,0,8,0"
-                            Style="{StaticResource MaterialDesignRaisedButton}" />
-                    <Button Content="Speichern" Command="{Binding SaveChangesCommand}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            ToolTip="Haltestellen-Änderungen sofort lokal sichern" />
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock Text="Haltestellen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
+                    <TextBlock Text="Haltestelle anklicken zum Bearbeiten · ▲▼ Reihenfolge · ✕ löschen"
+                               Opacity="0.75" FontSize="11" Margin="0,0,0,8" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Aus Kartei" Command="{Binding AddStopFromLibraryCommand}" Margin="0,0,8,0"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                ToolTip="Haltestelle aus der Haltestellenbibliothek einfügen" />
+                        <Button Content="+" Command="{Binding AddStopCommand}" Margin="0,0,8,0" Width="36"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                ToolTip="Leere Haltestelle" />
+                        <Button Content="Zeile löschen" Command="{Binding RemoveSelectedStopCommand}" Margin="0,0,8,0"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                        <Button Content="▲" Command="{Binding MoveSelectedStopUpCommand}" Margin="0,0,4,0" Width="36"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                ToolTip="Nach oben" />
+                        <Button Content="▼" Command="{Binding MoveSelectedStopDownCommand}" Margin="0,0,8,0" Width="36"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                ToolTip="Nach unten" />
+                        <Button Content="Fahrplan" Command="{Binding ShowAutoScheduleCommand}" Margin="0,0,8,0"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                ToolTip="Automatische Fahrplanerstellung (wie in der App)" />
+                        <Button Content="📄 Fahrplan" Command="{Binding ExportScheduleHtmlCommand}" Margin="0,0,8,0"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                ToolTip="HTML-Fahrplan der ausgewählten Route öffnen" />
+                        <Button Content="Speichern" Command="{Binding SaveChangesCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                    </StackPanel>
                 </StackPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Margin="0,12,0,0" Opacity="0.8"
                            TextWrapping="Wrap" />
-                <DataGrid ItemsSource="{Binding Stops}" AutoGenerateColumns="False" CanUserAddRows="False"
+                <DataGrid x:Name="StopsGrid" ItemsSource="{Binding Stops}" SelectedItem="{Binding SelectedStop}"
+                          AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
                           HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          SelectionMode="Single"
+                          PreviewMouseLeftButtonDown="StopsGrid_PreviewMouseLeftButtonDown"
                           ScrollViewer.VerticalScrollBarVisibility="Auto"
                           ScrollViewer.HorizontalScrollBarVisibility="Auto">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="ID" Binding="{Binding PlannerStopCode, UpdateSourceTrigger=PropertyChanged}" Width="56" />
-                        <DataGridTextColumn Header="Name" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="*" />
-                        <DataGridTextColumn Header="GPS" Binding="{Binding GpsCoordinates, UpdateSourceTrigger=PropertyChanged}" Width="140" />
-                        <DataGridTextColumn Header="VRR-ID" Binding="{Binding VrrStopId, UpdateSourceTrigger=PropertyChanged}" Width="90" />
-                        <DataGridTextColumn Header="Anzeige" Binding="{Binding StopDisplay, UpdateSourceTrigger=PropertyChanged}" Width="120" />
-                        <DataGridTextColumn Header="Zeit" Binding="{Binding Time, UpdateSourceTrigger=PropertyChanged}" Width="70" />
-                        <DataGridTemplateColumn Header="" Width="48">
+                        <DataGridTextColumn Header="ID" Binding="{Binding PlannerStopCode}" Width="52" />
+                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" MinWidth="160" />
+                        <DataGridTextColumn Header="GPS" Binding="{Binding GpsCoordinates}" Width="*" MinWidth="150" />
+                        <DataGridTextColumn Header="VRR-ID" Binding="{Binding VrrStopId}" Width="90" />
+                        <DataGridTextColumn Header="Anzeige" Binding="{Binding StopDisplay}" Width="*" MinWidth="100" />
+                        <DataGridTextColumn Header="Zeit" Binding="{Binding Time}" Width="56" />
+                        <DataGridTemplateColumn Header="" Width="36">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content="✕" Command="{Binding DataContext.RemoveStopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}" Style="{StaticResource MaterialDesignIconButton}" />
+                                    <Button Content="✕"
+                                            Command="{Binding DataContext.RemoveStopCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"
+                                            Padding="0" Width="26" Height="26" ToolTip="Zeile löschen" />
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

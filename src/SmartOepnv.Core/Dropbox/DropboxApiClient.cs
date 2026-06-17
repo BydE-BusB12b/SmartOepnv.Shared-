@@ -309,6 +309,11 @@ public sealed class DropboxApiClient
         await UploadNamedFileInternalAsync(fileName, content, await GetValidAccessTokenAsync(ct), ct);
     }
 
+    public async Task UploadNamedBinaryFileAsync(string fileName, byte[] content, CancellationToken ct = default)
+    {
+        await UploadNamedBinaryInternalAsync(fileName, content, await GetValidAccessTokenAsync(ct), ct);
+    }
+
     public async Task TriggerRemoteManualUpdateAsync(string vehiclePhone, CancellationToken ct = default)
     {
         var fileName = RemoteManualUpdateService.BuildCommandFileName(vehiclePhone);
@@ -340,6 +345,38 @@ public sealed class DropboxApiClient
             await RefreshAccessTokenAsync(ct))
         {
             await UploadNamedFileInternalAsync(fileName, jsonContent, Settings.AccessToken!, ct);
+            return;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException($"Upload fehlgeschlagen ({fileName}): {err}");
+        }
+    }
+
+    private async Task UploadNamedBinaryInternalAsync(string fileName, byte[] content, string token, CancellationToken ct)
+    {
+        var folder = Settings.FolderPath.TrimEnd('/');
+        var path = $"{folder}/{fileName}";
+        var apiArg = JsonSerializer.Serialize(new
+        {
+            path,
+            mode = "overwrite",
+            autorename = false
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, DropboxConstants.UploadUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add("Dropbox-API-Arg", apiArg);
+        request.Content = new ByteArrayContent(content);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+        using var response = await _http.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
+            await RefreshAccessTokenAsync(ct))
+        {
+            await UploadNamedBinaryInternalAsync(fileName, content, Settings.AccessToken!, ct);
             return;
         }
 

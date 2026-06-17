@@ -1,279 +1,545 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    html, body, #map { height: 100%; margin: 0; background: #0a1628; }
-    .leaflet-container { background: #0a1628; font: 13px/1.35 Segoe UI, sans-serif; }
-    #hint {
-      position: absolute; z-index: 1000; top: 8px; left: 50%; transform: translateX(-50%);
-      background: rgba(13, 71, 161, 0.92); color: #fff; padding: 8px 14px; border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.35); max-width: 92%; text-align: center; pointer-events: none;
-    }
-    .vehicle-map-icon { background: transparent !important; border: none !important; }
-    .vehicle-marker { text-align: center; cursor: pointer; pointer-events: auto; }
-    .vehicle-flag {
-      display: inline-block; min-width: 72px; max-width: 140px;
-      background: rgba(0, 32, 96, 0.92); color: #fff; border-radius: 8px;
-      border: 2px solid rgba(255,255,255,0.85); padding: 4px 8px; margin-bottom: 2px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.4);
-    }
-    .vehicle-flag .top { font-weight: 700; font-size: 12px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .vehicle-flag .bottom { font-size: 11px; opacity: 0.95; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .vehicle-bus {
-      width: 34px; height: 34px; margin: 0 auto; border-radius: 8px 8px 4px 4px;
-      border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.45); position: relative;
-    }
-    .vehicle-bus::before {
-      content: ''; position: absolute; left: 6px; right: 6px; top: 8px; height: 8px;
-      background: rgba(255,255,255,0.75); border-radius: 2px;
-    }
-    .status-online .vehicle-bus { background: #43a047; }
-    .status-stale .vehicle-bus { background: #e53935; }
-    .status-offline .vehicle-bus { background: #8e24aa; }
-    .vehicle-marker.selected .vehicle-flag { border-color: #ffeb3b; box-shadow: 0 0 0 2px #ffeb3b; }
-  </style>
-</head>
-<body>
-  <div id="hint">Live-Fahrzeuge aus Dropbox – Wagennummer und Linie/Kurs auf der Karte</div>
-  <div id="map"></div>
-  <script>
-    let map, markerLayer, markers = {}, selectedId = null, lastVehicles = [];
-    let userAdjustedMapView = false;
-    let initialFitDone = false;
-    let programmaticMapMove = false;
-    let mapViewPersistTimer = null;
-    let pendingSavedView = null;
-
-    function post(msg) {
-      if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(JSON.stringify(msg));
-    }
-
-    function statusClass(status) {
-      if (status === 'stale') return 'status-stale';
-      if (status === 'offline') return 'status-offline';
-      return 'status-online';
-    }
-
-    function formatTime(ms) {
-      if (!ms) return '-';
-      try { return new Date(ms).toLocaleString('de-DE'); } catch { return '-'; }
-    }
-
-    function esc(s) {
-      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-    }
-
-    function isValidCoord(lat, lon) {
-      return Number.isFinite(lat) && Number.isFinite(lon) &&
-        Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
-        !(Math.abs(lat) < 0.0001 && Math.abs(lon) < 0.0001);
-    }
-
-    function createVehicleIcon(v) {
-      const line = esc(v.lineCourse || '-');
-      const name = esc(v.displayName || v.id || '?');
-      const cls = statusClass(v.status);
-      const html =
-        '<div class="vehicle-marker ' + cls + (selectedId === v.id ? ' selected' : '') + '">' +
-          '<div class="vehicle-flag">' +
-            '<div class="top">' + name + '</div>' +
-            '<div class="bottom">' + line + '</div>' +
-          '</div>' +
-          '<div class="vehicle-bus"></div>' +
-        '</div>';
-      return L.divIcon({
-        className: 'vehicle-map-icon',
-        html: html,
-        iconSize: [120, 72],
-        iconAnchor: [60, 68],
-        popupAnchor: [0, -68]
-      });
-    }
-
-    function applySavedMapView(view) {
-      if (!map || !view) return false;
-      const lat = Number(view.lat);
-      const lon = Number(view.lon);
-      const zoom = Number(view.zoom);
-      if (!isValidCoord(lat, lon) || !Number.isFinite(zoom) || zoom <= 0) return false;
-      programmaticMapMove = true;
-      map.setView([lat, lon], zoom, { animate: false });
-      programmaticMapMove = false;
-      userAdjustedMapView = true;
-      initialFitDone = true;
-      return true;
-    }
-
-    function persistMapView() {
-      if (!map) return;
-      const c = map.getCenter();
-      const z = map.getZoom();
-      post({ type: 'mapViewChanged', lat: c.lat, lon: c.lng, zoom: z });
-    }
-
-    function schedulePersistMapView() {
-      if (mapViewPersistTimer) clearTimeout(mapViewPersistTimer);
-      mapViewPersistTimer = setTimeout(function() {
-        mapViewPersistTimer = null;
-        persistMapView();
-      }, 350);
-    }
-
-    function initMap() {
-      const start = pendingSavedView || { lat: 51.16, lon: 10.45, zoom: 6 };
-      map = L.map('map', { zoomControl: true }).setView([start.lat, start.lon], start.zoom);
-      markerLayer = L.layerGroup().addTo(map);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '&copy; OpenStreetMap'
-      }).addTo(map);
-      map.on('zoomend dragend', function() {
-        if (programmaticMapMove) return;
-        userAdjustedMapView = true;
-        schedulePersistMapView();
-      });
-      if (pendingSavedView) {
-        userAdjustedMapView = true;
-        initialFitDone = true;
-        pendingSavedView = null;
-      }
-    }
-
-    function resolvePayload(raw) {
-      if (!raw) return { vehicles: [] };
-      if (typeof raw === 'string') {
-        try { return JSON.parse(raw); } catch { return { vehicles: [] }; }
-      }
-      return raw;
-    }
-
-    window.loadVehicles = function(payload, options) {
-      options = options || {};
-      let data = resolvePayload(payload);
-      if (data.vehicles) {
-        lastVehicles = data.vehicles;
-      } else if (Array.isArray(data)) {
-        lastVehicles = data;
-      } else {
-        lastVehicles = [];
-      }
-      if (options.mapView && applySavedMapView(options.mapView)) {
-        render(lastVehicles, { skipFit: true });
-        return;
-      }
-      render(lastVehicles, { fitIfNeeded: options.fitIfNeeded !== false });
-    };
-
-    window.invalidateMapSize = function() {
-      if (!map) return;
-      map.invalidateSize(true);
-      if (lastVehicles.length) render(lastVehicles, { skipFit: userAdjustedMapView || initialFitDone });
-    };
-
-    window.focusVehicle = function(id) {
-      selectedId = id;
-      render(lastVehicles, { skipFit: true });
-      const m = markers[id];
-      if (m) {
-        programmaticMapMove = true;
-        map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
-        programmaticMapMove = false;
-        userAdjustedMapView = true;
-        schedulePersistMapView();
-        m.openTooltip();
-      }
-    };
-
-    function render(vehicles, renderOptions) {
-      renderOptions = renderOptions || {};
-      if (!map || !markerLayer) return;
-
-      markerLayer.clearLayers();
-      markers = {};
-      if (!vehicles.length) return;
-
-      const bounds = [];
-      vehicles.forEach(function(v) {
-        const lat = Number(v.lat);
-        const lon = Number(v.lon);
-        if (!isValidCoord(lat, lon)) return;
-
-        const icon = createVehicleIcon(v);
-        const m = L.marker([lat, lon], { icon: icon, zIndexOffset: selectedId === v.id ? 1000 : 0 });
-        const tip = [
-          v.displayName,
-          'Linie/Kurs: ' + (v.lineCourse || '-'),
-          v.route ? 'Route: ' + v.route : null,
-          v.stop ? 'Haltestelle: ' + v.stop : null,
-          v.speedKmh != null ? 'Geschw.: ' + v.speedKmh + ' km/h' : null,
-          'Update: ' + formatTime(v.timestampMs)
-        ].filter(Boolean).join(' · ');
-        m.bindTooltip(tip, { direction: 'top', sticky: true, offset: [0, -8] });
-        m.on('click', function() {
-          selectedId = v.id;
-          post({ type: 'vehicleSelected', id: v.id });
-          render(vehicles, { skipFit: true });
-          programmaticMapMove = true;
-          map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
-          programmaticMapMove = false;
-          userAdjustedMapView = true;
-          schedulePersistMapView();
-        });
-        markerLayer.addLayer(m);
-        markers[v.id] = m;
-        bounds.push([lat, lon]);
-      });
-
-      if (!renderOptions.skipFit && !userAdjustedMapView && bounds.length) {
-        programmaticMapMove = true;
-        if (bounds.length === 1) {
-          map.setView(bounds[0], Math.max(map.getZoom(), 14), { animate: false });
-        } else {
-          map.fitBounds(bounds, { padding: [48, 48], maxZoom: 14, animate: false });
-        }
-        programmaticMapMove = false;
-        initialFitDone = true;
-      }
-    }
-
-    function handleHostMessage(msg) {
-      if (!msg || !msg.type) return;
-      if (msg.type === 'loadVehicles') {
-        const payload = msg.payload || { vehicles: [] };
-        const options = msg.options || {};
-        if (msg.mapView) options.mapView = msg.mapView;
-        window.loadVehicles(payload, options);
-        return;
-      }
-      if (msg.type === 'setMapView' && msg.mapView) {
-        if (map) {
-          applySavedMapView(msg.mapView);
-        } else {
-          pendingSavedView = msg.mapView;
-        }
-      }
-      if (msg.type === 'focusVehicle' && msg.id) {
-        window.focusVehicle(msg.id);
-      }
-    }
-
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.addEventListener('message', function(ev) {
-        try {
-          const msg = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
-          handleHostMessage(msg);
-        } catch (e) {
-          post({ type: 'mapError', message: e.message || String(e) });
-        }
-      });
-    }
-
-    initMap();
-    post({ type: 'ready' });
-  </script>
-</body>
-</html>
-
+<!DOCTYPE html>
+
+<html lang="de">
+
+<head>
+
+  <meta charset="utf-8" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+
+    html, body, #map { height: 100%; margin: 0; background: #0a1628; }
+
+    .leaflet-container { background: #0a1628; font: 13px/1.35 Segoe UI, sans-serif; }
+
+    .vehicle-map-icon { background: transparent !important; border: none !important; }
+
+    .vehicle-marker { text-align: center; cursor: pointer; pointer-events: auto; }
+
+    .vehicle-flag {
+
+      display: inline-block; min-width: 72px; max-width: 140px;
+
+      background: rgba(0, 32, 96, 0.92); color: #fff; border-radius: 8px;
+
+      border: 2px solid rgba(255,255,255,0.85); padding: 4px 8px; margin-bottom: 2px;
+
+      box-shadow: 0 2px 8px rgba(0,0,0,.4);
+
+    }
+
+    .vehicle-flag .top { font-weight: 700; font-size: 12px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .vehicle-flag .bottom { font-size: 11px; opacity: 0.95; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .vehicle-bus {
+
+      width: 34px; height: 34px; margin: 0 auto; border-radius: 8px 8px 4px 4px;
+
+      border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.45); position: relative;
+
+    }
+
+    .vehicle-bus::before {
+
+      content: ''; position: absolute; left: 6px; right: 6px; top: 8px; height: 8px;
+
+      background: rgba(255,255,255,0.75); border-radius: 2px;
+
+    }
+
+    .status-online .vehicle-bus { background: #43a047; }
+
+    .status-stale .vehicle-bus { background: #e53935; }
+
+    .status-offline .vehicle-bus { background: #8e24aa; }
+
+    .vehicle-marker.selected .vehicle-flag { border-color: #ffeb3b; box-shadow: 0 0 0 2px #ffeb3b; }
+
+  </style>
+
+</head>
+
+<body>
+
+  <div id="map"></div>
+
+  <script>
+
+    let map, markerLayer, markers = {}, selectedId = null, lastVehicles = [];
+
+    let userAdjustedMapView = false;
+
+    let initialFitDone = false;
+
+    let programmaticMapMove = false;
+
+    let mapViewPersistTimer = null;
+
+    let pendingSavedView = null;
+
+
+
+    function post(msg) {
+
+      if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(JSON.stringify(msg));
+
+    }
+
+
+
+    function statusClass(status) {
+
+      if (status === 'stale') return 'status-stale';
+
+      if (status === 'offline') return 'status-offline';
+
+      return 'status-online';
+
+    }
+
+
+
+    function formatTime(ms) {
+
+      if (!ms) return '-';
+
+      try { return new Date(ms).toLocaleString('de-DE'); } catch { return '-'; }
+
+    }
+
+
+
+    function esc(s) {
+
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+    }
+
+
+
+    function isValidCoord(lat, lon) {
+
+      return Number.isFinite(lat) && Number.isFinite(lon) &&
+
+        Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
+
+        !(Math.abs(lat) < 0.0001 && Math.abs(lon) < 0.0001);
+
+    }
+
+
+
+    function createVehicleIcon(v) {
+
+      const line = esc(v.lineCourse || '-');
+
+      const name = esc(v.displayName || v.id || '?');
+
+      const cls = statusClass(v.status);
+
+      const html =
+
+        '<div class="vehicle-marker ' + cls + (selectedId === v.id ? ' selected' : '') + '">' +
+
+          '<div class="vehicle-flag">' +
+
+            '<div class="top">' + name + '</div>' +
+
+            '<div class="bottom">' + line + '</div>' +
+
+          '</div>' +
+
+          '<div class="vehicle-bus"></div>' +
+
+        '</div>';
+
+      return L.divIcon({
+
+        className: 'vehicle-map-icon',
+
+        html: html,
+
+        iconSize: [120, 72],
+
+        iconAnchor: [60, 68],
+
+        popupAnchor: [0, -68]
+
+      });
+
+    }
+
+
+
+    function applySavedMapView(view) {
+
+      if (!map || !view) return false;
+
+      const lat = Number(view.lat);
+
+      const lon = Number(view.lon);
+
+      const zoom = Number(view.zoom);
+
+      if (!isValidCoord(lat, lon) || !Number.isFinite(zoom) || zoom <= 0) return false;
+
+      programmaticMapMove = true;
+
+      map.setView([lat, lon], zoom, { animate: false });
+
+      programmaticMapMove = false;
+
+      userAdjustedMapView = true;
+
+      initialFitDone = true;
+
+      return true;
+
+    }
+
+
+
+    function persistMapView() {
+
+      if (!map) return;
+
+      const c = map.getCenter();
+
+      const z = map.getZoom();
+
+      post({ type: 'mapViewChanged', lat: c.lat, lon: c.lng, zoom: z });
+
+    }
+
+
+
+    function schedulePersistMapView() {
+
+      if (mapViewPersistTimer) clearTimeout(mapViewPersistTimer);
+
+      mapViewPersistTimer = setTimeout(function() {
+
+        mapViewPersistTimer = null;
+
+        persistMapView();
+
+      }, 350);
+
+    }
+
+
+
+    function initMap() {
+
+      const start = pendingSavedView || { lat: 51.16, lon: 10.45, zoom: 6 };
+
+      map = L.map('map', { zoomControl: true }).setView([start.lat, start.lon], start.zoom);
+
+      markerLayer = L.layerGroup().addTo(map);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+
+        maxZoom: 19, attribution: '&copy; OpenStreetMap'
+
+      }).addTo(map);
+
+      map.on('zoomend dragend', function() {
+
+        if (programmaticMapMove) return;
+
+        userAdjustedMapView = true;
+
+        schedulePersistMapView();
+
+      });
+
+      if (pendingSavedView) {
+
+        userAdjustedMapView = true;
+
+        initialFitDone = true;
+
+        pendingSavedView = null;
+
+      }
+
+    }
+
+
+
+    function resolvePayload(raw) {
+
+      if (!raw) return { vehicles: [] };
+
+      if (typeof raw === 'string') {
+
+        try { return JSON.parse(raw); } catch { return { vehicles: [] }; }
+
+      }
+
+      return raw;
+
+    }
+
+
+
+    window.loadVehicles = function(payload, options) {
+
+      options = options || {};
+
+      let data = resolvePayload(payload);
+
+      if (data.vehicles) {
+
+        lastVehicles = data.vehicles;
+
+      } else if (Array.isArray(data)) {
+
+        lastVehicles = data;
+
+      } else {
+
+        lastVehicles = [];
+
+      }
+
+      if (options.mapView && applySavedMapView(options.mapView)) {
+
+        render(lastVehicles, { skipFit: true });
+
+        return;
+
+      }
+
+      render(lastVehicles, { fitIfNeeded: options.fitIfNeeded !== false });
+
+    };
+
+
+
+    window.invalidateMapSize = function() {
+
+      if (!map) return;
+
+      map.invalidateSize(true);
+
+      if (lastVehicles.length) render(lastVehicles, { skipFit: userAdjustedMapView || initialFitDone });
+
+    };
+
+
+
+    window.focusVehicle = function(id) {
+
+      selectedId = id;
+
+      render(lastVehicles, { skipFit: true });
+
+      const m = markers[id];
+
+      if (m) {
+
+        programmaticMapMove = true;
+
+        map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+
+        programmaticMapMove = false;
+
+        userAdjustedMapView = true;
+
+        schedulePersistMapView();
+
+        m.openTooltip();
+
+      }
+
+    };
+
+
+
+    function render(vehicles, renderOptions) {
+
+      renderOptions = renderOptions || {};
+
+      if (!map || !markerLayer) return;
+
+
+
+      markerLayer.clearLayers();
+
+      markers = {};
+
+      if (!vehicles.length) return;
+
+
+
+      const bounds = [];
+
+      vehicles.forEach(function(v) {
+
+        const lat = Number(v.lat);
+
+        const lon = Number(v.lon);
+
+        if (!isValidCoord(lat, lon)) return;
+
+
+
+        const icon = createVehicleIcon(v);
+
+        const m = L.marker([lat, lon], { icon: icon, zIndexOffset: selectedId === v.id ? 1000 : 0 });
+
+        const tip = [
+
+          v.displayName,
+
+          'Linie/Kurs: ' + (v.lineCourse || '-'),
+
+          v.route ? 'Route: ' + v.route : null,
+
+          v.stop ? 'Haltestelle: ' + v.stop : null,
+
+          v.speedKmh != null ? 'Geschw.: ' + v.speedKmh + ' km/h' : null,
+
+          'Update: ' + formatTime(v.timestampMs)
+
+        ].filter(Boolean).join(' · ');
+
+        m.bindTooltip(tip, { direction: 'top', sticky: true, offset: [0, -8] });
+
+        m.on('click', function() {
+
+          selectedId = v.id;
+
+          post({ type: 'vehicleSelected', id: v.id });
+
+          render(vehicles, { skipFit: true });
+
+          programmaticMapMove = true;
+
+          map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+
+          programmaticMapMove = false;
+
+          userAdjustedMapView = true;
+
+          schedulePersistMapView();
+
+        });
+
+        markerLayer.addLayer(m);
+
+        markers[v.id] = m;
+
+        bounds.push([lat, lon]);
+
+      });
+
+
+
+      if (!renderOptions.skipFit && !userAdjustedMapView && bounds.length) {
+
+        programmaticMapMove = true;
+
+        if (bounds.length === 1) {
+
+          map.setView(bounds[0], Math.max(map.getZoom(), 14), { animate: false });
+
+        } else {
+
+          map.fitBounds(bounds, { padding: [48, 48], maxZoom: 14, animate: false });
+
+        }
+
+        programmaticMapMove = false;
+
+        initialFitDone = true;
+
+      }
+
+    }
+
+
+
+    function handleHostMessage(msg) {
+
+      if (!msg || !msg.type) return;
+
+      if (msg.type === 'loadVehicles') {
+
+        const payload = msg.payload || { vehicles: [] };
+
+        const options = msg.options || {};
+
+        if (msg.mapView) options.mapView = msg.mapView;
+
+        window.loadVehicles(payload, options);
+
+        return;
+
+      }
+
+      if (msg.type === 'setMapView' && msg.mapView) {
+
+        if (map) {
+
+          applySavedMapView(msg.mapView);
+
+        } else {
+
+          pendingSavedView = msg.mapView;
+
+        }
+
+      }
+
+      if (msg.type === 'focusVehicle' && msg.id) {
+
+        window.focusVehicle(msg.id);
+
+      }
+
+    }
+
+
+
+    if (window.chrome && window.chrome.webview) {
+
+      window.chrome.webview.addEventListener('message', function(ev) {
+
+        try {
+
+          const msg = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+
+          handleHostMessage(msg);
+
+        } catch (e) {
+
+          post({ type: 'mapError', message: e.message || String(e) });
+
+        }
+
+      });
+
+    }
+
+
+
+    initMap();
+
+    post({ type: 'ready' });
+
+  </script>
+
+</body>
+
+</html>
+
+

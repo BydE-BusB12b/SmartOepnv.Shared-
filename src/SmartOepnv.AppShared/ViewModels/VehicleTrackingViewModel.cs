@@ -19,6 +19,7 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
     public event Action<string>? PushVehiclesToMapRequested;
     public event Action<string>? FocusVehicleOnMapRequested;
+    public event Action<VehicleListItemViewModel>? ShowVehicleDetailRequested;
 
     public ObservableCollection<VehicleListItemViewModel> Vehicles { get; } = [];
 
@@ -135,6 +136,24 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         return true;
     }
 
+    public bool ShowVehicleDetailForPhone(string? normalizedPhone)
+    {
+        if (!FocusVehicleByPhone(normalizedPhone))
+        {
+            return false;
+        }
+
+        var target = Vehicles.FirstOrDefault(v =>
+            string.Equals(v.PhoneNormalized, normalizedPhone, StringComparison.Ordinal));
+        if (target is null)
+        {
+            return false;
+        }
+
+        ShowVehicleDetailRequested?.Invoke(target);
+        return true;
+    }
+
     private void FocusVehicleOnMap(string id)
     {
         PushVehiclesToMap();
@@ -232,9 +251,20 @@ public sealed class VehicleListItemViewModel
     public required string Id { get; init; }
     public required string DisplayName { get; init; }
     public string? PhoneNormalized { get; init; }
+    public string? PhoneRaw { get; init; }
     public string? LineCourse { get; init; }
     public string? RouteName { get; init; }
     public string? StopName { get; init; }
+    public string? Destination { get; init; }
+    public string? DriverName { get; init; }
+    public string? DriverPersonnelNumber { get; init; }
+    public int? BatteryLevel { get; init; }
+    public int? DelaySeconds { get; init; }
+    public int SpeedKmh { get; init; }
+    public double Latitude { get; init; }
+    public double Longitude { get; init; }
+    public double AccuracyM { get; init; }
+    public VehicleOnlineStatus OnlineStatus { get; init; }
     public string StatusLabel { get; init; } = string.Empty;
     public string LastUpdateLabel { get; init; } = string.Empty;
     public string DetailLine { get; init; } = string.Empty;
@@ -258,15 +288,119 @@ public sealed class VehicleListItemViewModel
         {
             Id = v.Id,
             DisplayName = v.DisplayName,
+            PhoneRaw = v.PhoneNumber,
             PhoneNormalized = string.IsNullOrWhiteSpace(v.PhoneNumber)
                 ? null
                 : new string(v.PhoneNumber.Where(char.IsDigit).ToArray()),
             LineCourse = string.IsNullOrWhiteSpace(v.LineCourse) ? "–" : v.LineCourse,
             RouteName = v.RouteName,
             StopName = v.StopName,
+            Destination = v.Destination,
+            DriverName = v.DriverName,
+            DriverPersonnelNumber = v.DriverPersonnelNumber,
+            BatteryLevel = v.BatteryLevel,
+            DelaySeconds = v.DelaySeconds,
+            SpeedKmh = v.SpeedKmh,
+            Latitude = v.Latitude,
+            Longitude = v.Longitude,
+            AccuracyM = v.AccuracyM,
+            OnlineStatus = v.Status,
             StatusLabel = status,
             LastUpdateLabel = updated.ToString("dd.MM. HH:mm:ss"),
             DetailLine = detailParts.Count > 0 ? string.Join(" · ", detailParts) : "Keine Zusatzinfos"
         };
+    }
+
+    public string? ResolvePhoneNumber()
+    {
+        if (!string.IsNullOrWhiteSpace(PhoneRaw))
+        {
+            return PhoneRaw;
+        }
+
+        if (!string.IsNullOrWhiteSpace(PhoneNormalized))
+        {
+            return PhoneNormalized;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return null;
+        }
+
+        var match = editor.RegisteredVehicles.FirstOrDefault(v =>
+            string.Equals(v.Name.Trim(), DisplayName.Trim(), StringComparison.OrdinalIgnoreCase));
+        return match?.PhoneNumber;
+    }
+
+    public string DriverDisplay
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(DriverName) && string.IsNullOrWhiteSpace(DriverPersonnelNumber))
+            {
+                return "nicht angemeldet";
+            }
+
+            if (!string.IsNullOrWhiteSpace(DriverName) && !string.IsNullOrWhiteSpace(DriverPersonnelNumber))
+            {
+                return $"{DriverName} (PN {DriverPersonnelNumber})";
+            }
+
+            return DriverName ?? $"PN {DriverPersonnelNumber}";
+        }
+    }
+
+    public string SpeedDisplay => SpeedKmh > 0 ? $"{SpeedKmh} km/h" : "–";
+
+    public string DelayDisplay
+    {
+        get
+        {
+            if (DelaySeconds is not int seconds)
+            {
+                return "–";
+            }
+
+            if (seconds == 0)
+            {
+                return "pünktlich";
+            }
+
+            var minutes = seconds / 60;
+            if (minutes == 0)
+            {
+                return seconds > 0 ? $"+{seconds} s" : $"{seconds} s";
+            }
+
+            return seconds > 0 ? $"+{minutes} min" : $"{minutes} min";
+        }
+    }
+
+    public string BatteryDisplay => BatteryLevel is >= 0 and <= 100 ? $"{BatteryLevel} %" : "–";
+
+    public string PositionDisplay => $"{Latitude:F5}°, {Longitude:F5}°";
+
+    public string AccuracyDisplay =>
+        double.IsFinite(AccuracyM) && AccuracyM > 0 ? $"{AccuracyM:0} m" : "–";
+
+    public string DestinationDisplay => string.IsNullOrWhiteSpace(Destination) ? "–" : Destination;
+
+    public string RouteDisplay => string.IsNullOrWhiteSpace(RouteName) ? "–" : RouteName;
+
+    public string StopDisplay => string.IsNullOrWhiteSpace(StopName) ? "–" : StopName;
+
+    public string PhoneDisplay
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(PhoneRaw))
+            {
+                return PhoneRaw;
+            }
+
+            return string.IsNullOrWhiteSpace(PhoneNormalized) ? "–" : PhoneNormalized;
+        }
     }
 }

@@ -153,7 +153,7 @@
                                 BorderBrush="White"
                                 Padding="12,4"
                                 Margin="0,0,6,0"
-                                ToolTip="Fahrer, Fahrzeuge, Nachrichten-Vorlagen und Fahrwege für die Leitstelle (leitstelle_stand.json).">
+                                ToolTip="Fahrer, Fahrzeuge, Nachrichten-Vorlagen, Außenanzeigen-Ziele und Fahrwege für die Leitstelle (leitstelle_stand.json).">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
                                     <Setter Property="Content" Value="Für Leitstelle speichern" />

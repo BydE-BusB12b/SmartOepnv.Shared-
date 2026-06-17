@@ -155,6 +155,89 @@ public static class RouteDisplayHelper
         tripNumber = match.Groups[2].Value.Trim();
         return true;
     }
+
+    /// <summary>Sortierung wie GPSAnsagen <c>sortRoutesByLineCourseAndTrip</c>.</summary>
+    public static List<string> SortRoutesByLineCourseAndTrip(IEnumerable<string> routes) =>
+        routes
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(r => r, Comparer<string>.Create(CompareRoutesByLineCourseAndTrip))
+            .ToList();
+
+    private static int CompareRoutesByLineCourseAndTrip(string route1, string route2)
+    {
+        var (lineCourse1, trip1) = ExtractLineCourseAndTrip(route1);
+        var (lineCourse2, trip2) = ExtractLineCourseAndTrip(route2);
+        var lineComparison = CompareLineCourse(lineCourse1, lineCourse2);
+        return lineComparison != 0 ? lineComparison : CompareTripNumber(trip1, trip2);
+    }
+
+    private static (string LineCourse, string TripNumber) ExtractLineCourseAndTrip(string route)
+    {
+        if (!route.Contains("(Linie:", StringComparison.OrdinalIgnoreCase))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        var parsed = Parse(route);
+        return (NormalizeLineCourse(parsed.LineCourse), (parsed.TripNumber ?? string.Empty).Trim());
+    }
+
+    private static int CompareLineCourse(string line1, string line2)
+    {
+        if (line1.Length == 0 && line2.Length == 0)
+        {
+            return 0;
+        }
+
+        if (line1.Length == 0)
+        {
+            return 1;
+        }
+
+        if (line2.Length == 0)
+        {
+            return -1;
+        }
+
+        var (lineNum1, course1) = SplitLineCourse(line1);
+        var (lineNum2, course2) = SplitLineCourse(line2);
+        var lineComparison = CompareNumericString(lineNum1, lineNum2);
+        return lineComparison != 0 ? lineComparison : CompareNumericString(course1, course2);
+    }
+
+    private static (string Line, string Course) SplitLineCourse(string lineCourse)
+    {
+        var parts = lineCourse.Split('/', 2, StringSplitOptions.TrimEntries);
+        return parts.Length >= 2 ? (parts[0], parts[1]) : (lineCourse.Trim(), string.Empty);
+    }
+
+    private static int CompareTripNumber(string trip1, string trip2)
+    {
+        if (trip1.Length == 0 && trip2.Length == 0)
+        {
+            return 0;
+        }
+
+        if (trip1.Length == 0)
+        {
+            return 1;
+        }
+
+        if (trip2.Length == 0)
+        {
+            return -1;
+        }
+
+        return CompareNumericString(trip1, trip2);
+    }
+
+    private static int CompareNumericString(string str1, string str2)
+    {
+        var num1 = int.TryParse(str1, out var n1) ? n1 : 0;
+        var num2 = int.TryParse(str2, out var n2) ? n2 : 0;
+        return num1.CompareTo(num2);
+    }
 }
 
 public sealed record RouteDefinition(

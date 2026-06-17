@@ -451,6 +451,18 @@ public partial class MainViewModel : ObservableObject
             _dataTransferViewModel.IsBusy = false;
             _dataTransferViewModel.RefreshStats();
             await TryProcessDeviceRegistrationsFromDropboxAsync().ConfigureAwait(true);
+
+            if (_profile.IsLeitstelle && AppServices.Routes.HasPackage)
+            {
+                var standResult = await LeitstelleStandDropboxSync.TryMergeFromDropboxAsync().ConfigureAwait(true);
+                if (standResult.Imported)
+                {
+                    OnRoutePackageLoaded();
+                    _dataTransferViewModel.LastActionMessage = string.IsNullOrWhiteSpace(_dataTransferViewModel.LastActionMessage)
+                        ? standResult.Message
+                        : $"{_dataTransferViewModel.LastActionMessage} {standResult.Message}";
+                }
+            }
         }
     }
 
@@ -729,10 +741,10 @@ public partial class MainViewModel : ObservableObject
 
         if (SelectedNavigationItem != fahrzeugeNav)
         {
-            SelectedNavigationItem = fahrzeugeNav;
+            return;
         }
 
-        _vehicleTrackingViewModel.FocusVehicleByPhone(phoneNormalized);
+        _vehicleTrackingViewModel.ShowVehicleDetailForPhone(phoneNormalized);
     }
 
     private void UpdateLeitstelleMessagesBadge()

@@ -59,4 +59,29 @@ public static class VrrStopAssignmentManager
             template.StopLng = CoordinateFormatting.FormatComponent(assignment.Lon.Value);
         }
     }
+
+    public static void ApplyToRouteStop(RouteStopItem stop, VrrStopAssignment assignment)
+    {
+        stop.VrrStopId = assignment.VrrStopId;
+        if (string.IsNullOrWhiteSpace(stop.Name) ||
+            ManagedStopTemplateItem.IsPlaceholderStopName(stop.Name))
+        {
+            stop.Name = assignment.DisplayName;
+        }
+
+        if (assignment.Lat.HasValue && assignment.Lon.HasValue)
+        {
+            var coords =
+                $"{CoordinateFormatting.FormatComponent(assignment.Lat.Value)},{CoordinateFormatting.FormatComponent(assignment.Lon.Value)}";
+            if (string.IsNullOrWhiteSpace(stop.StopCoordinates))
+            {
+                stop.StopCoordinates = coords;
+            }
+
+            if (string.IsNullOrWhiteSpace(stop.GpsCoordinates))
+            {
+                stop.GpsCoordinates = coords;
+            }
+        }
+    }
 }
