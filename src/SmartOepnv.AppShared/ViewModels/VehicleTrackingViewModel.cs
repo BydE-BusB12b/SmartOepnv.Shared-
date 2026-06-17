@@ -11,8 +11,9 @@ namespace SmartOepnv.AppShared.ViewModels;
 
 public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
     private readonly VehicleTrackingService _tracking = AppServices.VehicleTracking;
+    private readonly VehicleTrackingMapViewStore _mapViewStore = new(AppServices.SettingsSubfolder);
     private CancellationTokenSource? _pollCts;
     private IReadOnlyList<VehicleLiveState> _vehicles = [];
 
@@ -21,7 +22,7 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<VehicleListItemViewModel> Vehicles { get; } = [];
 
-    [ObservableProperty] private string statusMessage = "Dropbox-Verbindung erforderlich – Fahrzeuge werden alle 30 s aktualisiert.";
+    [ObservableProperty] private string statusMessage = "Dropbox-Verbindung erforderlich – Fahrzeuge werden alle 15 s aktualisiert.";
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private VehicleListItemViewModel? selectedVehicle;
 
@@ -35,8 +36,21 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
     public void OnViewActivated()
     {
-        _ = RefreshAsync();
         StartPolling();
+        _ = RefreshAsync();
+    }
+
+    /// <summary>Karte ist bereit – vorhandene Fahrzeuge erneut auf die Karte schieben (Race beim ersten Laden).</summary>
+    public void OnMapReady()
+    {
+        if (_vehicles.Count > 0)
+        {
+            PushVehiclesToMap();
+        }
+        else
+        {
+            _ = RefreshAsync();
+        }
     }
 
     public void OnViewDeactivated()
@@ -47,7 +61,10 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task RefreshAsync()
     {
-        if (IsBusy) return;
+        if (IsBusy)
+        {
+            return;
+        }
 
         IsBusy = true;
         try
@@ -68,7 +85,7 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Aktualisierung fehlgeschlagen: {ex.Message}";
+            await RunOnUiAsync(() => StatusMessage = $"Aktualisierung fehlgeschlagen: {ex.Message}");
         }
         finally
         {
@@ -80,6 +97,23 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(id)) return;
         SelectedVehicle = Vehicles.FirstOrDefault(v => v.Id == id);
+    }
+
+    public VehicleTrackingMapView? GetSavedMapView() => _mapViewStore.Load();
+
+    public void OnMapViewChangedFromMap(double lat, double lon, double zoom)
+    {
+        if (!double.IsFinite(lat) || !double.IsFinite(lon) || !double.IsFinite(zoom))
+        {
+            return;
+        }
+
+        _mapViewStore.Save(new VehicleTrackingMapView
+        {
+            Lat = lat,
+            Lon = lon,
+            Zoom = zoom
+        });
     }
 
     public bool FocusVehicleByPhone(string? normalizedPhone)
@@ -133,6 +167,8 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         var payload = JsonSerializer.Serialize(new { vehicles = BuildMapVehicles() });
         PushVehiclesToMapRequested?.Invoke(payload);
     }
+
+    internal VehicleTrackingMapView? LoadSavedMapViewForMap() => GetSavedMapView();
 
     private IEnumerable<object> BuildMapVehicles() =>
         _vehicles.Select(v => new

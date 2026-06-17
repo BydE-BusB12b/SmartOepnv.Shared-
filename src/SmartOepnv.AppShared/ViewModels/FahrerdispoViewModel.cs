@@ -206,7 +206,10 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             DutyTemplatePartIndex = result.DutyTemplatePartIndex,
             ReducedRestBefore = result.ReducedRestBefore,
             ExtendedDrivingDay = result.ExtendedDrivingDay,
-            ReducedWeeklyRestBefore = result.ReducedWeeklyRestBefore
+            ExtendedDailyShift = result.ExtendedDailyShift,
+            ReducedWeeklyRestBefore = result.ReducedWeeklyRestBefore,
+            KnownDrivingMinutes = result.KnownDrivingMinutes,
+            KnownServiceDurationMinutes = result.KnownServiceDurationMinutes
         });
 
         _sync.MarkDirty();
@@ -252,7 +255,10 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
         existing.DutyTemplatePartIndex = result.DutyTemplatePartIndex;
         existing.ReducedRestBefore = result.ReducedRestBefore;
         existing.ExtendedDrivingDay = result.ExtendedDrivingDay;
+        existing.ExtendedDailyShift = result.ExtendedDailyShift;
         existing.ReducedWeeklyRestBefore = result.ReducedWeeklyRestBefore;
+        existing.KnownDrivingMinutes = result.KnownDrivingMinutes;
+        existing.KnownServiceDurationMinutes = result.KnownServiceDurationMinutes;
         _sync.MarkDirty();
         SaveAndRefresh(result.StartEpochMs, "Dienst aktualisiert.");
     }
@@ -465,7 +471,10 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             CreateAllTemplateParts = dialog.CreateAllTemplateParts,
             ReducedRestBefore = dialog.ReducedRestBefore,
             ExtendedDrivingDay = dialog.ExtendedDrivingDay,
-            ReducedWeeklyRestBefore = dialog.ReducedWeeklyRestBefore
+            ExtendedDailyShift = dialog.ExtendedDailyShift,
+            ReducedWeeklyRestBefore = dialog.ReducedWeeklyRestBefore,
+            KnownDrivingMinutes = dialog.KnownDrivingMinutes,
+            KnownServiceDurationMinutes = dialog.KnownServiceDurationMinutes
         };
         return true;
     }
@@ -516,6 +525,9 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
             var startMs = new DateTimeOffset(part.StartLocal).ToUnixTimeMilliseconds();
             var endMs = new DateTimeOffset(part.EndLocal).ToUnixTimeMilliseconds();
+            var partStats = DutyTemplateDispositionMapper.TryGetPartStats(template, part.PartIndex);
+            var knownDrivingMinutes = partStats?.DrivingMinutes ?? 0;
+            var knownServiceDurationMinutes = partStats?.ServiceDurationMinutes ?? 0;
             if (!DriverDispositionCompliance.TryValidate(
                     _assignments.Concat(added),
                     result.DriverKey,
@@ -525,10 +537,14 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                     result.ReducedRestBefore,
                     result.ExtendedDrivingDay,
                     result.ReducedWeeklyRestBefore,
+                    result.ExtendedDailyShift,
                     out var appliedReducedRest,
                     out var appliedExtendedDriving,
                     out var appliedReducedWeeklyRest,
-                    out var complianceError))
+                    out var appliedExtendedDailyShift,
+                    out var complianceError,
+                    knownDrivingMinutes: knownDrivingMinutes,
+                    knownServiceDurationMinutes: knownServiceDurationMinutes))
             {
                 StatusMessage = $"Dienst {part.DutyNumber}: {complianceError}";
                 return false;
@@ -545,7 +561,10 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                 DutyTemplatePartIndex = part.PartIndex,
                 ReducedRestBefore = appliedReducedRest,
                 ExtendedDrivingDay = appliedExtendedDriving,
-                ReducedWeeklyRestBefore = appliedReducedWeeklyRest
+                ReducedWeeklyRestBefore = appliedReducedWeeklyRest,
+                ExtendedDailyShift = appliedExtendedDailyShift,
+                KnownDrivingMinutes = knownDrivingMinutes,
+                KnownServiceDurationMinutes = knownServiceDurationMinutes
             });
         }
 
@@ -573,7 +592,10 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                 a.DutyTemplatePartIndex,
                 a.ReducedRestBefore,
                 a.ExtendedDrivingDay,
-                a.ReducedWeeklyRestBefore
+                a.ExtendedDailyShift,
+                a.ReducedWeeklyRestBefore,
+                a.KnownDrivingMinutes,
+                a.KnownServiceDurationMinutes
             }));
 
     private bool PersistAssignments()
@@ -624,7 +646,13 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
         public bool ExtendedDrivingDay { get; init; }
 
+        public bool ExtendedDailyShift { get; init; }
+
         public bool ReducedWeeklyRestBefore { get; init; }
+
+        public int KnownDrivingMinutes { get; init; }
+
+        public int KnownServiceDurationMinutes { get; init; }
     }
 
     private void EnsureWeekVisible(long startEpochMs)

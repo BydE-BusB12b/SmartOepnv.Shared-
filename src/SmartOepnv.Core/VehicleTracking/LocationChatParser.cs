@@ -31,7 +31,7 @@ public static class LocationChatParser
 
             var lat = ReadDouble(loc, "latitude");
             var lon = ReadDouble(loc, "longitude");
-            if (!double.IsFinite(lat) || !double.IsFinite(lon))
+            if (!IsValidCoordinate(lat, lon))
             {
                 return null;
             }
@@ -188,4 +188,11 @@ public static class LocationChatParser
             _ => double.NaN
         };
     }
+
+    private static bool IsValidCoordinate(double lat, double lon) =>
+        double.IsFinite(lat) &&
+        double.IsFinite(lon) &&
+        Math.Abs(lat) <= 90 &&
+        Math.Abs(lon) <= 180 &&
+        !(Math.Abs(lat) < 0.0001 && Math.Abs(lon) < 0.0001);
 }

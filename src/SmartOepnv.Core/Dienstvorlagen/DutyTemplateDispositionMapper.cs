@@ -86,6 +86,20 @@ public static class DutyTemplateDispositionMapper
         return new MappedPartShift(partIndex, start, end, dutyNumber);
     }
 
+    public static DutyTemplateStats? TryGetPartStats(DutyTemplate template, int partIndex)
+    {
+        if (!TryResolvePart(template, partIndex, out var rows, out _, out var preparationMinutes, out var followUpMinutes))
+        {
+            return null;
+        }
+
+        var unpaidBreak = DutyTemplateCalculator.ResolveUnpaidBreakDeductionMinutes(template, partIndex);
+        return DutyTemplateCalculator.ComputePart(rows, preparationMinutes, followUpMinutes, unpaidBreak);
+    }
+
+    public static int? TryGetPartDrivingMinutes(DutyTemplate template, int partIndex) =>
+        TryGetPartStats(template, partIndex)?.DrivingMinutes;
+
     public static IReadOnlyList<MappedPartShift> TryMapAllParts(DutyTemplate template, DateTime dutyDate)
     {
         var parts = new List<MappedPartShift>();

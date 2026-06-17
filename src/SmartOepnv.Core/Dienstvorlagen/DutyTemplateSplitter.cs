@@ -1,9 +1,31 @@
 namespace SmartOepnv.Core.Dienstvorlagen;
 
-/// <summary>Teilt Dienste intelligent auf (max. 9 h pro Teil, Fahrten nicht trennen).</summary>
+/// <summary>
+/// Teilt Dienste intelligent auf (max. 9 h pro Teil, Fahrten nicht trennen).
+/// Die Obergrenze von 10 h pro Teil gilt für die fertige Dienstlänge inkl. Leerfahrten in der Nachbearbeitung.
+/// </summary>
 public static class DutyTemplateSplitter
 {
-    public const int MaxDutyMinutes = 9 * 60;
+    /// <summary>„Intelligent Aufteilen“ – Ziel pro Teil (inkl. Vorbereitung/Nachbereitung).</summary>
+    public const int MaxSplitPartHours = 9;
+
+    public const int MaxSplitPartMinutes = MaxSplitPartHours * 60;
+
+    public static string MaxSplitPartDurationLabel => $"{MaxSplitPartHours} h";
+
+    /// <summary>Reguläre Obergrenze pro Teil – darüber FPersV-Ausnahme bis <see cref="MaxDutyPartHours"/> h (mit Bestätigung).</summary>
+    public const int StandardDutyPartHours = 10;
+
+    public const int StandardDutyPartMinutes = StandardDutyPartHours * 60;
+
+    /// <summary>Maximale Dienstlänge pro Teil nach Nachbearbeitung (FPersV-Ausnahme bis 15 h).</summary>
+    public const int MaxDutyPartHours = 15;
+
+    public const int MaxDutyPartMinutes = MaxDutyPartHours * 60;
+
+    public static string MaxDutyPartDurationLabel => $"{MaxDutyPartHours} h";
+
+    public static string StandardDutyPartDurationLabel => $"{StandardDutyPartHours} h";
 
     public sealed class SplitResult
     {
@@ -37,16 +59,16 @@ public static class DutyTemplateSplitter
         var followUp = DutyTemplateCalculator.ResolveFollowUpMinutes(followUpMinutes);
         var fullDuration = DutyTemplateCalculator.ComputePartDuration(ordered, prep, followUp);
 
-        if (fullDuration <= MaxDutyMinutes)
+        if (fullDuration <= MaxSplitPartMinutes)
         {
-            if (ordered.Count == 1 && fullDuration > MaxDutyMinutes)
+            if (ordered.Count == 1 && fullDuration > MaxSplitPartMinutes)
             {
                 return new SplitResult
                 {
                     RequiresSplit = true,
                     WarningMessage =
                         $"Einzelne Fahrt dauert {DutyTemplateCalculator.FormatMinutes(fullDuration)} – " +
-                        "kann nicht unter 9 Stunden geteilt werden."
+                        $"kann nicht unter {MaxSplitPartHours} Stunden geteilt werden."
                 };
             }
 
@@ -93,7 +115,7 @@ public static class DutyTemplateSplitter
             RequiresSplit = true,
             WarningMessage =
                 $"Dienst dauert {DutyTemplateCalculator.FormatMinutes(fullDuration)} – " +
-                "kein gültiger Schnitt unter 9 Stunden pro Teil gefunden (weder in 2 noch in 3 Teile)."
+                $"kein gültiger Schnitt unter {MaxSplitPartHours} Stunden pro Teil gefunden (weder in 2 noch in 3 Teile)."
         };
     }
 
@@ -114,7 +136,7 @@ public static class DutyTemplateSplitter
             var duration1 = DutyTemplateCalculator.ComputePartDuration(part1, preparationMinutes, followUpMinutes);
             var duration2 = DutyTemplateCalculator.ComputePartDuration(part2, preparationMinutes, followUpMinutes);
 
-            if (duration1 <= MaxDutyMinutes && duration2 <= MaxDutyMinutes)
+            if (duration1 <= MaxSplitPartMinutes && duration2 <= MaxSplitPartMinutes)
             {
                 var balance = Math.Abs(duration1 - duration2);
                 if (balance < bestBalance)
@@ -162,7 +184,7 @@ public static class DutyTemplateSplitter
                 var duration1 = DutyTemplateCalculator.ComputePartDuration(part1, preparationMinutes, followUpMinutes);
                 var duration2 = DutyTemplateCalculator.ComputePartDuration(part2, preparationMinutes, followUpMinutes);
                 var duration3 = DutyTemplateCalculator.ComputePartDuration(part3, preparationMinutes, followUpMinutes);
-                if (duration1 > MaxDutyMinutes || duration2 > MaxDutyMinutes || duration3 > MaxDutyMinutes)
+                if (duration1 > MaxSplitPartMinutes || duration2 > MaxSplitPartMinutes || duration3 > MaxSplitPartMinutes)
                 {
                     continue;
                 }
@@ -187,5 +209,94 @@ public static class DutyTemplateSplitter
         firstSplitIndex = bestFirst.Value;
         secondSplitIndex = bestSecond.Value;
         return true;
+    }
+
+    public static bool TryValidateTemplate(DutyTemplate template, out string? errorMessage)
+    {
+        errorMessage = null;
+        var prep = DutyTemplateCalculator.ResolvePreparationMinutes(template.WorkPreparationMinutes);
+        var followUp = DutyTemplateCalculator.ResolveFollowUpMinutes(template.WorkFollowUpMinutes);
+
+        if (template.Part2Rows.Count > 0 || template.Part3Rows.Count > 0)
+        {
+            return TryValidatePartDuration(template.Rows, prep, followUp, "Teil 1", out errorMessage)
+                   && TryValidatePartDuration(template.Part2Rows, prep, followUp, "Teil 2", out errorMessage)
+                   && (template.Part3Rows.Count == 0
+                       || TryValidatePartDuration(template.Part3Rows, prep, followUp, "Teil 3", out errorMessage));
+        }
+
+        return TryValidatePartDuration(template.Rows, prep, followUp, "Dienst", out errorMessage);
+    }
+
+    public static bool RequiresExtendedShiftConfirmation(DutyTemplate template, out IReadOnlyList<string> partLabels)
+    {
+        var labels = new List<string>();
+        var prep = DutyTemplateCalculator.ResolvePreparationMinutes(template.WorkPreparationMinutes);
+        var followUp = DutyTemplateCalculator.ResolveFollowUpMinutes(template.WorkFollowUpMinutes);
+
+        if (template.Part2Rows.Count > 0 || template.Part3Rows.Count > 0)
+        {
+            if (ExceedsStandardDuration(template.Rows, prep, followUp))
+            {
+                labels.Add("Teil 1");
+            }
+
+            if (template.Part2Rows.Count > 0 && ExceedsStandardDuration(template.Part2Rows, prep, followUp))
+            {
+                labels.Add("Teil 2");
+            }
+
+            if (template.Part3Rows.Count > 0 && ExceedsStandardDuration(template.Part3Rows, prep, followUp))
+            {
+                labels.Add("Teil 3");
+            }
+        }
+        else if (ExceedsStandardDuration(template.Rows, prep, followUp))
+        {
+            labels.Add("Dienst");
+        }
+
+        partLabels = labels;
+        return labels.Count > 0;
+    }
+
+    private static bool ExceedsStandardDuration(
+        IReadOnlyList<DutyTemplateRow> rows,
+        int preparationMinutes,
+        int followUpMinutes)
+    {
+        if (rows.Count == 0)
+        {
+            return false;
+        }
+
+        return DutyTemplateCalculator.ComputePartDuration(rows, preparationMinutes, followUpMinutes) >
+               StandardDutyPartMinutes;
+    }
+
+    private static bool TryValidatePartDuration(
+        IReadOnlyList<DutyTemplateRow> rows,
+        int preparationMinutes,
+        int followUpMinutes,
+        string partLabel,
+        out string? errorMessage)
+    {
+        errorMessage = null;
+        if (rows.Count == 0)
+        {
+            return true;
+        }
+
+        var duration = DutyTemplateCalculator.ComputePartDuration(rows, preparationMinutes, followUpMinutes);
+        if (duration <= MaxDutyPartMinutes)
+        {
+            return true;
+        }
+
+        errorMessage =
+            $"{partLabel}: Dienstlänge {DutyTemplateCalculator.FormatMinutes(duration)} " +
+            $"überschreitet das Maximum von {MaxDutyPartHours} Stunden " +
+            "(inkl. Leerfahrten in der Nachbearbeitung).";
+        return false;
     }
 }

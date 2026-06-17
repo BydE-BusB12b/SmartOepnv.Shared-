@@ -19,6 +19,8 @@ public static class DienstvorlagenPdfGenerator
     private const string RowAltBlue = "#C8DBF5";
     private const string TextDark = "#0A1020";
     private const string TextMuted = "#4A5F82";
+    private const float FooterLogoWidth = 144f;
+    private const float FooterLogoHeight = 54f;
 
     private static readonly Regex BussteigRegex = new(@"Bussteig\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex GleisRegex = new(@"Gl\.\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -227,7 +229,7 @@ public static class DienstvorlagenPdfGenerator
                     text.Span(DateTime.Now.ToString("dd.MM.yyyy HH:mm")).FontColor(LightBlue).FontSize(8);
                 });
 
-                footerRow.ConstantItem(96).Height(36).AlignRight().AlignMiddle()
+                footerRow.ConstantItem(FooterLogoWidth).Height(FooterLogoHeight).AlignRight().AlignMiddle()
                     .Element(c => DrawFooterLogo(c, companyLogoPath));
             });
         });

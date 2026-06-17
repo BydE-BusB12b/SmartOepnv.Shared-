@@ -7,9 +7,46 @@ using System.Runtime.CompilerServices;
 public sealed class EmployeeRosterItem : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
-    public string Name { get; set; } = string.Empty;
+
+    private string _name = string.Empty;
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            var next = value ?? string.Empty;
+            if (_name == next)
+            {
+                return;
+            }
+
+            _name = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DisplayLabel));
+            OnPropertyChanged(nameof(PlannerUsername));
+            OnPropertyChanged(nameof(CanLoginToPlanner));
+        }
+    }
+
     public string PhoneNumber { get; set; } = string.Empty;
-    public string PersonnelNumber { get; set; } = string.Empty;
+
+    private string _personnelNumber = string.Empty;
+    public string PersonnelNumber
+    {
+        get => _personnelNumber;
+        set
+        {
+            var next = value ?? string.Empty;
+            if (_personnelNumber == next)
+            {
+                return;
+            }
+
+            _personnelNumber = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DisplayLabel));
+        }
+    }
     public string Password { get; set; } = string.Empty;
     public string LicenseExpiry { get; set; } = string.Empty;
     public string FqnExpiry { get; set; } = string.Empty;

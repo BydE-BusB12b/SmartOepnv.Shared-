@@ -630,7 +630,7 @@ public partial class MainViewModel : ObservableObject
                 {
                     Title = "Vorlagen-Bibliothek",
                     Icon = PackIconKind.BookOpenPageVariant,
-                    Description = "Gespeicherte Dienstvorlagen im App-Format anzeigen",
+                    Description = "Gespeicherte Dienstvorlagen anzeigen und als PDF exportieren (301, 302, …)",
                     CreateContent = () => new DienstvorlagenLibraryView { DataContext = _dienstvorlagenLibraryViewModel }
                 });
             }

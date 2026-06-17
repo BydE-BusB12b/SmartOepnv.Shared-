@@ -15,6 +15,16 @@ public static class DriverDispositionCompliance
 
     public const int MaxExtendedDrivingDaysPerCalendarWeek = 2;
 
+    public const int MaxExtendedDailyShiftsPerFortnight = 3;
+
+    public const int StandardMaxSingleShiftHours = 10;
+
+    public const int ExtendedMaxSingleShiftHours = 15;
+
+    public const int MaxSplitServiceShiftHours = SplitShiftRules.MaxServiceShiftHours;
+
+    private static readonly DateTime FortnightEpochMonday = new(2020, 1, 6);
+
     public const int MaxWeeklyDrivingHours = 56;
 
     public const int MaxFortnightlyDrivingHours = 90;
@@ -44,10 +54,27 @@ public static class DriverDispositionCompliance
         "Ruhezeit-Verkürzung auf 9 Stunden ist in dieser Kalenderwoche bereits zweimal genutzt.";
 
     public const string DailyDrivingMessage =
-        "Tägliche Lenkzeit überschreitet 9 Stunden (max. 10 Stunden an höchstens 2 Tagen pro Kalenderwoche).";
+        "Tägliche Lenkzeit überschreitet 9 Stunden (max. 10 Stunden an höchstens 2 Tagen pro Kalenderwoche). " +
+        "Die 15-h-Dienstschicht-Ausnahme betrifft nur die Dienstschicht, nicht die Lenkzeit – bitte „Lenkzeit bis 10 Stunden“ aktivieren.";
+
+    public const string DailyDrivingExceedsTenMessage =
+        "Tägliche Lenkzeit überschreitet 10 Stunden (FPersV-Höchstgrenze, auch mit Ausnahme). " +
+        "Prüfen Sie die Zeiten oder die reine Lenkzeit in der Dienstvorlage.";
+
+    public const string TemplateComplianceHintPrefix = "Werte aus Dienstvorlage:";
 
     public const string ExtendedDrivingQuotaMessage =
         "Lenkzeit-Verlängerung auf 10 Stunden ist in dieser Kalenderwoche bereits zweimal genutzt.";
+
+    public const string ExtendedDailyShiftQuotaMessage =
+        "Dienstschicht bis 15 Stunden ist in diesem 2-Wochen-Abschnitt (Mo–So) bereits dreimal genutzt.";
+
+    public static readonly string ExtendedDailyShiftRequiredMessage =
+        $"Dienstschicht über {StandardMaxSingleShiftHours} Stunden erfordert die FPersV-Ausnahme bis {ExtendedMaxSingleShiftHours} Stunden.";
+
+    public static readonly string ExtendedDailyShiftTooLongMessage =
+        $"Die Dienstschicht darf höchstens {ExtendedMaxSingleShiftHours} Stunden umfassen " +
+        $"(FPersV-Ausnahme mit verkürzter täglicher Ruhezeit, max. {MaxExtendedDailyShiftsPerFortnight}× in 2 Kalenderwochen Mo–So).";
 
     public const string WeeklyDrivingMessage =
         "Wöchentliche Lenkzeit überschreitet 56 Stunden (FPersV).";
@@ -67,6 +94,27 @@ public static class DriverDispositionCompliance
     public const string DrivingTimeAssumptionHint =
         "Lenkzeit wird als Dienstzeit (von–bis) angenommen, sofern keine gesonderte Lenkzeit erfasst ist.";
 
+    public static string ResolveTemplateComplianceHint(int knownServiceDurationMinutes, int knownDrivingMinutes)
+    {
+        if (knownServiceDurationMinutes <= 0 && knownDrivingMinutes <= 0)
+        {
+            return DrivingTimeAssumptionHint;
+        }
+
+        var parts = new List<string>();
+        if (knownServiceDurationMinutes > 0)
+        {
+            parts.Add($"Dienstlänge {FormatDurationMinutes(knownServiceDurationMinutes)}");
+        }
+
+        if (knownDrivingMinutes > 0)
+        {
+            parts.Add($"Lenkzeit {FormatDurationMinutes(knownDrivingMinutes)}");
+        }
+
+        return $"{TemplateComplianceHintPrefix} {string.Join(" · ", parts)}.";
+    }
+
     public static bool TryValidate(
         IEnumerable<DriverDispositionAssignment> assignments,
         string driverKey,
@@ -76,16 +124,21 @@ public static class DriverDispositionCompliance
         bool requestReducedRest,
         bool requestExtendedDriving,
         bool requestReducedWeeklyRest,
+        bool requestExtendedDailyShift,
         out bool appliedReducedRest,
         out bool appliedExtendedDriving,
         out bool appliedReducedWeeklyRest,
+        out bool appliedExtendedDailyShift,
         out string errorMessage,
         long part1EndEpochMs = 0,
-        long part2StartEpochMs = 0)
+        long part2StartEpochMs = 0,
+        int knownDrivingMinutes = 0,
+        int knownServiceDurationMinutes = 0)
     {
         appliedReducedRest = false;
         appliedExtendedDriving = false;
         appliedReducedWeeklyRest = false;
+        appliedExtendedDailyShift = false;
         errorMessage = string.Empty;
         if (string.IsNullOrEmpty(driverKey))
         {
@@ -106,6 +159,21 @@ public static class DriverDispositionCompliance
             }
         }
 
+        if (!ValidateServiceShiftDuration(
+                assignments,
+                driverKey,
+                startEpochMs,
+                endEpochMs,
+                excludeAssignmentId,
+                requestExtendedDailyShift,
+                isSplit,
+                knownServiceDurationMinutes,
+                out appliedExtendedDailyShift,
+                out errorMessage))
+        {
+            return false;
+        }
+
         var relevant = GetDriverAssignments(assignments, driverKey, excludeAssignmentId).ToList();
         var candidate = new DriverDispositionAssignment
         {
@@ -114,7 +182,9 @@ public static class DriverDispositionCompliance
             StartEpochMs = startEpochMs,
             EndEpochMs = endEpochMs,
             Part1EndEpochMs = isSplit ? part1EndEpochMs : 0,
-            Part2StartEpochMs = isSplit ? part2StartEpochMs : 0
+            Part2StartEpochMs = isSplit ? part2StartEpochMs : 0,
+            KnownServiceDurationMinutes = Math.Max(0, knownServiceDurationMinutes),
+            KnownDrivingMinutes = Math.Max(0, knownDrivingMinutes)
         };
 
         foreach (var other in relevant)
@@ -192,6 +262,96 @@ public static class DriverDispositionCompliance
         return true;
     }
 
+    public sealed record DriverDispositionPreviewOptions(
+        bool ReducedRestBefore,
+        bool ExtendedDrivingDay,
+        bool ExtendedDailyShift,
+        bool ReducedWeeklyRestBefore);
+
+    public sealed record ComplianceQuotaCounts(
+        int ReducedRestUsesInWeek,
+        int ExtendedDrivingDaysInWeek,
+        int ExtendedDailyShiftsInFortnight,
+        int ReducedWeeklyRestUses);
+
+    public static ComplianceQuotaCounts GetQuotaCounts(
+        IEnumerable<DriverDispositionAssignment> assignments,
+        string driverKey,
+        DateTime referenceLocal,
+        string? excludeAssignmentId,
+        long? previewStartEpochMs = null,
+        long? previewEndEpochMs = null,
+        long part1EndEpochMs = 0,
+        long part2StartEpochMs = 0,
+        DriverDispositionPreviewOptions? previewOptions = null,
+        int previewKnownDrivingMinutes = 0,
+        int previewKnownServiceDurationMinutes = 0)
+    {
+        var options = previewOptions ?? new DriverDispositionPreviewOptions(false, false, false, false);
+        var hasPreview = previewStartEpochMs.HasValue && previewEndEpochMs.HasValue;
+        var noFlags = new DriverDispositionPreviewOptions(false, false, false, false);
+
+        var timelineBase = BuildPreviewTimeline(
+            assignments,
+            driverKey,
+            excludeAssignmentId,
+            previewStartEpochMs,
+            previewEndEpochMs,
+            part1EndEpochMs,
+            part2StartEpochMs,
+            hasPreview ? noFlags : null,
+            previewKnownDrivingMinutes,
+            previewKnownServiceDurationMinutes);
+
+        var reference = hasPreview
+            ? DateTimeOffset.FromUnixTimeMilliseconds(previewStartEpochMs!.Value).LocalDateTime
+            : referenceLocal;
+        var referenceEpochMs = hasPreview
+            ? previewStartEpochMs!.Value
+            : new DateTimeOffset(referenceLocal).ToUnixTimeMilliseconds();
+        var previewId = excludeAssignmentId ?? "__preview__";
+
+        var reduced = CountReducedRestUsesInCalendarWeek(timelineBase, driverKey, reference, excludeAssignmentId: null);
+        var driving = CountExtendedDrivingDaysInCalendarWeek(timelineBase, driverKey, reference, excludeAssignmentId: null);
+        var daily15 = CountExtendedDailyShiftsInFortnight(timelineBase, driverKey, reference, excludeAssignmentId: null);
+        var weekly = CountReducedWeeklyRestSinceLastRegular(timelineBase, driverKey, referenceEpochMs, excludeAssignmentId: null);
+
+        if (!hasPreview)
+        {
+            return new ComplianceQuotaCounts(reduced, driving, daily15, weekly);
+        }
+
+        var preview = timelineBase.FirstOrDefault(a =>
+            string.Equals(a.DriverKey, driverKey, StringComparison.Ordinal) &&
+            string.Equals(a.Id, previewId, StringComparison.Ordinal));
+        if (preview is null)
+        {
+            return new ComplianceQuotaCounts(reduced, driving, daily15, weekly);
+        }
+
+        if (options.ReducedRestBefore && !preview.ReducedRestBefore)
+        {
+            reduced = Math.Min(reduced + 1, MaxReducedRestPerCalendarWeek);
+        }
+
+        if (options.ExtendedDrivingDay && !preview.ExtendedDrivingDay)
+        {
+            driving = Math.Min(driving + 1, MaxExtendedDrivingDaysPerCalendarWeek);
+        }
+
+        if (options.ExtendedDailyShift && !preview.ExtendedDailyShift)
+        {
+            daily15 = Math.Min(daily15 + 1, MaxExtendedDailyShiftsPerFortnight);
+        }
+
+        if (options.ReducedWeeklyRestBefore && !preview.ReducedWeeklyRestBefore)
+        {
+            weekly = Math.Min(weekly + 1, MaxReducedWeeklyRestBetweenRegular);
+        }
+
+        return new ComplianceQuotaCounts(reduced, driving, daily15, weekly);
+    }
+
     public static string BuildComplianceSummary(
         IEnumerable<DriverDispositionAssignment> assignments,
         string driverKey,
@@ -199,30 +359,27 @@ public static class DriverDispositionCompliance
         long? endEpochMs,
         string? excludeAssignmentId,
         long part1EndEpochMs = 0,
-        long part2StartEpochMs = 0)
+        long part2StartEpochMs = 0,
+        DriverDispositionPreviewOptions? previewOptions = null,
+        int previewKnownDrivingMinutes = 0,
+        int previewKnownServiceDurationMinutes = 0)
     {
         if (string.IsNullOrEmpty(driverKey))
         {
             return DrivingTimeAssumptionHint;
         }
 
-        var relevant = GetDriverAssignments(assignments, driverKey, excludeAssignmentId).ToList();
-        if (startEpochMs is not null && endEpochMs is not null)
-        {
-            var isSplit = part1EndEpochMs > 0 && part2StartEpochMs > part1EndEpochMs;
-            relevant = MergeCandidate(
-                relevant,
-                new DriverDispositionAssignment
-                {
-                    Id = excludeAssignmentId ?? "__preview__",
-                    DriverKey = driverKey,
-                    StartEpochMs = startEpochMs.Value,
-                    EndEpochMs = endEpochMs.Value,
-                    Part1EndEpochMs = isSplit ? part1EndEpochMs : 0,
-                    Part2StartEpochMs = isSplit ? part2StartEpochMs : 0
-                },
-                excludeAssignmentId);
-        }
+        var relevant = BuildPreviewTimeline(
+            assignments,
+            driverKey,
+            excludeAssignmentId,
+            startEpochMs,
+            endEpochMs,
+            part1EndEpochMs,
+            part2StartEpochMs,
+            previewOptions,
+            previewKnownDrivingMinutes,
+            previewKnownServiceDurationMinutes);
 
         if (relevant.Count == 0)
         {
@@ -243,14 +400,77 @@ public static class DriverDispositionCompliance
             relevant,
             reference.Date.AddDays(-(FortnightDays - 1)),
             reference.Date.AddDays(1));
+        var quotas = GetQuotaCounts(
+            assignments,
+            driverKey,
+            reference,
+            excludeAssignmentId,
+            startEpochMs,
+            endEpochMs,
+            part1EndEpochMs,
+            part2StartEpochMs,
+            previewOptions,
+            previewKnownDrivingMinutes,
+            previewKnownServiceDurationMinutes);
+
+        var serviceDurationMinutes = previewKnownServiceDurationMinutes > 0
+            ? previewKnownServiceDurationMinutes
+            : relevant.MaxBy(a => a.KnownServiceDurationMinutes)?.KnownServiceDurationMinutes ?? 0;
+        var drivingMinutes = previewKnownDrivingMinutes > 0
+            ? previewKnownDrivingMinutes
+            : relevant.MaxBy(a => a.KnownDrivingMinutes)?.KnownDrivingMinutes ?? 0;
+        var complianceHint = ResolveTemplateComplianceHint(serviceDurationMinutes, drivingMinutes);
 
         return
-            $"{DrivingTimeAssumptionHint} " +
+            $"{complianceHint} " +
             $"Lenkzeit Tag: {FormatHours(dayMs)}/{MaxDailyDrivingHours} h · " +
             $"Woche: {FormatHours(weekMs)}/{MaxWeeklyDrivingHours} h · " +
             $"2 Wochen: {FormatHours(fortnightMs)}/{MaxFortnightlyDrivingHours} h · " +
+            $"Lenkzeit 10 h: {quotas.ExtendedDrivingDaysInWeek}/{MaxExtendedDrivingDaysPerCalendarWeek} · " +
+            $"15-h-Dienst: {quotas.ExtendedDailyShiftsInFortnight}/{MaxExtendedDailyShiftsPerFortnight} · " +
+            $"Wochenruhe 24 h: {quotas.ReducedWeeklyRestUses}/{MaxReducedWeeklyRestBetweenRegular} · " +
             $"Längste Ruhe (Woche): {FormatHours(longestWeekRest)} h · " +
             $"Längste Ruhe (14 Tage): {FormatHours(longestFortnightRest)} h (min. {RegularWeeklyRestHours} h).";
+    }
+
+    private static List<DriverDispositionAssignment> BuildPreviewTimeline(
+        IEnumerable<DriverDispositionAssignment> assignments,
+        string driverKey,
+        string? excludeAssignmentId,
+        long? startEpochMs,
+        long? endEpochMs,
+        long part1EndEpochMs,
+        long part2StartEpochMs,
+        DriverDispositionPreviewOptions? previewOptions,
+        int previewKnownDrivingMinutes = 0,
+        int previewKnownServiceDurationMinutes = 0)
+    {
+        var relevant = GetDriverAssignments(assignments, driverKey, excludeAssignmentId).ToList();
+        if (startEpochMs is null || endEpochMs is null)
+        {
+            return relevant;
+        }
+
+        var isSplit = part1EndEpochMs > 0 && part2StartEpochMs > part1EndEpochMs;
+        var options = previewOptions ?? new DriverDispositionPreviewOptions(false, false, false, false);
+        return MergeCandidate(
+            relevant,
+            new DriverDispositionAssignment
+            {
+                Id = excludeAssignmentId ?? "__preview__",
+                DriverKey = driverKey,
+                StartEpochMs = startEpochMs.Value,
+                EndEpochMs = endEpochMs.Value,
+                Part1EndEpochMs = isSplit ? part1EndEpochMs : 0,
+                Part2StartEpochMs = isSplit ? part2StartEpochMs : 0,
+                ReducedRestBefore = options.ReducedRestBefore,
+                ExtendedDrivingDay = options.ExtendedDrivingDay,
+                ExtendedDailyShift = options.ExtendedDailyShift,
+                ReducedWeeklyRestBefore = options.ReducedWeeklyRestBefore,
+                KnownServiceDurationMinutes = Math.Max(0, previewKnownServiceDurationMinutes),
+                KnownDrivingMinutes = Math.Max(0, previewKnownDrivingMinutes)
+            },
+            excludeAssignmentId);
     }
 
     public static DateTime GetEarliestAllowedStart(
@@ -355,6 +575,110 @@ public static class DriverDispositionCompliance
         return date.Date.AddDays(-diff);
     }
 
+    public static DateTime GetFortnightPeriodStart(DateTime date)
+    {
+        var monday = GetCalendarWeekStart(date);
+        var daysSinceEpoch = (monday - FortnightEpochMonday).Days;
+        var fortnightIndex = (int)Math.Floor(daysSinceEpoch / 14.0);
+        return FortnightEpochMonday.AddDays(fortnightIndex * 14);
+    }
+
+    public static DateTime GetFortnightPeriodEndExclusive(DateTime date) =>
+        GetFortnightPeriodStart(date).AddDays(14);
+
+    public static bool RequiresExtendedDailyShift(
+        long startEpochMs,
+        long endEpochMs,
+        int knownServiceDurationMinutes = 0) =>
+        knownServiceDurationMinutes > 0
+            ? knownServiceDurationMinutes > StandardMaxSingleShiftHours * 60
+            : endEpochMs - startEpochMs > HoursToMs(StandardMaxSingleShiftHours);
+
+    public static int CountExtendedDailyShiftsInFortnight(
+        IEnumerable<DriverDispositionAssignment> assignments,
+        string driverKey,
+        DateTime referenceLocal,
+        string? excludeAssignmentId)
+    {
+        var periodStart = GetFortnightPeriodStart(referenceLocal);
+        var periodEnd = GetFortnightPeriodEndExclusive(referenceLocal);
+        var periodStartMs = new DateTimeOffset(periodStart).ToUnixTimeMilliseconds();
+        var periodEndMs = new DateTimeOffset(periodEnd).ToUnixTimeMilliseconds();
+
+        return assignments.Count(a =>
+            string.Equals(a.DriverKey, driverKey, StringComparison.Ordinal) &&
+            a.ExtendedDailyShift &&
+            (excludeAssignmentId is null || !string.Equals(a.Id, excludeAssignmentId, StringComparison.Ordinal)) &&
+            a.StartEpochMs >= periodStartMs &&
+            a.StartEpochMs < periodEndMs);
+    }
+
+    public static bool CanApplyExtendedDailyShift(
+        IEnumerable<DriverDispositionAssignment> assignments,
+        string driverKey,
+        DateTime referenceLocal,
+        string? excludeAssignmentId) =>
+        CountExtendedDailyShiftsInFortnight(assignments, driverKey, referenceLocal, excludeAssignmentId) <
+        MaxExtendedDailyShiftsPerFortnight;
+
+    private static bool ValidateServiceShiftDuration(
+        IEnumerable<DriverDispositionAssignment> assignments,
+        string driverKey,
+        long startEpochMs,
+        long endEpochMs,
+        string? excludeAssignmentId,
+        bool requestExtendedDailyShift,
+        bool isSplit,
+        int knownServiceDurationMinutes,
+        out bool appliedExtendedDailyShift,
+        out string errorMessage)
+    {
+        appliedExtendedDailyShift = false;
+        errorMessage = string.Empty;
+
+        var shiftMs = knownServiceDurationMinutes > 0
+            ? knownServiceDurationMinutes * 60_000L
+            : endEpochMs - startEpochMs;
+
+        if (isSplit)
+        {
+            if (shiftMs > HoursToMs(MaxSplitServiceShiftHours))
+            {
+                errorMessage = SplitShiftRules.MaxServiceShiftMessage;
+                return false;
+            }
+
+            return true;
+        }
+
+        if (shiftMs > HoursToMs(ExtendedMaxSingleShiftHours))
+        {
+            errorMessage = ExtendedDailyShiftTooLongMessage;
+            return false;
+        }
+
+        if (shiftMs <= HoursToMs(StandardMaxSingleShiftHours))
+        {
+            return true;
+        }
+
+        if (!requestExtendedDailyShift)
+        {
+            errorMessage = ExtendedDailyShiftRequiredMessage;
+            return false;
+        }
+
+        var startLocal = DateTimeOffset.FromUnixTimeMilliseconds(startEpochMs).LocalDateTime;
+        if (!CanApplyExtendedDailyShift(assignments, driverKey, startLocal, excludeAssignmentId))
+        {
+            errorMessage = ExtendedDailyShiftQuotaMessage;
+            return false;
+        }
+
+        appliedExtendedDailyShift = true;
+        return true;
+    }
+
     private static bool ValidateDrivingTimes(
         IReadOnlyList<DriverDispositionAssignment> timeline,
         string driverKey,
@@ -375,14 +699,15 @@ public static class DriverDispositionCompliance
         foreach (var day in EnumerateDays(startLocal.Date, endLocal.Date))
         {
             var dayMs = SumDrivingMsOnDay(timeline, day);
-            var dayHours = MsToHours(dayMs);
-            if (dayHours > MaxDailyDrivingExtendedHours)
+            var maxExtendedMs = HoursToMs(MaxDailyDrivingExtendedHours);
+            var maxDailyMs = HoursToMs(MaxDailyDrivingHours);
+            if (dayMs > maxExtendedMs)
             {
-                errorMessage = DailyDrivingMessage;
+                errorMessage = DailyDrivingExceedsTenMessage;
                 return false;
             }
 
-            if (dayHours > MaxDailyDrivingHours)
+            if (dayMs > maxDailyMs)
             {
                 needsExtended = true;
                 if (!requestExtendedDriving)
@@ -617,10 +942,28 @@ public static class DriverDispositionCompliance
         long total = 0;
         foreach (var assignment in timeline)
         {
-            total += SplitShiftCompliance.SumWorkMsOnDay(assignment, day);
+            total += SumAssignmentDrivingMsOnDay(assignment, day);
         }
 
         return total;
+    }
+
+    private static long SumAssignmentDrivingMsOnDay(DriverDispositionAssignment assignment, DateTime day)
+    {
+        var workMs = SplitShiftCompliance.SumWorkMsOnDay(assignment, day);
+        if (workMs <= 0 || assignment.KnownDrivingMinutes <= 0)
+        {
+            return workMs;
+        }
+
+        var totalWorkMs = assignment.EnumerateWorkSegments().Sum(segment => segment.EndMs - segment.StartMs);
+        if (totalWorkMs <= 0)
+        {
+            return workMs;
+        }
+
+        var drivingMs = assignment.KnownDrivingMinutes * 60_000L;
+        return (long)(drivingMs * ((double)workMs / totalWorkMs));
     }
 
     private static IEnumerable<DateTime> EnumerateDays(DateTime startDate, DateTime endDate)
@@ -708,6 +1051,13 @@ public static class DriverDispositionCompliance
     private static double MsToHours(long ms) => ms / (60d * 60d * 1000d);
 
     private static string FormatHours(long ms) => MsToHours(ms).ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("de-DE"));
+
+    private static string FormatDurationMinutes(int minutes)
+    {
+        var hours = minutes / 60;
+        var mins = minutes % 60;
+        return mins == 0 ? $"{hours} h" : $"{hours}:{mins:D2} h";
+    }
 
     private readonly record struct RestGap(long StartMs, long EndMs)
     {

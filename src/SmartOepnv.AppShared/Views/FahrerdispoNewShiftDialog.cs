@@ -40,6 +40,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
     private readonly TextBlock _complianceHint;
     private readonly CheckBox _reducedRestCheck;
     private readonly CheckBox _extendedDrivingCheck;
+    private readonly CheckBox _extendedDailyShiftCheck;
     private readonly CheckBox _reducedWeeklyRestCheck;
     private readonly StackPanel _errorPanel;
     private readonly TextBlock _errorText;
@@ -62,6 +63,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
     public bool ExtendedDrivingDay { get; private set; }
 
+    public bool ExtendedDailyShift { get; private set; }
+
     public bool ReducedWeeklyRestBefore { get; private set; }
 
     public bool IsSplitShift { get; private set; }
@@ -79,6 +82,10 @@ public sealed class FahrerdispoNewShiftDialog : Window
     public string SelectedDutyNumber { get; private set; } = string.Empty;
 
     public bool DeleteRequested { get; private set; }
+
+    public int KnownDrivingMinutes { get; private set; }
+
+    public int KnownServiceDurationMinutes { get; private set; }
 
     public FahrerdispoNewShiftDialog(
         IReadOnlyList<EmployeeRosterItem> employees,
@@ -249,7 +256,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
         _splitShiftCheck = new CheckBox
         {
-            Content = "Geteilter Dienst (Teil 1 und Teil 2 mit dienstfreier Zeit)",
+            Content = "Geteilter Dienst (Arbeitsteil 1 + dienstfreie Pause + Arbeitsteil 2, eine Dienstnummer)",
             Foreground = LabelForeground,
             Margin = new Thickness(0, 8, 0, 0),
             IsChecked = isSplitEdit
@@ -352,7 +359,11 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
         _splitShiftPanel.Children.Add(new TextBlock
         {
-            Text = "TV-N: Unterbrechung mind. 60 min, jeder Teil mind. 2 h, Teil 2 nicht nach 22:00, Dienstschicht max. 14 h.",
+            Text =
+                "Geteilter Dienst (eine Dienstnummer): dienstfreie Pause mind. 2 h, " +
+                $"Dienstschicht max. {SplitShiftRules.MaxServiceShiftHours} h (Beginn Teil 1 bis Ende Teil 2). " +
+                "Lenkzeit/Ruhezeit nach FPersV (9 h, ggf. 10 h) – geteilte Dienste dürfen länger als 10 h sein, " +
+                "wenn FPersV eingehalten wird. TV-N: jeder Teil mind. 2 h, Teil 2 nicht nach 22:00.",
             Foreground = Brushes.White,
             Opacity = 0.65,
             TextWrapping = TextWrapping.Wrap,
@@ -378,8 +389,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
             Margin = new Thickness(0, 8, 0, 0),
             IsChecked = isEdit && existing!.ReducedRestBefore
         };
-        _reducedRestCheck.Checked += (_, _) => UpdateComplianceHints(autoFillTime: !_isEdit);
-        _reducedRestCheck.Unchecked += (_, _) => UpdateComplianceHints(autoFillTime: !_isEdit);
+        _reducedRestCheck.Click += (_, _) => UpdateComplianceHints(autoFillTime: !_isEdit);
         root.Children.Add(_reducedRestCheck);
 
         _extendedDrivingCheck = new CheckBox
@@ -389,9 +399,21 @@ public sealed class FahrerdispoNewShiftDialog : Window
             Margin = new Thickness(0, 4, 0, 0),
             IsChecked = isEdit && existing!.ExtendedDrivingDay
         };
-        _extendedDrivingCheck.Checked += (_, _) => UpdateComplianceHints(autoFillTime: false);
-        _extendedDrivingCheck.Unchecked += (_, _) => UpdateComplianceHints(autoFillTime: false);
+        _extendedDrivingCheck.Click += (_, _) => UpdateComplianceHints(autoFillTime: false);
         root.Children.Add(_extendedDrivingCheck);
+
+        _extendedDailyShiftCheck = new CheckBox
+        {
+            Content =
+                $"Dienstschicht bis {DriverDispositionCompliance.ExtendedMaxSingleShiftHours} Stunden " +
+                $"(über {DriverDispositionCompliance.StandardMaxSingleShiftHours} h, FPersV-Ausnahme nur Einzeldienst, " +
+                $"max. {DriverDispositionCompliance.MaxExtendedDailyShiftsPerFortnight}× in 2 Kalenderwochen Mo–So)",
+            Foreground = LabelForeground,
+            Margin = new Thickness(0, 4, 0, 0),
+            IsChecked = isEdit && existing!.ExtendedDailyShift
+        };
+        _extendedDailyShiftCheck.Click += (_, _) => UpdateComplianceHints(autoFillTime: false);
+        root.Children.Add(_extendedDailyShiftCheck);
 
         _reducedWeeklyRestCheck = new CheckBox
         {
@@ -400,8 +422,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
             Margin = new Thickness(0, 4, 0, 0),
             IsChecked = isEdit && existing!.ReducedWeeklyRestBefore
         };
-        _reducedWeeklyRestCheck.Checked += (_, _) => UpdateComplianceHints(autoFillTime: false);
-        _reducedWeeklyRestCheck.Unchecked += (_, _) => UpdateComplianceHints(autoFillTime: false);
+        _reducedWeeklyRestCheck.Click += (_, _) => UpdateComplianceHints(autoFillTime: false);
         root.Children.Add(_reducedWeeklyRestCheck);
 
         _complianceHint = new TextBlock
@@ -488,6 +509,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
             {
                 ReducedRestBefore = _reducedRestCheck.IsChecked == true;
                 ExtendedDrivingDay = _extendedDrivingCheck.IsChecked == true;
+                ExtendedDailyShift = _extendedDailyShiftCheck.IsChecked == true;
                 ReducedWeeklyRestBefore = _reducedWeeklyRestCheck.IsChecked == true;
                 IsSplitShift = false;
                 DialogResult = true;
@@ -495,6 +517,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
                 return;
             }
 
+            var templateMinutes = ResolveTemplateComplianceMinutes();
             if (!DriverDispositionCompliance.TryValidate(
                     _existingAssignments,
                     SelectedDriverKey,
@@ -504,20 +527,28 @@ public sealed class FahrerdispoNewShiftDialog : Window
                     _reducedRestCheck.IsChecked == true,
                     _extendedDrivingCheck.IsChecked == true,
                     _reducedWeeklyRestCheck.IsChecked == true,
+                    _extendedDailyShiftCheck.IsChecked == true,
                     out var appliedReducedRest,
                     out var appliedExtendedDriving,
                     out var appliedReducedWeeklyRest,
+                    out var appliedExtendedDailyShift,
                     out var complianceError,
                     Part1EndEpochMs,
-                    Part2StartEpochMs))
+                    Part2StartEpochMs,
+                    templateMinutes.DrivingMinutes,
+                    templateMinutes.ServiceDurationMinutes))
             {
                 ShowError(complianceError);
                 return;
             }
 
+            KnownDrivingMinutes = templateMinutes.DrivingMinutes;
+            KnownServiceDurationMinutes = templateMinutes.ServiceDurationMinutes;
+
             ReducedRestBefore = appliedReducedRest;
             ExtendedDrivingDay = appliedExtendedDriving;
             ReducedWeeklyRestBefore = appliedReducedWeeklyRest;
+            ExtendedDailyShift = appliedExtendedDailyShift;
             IsSplitShift = Part1EndEpochMs > 0 && Part2StartEpochMs > Part1EndEpochMs;
             DialogResult = true;
             Close();
@@ -558,6 +589,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
             _complianceHint.Text = DriverDispositionCompliance.DrivingTimeAssumptionHint;
             _reducedRestCheck.IsEnabled = false;
             _extendedDrivingCheck.IsEnabled = false;
+            _extendedDailyShiftCheck.IsEnabled = false;
             _reducedWeeklyRestCheck.IsEnabled = false;
             return;
         }
@@ -589,11 +621,6 @@ public sealed class FahrerdispoNewShiftDialog : Window
             useReduced,
             _editingAssignmentId);
 
-        var usedReduced = DriverDispositionCompliance.CountReducedRestUsesInCalendarWeek(
-            _existingAssignments,
-            driverKey,
-            earliest,
-            _editingAssignmentId);
         var canReduce = DriverDispositionCompliance.CanApplyReducedRest(
             _existingAssignments,
             driverKey,
@@ -620,6 +647,22 @@ public sealed class FahrerdispoNewShiftDialog : Window
             _editingAssignmentId);
         _extendedDrivingCheck.IsEnabled = canExtendDriving || (_isEdit && _extendedDrivingCheck.IsChecked == true);
 
+        var canExtendDailyShift = !(_splitShiftCheck.IsChecked == true) &&
+            (DriverDispositionCompliance.CanApplyExtendedDailyShift(
+                _existingAssignments,
+                driverKey,
+                referenceDate,
+                _editingAssignmentId) ||
+             (_isEdit && _extendedDailyShiftCheck.IsChecked == true));
+        _extendedDailyShiftCheck.Visibility = _splitShiftCheck.IsChecked == true
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        _extendedDailyShiftCheck.IsEnabled = canExtendDailyShift || (_isEdit && _extendedDailyShiftCheck.IsChecked == true);
+        if (!canExtendDailyShift && _extendedDailyShiftCheck.IsChecked == true && !_isEdit)
+        {
+            _extendedDailyShiftCheck.IsChecked = false;
+        }
+
         var earliestMs = new DateTimeOffset(earliest).ToUnixTimeMilliseconds();
         var canReduceWeekly = DriverDispositionCompliance.CanApplyReducedWeeklyRest(
             _existingAssignments,
@@ -627,14 +670,6 @@ public sealed class FahrerdispoNewShiftDialog : Window
             earliestMs,
             _editingAssignmentId);
         _reducedWeeklyRestCheck.IsEnabled = canReduceWeekly || (_isEdit && _reducedWeeklyRestCheck.IsChecked == true);
-
-        var restLabel = useReduced
-            ? $"{DriverDispositionCompliance.ReducedRestHours} h (verkürzt)"
-            : $"{DriverDispositionCompliance.MinimumRestHours} h";
-        _earliestStartHint.Text =
-            $"Frühester Dienstbeginn: {earliest:dd.MM.yyyy HH:mm} (Ruhezeit {restLabel}) · " +
-            $"Tägliche Ruhe 9 h: {usedReduced}/{DriverDispositionCompliance.MaxReducedRestPerCalendarWeek} · " +
-            $"Lenkzeit 10 h: {DriverDispositionCompliance.CountExtendedDrivingDaysInCalendarWeek(_existingAssignments, driverKey, referenceDate, _editingAssignmentId)}/{DriverDispositionCompliance.MaxExtendedDrivingDaysPerCalendarWeek}";
 
         long? previewStartMs = null;
         long? previewEndMs = null;
@@ -644,6 +679,36 @@ public sealed class FahrerdispoNewShiftDialog : Window
             previewEndMs = new DateTimeOffset(previewEnd).ToUnixTimeMilliseconds();
         }
 
+        var previewOptions = BuildPreviewOptions(previewStartMs, previewEndMs);
+        var templateMinutes = ResolveTemplateComplianceMinutes();
+        var knownDrivingMinutes = templateMinutes.DrivingMinutes;
+        var knownServiceDurationMinutes = templateMinutes.ServiceDurationMinutes;
+        var quotaReference = previewStartMs is long startMs
+            ? DateTimeOffset.FromUnixTimeMilliseconds(startMs).LocalDateTime
+            : referenceDate;
+        var quotas = DriverDispositionCompliance.GetQuotaCounts(
+            _existingAssignments,
+            driverKey,
+            quotaReference,
+            _editingAssignmentId,
+            previewStartMs,
+            previewEndMs,
+            GetPreviewPart1EndEpochMs(),
+            GetPreviewPart2StartEpochMs(),
+            previewOptions,
+            knownDrivingMinutes,
+            knownServiceDurationMinutes);
+
+        var restLabel = useReduced
+            ? $"{DriverDispositionCompliance.ReducedRestHours} h (verkürzt)"
+            : $"{DriverDispositionCompliance.MinimumRestHours} h";
+        _earliestStartHint.Text =
+            $"Frühester Dienstbeginn: {earliest:dd.MM.yyyy HH:mm} (Ruhezeit {restLabel}) · " +
+            $"Tägliche Ruhe 9 h: {quotas.ReducedRestUsesInWeek}/{DriverDispositionCompliance.MaxReducedRestPerCalendarWeek} · " +
+            $"Lenkzeit 10 h: {quotas.ExtendedDrivingDaysInWeek}/{DriverDispositionCompliance.MaxExtendedDrivingDaysPerCalendarWeek} · " +
+            $"15-h-Dienst: {quotas.ExtendedDailyShiftsInFortnight}/{DriverDispositionCompliance.MaxExtendedDailyShiftsPerFortnight} · " +
+            $"Wochenruhe 24 h: {quotas.ReducedWeeklyRestUses}/{DriverDispositionCompliance.MaxReducedWeeklyRestBetweenRegular}";
+
         _complianceHint.Text = DriverDispositionCompliance.BuildComplianceSummary(
             _existingAssignments,
             driverKey,
@@ -651,7 +716,38 @@ public sealed class FahrerdispoNewShiftDialog : Window
             previewEndMs,
             _editingAssignmentId,
             GetPreviewPart1EndEpochMs(),
-            GetPreviewPart2StartEpochMs());
+            GetPreviewPart2StartEpochMs(),
+            previewOptions,
+            knownDrivingMinutes,
+            knownServiceDurationMinutes);
+
+        if (previewStartMs is long validateStartMs && previewEndMs is long validateEndMs &&
+            !DriverDispositionCompliance.TryValidate(
+                _existingAssignments,
+                driverKey,
+                validateStartMs,
+                validateEndMs,
+                _editingAssignmentId,
+                _reducedRestCheck.IsChecked == true,
+                _extendedDrivingCheck.IsChecked == true,
+                _reducedWeeklyRestCheck.IsChecked == true,
+                _extendedDailyShiftCheck.IsChecked == true,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var complianceError,
+                GetPreviewPart1EndEpochMs(),
+                GetPreviewPart2StartEpochMs(),
+                knownDrivingMinutes,
+                knownServiceDurationMinutes))
+        {
+            ShowError(complianceError);
+        }
+        else
+        {
+            _errorPanel.Visibility = Visibility.Collapsed;
+        }
 
         if (autoFillTime && _splitShiftCheck.IsChecked != true)
         {
@@ -807,6 +903,12 @@ public sealed class FahrerdispoNewShiftDialog : Window
     {
         _singleShiftPanel.Visibility = isSplit ? Visibility.Collapsed : Visibility.Visible;
         _splitShiftPanel.Visibility = isSplit ? Visibility.Visible : Visibility.Collapsed;
+        _extendedDailyShiftCheck.Visibility = isSplit ? Visibility.Collapsed : Visibility.Visible;
+        if (isSplit && _extendedDailyShiftCheck.IsChecked == true)
+        {
+            _extendedDailyShiftCheck.IsChecked = false;
+        }
+
         _errorPanel.Visibility = Visibility.Collapsed;
         UpdateComplianceHints(autoFillTime: false);
     }
@@ -864,6 +966,37 @@ public sealed class FahrerdispoNewShiftDialog : Window
         }
 
         return new DateTimeOffset(splitDate.Date.Add(part2From)).ToUnixTimeMilliseconds();
+    }
+
+    private DriverDispositionCompliance.DriverDispositionPreviewOptions BuildPreviewOptions(
+        long? previewStartMs,
+        long? previewEndMs)
+    {
+        _ = previewEndMs;
+        var hasPreview = previewStartMs.HasValue;
+
+        return new DriverDispositionCompliance.DriverDispositionPreviewOptions(
+            ReducedRestBefore: _reducedRestCheck.IsChecked == true,
+            ExtendedDrivingDay: _extendedDrivingCheck.IsChecked == true,
+            ExtendedDailyShift: _extendedDailyShiftCheck.IsChecked == true && hasPreview,
+            ReducedWeeklyRestBefore: _reducedWeeklyRestCheck.IsChecked == true);
+    }
+
+    private (int ServiceDurationMinutes, int DrivingMinutes) ResolveTemplateComplianceMinutes()
+    {
+        var option = GetSelectedTemplateOption();
+        if (option is null)
+        {
+            return (0, 0);
+        }
+
+        var template = _templates.FirstOrDefault(t => t.Id == option.TemplateId);
+        var stats = template is null
+            ? null
+            : DutyTemplateDispositionMapper.TryGetPartStats(template, option.PartIndex);
+        return stats is null
+            ? (0, 0)
+            : (stats.ServiceDurationMinutes, stats.DrivingMinutes);
     }
 
     private void ShowError(string message)

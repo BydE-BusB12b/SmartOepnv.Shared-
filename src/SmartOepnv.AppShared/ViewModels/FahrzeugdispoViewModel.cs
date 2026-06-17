@@ -14,8 +14,6 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 {
     public const int VisibleDayCount = 7;
 
-    private const int MaxVisibleDayCount = 42;
-
     public const double DayCellWidth = 96;
 
     public const double HourCellWidth = 24;
@@ -279,7 +277,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             .Where(v => !ShowOnlyActiveVehicles || v.PlannerDetails.IsActive)
             .ToList();
 
-        var days = BuildVisibleDays(vehicles);
+        var days = BuildVisibleDays();
 
         VisibleVehicleCount = vehicles.Count;
         HasExpandedRow = _expandedPhoneKey is not null && _expandedDate is not null;
@@ -481,39 +479,10 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             CellWidth = HourCellWidth
         };
 
-    private IReadOnlyList<DateTime> BuildVisibleDays(IReadOnlyList<RegisteredVehicleItem> vehicles)
-    {
-        var rangeStart = ViewStartDate.Date;
-        var rangeEnd = rangeStart.AddDays(VisibleDayCount - 1);
-
-        foreach (var vehicle in vehicles)
-        {
-            foreach (var assignment in _assignments.Where(a => MatchesVehicle(a, vehicle)))
-            {
-                var start = DateTimeOffset.FromUnixTimeMilliseconds(assignment.StartEpochMs).LocalDateTime.Date;
-                var end = DateTimeOffset.FromUnixTimeMilliseconds(assignment.EndEpochMs).LocalDateTime.Date;
-                if (start < rangeStart)
-                {
-                    rangeStart = start;
-                }
-
-                if (end > rangeEnd)
-                {
-                    rangeEnd = end;
-                }
-            }
-        }
-
-        var dayCount = (int)(rangeEnd - rangeStart).TotalDays + 1;
-        if (dayCount > MaxVisibleDayCount)
-        {
-            rangeEnd = rangeStart.AddDays(MaxVisibleDayCount - 1);
-        }
-
-        return Enumerable.Range(0, (int)(rangeEnd - rangeStart).TotalDays + 1)
-            .Select(i => rangeStart.AddDays(i))
+    private IReadOnlyList<DateTime> BuildVisibleDays() =>
+        Enumerable.Range(0, VisibleDayCount)
+            .Select(i => ViewStartDate.Date.AddDays(i))
             .ToList();
-    }
 
     private static bool MatchesVehicle(VehicleDispositionAssignment assignment, RegisteredVehicleItem vehicle) =>
         RegisteredVehicleDispoKeys.KeysMatch(assignment.VehiclePhone, vehicle);

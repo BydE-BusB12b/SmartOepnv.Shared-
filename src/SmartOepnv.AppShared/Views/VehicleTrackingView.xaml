@@ -18,7 +18,7 @@
                             Command="{Binding RefreshCommand}"
                             Style="{StaticResource MaterialDesignRaisedButton}"
                             Margin="0,0,12,0" />
-                    <TextBlock Text="Auto-Update: 30 s" VerticalAlignment="Center" Opacity="0.75" />
+                    <TextBlock Text="Auto-Update: 15 s" VerticalAlignment="Center" Opacity="0.75" />
                 </StackPanel>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding StatusMessage}" TextWrapping="Wrap"
                            VerticalAlignment="Center" Opacity="0.85" MaxWidth="520" HorizontalAlignment="Right" />

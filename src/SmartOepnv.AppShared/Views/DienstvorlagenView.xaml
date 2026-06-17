@@ -275,7 +275,7 @@
                                          Text="{Binding WorkFollowUpMinutes, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
                             <TextBlock Style="{StaticResource DutyHintStyle}"
-                                       Text="Standard: 10 Min. Vorbereitung, 5 Min. Nachbereitung pro Dienst – werden zur Dienstlänge addiert. „Intelligent Aufteilen“ teilt in 2 oder bei Bedarf 3 Teile (max. 9 h pro Teil)."
+                                       Text="Standard: 10 Min. Vorbereitung, 5 Min. Nachbereitung pro Dienst – werden zur Dienstlänge addiert. „Intelligent Aufteilen“ teilt in 2 oder bei Bedarf 3 Teile (max. 9 h pro Teil). Dienstlänge max. 10 h inkl. Leerfahrten."
                                        Margin="0,0,0,8" />
                             <TextBlock Style="{StaticResource DutyHintStyle}"
                                        Text="Bei geteiltem Dienst: Kennzahlen und 30-Min.-Pausenabzug je Dienstteil im Fahrten-Bereich."
@@ -326,8 +326,18 @@
                                         <TextBlock Text="Dienstlänge" Opacity="0.75" FontSize="10" />
                                         <TextBlock Text="{Binding ServiceDurationDisplay}"
                                                    FontWeight="Bold"
-                                                   FontSize="16"
-                                                   Foreground="{StaticResource SmartAccentBrush}" />
+                                                   FontSize="16">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource SmartAccentBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Part1ExceedsMaxDuration}" Value="True">
+                                                            <Setter Property="Foreground" Value="#FFE53935" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </StackPanel>
                                 </Border>
                                 <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
@@ -349,6 +359,23 @@
                                     </StackPanel>
                                 </Border>
                             </Grid>
+
+                            <TextBlock Text="{Binding MaxDurationViolationMessage}"
+                                       Foreground="#FFE53935"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasMaxDurationViolation}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
 
                             <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
@@ -534,7 +561,7 @@
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
                             </Grid>
 
-                            <TextBlock Text="Bearbeitbar – Leerfahrten/Leerzeilen einfügen, verschieben oder löschen. „Intelligente Leerfahrten“ öffnet ein Fenster zur Eingabe. „Intelligent Aufteilen“: 2 Teile, bei Bedarf 3 (max. 9 h). Oder zwei Zeilen markieren und „Dienst trennen“."
+                            <TextBlock Text="Bearbeitbar – Leerfahrten/Leerzeilen einfügen, verschieben oder löschen. „Intelligente Leerfahrten“ öffnet ein Fenster zur Eingabe. „Intelligent Aufteilen“: 2 Teile, bei Bedarf 3 (max. 9 h). Dienstlänge max. 10 h inkl. Leerfahrten. Oder zwei Zeilen markieren und „Dienst trennen“."
                                        Opacity="0.8"
                                        FontSize="10"
                                        Margin="30,4,0,0" />
@@ -667,7 +694,18 @@
                                 <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
                                     <StackPanel>
                                         <TextBlock Text="Dienstdauer" Opacity="0.75" FontSize="10" />
-                                        <TextBlock Text="{Binding Part1ServiceDurationDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                        <TextBlock Text="{Binding Part1ServiceDurationDisplay}" FontWeight="Bold" FontSize="14">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource SmartAccentBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Part1ExceedsMaxDuration}" Value="True">
+                                                            <Setter Property="Foreground" Value="#FFE53935" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </StackPanel>
                                 </Border>
                                 <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
@@ -873,7 +911,18 @@
                                 <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
                                     <StackPanel>
                                         <TextBlock Text="Dienstdauer" Opacity="0.75" FontSize="10" />
-                                        <TextBlock Text="{Binding Part2ServiceDurationDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                        <TextBlock Text="{Binding Part2ServiceDurationDisplay}" FontWeight="Bold" FontSize="14">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource SmartAccentBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Part2ExceedsMaxDuration}" Value="True">
+                                                            <Setter Property="Foreground" Value="#FFE53935" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </StackPanel>
                                 </Border>
                                 <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">
@@ -1067,7 +1116,18 @@
                                 <Border Grid.Column="0" Style="{StaticResource DutyStatCardStyle}">
                                     <StackPanel>
                                         <TextBlock Text="Dienstlänge" Opacity="0.75" FontSize="10" />
-                                        <TextBlock Text="{Binding Part3ServiceDurationDisplay}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource SmartAccentBrush}" />
+                                        <TextBlock Text="{Binding Part3ServiceDurationDisplay}" FontWeight="Bold" FontSize="14">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource SmartAccentBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Part3ExceedsMaxDuration}" Value="True">
+                                                            <Setter Property="Foreground" Value="#FFE53935" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </StackPanel>
                                 </Border>
                                 <Border Grid.Column="2" Style="{StaticResource DutyStatCardStyle}">

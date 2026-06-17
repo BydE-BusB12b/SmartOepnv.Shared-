@@ -65,11 +65,21 @@ public sealed class DriverDispositionAssignment
 
     public bool ExtendedDrivingDay { get; set; }
 
+    /// <summary>Dienstschicht bis 15 h (FPersV-Ausnahme, max. 3× in 2 Kalenderwochen Mo–So).</summary>
+
+    public bool ExtendedDailyShift { get; set; }
+
 
 
     /// <summary>Wochenruhe vor diesem Dienst auf 24 h verkürzt (max. 3× bis zur nächsten 45-h-Ruhe).</summary>
 
     public bool ReducedWeeklyRestBefore { get; set; }
+
+    /// <summary>Dienstlänge aus der Dienstvorlage in Minuten (0 = Zeitspanne von–bis als Näherung).</summary>
+    public int KnownServiceDurationMinutes { get; set; }
+
+    /// <summary>Reine Lenkzeit aus der Dienstvorlage in Minuten (0 = Dienstzeit von–bis als Näherung).</summary>
+    public int KnownDrivingMinutes { get; set; }
 
 
 
@@ -157,7 +167,13 @@ public sealed class DriverDispositionAssignment
 
         ExtendedDrivingDay = ExtendedDrivingDay,
 
-        ReducedWeeklyRestBefore = ReducedWeeklyRestBefore
+        ExtendedDailyShift = ExtendedDailyShift,
+
+        ReducedWeeklyRestBefore = ReducedWeeklyRestBefore,
+
+        KnownServiceDurationMinutes = KnownServiceDurationMinutes,
+
+        KnownDrivingMinutes = KnownDrivingMinutes
 
     };
 

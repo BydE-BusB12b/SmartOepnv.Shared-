@@ -221,6 +221,30 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     [ObservableProperty] private bool part3ExceedsMaxDuration;
 
+    [ObservableProperty] private bool part1ExceedsHardMax;
+
+    [ObservableProperty] private bool part2ExceedsHardMax;
+
+    [ObservableProperty] private bool part3ExceedsHardMax;
+
+    public bool HasMaxDurationViolation =>
+        Part1ExceedsMaxDuration || Part2ExceedsMaxDuration || Part3ExceedsMaxDuration;
+
+    public string MaxDutyDurationHint =>
+        $"Aufteilung max. {DutyTemplateSplitter.MaxSplitPartDurationLabel} pro Teil · " +
+        $"Dienstlänge bis {DutyTemplateSplitter.MaxDutyPartDurationLabel} (ab {DutyTemplateSplitter.StandardDutyPartDurationLabel} Bestätigung)";
+
+    public string MaxDurationViolationMessage =>
+        HasHardMaxDurationViolation
+            ? $"Dienstlänge überschreitet {DutyTemplateSplitter.MaxDutyPartHours} Stunden " +
+              "(inkl. Leerfahrten in der Nachbearbeitung) – bitte anpassen oder aufteilen."
+            : HasMaxDurationViolation
+                ? $"Dienstlänge über {DutyTemplateSplitter.StandardDutyPartHours} Stunden – beim Speichern Bestätigung erforderlich (FPersV-Ausnahme bis {DutyTemplateSplitter.MaxDutyPartHours} h)."
+                : string.Empty;
+
+    public bool HasHardMaxDurationViolation =>
+        Part1ExceedsHardMax || Part2ExceedsHardMax || Part3ExceedsHardMax;
+
     [ObservableProperty] private string importFileName = string.Empty;
 
     [ObservableProperty] private string selectedCompanyLogoId = string.Empty;
@@ -1174,6 +1198,28 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         }
 
         var template = BuildCurrentTemplate();
+        if (!DutyTemplateSplitter.TryValidateTemplate(template, out var durationError))
+        {
+            StatusMessage = durationError ?? $"Dienstlänge überschreitet {DutyTemplateSplitter.MaxDutyPartHours} Stunden.";
+            return;
+        }
+
+        if (DutyTemplateSplitter.RequiresExtendedShiftConfirmation(template, out var extendedParts))
+        {
+            var partList = string.Join(", ", extendedParts);
+            var confirm = MessageBox.Show(
+                $"Folgende Teile überschreiten {DutyTemplateSplitter.StandardDutyPartHours} Stunden " +
+                $"(FPersV-Ausnahme bis {DutyTemplateSplitter.MaxDutyPartHours} h): {partList}.\n\nTrotzdem speichern?",
+                "Dienstlänge bestätigen",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes)
+            {
+                StatusMessage = "Speichern abgebrochen – Dienstlänge nicht bestätigt.";
+                return;
+            }
+        }
+
         var isNew = _loadedTemplateId is null;
         store.Save(template);
         _loadedTemplateId = template.Id;
@@ -1238,14 +1284,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
     private void ExportSinglePartPdf(int part)
     {
         var template = BuildCurrentTemplate();
-        var (rows, dutyNumber, partRows) = part switch
-        {
-            3 => (template.Part3Rows, template.DutyNumberPart3, template.Part3Rows),
-            2 => (template.Part2Rows, template.DutyNumberPart2, template.Part2Rows),
-            _ => (template.Rows, template.DutyNumber, template.Rows)
-        };
-
-        if (partRows.Count == 0)
+        if (!DutyTemplatePdfExport.TryGetPart(template, part, out _, out var dutyNumber))
         {
             StatusMessage = $"Teil {part} enthält keine Fahrten.";
             return;
@@ -1257,11 +1296,10 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             return;
         }
 
-        var safeName = SanitizeFileName(dutyNumber);
         var dialog = new SaveFileDialog
         {
             Filter = "PDF (*.pdf)|*.pdf",
-            FileName = string.IsNullOrWhiteSpace(safeName) ? $"dienst-teil{part}.pdf" : $"{safeName}.pdf",
+            FileName = DutyTemplatePdfExport.BuildDefaultFileName(dutyNumber, part),
             DefaultExt = ".pdf",
             Title = $"Dienstvorlage für Teil {part} speichern"
         };
@@ -1273,7 +1311,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
         try
         {
-            DienstvorlagenPdfGenerator.GeneratePart(dialog.FileName, template, rows, dutyNumber, part);
+            DutyTemplatePdfExport.ExportPart(dialog.FileName, template, part);
             ReportSaveSuccess($"Dienstvorlage Teil {part} erstellt: {dialog.FileName}");
         }
         catch (Exception ex)
@@ -1287,9 +1325,6 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
     private bool CanExportPart2Pdf() => Part2Rows.Count > 0;
 
     private bool CanExportPart3Pdf() => Part3Rows.Count > 0;
-
-    private static string SanitizeFileName(string name) =>
-        string.Join("_", name.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
 
     [RelayCommand]
     private void RecalculateStats()
@@ -1360,7 +1395,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
         if (!result.RequiresSplit)
         {
-            StatusMessage = "Dienst ist unter 9 Stunden – Aufteilung nicht erforderlich.";
+            StatusMessage = $"Dienst ist unter {DutyTemplateSplitter.MaxSplitPartHours} Stunden – Aufteilung nicht erforderlich.";
             return;
         }
 
@@ -1380,7 +1415,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
             RefreshStats();
             StatusMessage =
-                $"Dienst intelligent in 3 Teile aufgeteilt (max. 9 h pro Teil). " +
+                $"Dienst intelligent in 3 Teile aufgeteilt (max. {DutyTemplateSplitter.MaxSplitPartDurationLabel} pro Teil). " +
                 $"Teil 1: {Rows.Count}, Teil 2: {Part2Rows.Count}, Teil 3: {Part3Rows.Count} Fahrt(en).";
             return;
         }
@@ -1393,7 +1428,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
         RefreshStats();
         StatusMessage =
-            $"Dienst intelligent in 2 Teile aufgeteilt (max. 9 h pro Teil). " +
+            $"Dienst intelligent in 2 Teile aufgeteilt (max. {DutyTemplateSplitter.MaxSplitPartDurationLabel} pro Teil). " +
             $"Teil 1: {Rows.Count} Fahrt(en), Teil 2: {Part2Rows.Count} Fahrt(en).";
     }
 
@@ -2062,8 +2097,10 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
                 value => Part2BreaksDisplay = value,
                 value => Part2PureDrivingDisplay = value,
                 value => Part2PureBreakDisplay = value);
-            Part1ExceedsMaxDuration = part1Stats.ServiceDurationMinutes > DutyTemplateSplitter.MaxDutyMinutes;
-            Part2ExceedsMaxDuration = part2Stats.ServiceDurationMinutes > DutyTemplateSplitter.MaxDutyMinutes;
+            Part1ExceedsMaxDuration = part1Stats.ServiceDurationMinutes > DutyTemplateSplitter.StandardDutyPartMinutes;
+            Part2ExceedsMaxDuration = part2Stats.ServiceDurationMinutes > DutyTemplateSplitter.StandardDutyPartMinutes;
+            Part1ExceedsHardMax = part1Stats.ServiceDurationMinutes > DutyTemplateSplitter.MaxDutyPartMinutes;
+            Part2ExceedsHardMax = part2Stats.ServiceDurationMinutes > DutyTemplateSplitter.MaxDutyPartMinutes;
 
             if (IsThreePartDuty)
             {
@@ -2075,7 +2112,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
                     value => Part3BreaksDisplay = value,
                     value => Part3PureDrivingDisplay = value,
                     value => Part3PureBreakDisplay = value);
-                Part3ExceedsMaxDuration = part3Stats.ServiceDurationMinutes > DutyTemplateSplitter.MaxDutyMinutes;
+                Part3ExceedsMaxDuration = part3Stats.ServiceDurationMinutes > DutyTemplateSplitter.StandardDutyPartMinutes;
+                Part3ExceedsHardMax = part3Stats.ServiceDurationMinutes > DutyTemplateSplitter.MaxDutyPartMinutes;
             }
             else
             {
@@ -2085,6 +2123,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
                 Part3PureDrivingDisplay = "0:00";
                 Part3PureBreakDisplay = "–";
                 Part3ExceedsMaxDuration = false;
+                Part3ExceedsHardMax = false;
             }
 
             ServiceDurationDisplay = "–";
@@ -2118,9 +2157,16 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             Part2BreaksDisplay = "–";
             Part2PureDrivingDisplay = "0:00";
             Part2PureBreakDisplay = "–";
-            Part1ExceedsMaxDuration = stats.ServiceDurationMinutes > DutyTemplateSplitter.MaxDutyMinutes;
+            Part1ExceedsMaxDuration = stats.ServiceDurationMinutes > DutyTemplateSplitter.StandardDutyPartMinutes;
+            Part1ExceedsHardMax = stats.ServiceDurationMinutes > DutyTemplateSplitter.MaxDutyPartMinutes;
             Part2ExceedsMaxDuration = false;
+            Part2ExceedsHardMax = false;
         }
+
+        OnPropertyChanged(nameof(HasMaxDurationViolation));
+        OnPropertyChanged(nameof(HasHardMaxDurationViolation));
+        OnPropertyChanged(nameof(MaxDutyDurationHint));
+        OnPropertyChanged(nameof(MaxDurationViolationMessage));
 
         OnPropertyChanged(nameof(IsSplitDuty));
         OnPropertyChanged(nameof(IsThreePartDuty));
