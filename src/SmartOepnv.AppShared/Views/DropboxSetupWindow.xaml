@@ -18,7 +18,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <TextBlock Grid.Row="0"
-                   Text="Vor der Anmeldung Dropbox verbinden und den Ordnerpfad prüfen (z. B. /App/Smart ÖPNV)."
+                   Text="Vor der Anmeldung Dropbox verbinden, Ordnerpfad prüfen (/App/Smart ÖPNV) und ggf. „Planer-Ordner initialisieren“. Anmeldung nur mit planer_workspace.json oder planer_session.json im Ordner."
                    TextWrapping="Wrap"
                    Margin="8,4,8,12"
                    Opacity="0.85"

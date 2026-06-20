@@ -33,7 +33,8 @@
                        Foreground="White"
                        Margin="0,0,0,20" />
 
-            <views:PlanerSyncBusAnimation x:Name="BusAnimation" />
+            <views:PlanerSyncBusAnimation x:Name="BusAnimation" Margin="0,0,0,16" />
+            <views:DropboxTransferProgressView x:Name="TransferProgress" />
         </StackPanel>
     </Border>
 </Window>

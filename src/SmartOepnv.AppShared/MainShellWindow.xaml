@@ -47,6 +47,14 @@
                                 DockPanel.Dock="Right"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center">
+                        <TextBlock x:Name="IdleLogoutCountdown"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Opacity="0.9"
+                                   Visibility="Collapsed"
+                                   ToolTip="Verbleibende Zeit bis zur automatischen Abmeldung bei Inaktivität" />
                         <Button x:Name="LogoutButton"
                                 Style="{StaticResource MaterialDesignIconForegroundButton}"
                                 ToolTip="Abmelden"

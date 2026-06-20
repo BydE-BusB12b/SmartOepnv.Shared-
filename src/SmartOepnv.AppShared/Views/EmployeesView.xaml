@@ -40,7 +40,12 @@
                                 Margin="0,0,0,8" />
                         <Button Content="Speichern"
                                 Command="{Binding SaveChangesCommand}"
-                                Style="{StaticResource MaterialDesignRaisedButton}" />
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,0,8" />
+                        <Button Content="PDF erstellen"
+                                Command="{Binding ExportBriefingPdfCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                ToolTip="Einweisungs-PDF für den ausgewählten Fahrer erstellen" />
                     </StackPanel>
                     <ListBox ItemsSource="{Binding Employees}"
                              SelectedItem="{Binding SelectedEmployee}"

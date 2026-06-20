@@ -27,6 +27,14 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
 
     public bool HasPendingChanges => _hasUnsavedChanges;
 
+    public DisplaysOperationsViewModel()
+    {
+        if (AppServices.IsInitialized)
+        {
+            AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
+        }
+    }
+
     public void RefreshFromEditorIfNeeded()
     {
         if (!_hasUnsavedChanges &&

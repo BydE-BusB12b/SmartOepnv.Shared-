@@ -14,9 +14,12 @@ namespace SmartOepnv.AppShared.ViewModels;
 
 public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewModel
 {
+    private const int SuccessFeedbackMs = 5000;
+
     private readonly List<ManagedStopTemplateItem> _allTemplates = [];
     private readonly EditorAreaSyncState _sync = new();
     private string? _loadedFingerprint;
+    private CancellationTokenSource? _saveButtonFeedbackCts;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private string searchQuery = string.Empty;
@@ -25,6 +28,9 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     [ObservableProperty] private string selectedAnnouncementCoordinates = string.Empty;
     [ObservableProperty] private string selectedStopCoordinates = string.Empty;
     [ObservableProperty] private string announcementMergePauseSeconds = "0,3";
+    [ObservableProperty] private bool saveButtonIsSuccess;
+    [ObservableProperty] private bool removeTemplateButtonIsSuccess;
+    [ObservableProperty] private bool insertIntoRouteButtonIsSuccess;
 
     private bool _syncingCoordinates;
 
@@ -128,8 +134,6 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             t.LocalAudioPath
         }));
 
-    private void MarkDirty() => _sync.MarkDirty();
-
     private string BuildLibraryStatusMessage(int fromManaged, StopTemplateRouteMerger.MergeResult merge)
     {
         var total = _allTemplates.Count;
@@ -172,6 +176,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             return;
         }
 
+        EnsureStopNamesBeforeCommit();
+
         if (!TryApplyCoordinateFields(out var validationError))
         {
             StatusMessage = validationError ?? "Koordinaten ungültig.";
@@ -199,17 +205,71 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         SyncCoordinateFieldsFromSelected();
-        RefreshTemplateListLabels();
+        RefreshTemplateListLabels(rebuildFilter: false);
         StatusMessage = routeStopsUpdated > 0
             ? $"{_allTemplates.Count} Vorlagen gespeichert – {routeStopsUpdated} Haltestelle(n) in Routen aktualisiert (ID, Name, GPS, Ton …)."
             : $"{_allTemplates.Count} Vorlagen lokal gespeichert – werden mit Routen-Export/Dropbox übertragen.";
+        SaveButtonIsSuccess = true;
+        RemoveTemplateButtonIsSuccess = false;
+        _ = ShowSaveSuccessFeedbackAsync();
         _sync.AfterCommit();
         _loadedFingerprint = ComputeFingerprint();
     }
 
+    private async Task ShowSaveSuccessFeedbackAsync()
+    {
+        _saveButtonFeedbackCts?.Cancel();
+        _saveButtonFeedbackCts?.Dispose();
+        _saveButtonFeedbackCts = new CancellationTokenSource();
+        var token = _saveButtonFeedbackCts.Token;
+
+        try
+        {
+            await Task.Delay(SuccessFeedbackMs, token).ConfigureAwait(true);
+            SaveButtonIsSuccess = false;
+        }
+        catch (TaskCanceledException)
+        {
+            // neuer Speichervorgang oder Bearbeitung hat Feedback zurückgesetzt
+        }
+    }
+
+    private void CancelSaveButtonFeedback()
+    {
+        _saveButtonFeedbackCts?.Cancel();
+        _saveButtonFeedbackCts?.Dispose();
+        _saveButtonFeedbackCts = null;
+    }
+
+    private void MarkDirty()
+    {
+        _sync.MarkDirty();
+        if (SaveButtonIsSuccess)
+        {
+            CancelSaveButtonFeedback();
+            SaveButtonIsSuccess = false;
+        }
+
+        if (RemoveTemplateButtonIsSuccess)
+        {
+            RemoveTemplateButtonIsSuccess = false;
+        }
+
+        if (InsertIntoRouteButtonIsSuccess)
+        {
+            InsertIntoRouteButtonIsSuccess = false;
+        }
+    }
+
     partial void OnSearchQueryChanged(string value) => ApplyFilter();
 
-    partial void OnSelectedTemplateChanged(ManagedStopTemplateItem? value) => SyncCoordinateFieldsFromSelected();
+    partial void OnSelectedTemplateChanged(ManagedStopTemplateItem? value)
+    {
+        InsertIntoRouteButtonIsSuccess = false;
+        SyncCoordinateFieldsFromSelected();
+    }
+
+    partial void OnSelectedRouteForInsertChanged(string? value) => InsertIntoRouteButtonIsSuccess = false;
 
     partial void OnSelectedAnnouncementCoordinatesChanged(string value)
     {
@@ -347,6 +407,22 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         MarkDirty();
     }
 
+    private void EnsureStopNamesBeforeCommit()
+    {
+        foreach (var template in _allTemplates)
+        {
+            if (!string.IsNullOrWhiteSpace(template.StopNameItcs))
+            {
+                continue;
+            }
+
+            if (PlannerStopCode.IsValid(template.StopCode))
+            {
+                template.StopNameItcs = $"Haltestelle {PlannerStopCode.Normalize(template.StopCode)}";
+            }
+        }
+    }
+
     private void PruneEmptyDrafts()
     {
         var removed = _allTemplates.RemoveAll(t => t.IsEmptyDraft());
@@ -397,7 +473,9 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         ApplyFilter();
         SelectedTemplate = FilteredTemplates.FirstOrDefault();
         StatusMessage = "Vorlage entfernt – „Speichern“ nicht vergessen.";
-        MarkDirty();
+        _sync.MarkDirty();
+        RemoveTemplateButtonIsSuccess = true;
+        SaveButtonIsSuccess = false;
     }
 
     [RelayCommand]
@@ -446,19 +524,110 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
     }
 
-    private void RefreshSelectedTemplateBinding() => RefreshTemplateListLabels();
+    [RelayCommand]
+    private void PickAnnouncementCoordinatesOnMap() =>
+        OpenGpsMapPicker(
+            "Ansage (GPS)",
+            formatCurrent: t => CoordinateFormatting.FormatFromParts(t.AnnouncementLat, t.AnnouncementLng),
+            formatOther: t => CoordinateFormatting.FormatFromParts(t.StopLat, t.StopLng),
+            "Haltestelle",
+            apply: (lat, lon) =>
+            {
+                SelectedTemplate!.AnnouncementLat = lat;
+                SelectedTemplate.AnnouncementLng = lon;
+                SyncCoordinateFieldsFromSelected();
+            });
 
-    /// <summary>ListBox zeigt DisplayLabel – nach Speichern/Ton-Änderung Liste und Auswahl neu binden.</summary>
-    private void RefreshTemplateListLabels()
+    [RelayCommand]
+    private void PickStopCoordinatesOnMap() =>
+        OpenGpsMapPicker(
+            "Haltestelle (GPS)",
+            formatCurrent: t => CoordinateFormatting.FormatFromParts(t.StopLat, t.StopLng),
+            formatOther: t => CoordinateFormatting.FormatFromParts(t.AnnouncementLat, t.AnnouncementLng),
+            "Ansage",
+            apply: (lat, lon) =>
+            {
+                SelectedTemplate!.StopLat = lat;
+                SelectedTemplate.StopLng = lon;
+                SyncCoordinateFieldsFromSelected();
+            });
+
+    private void OpenGpsMapPicker(
+        string title,
+        Func<ManagedStopTemplateItem, string> formatCurrent,
+        Func<ManagedStopTemplateItem, string> formatOther,
+        string otherLabel,
+        Action<string, string> apply)
+    {
+        if (SelectedTemplate is null)
+        {
+            StatusMessage = "Bitte zuerst eine Haltestelle auswählen.";
+            return;
+        }
+
+        try
+        {
+            TryApplyCoordinateFields(out _);
+
+            var owner = Application.Current?.MainWindow;
+            if (owner is not null && !owner.IsLoaded)
+            {
+                owner = null;
+            }
+
+            var template = SelectedTemplate;
+            var dialog = new GpsMapPickerDialog(
+                title,
+                formatCurrent(template!),
+                formatOther(template!),
+                otherLabel)
+            {
+                Owner = owner
+            };
+            if (dialog.ShowDialog() != true || !dialog.HasSelection)
+            {
+                return;
+            }
+
+            if (CoordinateFormatting.TryParsePair(dialog.SelectedCoordinates, out var lat, out var lon))
+            {
+                apply(lat, lon);
+                MarkDirty();
+            }
+
+            StatusMessage = $"{title} auf der Karte gesetzt.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Karte: {ex.Message}";
+        }
+    }
+
+    private void RefreshSelectedTemplateBinding() => RefreshTemplateListLabels(rebuildFilter: false);
+
+    /// <summary>ListBox zeigt DisplayLabel – nach Speichern/Ton-Änderung Labels aktualisieren ohne Listen-Reset.</summary>
+    private void RefreshTemplateListLabels(bool rebuildFilter = true)
     {
         var selectedId = SelectedTemplate?.Id;
-        ApplyFilter();
-        var restored = selectedId is null
-            ? null
-            : FilteredTemplates.FirstOrDefault(t => t.Id == selectedId)
-              ?? FilteredTemplates.FirstOrDefault();
-        SelectedTemplate = null;
-        SelectedTemplate = restored;
+        if (rebuildFilter)
+        {
+            ApplyFilter();
+        }
+        else
+        {
+            foreach (var template in FilteredTemplates)
+            {
+                template.NotifyDisplayLabelChanged();
+            }
+        }
+
+        if (selectedId is null || SelectedTemplate?.Id == selectedId)
+        {
+            return;
+        }
+
+        SelectedTemplate = FilteredTemplates.FirstOrDefault(t => t.Id == selectedId)
+                           ?? FilteredTemplates.FirstOrDefault();
     }
 
     [RelayCommand]
@@ -779,6 +948,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         var codeHint = string.IsNullOrEmpty(code) ? string.Empty : $" (ID {code})";
         StatusMessage =
             $"„{SelectedTemplate.StopNameItcs}“{codeHint} in Route „{SelectedRouteForInsert}“ eingefügt – unter „Routen“ bearbeitbar.";
+        InsertIntoRouteButtonIsSuccess = true;
     }
 
     [RelayCommand]

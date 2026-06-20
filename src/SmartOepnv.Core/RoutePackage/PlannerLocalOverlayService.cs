@@ -200,6 +200,52 @@ public sealed class PlannerLocalOverlayService
     /// Entfernt aus einem importierten JSON Fahrer/Fahrzeuge, die im Planer als gelöscht markiert sind
     /// (z. B. vor dem Anlegen eines ersten Overlays aus älteren Daten).
     /// </summary>
+    public static List<RegisteredVehicleItem> MergeVehiclesPreferLocal(
+        IEnumerable<RegisteredVehicleItem> local,
+        IEnumerable<RegisteredVehicleItem> incoming)
+    {
+        var byKey = local.Select(CloneVehicle).ToDictionary(
+            v => NormalizePhone(v.PhoneNumber),
+            v => v,
+            StringComparer.Ordinal);
+
+        foreach (var vehicle in incoming)
+        {
+            var key = NormalizePhone(vehicle.PhoneNumber);
+            if (key.Length == 0 || byKey.ContainsKey(key))
+            {
+                continue;
+            }
+
+            byKey[key] = CloneVehicle(vehicle);
+        }
+
+        return byKey.Values.ToList();
+    }
+
+    public static List<RegisteredVehiclePhoneRedirect> MergePhoneRedirectsPreferLocal(
+        IEnumerable<RegisteredVehiclePhoneRedirect> local,
+        IEnumerable<RegisteredVehiclePhoneRedirect> incoming)
+    {
+        var byKey = local.Select(CloneRedirect).ToDictionary(
+            r => $"{NormalizePhone(r.FromPhoneNumber)}->{NormalizePhone(r.ToPhoneNumber)}",
+            r => r,
+            StringComparer.Ordinal);
+
+        foreach (var redirect in incoming)
+        {
+            var key = $"{NormalizePhone(redirect.FromPhoneNumber)}->{NormalizePhone(redirect.ToPhoneNumber)}";
+            if (byKey.ContainsKey(key))
+            {
+                continue;
+            }
+
+            byKey[key] = CloneRedirect(redirect);
+        }
+
+        return byKey.Values.ToList();
+    }
+
     public string StripDeletedFromPackageJson(string json)
     {
         var overlay = _store.LoadOrEmpty();

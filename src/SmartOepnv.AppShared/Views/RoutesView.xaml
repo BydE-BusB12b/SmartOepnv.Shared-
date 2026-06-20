@@ -61,32 +61,76 @@
                 </StackPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Margin="0,12,0,0" Opacity="0.8"
                            TextWrapping="Wrap" />
-                <DataGrid x:Name="StopsGrid" ItemsSource="{Binding Stops}" SelectedItem="{Binding SelectedStop}"
-                          AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
-                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                          SelectionMode="Single"
-                          PreviewMouseLeftButtonDown="StopsGrid_PreviewMouseLeftButtonDown"
-                          ScrollViewer.VerticalScrollBarVisibility="Auto"
-                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="ID" Binding="{Binding PlannerStopCode}" Width="52" />
-                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" MinWidth="160" />
-                        <DataGridTextColumn Header="GPS" Binding="{Binding GpsCoordinates}" Width="*" MinWidth="150" />
-                        <DataGridTextColumn Header="VRR-ID" Binding="{Binding VrrStopId}" Width="90" />
-                        <DataGridTextColumn Header="Anzeige" Binding="{Binding StopDisplay}" Width="*" MinWidth="100" />
-                        <DataGridTextColumn Header="Zeit" Binding="{Binding Time}" Width="56" />
-                        <DataGridTemplateColumn Header="" Width="36">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Button Content="✕"
-                                            Command="{Binding DataContext.RemoveStopCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Margin="0,0,16,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="68" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="58" />
+                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="52" />
+                            <ColumnDefinition Width="36" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="ID" FontWeight="SemiBold" Margin="4,0" Opacity="0.85" />
+                        <TextBlock Grid.Column="1" Text="Name" FontWeight="SemiBold" Margin="12,0,4,0" Opacity="0.85" />
+                        <TextBlock Grid.Column="2" Text="Zeit" FontWeight="SemiBold" Margin="4,0" Opacity="0.85" />
+                        <TextBlock Grid.Column="3" Text="Anzeige" FontWeight="SemiBold" Margin="4,0" Opacity="0.85" />
+                        <TextBlock Grid.Column="4" Text="VRR" FontWeight="SemiBold" Margin="4,0" Opacity="0.85" />
+                    </Grid>
+                    <ListBox x:Name="StopsList" Grid.Row="1"
+                             ItemsSource="{Binding Stops}" SelectedItem="{Binding SelectedStop}"
+                             BorderThickness="0" Background="Transparent"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             PreviewMouseLeftButtonDown="StopsList_PreviewMouseLeftButtonDown">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Margin" Value="0" />
+                                <Setter Property="BorderThickness" Value="0,0,0,1" />
+                                <Setter Property="BorderBrush" Value="#22FFFFFF" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="58" />
+                                        <ColumnDefinition Width="130" />
+                                        <ColumnDefinition Width="52" />
+                                        <ColumnDefinition Width="36" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding PlannerStopCode}"
+                                               Margin="4,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                               Margin="12,0,4,0" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Time}"
+                                               Margin="4,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="3" Text="{Binding StopDisplay}"
+                                               Margin="4,0" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="4" Text="{Binding VrrStopId}"
+                                               Margin="4,0" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <Button Grid.Column="5" Content="✕"
+                                            Command="{Binding DataContext.RemoveStopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
-                                            Padding="0" Width="26" Height="26" ToolTip="Zeile löschen" />
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
+                                            Padding="0" Width="26" Height="26" ToolTip="Zeile löschen"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
             </DockPanel>
         </materialDesign:Card>
     </Grid>

@@ -5,6 +5,7 @@ using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.ViewModels;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.Session;
 
@@ -12,8 +13,15 @@ namespace SmartOepnv.AppShared;
 
 public partial class MainShellWindow : Window
 {
+    private static readonly System.Windows.Media.SolidColorBrush IdleCountdownNormalBrush =
+        System.Windows.Media.Brushes.White;
+    private static readonly System.Windows.Media.SolidColorBrush IdleCountdownWarningBrush = CreateFrozenBrush(0xFF, 0xD5, 0x4F);
+    private static readonly System.Windows.Media.SolidColorBrush IdleCountdownCriticalBrush = CreateFrozenBrush(0xFF, 0x8A, 0x65);
+
     private bool _closeConfirmed;
     private bool _closeHandlerRunning;
+    private bool _softwareUpdateChecked;
+    private PlanerIdleLogoutMonitor? _idleLogoutMonitor;
 
     public bool LoginGateActive { get; private set; }
 
@@ -23,6 +31,13 @@ public partial class MainShellWindow : Window
         WindowTitleBarHelper.ApplySmartOepnvTitleBar(this);
         Loaded += OnWindowLoaded;
         Closing += OnWindowClosing;
+
+        if (AppServices.IsPlannerApp)
+        {
+            _idleLogoutMonitor = new PlanerIdleLogoutMonitor();
+            _idleLogoutMonitor.IdleTimeoutReached += OnIdleLogoutAsync;
+            _idleLogoutMonitor.CountdownChanged += OnIdleCountdownChanged;
+        }
     }
 
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
@@ -35,6 +50,13 @@ public partial class MainShellWindow : Window
         if (AppServices.IsPlannerApp && AppServices.PlanerSession?.IsLoggedIn == true)
         {
             LogoutButton.Visibility = Visibility.Visible;
+            StartIdleLogoutMonitor();
+        }
+
+        if (!_softwareUpdateChecked && AppServices.IsInitialized && !AppServices.IsPlannerApp)
+        {
+            _softwareUpdateChecked = true;
+            _ = SmartOepnvAppHost.CheckForSoftwareUpdateAsync(this);
         }
     }
 
@@ -48,48 +70,76 @@ public partial class MainShellWindow : Window
         if (active)
         {
             LogoutButton.Visibility = Visibility.Collapsed;
+            UpdateIdleCountdownDisplay(null);
+            _idleLogoutMonitor?.Stop();
             return;
         }
 
         if (AppServices.IsPlannerApp && AppServices.PlanerSession?.IsLoggedIn == true)
         {
             LogoutButton.Visibility = Visibility.Visible;
+            StartIdleLogoutMonitor();
         }
 
         Activate();
         Focus();
     }
 
-    private async void Logout_Click(object sender, RoutedEventArgs e)
+    private async void Logout_Click(object sender, RoutedEventArgs e) =>
+        await PerformLogoutAsync(requireConfirmation: true).ConfigureAwait(true);
+
+    private async Task OnIdleLogoutAsync()
     {
-        var answer = MessageBox.Show(
-            "Planer wirklich abmelden?\n\nDer Arbeitsstand wird gespeichert und die Dropbox-Sperre freigegeben.",
-            Title,
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-        if (answer != MessageBoxResult.Yes)
+        if (LoginGateActive || AppServices.PlanerSession?.IsLoggedIn != true)
         {
             return;
         }
 
+        await PerformLogoutAsync(requireConfirmation: false, idleTimeout: true).ConfigureAwait(true);
+    }
+
+    private async Task PerformLogoutAsync(bool requireConfirmation, bool idleTimeout = false)
+    {
+        if (requireConfirmation)
+        {
+            if (!SmartConfirmDialog.ShowConfirm(
+                    this,
+                    "Abmelden",
+                    "Planer wirklich abmelden?\n\nDer Arbeitsstand wird gespeichert und die Dropbox-Sperre freigegeben."))
+            {
+                return;
+            }
+        }
+
+        _idleLogoutMonitor?.Stop();
         SetLoginOverlay(true);
 
         var savingDialog = new AppExitSavingDialog(
-            "Planer-Arbeitsstand wird lokal gespeichert, planer_workspace.json und leitstelle_stand.json nach Dropbox hochgeladen…")
+            idleTimeout
+                ? "Inaktivität – Arbeitsstand wird gespeichert und Planer-Sperre freigegeben…"
+                : "Planer-Arbeitsstand wird gespeichert und nach Dropbox hochgeladen (bei großen Datenmengen kann das einige Minuten dauern)…")
         {
             Owner = this
         };
-        WindowTitleBarHelper.ShowWhenContentReady(savingDialog);
-        IsEnabled = false;
+        await ShowSavingDialogAsync(savingDialog).ConfigureAwait(true);
 
+        var saveSucceeded = false;
         try
         {
-            await SavePlanerWorkspaceAsync("planer-logout").ConfigureAwait(true);
+            var progress = new Progress<DropboxTransferProgress>(p => savingDialog.UpdateTransferProgress(p));
+            await SavePlanerWorkspaceAsync("planer-logout", transferProgress: progress).ConfigureAwait(true);
             await SmartOepnvAppHost.ReleasePlanerSessionAsync().ConfigureAwait(true);
+            saveSucceeded = true;
         }
-        catch
+        catch (Exception ex)
         {
-            // Abmeldung trotzdem fortsetzen
+            SetLoginOverlay(false);
+            SmartConfirmDialog.ShowInfo(
+                this,
+                "Speichern fehlgeschlagen",
+                $"Der Arbeitsstand konnte nicht vollständig nach Dropbox gespeichert werden.\n\n{ex.Message}\n\n" +
+                "Sie bleiben angemeldet. Bitte Internetverbindung prüfen und erneut „Abmelden“ wählen.");
+            return;
         }
         finally
         {
@@ -98,23 +148,69 @@ public partial class MainShellWindow : Window
             IsEnabled = true;
         }
 
-        if (!await SmartOepnvAppHost.RunPlanerLoginGateAsync(this))
+        if (idleTimeout && saveSucceeded)
+        {
+            SmartConfirmDialog.ShowInfo(
+                this,
+                "Automatisch abgemeldet",
+                "Sie wurden wegen 10 Minuten Inaktivität automatisch abgemeldet.\n\nDer Arbeitsstand wurde gespeichert.");
+        }
+
+        var gate = await SmartOepnvAppHost.RunPlanerLoginGateAsync(this).ConfigureAwait(true);
+        if (!gate.Success)
         {
             SetLoginOverlay(false);
             Close();
             return;
         }
 
-        SetLoginOverlay(false);
-        BeginPostLoginInitialization();
+        BeginPostLoginInitialization(gate);
     }
 
-    public void BeginPostLoginInitialization()
+    private void StartIdleLogoutMonitor() => _idleLogoutMonitor?.Start();
+
+    private void OnIdleCountdownChanged(TimeSpan? remaining) => UpdateIdleCountdownDisplay(remaining);
+
+    private void UpdateIdleCountdownDisplay(TimeSpan? remaining)
     {
-        _ = RunPostLoginInitializationAsync();
+        if (remaining is null || LoginGateActive || AppServices.PlanerSession?.IsLoggedIn != true)
+        {
+            IdleLogoutCountdown.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var totalSeconds = (int)Math.Ceiling(remaining.Value.TotalSeconds);
+        if (totalSeconds < 0)
+        {
+            totalSeconds = 0;
+        }
+
+        var minutes = totalSeconds / 60;
+        var seconds = totalSeconds % 60;
+        IdleLogoutCountdown.Text = $"{minutes:D2}:{seconds:D2}";
+        IdleLogoutCountdown.Visibility = Visibility.Visible;
+        IdleLogoutCountdown.Foreground = totalSeconds switch
+        {
+            <= 60 => IdleCountdownCriticalBrush,
+            <= 120 => IdleCountdownWarningBrush,
+            _ => IdleCountdownNormalBrush
+        };
     }
 
-    private async Task RunPostLoginInitializationAsync()
+    private static System.Windows.Media.SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
+    {
+        var brush = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    public void BeginPostLoginInitialization(SmartOepnvAppHost.PlanerLoginGateResult gate)
+    {
+        _ = RunPostLoginInitializationAsync(gate);
+    }
+
+    private async Task RunPostLoginInitializationAsync(SmartOepnvAppHost.PlanerLoginGateResult gate)
     {
         if (DataContext is not MainViewModel mainViewModel)
         {
@@ -129,12 +225,42 @@ public partial class MainShellWindow : Window
                 Owner = this
             };
             WindowTitleBarHelper.ShowWhenContentReady(syncDialog);
+            syncDialog.ShowLoginPhase();
             IsEnabled = false;
+            await WindowTitleBarHelper.WaitForInitialRenderAsync(syncDialog).ConfigureAwait(true);
         }
 
         try
         {
-            await mainViewModel.InitializeAfterLoginAsync().ConfigureAwait(true);
+            if (!string.IsNullOrWhiteSpace(gate.Username))
+            {
+                var session = AppServices.PlanerSession;
+                if (session is null)
+                {
+                    throw new InvalidOperationException("Anmeldung im Planer nicht verfügbar.");
+                }
+
+                syncDialog?.ShowLoginPhase("Anmeldung bei Dropbox…");
+                var loginResult = await session.TryLoginAsync(gate.Username, gate.Password ?? string.Empty)
+                    .ConfigureAwait(true);
+                if (!loginResult.Success)
+                {
+                    await HandleFailedPostLoginAsync(syncDialog, loginResult.Message).ConfigureAwait(true);
+                    syncDialog = null;
+                    return;
+                }
+            }
+
+            SetLoginOverlay(false);
+            syncDialog?.ShowSyncPhase();
+            var progress = new Progress<DropboxTransferProgress>(p => syncDialog?.UpdateTransferProgress(p));
+            await mainViewModel.InitializeAfterLoginAsync(progress).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            await HandleFailedPostLoginAsync(syncDialog, ex.Message).ConfigureAwait(true);
+            syncDialog = null;
+            return;
         }
         finally
         {
@@ -146,7 +272,38 @@ public partial class MainShellWindow : Window
                 Activate();
                 Focus();
             }
+
+            if (!_softwareUpdateChecked)
+            {
+                _softwareUpdateChecked = true;
+                await SmartOepnvAppHost.CheckForSoftwareUpdateAsync(this).ConfigureAwait(true);
+            }
         }
+    }
+
+    private async Task HandleFailedPostLoginAsync(PlanerSyncDialog? syncDialog, string message)
+    {
+        if (syncDialog is not null)
+        {
+            syncDialog.PrepareToClose();
+            syncDialog.Close();
+        }
+
+        IsEnabled = true;
+        SetLoginOverlay(true);
+        SmartConfirmDialog.ShowInfo(
+            this,
+            "Anmeldung fehlgeschlagen",
+            message + "\n\nBitte erneut anmelden.");
+
+        var retryGate = await SmartOepnvAppHost.RunPlanerLoginGateAsync(this).ConfigureAwait(true);
+        if (!retryGate.Success)
+        {
+            Close();
+            return;
+        }
+
+        await RunPostLoginInitializationAsync(retryGate).ConfigureAwait(true);
     }
 
     public async Task SyncDropboxAfterLoginAsync()
@@ -157,37 +314,100 @@ public partial class MainShellWindow : Window
         }
     }
 
-    private static async Task SavePlanerWorkspaceAsync(string backupReason, bool bestEffortFlush = false)
+    private async Task SavePlanerWorkspaceAsync(
+        string backupReason,
+        bool bestEffortFlush = false,
+        IProgress<DropboxTransferProgress>? transferProgress = null)
     {
-        await Task.Run(() =>
+        PlanerDropboxWorkspaceSync.ExportResult? exportResult = null;
+        Exception? flushError = null;
+
+        await Dispatcher.InvokeAsync(() =>
         {
-            if (bestEffortFlush)
+            if (DataContext is MainViewModel mainViewModel)
             {
-                AppServices.FlushAllPendingEditsBestEffort();
+                mainViewModel.CommitAllAreasBeforeExport();
             }
             else
             {
-                AppServices.FlushAllPendingEdits();
+                try
+                {
+                    if (bestEffortFlush)
+                    {
+                        AppServices.FlushAllPendingEditsBestEffort();
+                    }
+                    else
+                    {
+                        AppServices.FlushAllPendingEdits();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    flushError = ex;
+                }
             }
+        }).Task.ConfigureAwait(true);
 
-            SmartOepnvDataBackupService.BackupAllProfiles(backupReason);
-        }).ConfigureAwait(true);
-
-        await ExportPlanerToDropboxAsync().ConfigureAwait(true);
-    }
-
-    private static async Task ExportPlanerToDropboxAsync()
-    {
-        if (!AppServices.IsPlannerApp)
+        if (flushError is not null && !bestEffortFlush)
         {
-            return;
+            throw flushError;
         }
 
-        await PlanerDropboxWorkspaceSync.TryExportAsync().ConfigureAwait(true);
+        await Task.Run(async () =>
+        {
+            if (string.Equals(backupReason, "manual", StringComparison.OrdinalIgnoreCase))
+            {
+                SmartOepnvDataBackupService.BackupAllProfiles(backupReason);
+            }
+
+            const int maxExportAttempts = 3;
+            for (var attempt = 1; attempt <= maxExportAttempts; attempt++)
+            {
+                exportResult = await PlanerDropboxWorkspaceSync.TryExportAsync(
+                        flushBeforeCapture: true,
+                        progress: transferProgress)
+                    .ConfigureAwait(false);
+                if (exportResult is { Exported: true })
+                {
+                    return;
+                }
+
+                if (exportResult?.Message.Contains("payload_too_large", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    break;
+                }
+
+                if (attempt < maxExportAttempts)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(8 * attempt)).ConfigureAwait(false);
+                }
+            }
+        }).ConfigureAwait(true);
+
+        if (exportResult is { Exported: false })
+        {
+            var hint = exportResult.LocalSaved
+                ? "\n\nDer Arbeitsstand liegt lokal vor – bitte Internetverbindung prüfen und erneut abmelden."
+                : string.Empty;
+            throw new InvalidOperationException(exportResult.Message + hint);
+        }
+    }
+
+    private async Task ShowSavingDialogAsync(AppExitSavingDialog savingDialog)
+    {
+        savingDialog.Owner = this;
+        WindowTitleBarHelper.ShowWhenContentReady(savingDialog);
+        IsEnabled = false;
+        await WindowTitleBarHelper.WaitForInitialRenderAsync(savingDialog).ConfigureAwait(true);
+        await savingDialog.Dispatcher.InvokeAsync(
+            () => savingDialog.StartBusAnimation(),
+            System.Windows.Threading.DispatcherPriority.Render).Task.ConfigureAwait(true);
     }
 
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
+        _idleLogoutMonitor?.Stop();
+
         if (_closeConfirmed || !AppServices.IsInitialized)
         {
             return;
@@ -211,50 +431,80 @@ public partial class MainShellWindow : Window
         e.Cancel = true;
         _closeHandlerRunning = true;
 
-        var savingDialog = new AppExitSavingDialog
+        var closeChoice = PlanerCloseChoiceDialog.Show(this);
+        if (closeChoice == PlanerCloseChoice.Cancel)
         {
-            Owner = this
-        };
-        WindowTitleBarHelper.ShowWhenContentReady(savingDialog);
-        IsEnabled = false;
+            _closeHandlerRunning = false;
+            return;
+        }
 
-        try
+        if (closeChoice == PlanerCloseChoice.SaveAndClose)
         {
+            SmartOepnvAppHost.SkipShutdownSave = false;
+            var savingDialog = new AppExitSavingDialog
+            {
+                Owner = this
+            };
+            await ShowSavingDialogAsync(savingDialog).ConfigureAwait(true);
+
             try
             {
-                await SavePlanerWorkspaceAsync("app-exit", bestEffortFlush: true).ConfigureAwait(true);
-            }
-            catch
-            {
-                // Arbeitsstand optional – Sperre hat Vorrang
-            }
+                var progress = new Progress<DropboxTransferProgress>(p => savingDialog.UpdateTransferProgress(p));
+                await SavePlanerWorkspaceAsync("app-exit", bestEffortFlush: true, transferProgress: progress)
+                    .ConfigureAwait(true);
 
+                try
+                {
+                    await SmartOepnvAppHost.ReleasePlanerSessionAsync().ConfigureAwait(true);
+                }
+                catch
+                {
+                    AppServices.PlanerSession?.ReleaseLockBestEffortSync();
+                }
+            }
+            catch (Exception ex)
+            {
+                savingDialog.PrepareToClose();
+                savingDialog.Close();
+                IsEnabled = true;
+                _closeHandlerRunning = false;
+                SmartConfirmDialog.ShowInfo(
+                    this,
+                    "Speichern fehlgeschlagen",
+                    $"Der Arbeitsstand konnte nicht nach Dropbox gespeichert werden.\n\n{ex.Message}\n\n" +
+                    "Das Programm bleibt geöffnet. Bitte erneut schließen oder zuerst unter Versand manuell speichern.");
+                return;
+            }
+            finally
+            {
+                if (!PlanerWorkspaceSaveCoordinator.WasDropboxExportedRecently())
+                {
+                    SmartOepnvAppHost.EnsurePlanerShutdownSaveAndRelease();
+                }
+                else if (AppServices.PlanerSession?.IsLoggedIn == true)
+                {
+                    AppServices.PlanerSession.ReleaseLockBestEffortSync();
+                }
+
+                savingDialog.PrepareToClose();
+                savingDialog.Close();
+                IsEnabled = true;
+            }
+        }
+        else
+        {
+            SmartOepnvAppHost.SkipShutdownSave = true;
             try
             {
                 await SmartOepnvAppHost.ReleasePlanerSessionAsync().ConfigureAwait(true);
             }
             catch
             {
-                // synchroner Fallback unten
+                AppServices.PlanerSession?.ReleaseLockBestEffortSync();
             }
         }
-        finally
-        {
-            if (!PlanerWorkspaceSaveCoordinator.WasPersistedRecently())
-            {
-                SmartOepnvAppHost.EnsurePlanerShutdownSaveAndRelease();
-            }
-            else if (AppServices.PlanerSession?.IsLoggedIn == true)
-            {
-                AppServices.PlanerSession.ReleaseLockBestEffortSync();
-            }
 
-            savingDialog.PrepareToClose();
-            savingDialog.Close();
-            IsEnabled = true;
-            _closeHandlerRunning = false;
-        }
-
+        _closeHandlerRunning = false;
         _closeConfirmed = true;
         Close();
     }

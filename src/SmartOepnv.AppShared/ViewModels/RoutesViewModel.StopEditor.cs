@@ -52,12 +52,33 @@ public partial class RoutesViewModel
             }
 
             SelectedStop.IsEndStop = value;
+            if (!value)
+            {
+                SelectedStop.PlayEndStopAnnouncement = false;
+            }
+
             if (value && SelectedStop.Radius <= 0)
             {
                 SelectedStop.Radius = 15;
             }
 
             NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public bool PlayEndStopAnnouncement
+    {
+        get => SelectedStop?.PlayEndStopAnnouncement ?? false;
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.PlayEndStopAnnouncement = value;
+            OnPropertyChanged();
             MarkStopDetailDirty();
         }
     }
@@ -274,6 +295,7 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(HasSelectedStop));
         OnPropertyChanged(nameof(IsStartStop));
         OnPropertyChanged(nameof(IsEndStop));
+        OnPropertyChanged(nameof(PlayEndStopAnnouncement));
         OnPropertyChanged(nameof(RouteChangeEnabled));
         OnPropertyChanged(nameof(ShowStartStopFields));
         OnPropertyChanged(nameof(ShowEndStopFields));

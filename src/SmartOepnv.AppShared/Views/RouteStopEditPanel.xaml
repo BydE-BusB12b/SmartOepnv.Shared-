@@ -114,6 +114,11 @@
             <TextBox Text="{Binding SelectedStop.EndDestinationCoordinates, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" Margin="0,0,0,8" />
 
+            <CheckBox Content="Endhaltestellen-Ansage"
+                      IsChecked="{Binding PlayEndStopAnnouncement, Mode=TwoWay}"
+                      ToolTip="Hängt die Ansage „Endhaltestelle“ aus der Ansagen-Kartei nach der Haltestellenansage an"
+                      Margin="0,0,0,8" />
+
             <CheckBox Content="Automatischer Routenwechsel"
                       IsChecked="{Binding RouteChangeEnabled, Mode=TwoWay}" Margin="0,0,0,8" />
 

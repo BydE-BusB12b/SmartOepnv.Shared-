@@ -86,6 +86,14 @@ public sealed class PlanerSessionService
                 "Dropbox ist nicht verbunden. Bitte zuerst „Dropbox einrichten…“ im Anmeldedialog verwenden.");
         }
 
+        var folderValidation = await DropboxPlanerFolderValidator
+            .ValidateAsync(_dropbox, ct, verifyWorkspaceContent: false)
+            .ConfigureAwait(false);
+        if (!folderValidation.IsValid)
+        {
+            return PlanerSessionLoginResult.Fail(folderValidation.Message);
+        }
+
         var document = await _dropboxService.LoadAsync(ct).ConfigureAwait(false);
         if (PlanerSessionDropboxService.IsSameMachineOrphan(document))
         {

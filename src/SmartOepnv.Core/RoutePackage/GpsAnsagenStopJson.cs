@@ -60,6 +60,10 @@ public static class GpsAnsagenStopJson
 
             IsEndStop = JsonNodeReading.GetBoolean(obj["isEndStop"]),
 
+            PlayEndStopAnnouncement = obj["playEndStopAnnouncement"] is not null
+                ? JsonNodeReading.GetBoolean(obj["playEndStopAnnouncement"])
+                : JsonNodeReading.GetBoolean(obj["isEndStop"]),
+
             RouteChangeEnabled = JsonNodeReading.GetBoolean(obj["routeChangeEnabled"]),
 
             SelectedLineCourseTrip = JsonNodeReading.GetString(obj["selectedLineCourseTrip"]),
@@ -151,6 +155,8 @@ public static class GpsAnsagenStopJson
             ["ds003aEndDestination"] = stop.Ds003aEndDestination,
 
             ["isEndStop"] = stop.IsEndStop,
+
+            ["playEndStopAnnouncement"] = stop.PlayEndStopAnnouncement,
 
             ["routeChangeEnabled"] = stop.RouteChangeEnabled,
 

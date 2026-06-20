@@ -1,6 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -10,19 +13,57 @@ public partial class PlanerSyncBusAnimation : UserControl
     private const double BusHeight = 44;
     private const double RoadLineTop = 74;
 
+    private static readonly BitmapImage BusBitmap = CreateBusBitmap();
+
+    private bool _animationRunning;
+
     public PlanerSyncBusAnimation()
     {
         InitializeComponent();
-        Loaded += OnLoaded;
+        BusImage.Source = BusBitmap;
+        Loaded += (_, _) => ScheduleStartAnimation();
     }
+
+    public static void PreloadBusImage() => _ = BusBitmap;
 
     public void StopAnimation()
     {
-        BusTransform.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, null);
+        _animationRunning = false;
+        BusTransform.BeginAnimation(TranslateTransform.XProperty, null);
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    public void StartAnimation() => ScheduleStartAnimation();
+
+    private static BitmapImage CreateBusBitmap()
     {
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.UriSource = new Uri(
+            "pack://application:,,,/SmartOepnv.AppShared;component/Assets/planer_sync_solaris_bus.png",
+            UriKind.Absolute);
+        image.EndInit();
+        image.Freeze();
+        return image;
+    }
+
+    private void ScheduleStartAnimation()
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, BeginBusAnimation);
+    }
+
+    private void BeginBusAnimation()
+    {
+        if (!IsLoaded || _animationRunning)
+        {
+            return;
+        }
+
         BusImage.Height = BusHeight;
         BusImage.UpdateLayout();
 
@@ -39,6 +80,7 @@ public partial class PlanerSyncBusAnimation : UserControl
             RepeatBehavior = RepeatBehavior.Forever
         };
 
-        BusTransform.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, animation);
+        _animationRunning = true;
+        BusTransform.BeginAnimation(TranslateTransform.XProperty, animation);
     }
 }

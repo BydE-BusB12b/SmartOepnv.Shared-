@@ -72,6 +72,31 @@
                 </StackPanel>
             </materialDesign:Card>
 
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
+                                 Visibility="{Binding ShowBrandingSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Einweisungs-PDF – Fahrgeräte" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Geräte- und Entsperrpasswort für alle Einweisungs-PDFs in der Personalverwaltung. Das persönliche Bus-Passwort pro Fahrer bleibt im Mitarbeiterdatensatz." />
+                    <TextBox materialDesign:HintAssist.Hint="Gerätepasswort"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding DevicePassword, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="Entsperrpasswort"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding UnlockPassword, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding BriefingPasswordsStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
+                    <Button Content="Passwörter speichern"
+                            Command="{Binding SaveBriefingPasswordsCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                </StackPanel>
+            </materialDesign:Card>
+
             <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="Dropbox" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
@@ -109,11 +134,32 @@
                 </StackPanel>
             </materialDesign:Card>
 
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16"
+                                 Visibility="{Binding ShowPlanerFolderSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Planer-Ordner (Dropbox)" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Anmeldung nur möglich, wenn im Ordner planer_workspace.json oder planer_session.json liegt. Bei neuer Installation einmalig initialisieren – danach nutzen alle Planer denselben Ordner." />
+                    <Button Content="Planer-Ordner initialisieren"
+                            Command="{Binding InitializePlanerFolderCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding PlanerFolderInfo}" Opacity="0.85" TextWrapping="Wrap" />
+                </StackPanel>
+            </materialDesign:Card>
+
             <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartPrimaryDarkBrush}">
                 <StackPanel>
                     <TextBlock Text="Verbindungstest" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,8" />
                     <TextBlock Text="{Binding TestResult}" Foreground="White" TextWrapping="Wrap" Margin="0,0,0,8" />
                     <TextBlock Text="{Binding RouteFileInfo}" Foreground="White" Opacity="0.9" TextWrapping="Wrap" Margin="0,0,0,4" />
+                    <TextBlock Text="{Binding PlanerFolderInfo}"
+                               Foreground="White"
+                               Opacity="0.9"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,4"
+                               Visibility="{Binding ShowPlanerFolderSection, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <TextBlock Text="{Binding FolderFilesSummary}" Foreground="White" Opacity="0.75" TextWrapping="Wrap" />
                 </StackPanel>
             </materialDesign:Card>

@@ -122,7 +122,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             OperatingDaySelections.Add(item);
         }
 
-        AppServices.RegisterFlushBeforeExport(FlushEditorSessionNow);
+        AppServices.RegisterFlushBeforeExport(FlushBeforeExport);
         ReloadCompanyLogos();
         ReloadTemplateList();
         if (!TryRestoreEditorSession())
@@ -1776,7 +1776,46 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         PersistEditorSession();
     }
 
-    private void FlushEditorSessionNow() => PersistEditorSession();
+    public void FlushBeforeExport()
+    {
+        PersistEditorSession();
+        TryAutoSaveCatalogTemplateForExport();
+    }
+
+    private void FlushEditorSessionNow() => FlushBeforeExport();
+
+    private void TryAutoSaveCatalogTemplateForExport()
+    {
+        var store = AppServices.DutyTemplates;
+        if (store is null)
+        {
+            return;
+        }
+
+        var name = TemplateName.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        var duplicate = SavedTemplates.FirstOrDefault(t =>
+            string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase) &&
+            t.Id != _loadedTemplateId);
+        if (duplicate is not null)
+        {
+            return;
+        }
+
+        var template = BuildCurrentTemplate();
+        if (!DutyTemplateSplitter.TryValidateTemplate(template, out _))
+        {
+            return;
+        }
+
+        store.Save(template);
+        _loadedTemplateId = template.Id;
+        ReloadTemplateList();
+    }
 
     private void PersistEditorSession()
     {

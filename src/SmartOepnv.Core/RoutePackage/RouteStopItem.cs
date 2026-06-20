@@ -50,6 +50,9 @@ public sealed class RouteStopItem
 
     public bool IsEndStop { get; set; }
 
+    /// <summary>Endhaltestellen-Ansage aus der Kartei an die Haltestellenansage anhängen (nur wenn <see cref="IsEndStop"/>).</summary>
+    public bool PlayEndStopAnnouncement { get; set; }
+
     public bool RouteChangeEnabled { get; set; }
 
     public string SelectedLineCourseTrip { get; set; } = string.Empty;
@@ -95,6 +98,7 @@ public sealed class RouteStopItem
         EndDestination = EndDestination,
         Ds003aEndDestination = Ds003aEndDestination,
         IsEndStop = IsEndStop,
+        PlayEndStopAnnouncement = PlayEndStopAnnouncement,
         RouteChangeEnabled = RouteChangeEnabled,
         SelectedLineCourseTrip = SelectedLineCourseTrip,
         EndDestinationCoordinates = EndDestinationCoordinates,
@@ -130,6 +134,7 @@ public sealed class RouteStopItem
         EndDestination = other.EndDestination;
         Ds003aEndDestination = other.Ds003aEndDestination;
         IsEndStop = other.IsEndStop;
+        PlayEndStopAnnouncement = other.PlayEndStopAnnouncement;
         RouteChangeEnabled = other.RouteChangeEnabled;
         SelectedLineCourseTrip = other.SelectedLineCourseTrip;
         EndDestinationCoordinates = other.EndDestinationCoordinates;

@@ -40,6 +40,10 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     private string? _loadedFingerprint;
 
+    private const int SuccessFeedbackMs = 5000;
+
+    private CancellationTokenSource? _saveButtonFeedbackCts;
+
 
 
     public ObservableCollection<string> Categories { get; } =
@@ -64,6 +68,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     [ObservableProperty] private string? selectedAnnouncementAudioHint;
 
+    [ObservableProperty] private bool saveJsonButtonIsSuccess;
+
+    public string SelectedEmbeddedSoundFileName =>
+        SelectedAnnouncement?.EmbeddedSoundFileName?.Trim() ?? string.Empty;
+
     [ObservableProperty] private string announcementMergePauseSeconds = "0,5";
 
     [ObservableProperty] private bool includeGongInAnnouncementMerge;
@@ -71,8 +80,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
     [ObservableProperty] private bool includeNextStopInAnnouncementMerge;
 
     [ObservableProperty] private bool includeNextStopMp3InAnnouncementMerge;
-
-    [ObservableProperty] private bool includeEndStopInAnnouncementMerge;
 
     [ObservableProperty] private AnnouncementAudioSequenceItem? selectedSequenceItem;
 
@@ -147,7 +154,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _nextStopMp3ByAnnouncementId.Clear();
 
-        _endStopByAnnouncementId.Clear();
+        _announcementsNeedingAudioMaterialization.Clear();
 
         _sequenceLoadedForAnnouncementId = null;
 
@@ -249,7 +256,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         {
 
-            throw new InvalidOperationException(StatusMessage ?? "Ansagen konnten nicht gespeichert werden.");
+            return;
 
         }
 
@@ -297,6 +304,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
                 a.Description,
 
+                a.Lines,
+
                 a.Category,
 
                 a.EmbeddedSoundFileName,
@@ -329,9 +338,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             NextStopFlags = _nextStopByAnnouncementId,
 
-            NextStopMp3Flags = _nextStopMp3ByAnnouncementId,
-
-            EndStopFlags = _endStopByAnnouncementId
+            NextStopMp3Flags = _nextStopMp3ByAnnouncementId
 
         });
 
@@ -339,7 +346,45 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-    private void MarkDirty() => _sync.MarkDirty();
+    private void MarkDirty()
+    {
+        _sync.MarkDirty();
+        if (SaveJsonButtonIsSuccess)
+        {
+            CancelSaveButtonFeedback();
+            SaveJsonButtonIsSuccess = false;
+        }
+    }
+
+    private async Task ShowSaveSuccessFeedbackAsync()
+    {
+        _saveButtonFeedbackCts?.Cancel();
+        _saveButtonFeedbackCts?.Dispose();
+        _saveButtonFeedbackCts = new CancellationTokenSource();
+        var token = _saveButtonFeedbackCts.Token;
+
+        try
+        {
+            await Task.Delay(SuccessFeedbackMs, token).ConfigureAwait(true);
+            SaveJsonButtonIsSuccess = false;
+        }
+        catch (TaskCanceledException)
+        {
+            // neuer Speichervorgang oder Bearbeitung hat Feedback zurückgesetzt
+        }
+    }
+
+    private void CancelSaveButtonFeedback()
+    {
+        _saveButtonFeedbackCts?.Cancel();
+        _saveButtonFeedbackCts?.Dispose();
+        _saveButtonFeedbackCts = null;
+    }
+
+    private void RefreshSelectedAnnouncementDisplay()
+    {
+        OnPropertyChanged(nameof(SelectedEmbeddedSoundFileName));
+    }
 
 
 
@@ -361,11 +406,9 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
+        EnsureStopNamesBeforeCommit();
+
         PruneEmptyDraftStops();
-
-        EnsureStopCodesAndLinks();
-
-        SyncStopMetadataFromAnnouncements();
 
         if (!ApplyAnnouncementSequencesBeforeCommit())
 
@@ -375,7 +418,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         }
 
+        EnsureStopCodesAndLinks();
 
+        SyncStopMetadataFromAnnouncements();
+
+        EnsureAnnouncementDisplayNamesBeforeCommit();
 
         var validation = ValidateAll(editor.PackageRoot);
 
@@ -397,25 +444,15 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         editor.ReplaceStopTemplates(stopClones);
 
+        var routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, stopClones);
+
+        var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
+
+        editor.SyncEmbeddedSoundsFromStopTemplates(stopClones, workspace);
+
+        editor.SyncEmbeddedSoundsFromTemplates(announcementClones, workspace);
+
         editor.ReplaceAnnouncementTemplates(announcementClones);
-
-        try
-
-        {
-
-            editor.SyncEmbeddedSoundsFromTemplates(announcementClones, AppServices.Workspace);
-
-        }
-
-        catch (Exception ex)
-
-        {
-
-            StatusMessage = $"Tondatei konnte nicht eingebettet werden: {ex.Message}";
-
-            return false;
-
-        }
 
         AppServices.Routes.ApplyEditorChanges("ansagen");
 
@@ -433,13 +470,21 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        RefreshAnnouncementListDisplay();
+        RefreshAnnouncementListLabels(rebuildFilter: false);
 
         UpdateSelectedAudioHint();
 
-        StatusMessage =
+        RefreshSelectedAnnouncementDisplay();
 
-            $"{_allAnnouncements.Count} Ansagen gespeichert – jetzt unter „Datenübertragung“ nach Dropbox exportieren.";
+        StatusMessage = routeStopsUpdated > 0
+
+            ? $"{_allAnnouncements.Count} Ansagen gespeichert – {routeStopsUpdated} Haltestelle(n) in Routen aktualisiert (Ton, Name …)."
+
+            : $"{_allAnnouncements.Count} Ansagen lokal gespeichert – Dropbox-Upload erfolgt beim Beenden.";
+
+        SaveJsonButtonIsSuccess = true;
+
+        _ = ShowSaveSuccessFeedbackAsync();
 
         _sequenceByAnnouncementId.Clear();
 
@@ -449,7 +494,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _nextStopMp3ByAnnouncementId.Clear();
 
-        _endStopByAnnouncementId.Clear();
+        _announcementsNeedingAudioMaterialization.Clear();
 
         _sync.AfterCommit();
 
@@ -476,7 +521,9 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         LoadAnnouncementSequenceForSelection();
         OnPropertyChanged(nameof(PickAudioButtonLabel));
+        RefreshSelectedAnnouncementDisplay();
         UpdateSelectedAudioHint();
+        ClearEmbeddedSoundCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnSelectedSequenceItemChanged(AnnouncementAudioSequenceItem? value) =>
@@ -534,8 +581,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
             IncludeInSpecialAnnouncements = false
 
         };
-
-        EnsureStopForAnnouncement(item);
 
         _allAnnouncements.Add(item);
 
@@ -609,8 +654,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             ManagedAnnouncementTemplateItem.DefaultEmbeddedFileName(annCode, copy.DisplayName);
 
-        EnsureStopForAnnouncement(copy);
-
         _allAnnouncements.Add(copy);
 
         ApplyFilter();
@@ -652,8 +695,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         _nextStopByAnnouncementId.Remove(announcementId);
 
         _nextStopMp3ByAnnouncementId.Remove(announcementId);
-
-        _endStopByAnnouncementId.Remove(announcementId);
 
         ApplyFilter();
 
@@ -727,6 +768,49 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         AppendPickedAudioFile(dialog.FileName);
 
+    }
+
+
+
+    private bool CanClearEmbeddedSound() =>
+        SelectedAnnouncement is not null &&
+        (!string.IsNullOrWhiteSpace(SelectedAnnouncement.EmbeddedSoundFileName) ||
+         !string.IsNullOrWhiteSpace(SelectedAnnouncement.LocalAudioPath) ||
+         AnnouncementSequence.Any(i => i.Kind == AnnouncementSequenceEntryKind.Audio));
+
+    [RelayCommand(CanExecute = nameof(CanClearEmbeddedSound))]
+    private void ClearEmbeddedSound()
+    {
+        if (SelectedAnnouncement is null)
+        {
+            return;
+        }
+
+        PersistCurrentAnnouncementSequence();
+
+        var id = SelectedAnnouncement.Id;
+        SelectedAnnouncement.EmbeddedSoundFileName = string.Empty;
+        SelectedAnnouncement.LocalAudioPath = null;
+
+        _sequenceByAnnouncementId.Remove(id);
+        _gongByAnnouncementId.Remove(id);
+        _nextStopByAnnouncementId.Remove(id);
+        _nextStopMp3ByAnnouncementId.Remove(id);
+        _announcementsNeedingAudioMaterialization.Remove(id);
+
+        AnnouncementSequence.Clear();
+        _sequenceLoadedForAnnouncementId = id;
+        IncludeGongInAnnouncementMerge = false;
+        IncludeNextStopInAnnouncementMerge = false;
+        IncludeNextStopMp3InAnnouncementMerge = false;
+
+        SelectedAnnouncement.NotifyDisplayLabelChanged();
+        RefreshSelectedAnnouncementDisplay();
+        UpdateSelectedAudioHint();
+        OnPropertyChanged(nameof(PickAudioButtonLabel));
+        StatusMessage = "Tonzuordnung entfernt – „Speichern & JSON“ nicht vergessen.";
+        MarkDirty();
+        ClearEmbeddedSoundCommand.NotifyCanExecuteChanged();
     }
 
 
@@ -959,8 +1043,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             };
 
-            EnsureStopForAnnouncement(item, displayName);
-
             AttachWorkspaceAudioPath(item, editor.PackageRoot);
 
             _allAnnouncements.Add(item);
@@ -1021,7 +1103,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         }
 
-
+        if (string.IsNullOrWhiteSpace(name) &&
+            !string.IsNullOrWhiteSpace(announcement.EmbeddedSoundFileName))
+        {
+            name = Path.GetFileNameWithoutExtension(announcement.EmbeddedSoundFileName.Trim());
+        }
 
         if (string.IsNullOrWhiteSpace(name))
 
@@ -1125,7 +1211,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-            EnsureStopForAnnouncement(ann);
+            ann.StopTemplateId = string.Empty;
 
         }
 
@@ -1199,6 +1285,32 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
             {
 
                 continue;
+
+            }
+
+
+
+            if (string.IsNullOrWhiteSpace(ann.DisplayName))
+
+            {
+
+                if (!string.IsNullOrWhiteSpace(stop.StopNameItcs))
+
+                {
+
+                    ann.DisplayName = stop.StopNameItcs.Trim();
+
+                }
+
+                else
+
+                {
+
+                    ann.DisplayName =
+
+                        $"Ansage {ManagedAnnouncementTemplateItem.NormalizeCode(ann.AnnouncementCode)}";
+
+                }
 
             }
 
@@ -1306,7 +1418,12 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
-                File.Copy(sourcePath, target, overwrite: true);
+                var sourceFullPath = Path.GetFullPath(sourcePath);
+                var targetFullPath = Path.GetFullPath(target);
+                if (!string.Equals(sourceFullPath, targetFullPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Copy(sourcePath, target, overwrite: true);
+                }
 
                 item.LocalAudioPath = target;
 
@@ -1348,7 +1465,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         {
 
-            StatusMessage = $"Tondatei zu groß oder ungültig (max. {EmbeddedSoundsEditor.MaxEmbeddedBytes / (1024 * 1024)} MB): {ex.Message}";
+            StatusMessage = $"Tondatei konnte nicht übernommen werden: {ex.Message}";
 
             return false;
 
@@ -1368,9 +1485,15 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             SelectedAnnouncementAudioHint = null;
 
+            RefreshSelectedAnnouncementDisplay();
+
             return;
 
         }
+
+
+
+        RefreshSelectedAnnouncementDisplay();
 
 
 
@@ -1426,9 +1549,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
                 IncludeNextStopInAnnouncementMerge,
 
-                IncludeNextStopMp3InAnnouncementMerge,
-
-                IncludeEndStopInAnnouncementMerge);
+                IncludeNextStopMp3InAnnouncementMerge);
 
             SelectedAnnouncementAudioHint =
 
@@ -1508,6 +1629,57 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
+    private void EnsureAnnouncementDisplayNamesBeforeCommit()
+    {
+        PersistCurrentAnnouncementSequence();
+
+        foreach (var ann in _allAnnouncements)
+        {
+            if (!string.IsNullOrWhiteSpace(ann.DisplayName))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ann.EmbeddedSoundFileName))
+            {
+                ann.DisplayName = Path.GetFileNameWithoutExtension(ann.EmbeddedSoundFileName.Trim());
+                continue;
+            }
+
+            if (_sequenceByAnnouncementId.TryGetValue(ann.Id, out var sequence))
+            {
+                var firstAudio = sequence.FirstOrDefault(i => i.Kind == AnnouncementSequenceEntryKind.Audio);
+                if (firstAudio is not null && !string.IsNullOrWhiteSpace(firstAudio.DisplayName))
+                {
+                    ann.DisplayName = Path.GetFileNameWithoutExtension(firstAudio.DisplayName.Trim());
+                }
+            }
+        }
+    }
+
+    private void EnsureStopNamesBeforeCommit()
+    {
+        foreach (var stop in _allStops)
+        {
+            if (!string.IsNullOrWhiteSpace(stop.StopNameItcs))
+            {
+                continue;
+            }
+
+            var linkedAnn = _allAnnouncements.FirstOrDefault(a => a.StopTemplateId == stop.Id);
+            if (linkedAnn is not null && !string.IsNullOrWhiteSpace(linkedAnn.DisplayName))
+            {
+                stop.StopNameItcs = linkedAnn.DisplayName.Trim();
+                continue;
+            }
+
+            if (PlannerStopCode.IsValid(stop.StopCode))
+            {
+                stop.StopNameItcs = $"Haltestelle {PlannerStopCode.Normalize(stop.StopCode)}";
+            }
+        }
+    }
+
     private void PruneEmptyDraftStops()
 
     {
@@ -1525,6 +1697,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
         _allAnnouncements.RemoveAll(a =>
+
+            !string.IsNullOrEmpty(a.StopTemplateId) &&
 
             !_allStops.Any(s => string.Equals(s.Id, a.StopTemplateId, StringComparison.Ordinal)));
 
@@ -1546,29 +1720,30 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-    private void RefreshAnnouncementListDisplay()
-
+    /// <summary>ListBox zeigt DisplayLabel – nach Speichern Labels aktualisieren ohne Listen-Reset.</summary>
+    private void RefreshAnnouncementListLabels(bool rebuildFilter = true)
     {
-
         var selectedId = SelectedAnnouncement?.Id;
+        if (rebuildFilter)
+        {
+            ApplyFilter();
+        }
+        else
+        {
+            foreach (var announcement in FilteredAnnouncements)
+            {
+                announcement.NotifyDisplayLabelChanged();
+            }
+        }
 
-        ApplyFilter();
+        if (selectedId is null || SelectedAnnouncement?.Id == selectedId)
+        {
+            return;
+        }
 
-        var restored = selectedId is null
-
-            ? null
-
-            : FilteredAnnouncements.FirstOrDefault(a => a.Id == selectedId)
-
-              ?? FilteredAnnouncements.FirstOrDefault();
-
-        SelectedAnnouncement = null;
-
-        SelectedAnnouncement = restored;
-
+        SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault(a => a.Id == selectedId)
+                               ?? FilteredAnnouncements.FirstOrDefault();
     }
-
-
 
     private void ApplyFilter()
 
@@ -1597,6 +1772,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
                 (a.DisplayName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
 
                 (a.Description?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+
+                (a.Lines?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
 
                 (a.EmbeddedSoundFileName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
 
@@ -1661,18 +1838,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
             t.AnnouncementCode = code;
-
-
-
-            if (string.IsNullOrWhiteSpace(t.StopTemplateId) ||
-
-                _allStops.All(s => s.Id != t.StopTemplateId))
-
-            {
-
-                return $"Ansage {code}: interne Verknüpfung fehlt – bitte erneut speichern.";
-
-            }
 
 
 
@@ -1881,6 +2046,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         DisplayName = source.DisplayName,
 
         Description = source.Description,
+
+        Lines = source.Lines,
 
         Category = source.Category,
 

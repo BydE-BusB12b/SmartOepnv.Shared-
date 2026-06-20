@@ -7,6 +7,7 @@ using MaterialDesignThemes.Wpf;
 using SmartOepnv.AppShared.Models;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
@@ -35,6 +36,7 @@ public partial class MainViewModel : ObservableObject
     private readonly DienstvorlagenLibraryViewModel _dienstvorlagenLibraryViewModel = new();
 
     private NavigationItem? _previousNavigationItem;
+    private bool _suppressNavigationCommit;
     private NavigationItem? _leitstelleMessagesNavItem;
     private NavigationItem? _fahrzeugverwaltungNavItem;
     private NavigationItem? _personalverwaltungNavItem;
@@ -74,6 +76,11 @@ public partial class MainViewModel : ObservableObject
             }
         };
 
+        if (!profile.IsLeitstelle)
+        {
+            AppServices.RegisterFlushBeforeExport(CommitAllAreasBeforeExport);
+        }
+
         if (profile.IsLeitstelle)
         {
             var localLoaded = LoadLocalWorkspaceOnStartup();
@@ -105,7 +112,7 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>Planer: Arbeitsstand und Dropbox-Sync nach Anmeldung im Hintergrund laden.</summary>
-    public async Task InitializeAfterLoginAsync()
+    public async Task InitializeAfterLoginAsync(IProgress<DropboxTransferProgress>? transferProgress = null)
     {
         if (_profile.IsLeitstelle)
         {
@@ -116,15 +123,58 @@ public partial class MainViewModel : ObservableObject
         PlanerWorkspaceSaveCoordinator.Reset();
         try
         {
-            await SyncDropboxAfterLoginAsync().ConfigureAwait(true);
+            var syncResult = await SyncDropboxAfterLoginAsync(transferProgress).ConfigureAwait(true);
 
-            if (!AppServices.Routes.HasPackage)
+            if (syncResult?.Imported == true)
             {
-                var localJson = await Task.Run(AppServices.Workspace.TryLoadPackageJson).ConfigureAwait(true);
-                if (LoadLocalWorkspaceOnStartup(localJson))
+                return;
+            }
+
+            if (syncResult is { Imported: false, RemoteTimestamp: > 0, RemoteHasMoreContent: true })
+            {
+                var forced = await PlanerDropboxWorkspaceSync.TryImportFromDropboxAsync(
+                        forceOverwrite: true,
+                        transferProgress)
+                    .ConfigureAwait(true);
+                if (forced.Imported)
                 {
-                    StatusText = BuildLocalStatusText("Lokal wiederhergestellt");
+                    OnRoutePackageLoaded();
+                    _fahrerdispoViewModel.RefreshFromEditor();
+                    _dienstvorlagenViewModel.RefreshFromEditor();
+                    _dienstvorlagenLibraryViewModel.RefreshFromEditor();
+                    StatusText = AppServices.Routes.HasPackage
+                        ? BuildLocalStatusText("Dropbox übernommen (mehr Inhalt)")
+                        : "Planer-Arbeitsstand aus Dropbox übernommen.";
+                    _dataTransferViewModel.LastActionMessage = forced.Message;
+                    return;
                 }
+            }
+
+            if (syncResult is null or { RemoteTimestamp: 0 })
+            {
+                if (PlanerDropboxWorkspaceSync.TryApplyLocalWorkspace())
+                {
+                    OnRoutePackageLoaded();
+                    StatusText = AppServices.Routes.HasPackage
+                        ? BuildLocalStatusText("Lokal geladen")
+                        : "Planer-Arbeitsstand lokal geladen.";
+                    return;
+                }
+            }
+            else if (syncResult.LocalTimestamp > syncResult.RemoteTimestamp)
+            {
+                _dataTransferViewModel.LastActionMessage = syncResult.Message +
+                    " Tipp: Unter Versand → Planer-Arbeitsstand → „Von Dropbox laden“ erzwingen.";
+            }
+
+            var localJson = await Task.Run(AppServices.Workspace.TryLoadPackageJson).ConfigureAwait(true);
+            if (!string.IsNullOrWhiteSpace(localJson) && LoadLocalWorkspaceOnStartup(localJson))
+            {
+                StatusText = BuildLocalStatusText("Lokal wiederhergestellt");
+            }
+            else if (syncResult is not null)
+            {
+                StatusText = syncResult.Message;
             }
         }
         catch (Exception ex)
@@ -153,7 +203,26 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedNavigationItemChanged(NavigationItem? value)
     {
-        CommitPendingAreaChanges(_previousNavigationItem);
+        if (_suppressNavigationCommit)
+        {
+            ApplyNavigationSelection(value);
+            return;
+        }
+
+        var leaving = _previousNavigationItem;
+        if (leaving is not null && leaving != value && !TryCommitLeavingArea(leaving))
+        {
+            _suppressNavigationCommit = true;
+            SelectedNavigationItem = leaving;
+            _suppressNavigationCommit = false;
+            return;
+        }
+
+        ApplyNavigationSelection(value);
+    }
+
+    private void ApplyNavigationSelection(NavigationItem? value)
+    {
         _previousNavigationItem = value;
 
         if (value is null)
@@ -261,6 +330,78 @@ public partial class MainViewModel : ObservableObject
         SelectedNavigationItem = NavigationItems.First(i => i.Title == "Einstellungen");
     }
 
+    /// <summary>Speichert alle Planer-Bereiche vor Abmeldung, Programmende und Dropbox-Export.</summary>
+    public void CommitAllAreasBeforeExport()
+    {
+        if (_profile.IsLeitstelle)
+        {
+            return;
+        }
+
+        _routesViewModel.CommitChangesIfDirty();
+        _routePathEditorViewModel.CommitDraftIfDirty();
+        _employeesViewModel.CommitChangesIfDirty();
+        _stopsLibraryViewModel.CommitChangesIfDirty();
+        _announcementsLibraryViewModel.CommitChangesIfDirty();
+        _vehicleManagementViewModel.CommitChangesIfDirty();
+        _messagesViewModel.CommitChangesIfDirty();
+        _displaysOperationsViewModel.CommitChangesIfDirty();
+        _fahrzeugdispoViewModel.CommitChangesIfDirty();
+        _fahrerdispoViewModel.CommitChangesIfDirty();
+        _dienstvorlagenViewModel.FlushBeforeExport();
+        _sevSignEditorViewModel.FlushBeforeExport();
+        _settingsViewModel.PersistFolderPath();
+        _settingsViewModel.PersistBriefingPasswords();
+    }
+
+    private bool TryCommitLeavingArea(NavigationItem leaving)
+    {
+        var wasPending = HasPendingChangesForArea(leaving.Title);
+        CommitPendingAreaChanges(leaving);
+        if (!wasPending || !HasPendingChangesForArea(leaving.Title))
+        {
+            return true;
+        }
+
+        var detail = GetAreaStatusMessage(leaving.Title);
+        MessageBox.Show(
+            string.IsNullOrWhiteSpace(detail)
+                ? "Die Änderungen konnten nicht gespeichert werden. Bitte korrigieren Sie die Eingaben oder speichern Sie manuell, bevor Sie die Seite verlassen."
+                : $"{detail}\n\nBitte korrigieren Sie die Eingaben oder speichern Sie manuell, bevor Sie die Seite verlassen.",
+            "Speichern fehlgeschlagen",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
+        return false;
+    }
+
+    private bool HasPendingChangesForArea(string? title) => title switch
+    {
+        "Routen" => _routesViewModel.HasPendingChanges,
+        "Personalverwaltung" => _employeesViewModel.HasPendingChanges,
+        "Haltestellen" => _stopsLibraryViewModel.HasPendingChanges,
+        "Ansagen" => _announcementsLibraryViewModel.HasPendingChanges,
+        "Fahrzeugverwaltung" => _vehicleManagementViewModel.HasPendingChanges,
+        "Nachrichten" when !_profile.IsLeitstelle => _messagesViewModel.HasPendingChanges,
+        "Anzeigen & Hinweise" => _displaysOperationsViewModel.HasPendingChanges,
+        "Fahrzeugdisposition" => _fahrzeugdispoViewModel.HasPendingChanges,
+        "Fahrerdisposition" => _fahrerdispoViewModel.HasPendingChanges,
+        _ => false
+    };
+
+    private string? GetAreaStatusMessage(string? title) => title switch
+    {
+        "Routen" => _routesViewModel.StatusMessage,
+        "Personalverwaltung" => _employeesViewModel.StatusMessage,
+        "Haltestellen" => _stopsLibraryViewModel.StatusMessage,
+        "Ansagen" => _announcementsLibraryViewModel.StatusMessage,
+        "Fahrzeugverwaltung" => _vehicleManagementViewModel.StatusMessage,
+        "Nachrichten" when !_profile.IsLeitstelle => _messagesViewModel.StatusMessage,
+        "Anzeigen & Hinweise" => _displaysOperationsViewModel.StatusMessage,
+        "Fahrzeugdisposition" => _fahrzeugdispoViewModel.StatusMessage,
+        "Fahrerdisposition" => _fahrerdispoViewModel.StatusMessage,
+        _ => null
+    };
+
     private void CommitPendingAreaChanges(NavigationItem? leaving)
     {
         if (leaving is null)
@@ -303,12 +444,16 @@ public partial class MainViewModel : ObservableObject
                 break;
             case "Einstellungen":
                 _settingsViewModel.PersistFolderPath();
+                _settingsViewModel.PersistBriefingPasswords();
                 break;
             case "Fahrzeugdisposition":
                 _fahrzeugdispoViewModel.CommitChangesIfDirty();
                 break;
             case "Fahrerdisposition":
                 _fahrerdispoViewModel.CommitChangesIfDirty();
+                break;
+            case "Dienstvorlagen":
+                _dienstvorlagenViewModel.FlushBeforeExport();
                 break;
         }
     }
@@ -341,11 +486,12 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>Planer: Nach Anmeldung planer_workspace.json mit lokalem Arbeitsstand vergleichen.</summary>
-    public async Task SyncDropboxAfterLoginAsync()
+    public async Task<PlanerDropboxWorkspaceSync.ImportResult?> SyncDropboxAfterLoginAsync(
+        IProgress<DropboxTransferProgress>? transferProgress = null)
     {
         if (_profile.IsLeitstelle || !AppServices.IsPlannerApp)
         {
-            return;
+            return null;
         }
 
         if (!AppServices.Dropbox.Settings.IsConnected)
@@ -355,17 +501,20 @@ public partial class MainViewModel : ObservableObject
                 StatusText = "Bereit – Dropbox unter Einstellungen verbinden oder lokal importieren.";
             }
 
-            return;
+            return null;
         }
 
         _dataTransferViewModel.IsBusy = true;
         try
         {
-            var result = await PlanerDropboxWorkspaceSync.TryImportIfRemoteNewerAsync().ConfigureAwait(true);
+            var result = await PlanerDropboxWorkspaceSync.TryImportIfRemoteNewerAsync(transferProgress)
+                .ConfigureAwait(true);
             if (result.Imported)
             {
                 OnRoutePackageLoaded();
-                _fahrerdispoViewModel.RefreshFromEditorIfNeeded();
+                _fahrerdispoViewModel.RefreshFromEditor();
+                _dienstvorlagenViewModel.RefreshFromEditor();
+                _dienstvorlagenLibraryViewModel.RefreshFromEditor();
                 StatusText = AppServices.Routes.HasPackage
                     ? BuildLocalStatusText("Dropbox synchronisiert")
                     : "Planer-Arbeitsstand aus Dropbox übernommen.";
@@ -382,6 +531,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             _dataTransferViewModel.LastActionMessage = result.Message;
+            return result;
         }
         finally
         {
@@ -521,7 +671,10 @@ public partial class MainViewModel : ObservableObject
         _messagesViewModel.RefreshFromEditor();
         _displaysOperationsViewModel.RefreshFromEditor();
         _sevSignEditorViewModel.RefreshFromEditor();
+        _dienstvorlagenViewModel.RefreshFromEditor();
+        _dienstvorlagenLibraryViewModel.RefreshFromEditor();
         _fahrzeugdispoViewModel.RefreshFromEditor();
+        _fahrerdispoViewModel.RefreshFromEditor();
         if (_profile.IsLeitstelle)
         {
             _messageSendViewModel.RefreshFromEditor();

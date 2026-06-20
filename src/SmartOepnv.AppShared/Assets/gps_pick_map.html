@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GPS wählen</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; background: #121a2e; }
+    body { font-family: Segoe UI, sans-serif; }
+    .gps-pin {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+    }
+    .gps-pin-primary { background: #66bb6a; }
+    .gps-pin-other { background: #ffb74d; }
+    .gps-ref-label {
+      font: 11px/1.2 Segoe UI, sans-serif;
+      color: #fff;
+      background: rgba(10, 16, 32, 0.88);
+      border: 1px solid #ffb74d;
+      border-radius: 4px;
+      padding: 1px 6px;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    const DEFAULT = { lat: 51.2277, lon: 6.7735, zoom: 13 };
+    let map, primaryMarker, otherMarker, otherLabelMarker;
+
+    function post(obj) {
+      if (window.chrome?.webview) {
+        window.chrome.webview.postMessage(JSON.stringify(obj));
+      }
+    }
+
+    function parseMessage(ev) {
+      if (!ev || ev.data == null) return null;
+      if (typeof ev.data === 'string') {
+        try { return JSON.parse(ev.data); } catch { return null; }
+      }
+      return ev.data;
+    }
+
+    function pinIcon(cssClass) {
+      return L.divIcon({
+        className: '',
+        html: '<div class="gps-pin ' + cssClass + '"></div>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9]
+      });
+    }
+
+    function setPrimaryMarker(lat, lon, notifyHost) {
+      const ll = L.latLng(lat, lon);
+      if (primaryMarker) {
+        primaryMarker.setLatLng(ll);
+      } else {
+        primaryMarker = L.marker(ll, { icon: pinIcon('gps-pin-primary'), draggable: false }).addTo(map);
+      }
+      if (notifyHost) {
+        post({ type: 'picked', lat, lon });
+      }
+    }
+
+    function clearOtherMarker() {
+      if (otherMarker) {
+        map.removeLayer(otherMarker);
+        otherMarker = null;
+      }
+      if (otherLabelMarker) {
+        map.removeLayer(otherLabelMarker);
+        otherLabelMarker = null;
+      }
+    }
+
+    function setOtherMarker(lat, lon, label) {
+      const ll = L.latLng(lat, lon);
+      if (otherMarker) {
+        otherMarker.setLatLng(ll);
+      } else {
+        otherMarker = L.marker(ll, {
+          icon: pinIcon('gps-pin-other'),
+          interactive: false
+        }).addTo(map);
+      }
+
+      const labelText = label || 'Referenz';
+      const labelHtml = '<div class="gps-ref-label">' + labelText + '</div>';
+      const labelIcon = L.divIcon({
+        className: '',
+        html: labelHtml,
+        iconSize: [1, 1],
+        iconAnchor: [-10, 12]
+      });
+      if (otherLabelMarker) {
+        otherLabelMarker.setLatLng(ll);
+        otherLabelMarker.setIcon(labelIcon);
+      } else {
+        otherLabelMarker = L.marker(ll, { icon: labelIcon, interactive: false }).addTo(map);
+      }
+    }
+
+    function focusMarkers(zoom) {
+      const layers = [];
+      if (primaryMarker) layers.push(primaryMarker);
+      if (otherMarker) layers.push(otherMarker);
+      if (layers.length === 1) {
+        map.setView(layers[0].getLatLng(), zoom || Math.max(map.getZoom(), 16));
+      } else if (layers.length > 1) {
+        map.fitBounds(L.featureGroup(layers).getBounds().pad(0.3));
+      } else {
+        map.setView([DEFAULT.lat, DEFAULT.lon], DEFAULT.zoom);
+      }
+      setTimeout(() => map.invalidateSize(), 0);
+    }
+
+    function applyInit(msg) {
+      const lat = Number(msg.lat);
+      const lon = Number(msg.lon);
+      const zoom = Number(msg.zoom) || 16;
+      const hasSelection = msg.hasSelection === true;
+
+      clearOtherMarker();
+      if (primaryMarker) {
+        map.removeLayer(primaryMarker);
+        primaryMarker = null;
+      }
+
+      const otherLat = Number(msg.otherLat);
+      const otherLon = Number(msg.otherLon);
+      if (Number.isFinite(otherLat) && Number.isFinite(otherLon)) {
+        setOtherMarker(otherLat, otherLon, msg.otherLabel || 'Referenz');
+      }
+
+      if (hasSelection && Number.isFinite(lat) && Number.isFinite(lon)) {
+        setPrimaryMarker(lat, lon, false);
+      }
+
+      focusMarkers(zoom);
+    }
+
+    map = L.map('map', { zoomControl: true }).setView([DEFAULT.lat, DEFAULT.lon], DEFAULT.zoom);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    map.on('click', (e) => setPrimaryMarker(e.latlng.lat, e.latlng.lng, true));
+
+    if (window.chrome?.webview) {
+      window.chrome.webview.addEventListener('message', (ev) => {
+        const msg = parseMessage(ev);
+        if (msg && msg.type === 'init') {
+          applyInit(msg);
+        }
+      });
+    }
+
+    post({ type: 'ready' });
+  </script>
+</body>
+</html>

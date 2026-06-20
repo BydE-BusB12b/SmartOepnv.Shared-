@@ -1,7 +1,10 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
+using SmartOepnv.AppShared.Employees;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
 
@@ -169,6 +172,57 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
     [RelayCommand]
     private void SaveChanges() => CommitChanges();
 
+    [RelayCommand(CanExecute = nameof(CanExportBriefingPdf))]
+    private void ExportBriefingPdf()
+    {
+        if (SelectedEmployee is null)
+        {
+            StatusMessage = "Bitte zuerst einen Mitarbeiter auswählen.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedEmployee.Name))
+        {
+            StatusMessage = "Name fehlt – PDF kann nicht erstellt werden.";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "PDF (*.pdf)|*.pdf",
+            FileName = EmployeeBriefingPdfGenerator.BuildDefaultFileName(SelectedEmployee),
+            DefaultExt = ".pdf"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            EmployeeBriefingPdfGenerator.Generate(dialog.FileName, SelectedEmployee);
+            StatusMessage = $"Einweisungs-PDF erstellt: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"PDF-Erstellung fehlgeschlagen: {ex.Message}";
+        }
+    }
+
+    private bool CanExportBriefingPdf() => SelectedEmployee is not null;
+
+    partial void OnSelectedEmployeeChanged(EmployeeRosterItem? value)
+    {
+        ExportBriefingPdfCommand.NotifyCanExecuteChanged();
+        if (value is null)
+        {
+            return;
+        }
+
+        ValidateSelectedEmployee(value, notify: false);
+    }
+
     public void NotifyDocumentCheckChanged()
     {
         _sync.MarkDirty();
@@ -176,16 +230,6 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
         {
             StatusMessage = $"„{SelectedEmployee.Name}“ – Kontrolle bestätigt, bitte „Speichern“.";
         }
-    }
-
-    partial void OnSelectedEmployeeChanged(EmployeeRosterItem? value)
-    {
-        if (value is null)
-        {
-            return;
-        }
-
-        ValidateSelectedEmployee(value, notify: false);
     }
 
     private void ValidateSelectedEmployee(EmployeeRosterItem employee, bool notify)

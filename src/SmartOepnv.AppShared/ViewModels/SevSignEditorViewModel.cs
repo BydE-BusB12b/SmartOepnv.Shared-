@@ -36,8 +36,15 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
             OperatorSelections.Add(new SevOperatorSelectionItem(option));
         }
 
+        if (AppServices.IsInitialized)
+        {
+            AppServices.RegisterFlushBeforeExport(FlushBeforeExport);
+        }
+
         ReloadDraftList();
     }
+
+    public void FlushBeforeExport() => TryPersistDraftForExport();
 
     [ObservableProperty] private string line = "S 28";
 
@@ -290,6 +297,46 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         ReportSaveSuccess(isNew
             ? $"Neue Vorlage „{draft.Name}“ gespeichert."
             : $"Vorlage „{draft.Name}“ aktualisiert.");
+    }
+
+    private void TryPersistDraftForExport()
+    {
+        var store = TryGetDraftStore();
+        if (store is null ||
+            (string.IsNullOrWhiteSpace(Line) &&
+             string.IsNullOrWhiteSpace(Destination) &&
+             Stops.Count == 0))
+        {
+            return;
+        }
+
+        var id = _loadedDraftId ?? Guid.NewGuid().ToString("N");
+        var isNew = _loadedDraftId is null;
+        var name = DraftName.Trim();
+        if (name.Length == 0)
+        {
+            name = SevSignDraft.SuggestName(Line, Destination);
+        }
+
+        if (!isNew &&
+            SavedDrafts.Any(d =>
+                d.Id != id &&
+                string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        if (isNew &&
+            SavedDrafts.Any(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            name = CreateUniqueDraftName(name);
+        }
+
+        var draft = BuildDraftFromEditor(id);
+        draft.Name = name;
+        store.Save(draft);
+        _loadedDraftId = draft.Id;
+        DraftName = draft.Name;
     }
 
     private static string CreateUniqueDraftName(string baseName)

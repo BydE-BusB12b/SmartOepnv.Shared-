@@ -1,10 +1,15 @@
 namespace SmartOepnv.Core.RoutePackage;
 
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 /// <summary>
 /// Vorlagen-Haltestelle (managedStopTemplates) – unabhängig von Routen, Handy-kompatibel.
 /// </summary>
-public sealed class ManagedStopTemplateItem
+public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     public const int DefaultRadiusMeters = 25;
 
     /// <summary>Standardtitel beim Anlegen – wird nicht dauerhaft gespeichert, solange keine Stammdaten fehlen.</summary>
@@ -12,23 +17,82 @@ public sealed class ManagedStopTemplateItem
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
-    /// <summary>5-stellige Kennung der Haltestelle (z. B. 00001–99999), nur Planer / Verwaltung.</summary>
-    public string StopCode { get; set; } = string.Empty;
+    private string _stopCode = string.Empty;
 
-    public string StopNameItcs { get; set; } = string.Empty;
+    /// <summary>5-stellige Kennung der Haltestelle (z. B. 00001–99999), nur Planer / Verwaltung.</summary>
+    public string StopCode
+    {
+        get => _stopCode;
+        set => SetField(ref _stopCode, value, nameof(StopCode), nameof(DisplayLabel), nameof(AnnouncementsLibraryDisplayLabel));
+    }
+
+    private string _stopNameItcs = string.Empty;
+
+    public string StopNameItcs
+    {
+        get => _stopNameItcs;
+        set => SetField(ref _stopNameItcs, value, nameof(StopNameItcs), nameof(DisplayLabel), nameof(AnnouncementsLibraryDisplayLabel));
+    }
+
     public string StopDisplay { get; set; } = string.Empty;
     public string VrrStopId { get; set; } = string.Empty;
-    public string DirectionDescription { get; set; } = string.Empty;
+
+    private string _directionDescription = string.Empty;
+
+    public string DirectionDescription
+    {
+        get => _directionDescription;
+        set => SetField(ref _directionDescription, value, nameof(DirectionDescription), nameof(DisplayLabel));
+    }
+
     public string AnnouncementLat { get; set; } = string.Empty;
     public string AnnouncementLng { get; set; } = string.Empty;
     public string StopLat { get; set; } = string.Empty;
     public string StopLng { get; set; } = string.Empty;
     public int RadiusMeters { get; set; } = DefaultRadiusMeters;
     public string ExternalSoundUri { get; set; } = string.Empty;
-    public string EmbeddedSoundFileName { get; set; } = string.Empty;
+
+    private string _embeddedSoundFileName = string.Empty;
+
+    public string EmbeddedSoundFileName
+    {
+        get => _embeddedSoundFileName;
+        set => SetField(ref _embeddedSoundFileName, value, nameof(EmbeddedSoundFileName), nameof(DisplayLabel), nameof(AnnouncementsLibraryDisplayLabel), nameof(HasAssignedAudio));
+    }
+
+    private string? _localAudioPath;
 
     /// <summary>Nur Planer: lokale Audiodatei vor dem Einbetten in embeddedSounds.</summary>
-    public string? LocalAudioPath { get; set; }
+    public string? LocalAudioPath
+    {
+        get => _localAudioPath;
+        set => SetField(ref _localAudioPath, value, nameof(LocalAudioPath), nameof(DisplayLabel), nameof(AnnouncementsLibraryDisplayLabel), nameof(HasAssignedAudio));
+    }
+
+    public void NotifyDisplayLabelChanged()
+    {
+        OnPropertyChanged(nameof(DisplayLabel));
+        OnPropertyChanged(nameof(AnnouncementsLibraryDisplayLabel));
+        OnPropertyChanged(nameof(HasAssignedAudio));
+    }
+
+    private void SetField<T>(ref T field, T value, params string[] additionalPropertyNames)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+
+        field = value;
+        OnPropertyChanged();
+        foreach (var name in additionalPropertyNames)
+        {
+            OnPropertyChanged(name);
+        }
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     /// <summary>Eingebettete Ansage, lokale Datei oder URI gesetzt.</summary>
     public bool HasAssignedAudio =>
@@ -87,6 +151,11 @@ public sealed class ManagedStopTemplateItem
         }
 
         if (CoordinateFormatting.TryParseParts(StopLat, StopLng, out _, out _))
+        {
+            return true;
+        }
+
+        if (PlannerStopCode.IsValid(StopCode))
         {
             return true;
         }

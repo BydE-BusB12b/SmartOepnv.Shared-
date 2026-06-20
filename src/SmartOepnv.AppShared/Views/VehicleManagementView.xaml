@@ -4,6 +4,7 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
              xmlns:views="clr-namespace:SmartOepnv.AppShared.Views"
+             xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch"
              Foreground="White"
@@ -11,6 +12,30 @@
     <UserControl.Resources>
         <conv:InspectionDateConverter x:Key="InspectionDateConverter" />
         <conv:VehicleInspectionBrushConverter x:Key="VehicleInspectionBrushConverter" />
+        <Style x:Key="VehicleMgmtSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SaveButtonState}" Value="{x:Static vm:VehicleManagementButtonState.Success}">
+                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="VehicleMgmtDeleteButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="White" />
+            <Setter Property="Background" Value="Transparent" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DeleteButtonState}" Value="{x:Static vm:VehicleManagementButtonState.Success}">
+                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="VehicleMgmtTabItemStyle" TargetType="TabItem">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="Transparent" />
@@ -75,21 +100,23 @@
                                         Padding="12,4" />
                                 <Button Content="Auswahl löschen"
                                         Command="{Binding RemoveVehicleCommand}"
-                                        Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Style="{StaticResource VehicleMgmtDeleteButtonStyle}"
                                         Margin="0,0,0,4"
                                         Padding="12,4" />
                                 <Button Content="Speichern"
                                         Command="{Binding SaveChangesCommand}"
-                                        Style="{StaticResource MaterialDesignRaisedButton}"
-                                        Foreground="White"
+                                        Style="{StaticResource VehicleMgmtSaveButtonStyle}"
                                         Padding="12,4" />
                             </StackPanel>
                             <ListBox ItemsSource="{Binding Vehicles}"
                                      SelectedItem="{Binding SelectedVehicle}"
-                                     DisplayMemberPath="DisplayLabel"
                                      BorderThickness="0"
                                      Background="Transparent">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayLabel}" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="Padding" Value="8,6" />

@@ -26,6 +26,7 @@ public sealed class PlanerWorkspaceService
         Converters = { new JsonStringEnumConverter() }
     };
 
+    private readonly string _appSubfolder;
     private readonly string _localPath;
     private readonly PlannerLocalOverlayStore _overlayStore;
     private readonly VehicleDispositionStore _dispositionStore;
@@ -35,6 +36,7 @@ public sealed class PlanerWorkspaceService
 
     public PlanerWorkspaceService(string appSubfolder)
     {
+        _appSubfolder = appSubfolder;
         var workspaceDir = Path.Combine(AppPaths.GetRoamingDataDirectory(appSubfolder), "workspace");
         Directory.CreateDirectory(workspaceDir);
         _localPath = Path.Combine(workspaceDir, DropboxConstants.PlanerWorkspaceFileName);
@@ -49,49 +51,65 @@ public sealed class PlanerWorkspaceService
 
     public long GetLocalSavedAtUtcMs()
     {
-        // Nur der letzte vollständige Workspace-Snapshot zählt – nicht routes_export.json allein.
-        // Sonst blockiert ein neuer Routen-Timestamp den Import von Fahrzeugen, Disposition usw.
+        // Nur planer_workspace.json – routes_export.meta würde sonst einen neueren
+        // lokalen Zeitstempel vortäuschen und einen frischeren Dropbox-Stand blockieren.
         return TryReadLocalDocument()?.SavedAtUtcMs ?? 0;
     }
 
-    public PlanerWorkspaceDocument CaptureCurrent()
+    public PlanerWorkspaceDocument CaptureCurrent() => CaptureCurrent(null);
+
+    public PlanerWorkspaceDocument CaptureCurrent(PlanerWorkspaceCaptureRequest? request)
     {
-        if (AppServices.IsInitialized)
+        if (AppServices.IsInitialized && request?.SkipFlush != true)
         {
-            AppServices.FlushAllPendingEdits();
-            if (AppServices.Routes.Editor is not null && AppServices.PlannerLocal is not null)
-            {
-                AppServices.PlannerLocal.PersistFromEditor(AppServices.Routes.Editor);
-            }
+            AppServices.FlushAllPendingEditsBestEffort();
         }
 
-        string? routesJson = null;
-        if (AppServices.Routes.HasPackage)
+        if (AppServices.IsInitialized &&
+            AppServices.Routes.Editor is not null &&
+            AppServices.PlannerLocal is not null)
         {
-            routesJson = AppServices.Routes.Editor?.ToJson() ?? AppServices.Routes.CurrentJson;
+            AppServices.PlannerLocal.PersistFromEditor(AppServices.Routes.Editor);
         }
 
         return new PlanerWorkspaceDocument
         {
             SavedAtUtcMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            RoutesPackageJson = routesJson,
+            RoutesPackageJson = ResolveRoutesPackageJson(request),
             PlannerOverlay = _overlayStore.LoadOrEmpty(),
             VehicleDispositionAssignments = _dispositionStore.Load().Select(a => a.Clone()).ToList(),
             DriverDispositionAssignments = _driverDispositionStore.Load().Select(a => a.Clone()).ToList(),
             SevSignDrafts = _sevStore.LoadAll().Select(CloneSevDraft).ToList(),
             DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
-            PackageVersionSnapshots = CapturePackageVersionSnapshots()
+            PackageVersionSnapshots = CapturePackageVersionSnapshots(request?.ReuseSnapshotPackageJsonFrom)
         };
     }
 
-    private static List<PlannerPackageVersionSnapshotData> CapturePackageVersionSnapshots()
+    private static string? ResolveRoutesPackageJson(PlanerWorkspaceCaptureRequest? request)
+    {
+        if (!AppServices.Routes.HasPackage)
+        {
+            return null;
+        }
+
+        if (request?.PreferCachedRoutesJson == true &&
+            !string.IsNullOrWhiteSpace(AppServices.Routes.CurrentJson))
+        {
+            return AppServices.Routes.CurrentJson;
+        }
+
+        return AppServices.Routes.Editor?.ToJson(indented: false) ?? AppServices.Routes.CurrentJson;
+    }
+
+    private static List<PlannerPackageVersionSnapshotData> CapturePackageVersionSnapshots(
+        IReadOnlyList<PlannerPackageVersionSnapshotData>? reuseFrom)
     {
         if (AppServices.PlannerVersions is null)
         {
             return [];
         }
 
-        return AppServices.PlannerVersions.ExportAllSnapshots().ToList();
+        return AppServices.PlannerVersions.ExportSnapshotsForSync(reuseFrom).ToList();
     }
 
     public static int MergePackageVersionSnapshots(IReadOnlyList<PlannerPackageVersionSnapshotData> incoming)
@@ -104,13 +122,25 @@ public sealed class PlanerWorkspaceService
         return AppServices.PlannerVersions.MergeFromWorkspace(incoming);
     }
 
-    public void Apply(PlanerWorkspaceDocument document)
+    public void Apply(PlanerWorkspaceDocument document, bool authoritative = true)
     {
-        ApplyPlannerOverlay(document.PlannerOverlay);
-        ApplyVehicleDisposition(document.VehicleDispositionAssignments);
-        ApplyDriverDisposition(document.DriverDispositionAssignments ?? []);
-        _sevStore.MergeIncoming(document.SevSignDrafts);
-        _dutyTemplateStore.MergeIncoming(document.DutyTemplates ?? []);
+        if (authoritative)
+        {
+            ApplyPlannerOverlayReplace(document.PlannerOverlay);
+            ApplyVehicleDispositionReplace(document.VehicleDispositionAssignments);
+            ApplyDriverDispositionReplace(document.DriverDispositionAssignments ?? []);
+            _sevStore.ReplaceAll(document.SevSignDrafts);
+            _dutyTemplateStore.ReplaceAll(document.DutyTemplates ?? []);
+        }
+        else
+        {
+            ApplyPlannerOverlay(document.PlannerOverlay);
+            ApplyVehicleDisposition(document.VehicleDispositionAssignments);
+            ApplyDriverDisposition(document.DriverDispositionAssignments ?? []);
+            _sevStore.MergeIncoming(document.SevSignDrafts);
+            _dutyTemplateStore.MergeIncoming(document.DutyTemplates ?? []);
+        }
+
         MergePackageVersionSnapshots(document.PackageVersionSnapshots);
 
         if (!string.IsNullOrWhiteSpace(document.RoutesPackageJson))
@@ -128,6 +158,34 @@ public sealed class PlanerWorkspaceService
         WriteLocalCopy(RefreshDocumentFromStores(document));
     }
 
+    /// <summary>Lädt den lokalen planer_workspace.json vollständig (alle Bereiche).</summary>
+    public bool TryApplyLocalDocument()
+    {
+        var document = TryReadLocalDocument();
+        if (document is null)
+        {
+            return false;
+        }
+
+        Apply(document, authoritative: true);
+        return true;
+    }
+
+    private void ApplyPlannerOverlayReplace(PlannerLocalOverlayData incoming)
+    {
+        _overlayStore.Save(incoming);
+    }
+
+    private void ApplyVehicleDispositionReplace(IReadOnlyList<VehicleDispositionAssignment> incoming)
+    {
+        _dispositionStore.Save(incoming);
+    }
+
+    private void ApplyDriverDispositionReplace(IReadOnlyList<DriverDispositionAssignment> incoming)
+    {
+        _driverDispositionStore.Save(incoming);
+    }
+
     private void ApplyPlannerOverlay(PlannerLocalOverlayData incoming)
     {
         var local = _overlayStore.LoadOrEmpty();
@@ -142,7 +200,11 @@ public sealed class PlanerWorkspaceService
             return;
         }
 
-        incoming.Employees = EmployeePlannerCredentialMerge.MergeLists(incoming.Employees, local.Employees);
+        incoming.Employees = EmployeePlannerCredentialMerge.MergeLists(local.Employees, incoming.Employees);
+        incoming.Vehicles = PlannerLocalOverlayService.MergeVehiclesPreferLocal(local.Vehicles, incoming.Vehicles);
+        incoming.PhoneRedirects = PlannerLocalOverlayService.MergePhoneRedirectsPreferLocal(
+            local.PhoneRedirects,
+            incoming.PhoneRedirects);
         incoming.DeletedEmployeePersonnel = MergeUnique(
             local.DeletedEmployeePersonnel,
             incoming.DeletedEmployeePersonnel);
@@ -223,12 +285,42 @@ public sealed class PlanerWorkspaceService
             DriverDispositionAssignments = _driverDispositionStore.Load().Select(a => a.Clone()).ToList(),
             SevSignDrafts = _sevStore.LoadAll().Select(CloneSevDraft).ToList(),
             DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
-            PackageVersionSnapshots = CapturePackageVersionSnapshots()
+            PackageVersionSnapshots = CapturePackageVersionSnapshots(document.PackageVersionSnapshots)
         };
 
     public void WriteLocalCopy(PlanerWorkspaceDocument document)
     {
         SafeDataFileStore.WriteAllText(_localPath, Serialize(document), archivePrevious: false);
+    }
+
+    /// <summary>
+    /// Aktualisiert Routen-Paket in planer_workspace.json (ohne vollständigen Workspace-Flush).
+    /// Verhindert, dass beim Neustart ein älterer Dropbox-Stand lokale Haltestellen überschreibt.
+    /// </summary>
+    public void PatchLocalRoutesPackage(string routesJson)
+    {
+        if (string.IsNullOrWhiteSpace(routesJson))
+        {
+            return;
+        }
+
+        var root = ReadOrCreateWorkspaceRoot();
+        root["savedAtUtcMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        root["routesPackageJson"] = routesJson;
+        if (!root.ContainsKey("version"))
+        {
+            root["version"] = PlanerWorkspaceDocument.FileVersion;
+        }
+
+        if (!root.ContainsKey("documentType"))
+        {
+            root["documentType"] = PlanerWorkspaceDocument.Kind;
+        }
+
+        SafeDataFileStore.WriteAllText(
+            _localPath,
+            root.ToJsonString(JsonOptions),
+            archivePrevious: false);
     }
 
     /// <summary>

@@ -30,6 +30,14 @@
     <SolidColorBrush x:Key="SmartSuccessOnDarkBackgroundBrush" Color="{StaticResource SmartSuccessOnDarkBackgroundColor}" />
     <SolidColorBrush x:Key="SmartSuccessOnDarkBorderBrush" Color="{StaticResource SmartSuccessOnDarkBorderColor}" />
 
+    <!-- Dropdown-/Listenfarben für dunkle ComboBoxen (nicht per Style.Resources – verursacht XamlParse beim ersten Öffnen) -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#FF002171" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="White" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#FF0D47A1" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="White" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#FF1E5A9E" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="White" />
+
     <Style x:Key="SmartPageTitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="28" />
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -205,19 +213,6 @@
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Visible" />
         <Setter Property="ItemContainerStyle" Value="{StaticResource SmartDarkComboBoxItem}" />
         <Setter Property="Template" Value="{StaticResource SmartDarkComboBoxTemplate}" />
-        <Setter Property="Resources">
-            <Setter.Value>
-                <ResourceDictionary>
-                    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#FF002171" />
-                    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="White" />
-                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#FF0D47A1" />
-                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="White" />
-                    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#FF1E5A9E" />
-                    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="White" />
-                    <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
-                </ResourceDictionary>
-            </Setter.Value>
-        </Setter>
     </Style>
 
 </ResourceDictionary>

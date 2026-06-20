@@ -137,6 +137,72 @@ public sealed class PlannerPackageVersionStore
         return snapshots;
     }
 
+    /// <summary>
+    /// Für Dropbox-Export: unveränderte Snapshots aus der letzten Workspace-Datei wiederverwenden
+    /// (vermeidet erneutes Einlesen großer JSON-Dateien beim Beenden).
+    /// </summary>
+    public IReadOnlyList<PlannerPackageVersionSnapshotData> ExportSnapshotsForSync(
+        IReadOnlyList<PlannerPackageVersionSnapshotData>? previousSnapshots)
+    {
+        var index = LoadIndex();
+        var previousById = new Dictionary<string, PlannerPackageVersionSnapshotData>(StringComparer.Ordinal);
+        if (previousSnapshots is not null)
+        {
+            foreach (var snap in previousSnapshots)
+            {
+                if (!string.IsNullOrWhiteSpace(snap.Id) &&
+                    !string.IsNullOrWhiteSpace(snap.PackageJson))
+                {
+                    previousById[snap.Id] = snap;
+                }
+            }
+        }
+
+        var snapshots = new List<PlannerPackageVersionSnapshotData>(index.Count);
+        foreach (var info in index)
+        {
+            if (previousById.TryGetValue(info.Id, out var cached) &&
+                cached.ByteSize == info.ByteSize &&
+                cached.RouteCount == info.RouteCount &&
+                cached.SavedAtUtc == info.SavedAtUtc)
+            {
+                snapshots.Add(CloneSnapshotData(cached));
+                continue;
+            }
+
+            var packageJson = TryLoadPackageJson(info.Id);
+            if (string.IsNullOrWhiteSpace(packageJson))
+            {
+                continue;
+            }
+
+            snapshots.Add(new PlannerPackageVersionSnapshotData
+            {
+                Id = info.Id,
+                Label = info.Label,
+                SavedAtUtc = info.SavedAtUtc,
+                ByteSize = info.ByteSize,
+                RouteCount = info.RouteCount,
+                PackageTimestampMs = info.PackageTimestampMs,
+                PackageJson = packageJson
+            });
+        }
+
+        return snapshots;
+    }
+
+    private static PlannerPackageVersionSnapshotData CloneSnapshotData(PlannerPackageVersionSnapshotData source) =>
+        new()
+        {
+            Id = source.Id,
+            Label = source.Label,
+            SavedAtUtc = source.SavedAtUtc,
+            ByteSize = source.ByteSize,
+            RouteCount = source.RouteCount,
+            PackageTimestampMs = source.PackageTimestampMs,
+            PackageJson = source.PackageJson
+        };
+
     public int MergeFromWorkspace(IReadOnlyList<PlannerPackageVersionSnapshotData> incoming)
     {
         if (incoming.Count == 0)

@@ -10,6 +10,39 @@
 
              HorizontalAlignment="Stretch">
 
+    <UserControl.Resources>
+        <Style x:Key="StopsLibrarySaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SaveButtonIsSuccess}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="StopsLibraryRemoveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RemoveTemplateButtonIsSuccess}" Value="True">
+                    <Setter Property="Background" Value="#FF4CAF50" />
+                    <Setter Property="BorderBrush" Value="#FF4CAF50" />
+                    <Setter Property="Foreground" Value="White" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="StopsLibraryInsertRouteButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedLightButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DataContext.InsertIntoRouteButtonIsSuccess, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                    <Setter Property="Background" Value="#FF4CAF50" />
+                    <Setter Property="BorderBrush" Value="#FF4CAF50" />
+                    <Setter Property="Foreground" Value="White" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
     <!-- Kein äußerer ScrollViewer: Liste scrollt in der linken Spalte, Stammdaten rechts in eigenem Bereich -->
 
     <Grid Margin="0,2,0,4" VerticalAlignment="Stretch">
@@ -122,7 +155,7 @@
 
                                 Command="{Binding RemoveTemplateCommand}"
 
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Style="{StaticResource StopsLibraryRemoveButtonStyle}"
 
                                 Margin="0,0,0,4"
 
@@ -132,7 +165,7 @@
 
                                 Command="{Binding SaveChangesCommand}"
 
-                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Style="{StaticResource StopsLibrarySaveButtonStyle}"
 
                                 Padding="10,4" />
 
@@ -154,7 +187,7 @@
 
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
 
-                             ScrollViewer.CanContentScroll="True"
+                             ScrollViewer.CanContentScroll="False"
 
                              VirtualizingPanel.IsVirtualizing="True"
 
@@ -286,7 +319,7 @@
 
                                     Command="{Binding DataContext.InsertIntoRouteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
 
-                                    Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                    Style="{StaticResource StopsLibraryInsertRouteButtonStyle}"
 
                                     Margin="0,0,0,4"
 
@@ -510,13 +543,39 @@
 
                                            VerticalAlignment="Center" Margin="0,0,10,6" Opacity="0.9" FontSize="12" />
 
-                                <TextBox Grid.Row="5" Grid.Column="1"
+                                <Grid Grid.Row="5" Grid.Column="1" Margin="0,0,0,6">
 
-                                         materialDesign:HintAssist.Hint="Breite, Länge (6 Stellen) – z. B. 51.172805, 6.456152"
+                                    <Grid.ColumnDefinitions>
 
-                                         Text="{Binding DataContext.SelectedAnnouncementCoordinates, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
+                                        <ColumnDefinition Width="*" />
 
-                                         Margin="0,0,0,6" Padding="6,4" VerticalContentAlignment="Center" />
+                                        <ColumnDefinition Width="Auto" />
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBox Grid.Column="0"
+
+                                             materialDesign:HintAssist.Hint="Breite, Länge (6 Stellen) – z. B. 51.172805, 6.456152"
+
+                                             Text="{Binding DataContext.SelectedAnnouncementCoordinates, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
+
+                                             Padding="6,4" VerticalContentAlignment="Center" />
+
+                                    <Button Grid.Column="1"
+
+                                            Content="Karte…"
+
+                                            Command="{Binding DataContext.PickAnnouncementCoordinatesOnMapCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                            Margin="6,0,0,0"
+
+                                            Padding="10,4"
+
+                                            ToolTip="Standort auf der Karte wählen (wie in der App)" />
+
+                                </Grid>
 
 
 
@@ -524,13 +583,39 @@
 
                                            VerticalAlignment="Center" Margin="0,0,10,6" Opacity="0.9" FontSize="12" />
 
-                                <TextBox Grid.Row="6" Grid.Column="1"
+                                <Grid Grid.Row="6" Grid.Column="1" Margin="0,0,0,6">
 
-                                         materialDesign:HintAssist.Hint="Breite, Länge (6 Stellen) – z. B. 51.186816, 6.454629"
+                                    <Grid.ColumnDefinitions>
 
-                                         Text="{Binding DataContext.SelectedStopCoordinates, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
+                                        <ColumnDefinition Width="*" />
 
-                                         Margin="0,0,0,6" Padding="6,4" VerticalContentAlignment="Center" />
+                                        <ColumnDefinition Width="Auto" />
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBox Grid.Column="0"
+
+                                             materialDesign:HintAssist.Hint="Breite, Länge (6 Stellen) – z. B. 51.186816, 6.454629"
+
+                                             Text="{Binding DataContext.SelectedStopCoordinates, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
+
+                                             Padding="6,4" VerticalContentAlignment="Center" />
+
+                                    <Button Grid.Column="1"
+
+                                            Content="Karte…"
+
+                                            Command="{Binding DataContext.PickStopCoordinatesOnMapCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                            Margin="6,0,0,0"
+
+                                            Padding="10,4"
+
+                                            ToolTip="Standort auf der Karte wählen (wie in der App)" />
+
+                                </Grid>
 
 
 

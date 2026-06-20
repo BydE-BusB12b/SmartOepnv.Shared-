@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -35,14 +36,20 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string testResult = string.Empty;
     [ObservableProperty] private string routeFileInfo = "—";
     [ObservableProperty] private string folderFilesSummary = "—";
+    [ObservableProperty] private string planerFolderInfo = "—";
     [ObservableProperty] private bool isConnected;
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private string brandingStatus = string.Empty;
     [ObservableProperty] private CompanyLogoListItem? selectedCompanyLogo;
+    [ObservableProperty] private string devicePassword = string.Empty;
+    [ObservableProperty] private string unlockPassword = string.Empty;
+    [ObservableProperty] private string briefingPasswordsStatus = string.Empty;
 
     public ObservableCollection<CompanyLogoListItem> CompanyLogos { get; } = [];
 
     public bool ShowBrandingSection => AppServices.IsPlannerApp;
+
+    public bool ShowPlanerFolderSection => AppServices.IsPlannerApp;
 
     public bool HasCompanyLogos => CompanyLogos.Count > 0;
 
@@ -61,6 +68,23 @@ public partial class SettingsViewModel : ObservableObject
             : "—";
         ConnectionStatus = s.IsConnected ? "Verbunden" : "Nicht verbunden";
         ReloadBranding();
+        ReloadBriefingPasswords();
+    }
+
+    private void ReloadBriefingPasswords()
+    {
+        if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)
+        {
+            DevicePassword = string.Empty;
+            UnlockPassword = string.Empty;
+            BriefingPasswordsStatus = string.Empty;
+            return;
+        }
+
+        var settings = AppServices.PlanerAppSettings.Load();
+        DevicePassword = settings.DevicePassword;
+        UnlockPassword = settings.UnlockPassword;
+        BriefingPasswordsStatus = string.Empty;
     }
 
     private void ReloadBranding()
@@ -242,6 +266,45 @@ public partial class SettingsViewModel : ObservableObject
         return true;
     }
 
+    public bool PersistBriefingPasswords()
+    {
+        if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)
+        {
+            return false;
+        }
+
+        var stored = AppServices.PlanerAppSettings.Load();
+        var device = DevicePassword.Trim();
+        var unlock = UnlockPassword.Trim();
+        if (string.Equals(stored.DevicePassword, device, StringComparison.Ordinal) &&
+            string.Equals(stored.UnlockPassword, unlock, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        stored.DevicePassword = device;
+        stored.UnlockPassword = unlock;
+        AppServices.PlanerAppSettings.Save(stored);
+        BriefingPasswordsStatus = "Passwörter für die Einweisungs-PDF gespeichert.";
+        return true;
+    }
+
+    [RelayCommand]
+    private void SaveBriefingPasswords()
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return;
+        }
+
+        if (PersistBriefingPasswords())
+        {
+            return;
+        }
+
+        BriefingPasswordsStatus = "Keine Änderungen an den Passwörtern.";
+    }
+
     private static string NormalizeFolderPath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -273,6 +336,19 @@ public partial class SettingsViewModel : ObservableObject
             RouteFileInfo = result.RouteFileExists
                 ? $"{DropboxConstants.RouteFileName} – {result.RouteFileSizeBytes / 1024} KB, geändert {result.RouteFileServerModified:dd.MM.yyyy HH:mm}"
                 : $"{DropboxConstants.RouteFileName} nicht im Ordner";
+            if (ShowPlanerFolderSection)
+            {
+                PlanerFolderInfo = result.PlanerFolderValid
+                    ? $"Planer-Ordner OK – {DropboxConstants.PlanerWorkspaceFileName}: {(result.PlanerWorkspaceFileExists ? "ja" : "nein")}, {DropboxConstants.PlanerSessionFileName}: {(result.PlanerSessionFileExists ? "ja" : "nein")}"
+                    : string.IsNullOrWhiteSpace(result.PlanerFolderValidationMessage)
+                        ? "Planer-Ordner nicht geprüft"
+                        : result.PlanerFolderValidationMessage;
+            }
+            else
+            {
+                PlanerFolderInfo = "—";
+            }
+
             FolderFilesSummary = result.FilesInFolder.Count > 0
                 ? $"{result.FilesInFolder.Count} Dateien: {string.Join(", ", result.FilesInFolder.Take(8))}{(result.FilesInFolder.Count > 8 ? " …" : "")}"
                 : "Ordner leer oder nicht lesbar";
@@ -282,6 +358,53 @@ public partial class SettingsViewModel : ObservableObject
         {
             TestResult = ex.Message;
             ConnectionStatus = "Verbindungsfehler";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task InitializePlanerFolderAsync()
+    {
+        if (!ShowPlanerFolderSection)
+        {
+            return;
+        }
+
+        if (!IsConnected)
+        {
+            TestResult = "Bitte zuerst mit Dropbox verbinden.";
+            return;
+        }
+
+        PersistFolderPath();
+
+        var answer = MessageBox.Show(
+            "Fehlende Planer-Dateien im Dropbox-Ordner anlegen?\n\n" +
+            $"• {DropboxConstants.PlanerWorkspaceFileName}\n" +
+            $"• {DropboxConstants.PlanerSessionFileName}\n\n" +
+            "Nur für die Ersteinrichtung – vorhandene Dateien werden nicht überschrieben.",
+            "Planer-Ordner initialisieren",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var bootstrap = await PlanerDropboxFolderBootstrap.EnsureMarkerFilesAsync(AppServices.Dropbox);
+            TestResult = bootstrap.Message;
+            ConnectionStatus = bootstrap.Success ? "Verbunden" : "Verbindungsfehler";
+            await TestConnectionAsync();
+        }
+        catch (Exception ex)
+        {
+            TestResult = ex.Message;
         }
         finally
         {

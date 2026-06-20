@@ -1,12 +1,15 @@
+using System.Text.Json.Nodes;
+
 namespace SmartOepnv.Core.RoutePackage;
 
 /// <summary>
-/// Löst die Endhaltestellen-Ansage auf (Verkehrsbetrieb Hambloch/Ansagen).
+/// Löst die Endhaltestellen-Ansage aus der Ansagen-Kartei auf.
 /// </summary>
 public static class PlanerEndStopSoundResolver
 {
-    public const string FileName = "Endhalestelle.wav";
-
-    public static string? TryResolve(LocalWorkspaceStore workspace, string? dropboxApiFolderPath = null) =>
-        PlanerHamblochAnsagenSoundResolver.TryResolve(workspace, FileName, dropboxApiFolderPath);
+    public static string? TryResolveEmbeddedFileName(
+        IEnumerable<ManagedAnnouncementTemplateItem> templates,
+        JsonObject? root,
+        LocalWorkspaceStore? workspace) =>
+        EndStopAnnouncementResolver.TryResolveEmbeddedFileName(templates, root, workspace);
 }

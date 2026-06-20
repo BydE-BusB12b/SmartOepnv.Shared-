@@ -130,10 +130,14 @@ public static class StopTemplateRouteMerger
             changed = true;
         }
 
-        if (!string.Equals(stop.StopDisplay, source.StopDisplay, StringComparison.Ordinal))
+        if (!string.IsNullOrWhiteSpace(source.StopDisplay))
         {
-            stop.StopDisplay = source.StopDisplay;
-            changed = true;
+            var display = source.StopDisplay.Trim();
+            if (!string.Equals(stop.StopDisplay, display, StringComparison.Ordinal))
+            {
+                stop.StopDisplay = display;
+                changed = true;
+            }
         }
 
         if (!string.Equals(stop.VrrStopId, source.VrrStopId, StringComparison.OrdinalIgnoreCase))

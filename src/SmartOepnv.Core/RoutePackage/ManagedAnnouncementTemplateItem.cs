@@ -1,11 +1,16 @@
 namespace SmartOepnv.Core.RoutePackage;
 
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 /// <summary>
 /// Vorlage in der Ansagen-Kartei (managedAnnouncementTemplates) – Handy-kompatibel.
 /// Jede Ansage hat eine feste 4-stellige Kennung (announcementCode).
 /// </summary>
-public sealed class ManagedAnnouncementTemplateItem
+public sealed class ManagedAnnouncementTemplateItem : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
     /// <summary>Verknüpfung zur Haltestelle in managedStopTemplates (Feld id).</summary>
@@ -16,6 +21,9 @@ public sealed class ManagedAnnouncementTemplateItem
 
     public string DisplayName { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+
+    /// <summary>Planer: Linien, die diese Ansage nutzen könnten (kommagetrennt). Nur Suche, nicht in der Kartei-Liste.</summary>
+    public string Lines { get; set; } = string.Empty;
 
     /// <summary>haltestelle | sonder | sonstiges</summary>
     public string Category { get; set; } = "haltestelle";
@@ -31,6 +39,14 @@ public sealed class ManagedAnnouncementTemplateItem
     public bool HasAssignedAudio => !string.IsNullOrWhiteSpace(LocalAudioPath);
 
     /// <summary>Anzeige in der Liste (✓ = Ton zugeordnet, ⚠ = noch keine Tondatei).</summary>
+    public string DisplayLabel => FormatDisplayLabel(
+        HasAssignedAudio || !string.IsNullOrWhiteSpace(EmbeddedSoundFileName));
+
+    public void NotifyDisplayLabelChanged() => OnPropertyChanged(nameof(DisplayLabel));
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
     public string FormatDisplayLabel(bool hasAudio)
     {
         var code = NormalizeCode(AnnouncementCode);
@@ -40,8 +56,6 @@ public sealed class ManagedAnnouncementTemplateItem
         var title = desc is null ? name : $"{name} – {desc}";
         return string.IsNullOrEmpty(code) ? $"{prefix}{title}" : $"{prefix}{code} – {title}";
     }
-
-    public string DisplayLabel => FormatDisplayLabel(HasAssignedAudio);
 
     public static string NormalizeCode(string? raw)
     {

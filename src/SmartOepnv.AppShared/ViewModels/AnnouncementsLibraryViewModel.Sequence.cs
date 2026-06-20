@@ -14,7 +14,6 @@ public partial class AnnouncementsLibraryViewModel
     private readonly Dictionary<string, bool> _gongByAnnouncementId = new();
     private readonly Dictionary<string, bool> _nextStopByAnnouncementId = new();
     private readonly Dictionary<string, bool> _nextStopMp3ByAnnouncementId = new();
-    private readonly Dictionary<string, bool> _endStopByAnnouncementId = new();
     private string? _sequenceLoadedForAnnouncementId;
 
     private const double StandardPrefixLinkPauseSeconds = 1.0;
@@ -31,6 +30,7 @@ public partial class AnnouncementsLibraryViewModel
         if (SelectedAnnouncement is not null)
         {
             _gongByAnnouncementId[SelectedAnnouncement.Id] = value;
+            MarkAnnouncementAudioDirty(SelectedAnnouncement.Id);
         }
 
         MarkDirty();
@@ -42,6 +42,7 @@ public partial class AnnouncementsLibraryViewModel
         if (SelectedAnnouncement is not null)
         {
             _nextStopByAnnouncementId[SelectedAnnouncement.Id] = value;
+            MarkAnnouncementAudioDirty(SelectedAnnouncement.Id);
         }
 
         MarkDirty();
@@ -53,17 +54,7 @@ public partial class AnnouncementsLibraryViewModel
         if (SelectedAnnouncement is not null)
         {
             _nextStopMp3ByAnnouncementId[SelectedAnnouncement.Id] = value;
-        }
-
-        MarkDirty();
-        UpdateSelectedAudioHint();
-    }
-
-    partial void OnIncludeEndStopInAnnouncementMergeChanged(bool value)
-    {
-        if (SelectedAnnouncement is not null)
-        {
-            _endStopByAnnouncementId[SelectedAnnouncement.Id] = value;
+            MarkAnnouncementAudioDirty(SelectedAnnouncement.Id);
         }
 
         MarkDirty();
@@ -82,7 +73,6 @@ public partial class AnnouncementsLibraryViewModel
         _gongByAnnouncementId[_sequenceLoadedForAnnouncementId] = IncludeGongInAnnouncementMerge;
         _nextStopByAnnouncementId[_sequenceLoadedForAnnouncementId] = IncludeNextStopInAnnouncementMerge;
         _nextStopMp3ByAnnouncementId[_sequenceLoadedForAnnouncementId] = IncludeNextStopMp3InAnnouncementMerge;
-        _endStopByAnnouncementId[_sequenceLoadedForAnnouncementId] = IncludeEndStopInAnnouncementMerge;
     }
 
     private void LoadAnnouncementSequenceForSelection()
@@ -96,7 +86,6 @@ public partial class AnnouncementsLibraryViewModel
             IncludeGongInAnnouncementMerge = false;
             IncludeNextStopInAnnouncementMerge = false;
             IncludeNextStopMp3InAnnouncementMerge = false;
-            IncludeEndStopInAnnouncementMerge = false;
             return;
         }
 
@@ -118,15 +107,12 @@ public partial class AnnouncementsLibraryViewModel
             _nextStopByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
         IncludeNextStopMp3InAnnouncementMerge =
             _nextStopMp3ByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
-        IncludeEndStopInAnnouncementMerge =
-            _endStopByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
     }
 
     private static string BuildPrefixSequenceLabel(
         bool includeGong,
         bool includeNextStopGerman,
-        bool includeNextStopMp3,
-        bool includeEndStop)
+        bool includeNextStopMp3)
     {
         var segments = new List<string>();
         if (includeGong)
@@ -154,17 +140,7 @@ public partial class AnnouncementsLibraryViewModel
             segments.Add("Next Stop");
         }
 
-        if (!includeEndStop)
-        {
-            return segments.Count == 0 ? string.Empty : string.Join(" + ", segments) + " + ";
-        }
-
-        if (segments.Count == 0)
-        {
-            return "Endhaltestelle (am Ende) – ";
-        }
-
-        return string.Join(" + ", segments) + " … + Endhaltestelle – ";
+        return segments.Count == 0 ? string.Empty : string.Join(" + ", segments) + " + ";
     }
 
     private void TryBootstrapSequenceFromAnnouncement(ManagedAnnouncementTemplateItem announcement)
@@ -197,16 +173,30 @@ public partial class AnnouncementsLibraryViewModel
         AnnouncementSequence.Add(new AnnouncementAudioSequenceItem
         {
             Kind = AnnouncementSequenceEntryKind.Audio,
-            DisplayName = Path.GetFileName(path),
+            DisplayName = !string.IsNullOrWhiteSpace(announcement.EmbeddedSoundFileName)
+                ? announcement.EmbeddedSoundFileName.Trim()
+                : Path.GetFileName(path),
             SourcePath = path
         });
     }
 
+    private readonly HashSet<string> _announcementsNeedingAudioMaterialization = new(StringComparer.Ordinal);
+
+    private void MarkAnnouncementAudioDirty(string? announcementId)
+    {
+        if (!string.IsNullOrWhiteSpace(announcementId))
+        {
+            _announcementsNeedingAudioMaterialization.Add(announcementId);
+        }
+    }
+
     private void NotifySequenceChanged()
     {
+        MarkAnnouncementAudioDirty(SelectedAnnouncement?.Id);
         OnPropertyChanged(nameof(PickAudioButtonLabel));
         MarkDirty();
         UpdateSelectedAudioHint();
+        ClearEmbeddedSoundCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
@@ -375,19 +365,25 @@ public partial class AnnouncementsLibraryViewModel
 
     private bool ApplyAnnouncementSequencesBeforeCommit()
     {
+        AnnouncementPreviewPlayer.Stop();
         PersistCurrentAnnouncementSequence();
 
         foreach (var announcement in _allAnnouncements)
         {
+            var needsMaterialization = _announcementsNeedingAudioMaterialization.Contains(announcement.Id);
+            if (!needsMaterialization)
+            {
+                continue;
+            }
+
             _sequenceByAnnouncementId.TryGetValue(announcement.Id, out var sequence);
             sequence ??= [];
 
             var includeGong = _gongByAnnouncementId.GetValueOrDefault(announcement.Id, false);
             var includeNextStopGerman = _nextStopByAnnouncementId.GetValueOrDefault(announcement.Id, false);
             var includeNextStopMp3 = _nextStopMp3ByAnnouncementId.GetValueOrDefault(announcement.Id, false);
-            var includeEndStop = _endStopByAnnouncementId.GetValueOrDefault(announcement.Id, false);
             if (sequence.Count == 0 && !includeGong && !includeNextStopGerman &&
-                !includeNextStopMp3 && !includeEndStop)
+                !includeNextStopMp3)
             {
                 continue;
             }
@@ -397,7 +393,6 @@ public partial class AnnouncementsLibraryViewModel
                     includeGong,
                     includeNextStopGerman,
                     includeNextStopMp3,
-                    includeEndStop,
                     out var parts,
                     out var buildError))
             {
@@ -491,14 +486,13 @@ public partial class AnnouncementsLibraryViewModel
         bool includeGong,
         bool includeNextStopGerman,
         bool includeNextStopMp3,
-        bool includeEndStop,
         out List<EmbeddedSoundSequencePart> parts,
         out string? error)
     {
         parts = [];
         error = null;
 
-        if (includeGong || includeNextStopGerman || includeNextStopMp3 || includeEndStop)
+        if (includeGong || includeNextStopGerman || includeNextStopMp3)
         {
             if (!AppServices.IsInitialized)
             {
@@ -580,18 +574,6 @@ public partial class AnnouncementsLibraryViewModel
             }
         }
 
-        if (includeEndStop)
-        {
-            if (!TryAddStandardAudio(
-                    PlanerEndStopSoundResolver.TryResolve(AppServices.Workspace),
-                    PlanerEndStopSoundResolver.FileName,
-                    parts,
-                    out error))
-            {
-                return false;
-            }
-        }
-
         return true;
     }
 
@@ -637,8 +619,20 @@ public partial class AnnouncementsLibraryViewModel
             code = "0000";
         }
 
-        var safeBase = string.IsNullOrWhiteSpace(baseName) ? "ansage" : baseName.Trim().TrimStart('_');
+        var safeBase = NormalizeEmbeddedSoundBaseName(baseName, code);
         return $"{code}_{safeBase}{ext}";
+    }
+
+    private static string NormalizeEmbeddedSoundBaseName(string baseName, string code)
+    {
+        var safeBase = string.IsNullOrWhiteSpace(baseName) ? "ansage" : baseName.Trim().TrimStart('_');
+        var prefix = $"{code}_";
+        while (safeBase.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            safeBase = safeBase[prefix.Length..].TrimStart('_');
+        }
+
+        return string.IsNullOrWhiteSpace(safeBase) ? "ansage" : safeBase;
     }
 
     private bool TryBuildPreviewPartsForSelection(
@@ -660,9 +654,8 @@ public partial class AnnouncementsLibraryViewModel
         var includeGong = _gongByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
         var includeNextStopGerman = _nextStopByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
         var includeNextStopMp3 = _nextStopMp3ByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
-        var includeEndStop = _endStopByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
         if (sequence.Count == 0 && !includeGong && !includeNextStopGerman &&
-            !includeNextStopMp3 && !includeEndStop)
+            !includeNextStopMp3)
         {
             error = "Keine Tondateien in der Sequenz – bitte Tondatei hinzufügen.";
             return false;
@@ -673,7 +666,6 @@ public partial class AnnouncementsLibraryViewModel
             includeGong,
             includeNextStopGerman,
             includeNextStopMp3,
-            includeEndStop,
             out parts,
             out error);
     }

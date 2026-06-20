@@ -76,7 +76,14 @@ public sealed class DutyTemplateStore
             return;
         }
 
-        var merged = LoadAll().ToDictionary(d => d.Id, d => d);
+        var local = LoadAll();
+        if (local.Count == 0)
+        {
+            WriteCatalog(incomingList);
+            return;
+        }
+
+        var merged = local.ToDictionary(d => d.Id, d => d);
         foreach (var template in incomingList)
         {
             if (string.IsNullOrWhiteSpace(template.Id))

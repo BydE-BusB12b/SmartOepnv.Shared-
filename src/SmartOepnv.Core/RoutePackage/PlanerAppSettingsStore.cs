@@ -47,7 +47,9 @@ public sealed class PlanerAppSettingsStore
         {
             version = PlanerAppSettings.FileVersion,
             companyLogoFileName = settings.CompanyLogoFileName,
-            companyLogos = settings.CompanyLogos
+            companyLogos = settings.CompanyLogos,
+            devicePassword = settings.DevicePassword,
+            unlockPassword = settings.UnlockPassword
         };
         SafeDataFileStore.WriteAllText(_settingsPath, JsonSerializer.Serialize(document, JsonOptions));
     }

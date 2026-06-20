@@ -2,6 +2,7 @@ using System.Globalization;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using SmartOepnv.AppShared.Pdf;
 using SmartOepnv.Core.Zeitwirtschaft;
 
 namespace SmartOepnv.AppShared.Zeitwirtschaft;
@@ -21,6 +22,7 @@ public static class ZeitwirtschaftPdfGenerator
         var monthLabel = new DateTime(year, month, 1)
             .ToString("MMMM yyyy", CultureInfo.GetCultureInfo("de-DE"));
         var totalDuration = ZeitwirtschaftMergeService.SumDurationHhMm(rows);
+        var created = DateTime.Now;
 
         Document.Create(document =>
         {
@@ -30,12 +32,18 @@ public static class ZeitwirtschaftPdfGenerator
                 page.Margin(36);
                 page.DefaultTextStyle(x => x.FontSize(10).FontColor(Colors.Black));
 
-                page.Header().Column(column =>
-                {
-                    column.Item().Text("Zeitwirtschaft").FontSize(18).SemiBold();
-                    column.Item().Text($"{employee.DisplayLine} – {monthLabel}").FontSize(12);
-                    column.Item().PaddingTop(6).Text($"Erstellt am {DateTime.Now:dd.MM.yyyy HH:mm}");
-                });
+                page.Header().Element(header =>
+                    PlanerPdfBranding.ComposeHeaderWithSmartLogo(header, left =>
+                    {
+                        left.Column(column =>
+                        {
+                            column.Item().Text("Zeitwirtschaft").FontSize(18).SemiBold();
+                            column.Item().Text($"{employee.DisplayLine} – {monthLabel}").FontSize(12);
+                            column.Item().PaddingTop(6).Text($"Erstellt am {created:dd.MM.yyyy HH:mm}");
+                        });
+                    }));
+
+                page.Footer().Element(c => PlanerPdfBranding.ComposeStandardFooter(c, created));
 
                 page.Content().PaddingVertical(12).Table(table =>
                 {

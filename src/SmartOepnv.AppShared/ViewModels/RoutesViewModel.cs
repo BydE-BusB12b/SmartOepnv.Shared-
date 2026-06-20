@@ -21,6 +21,14 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     public ObservableCollection<string> Routes { get; } = new();
     public ObservableCollection<RouteStopItem> Stops { get; } = new();
 
+    public RoutesViewModel()
+    {
+        if (AppServices.IsInitialized)
+        {
+            AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
+        }
+    }
+
     public bool HasPendingChanges => _sync.HasPendingChanges;
 
     public void RefreshFromEditorIfNeeded()
@@ -172,9 +180,25 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
+        EnrichStopTemplatesFromRoutes(AppServices.Routes.Editor);
         AppServices.Routes.ApplyEditorChanges("routes");
         StatusMessage = $"{Routes.Count} Route(n) – lokal gespeichert.";
         _sync.AfterCommit();
+    }
+
+    private static void EnrichStopTemplatesFromRoutes(EditableRoutePackage? editor)
+    {
+        if (editor is null || editor.StopTemplates.Count == 0)
+        {
+            return;
+        }
+
+        var templates = editor.StopTemplates.ToList();
+        var merge = StopTemplateRouteMerger.MergeAllRouteStops(templates, editor);
+        if (merge.Enriched > 0)
+        {
+            editor.ReplaceStopTemplates(templates);
+        }
     }
 
     [RelayCommand]

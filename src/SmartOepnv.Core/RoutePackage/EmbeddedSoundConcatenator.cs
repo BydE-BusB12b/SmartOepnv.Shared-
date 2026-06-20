@@ -71,21 +71,8 @@ public static class EmbeddedSoundConcatenator
                 throw new InvalidOperationException("Die Sequenz enthält keine Audiodaten.");
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(outputWavPath)!);
-            WaveFileWriter.CreateWaveFile16(outputWavPath, new ConcatenatingSampleProvider(providers));
-
-            var info = new FileInfo(outputWavPath);
-            if (info.Length == 0)
-            {
-                throw new InvalidOperationException("Die zusammengefügte Ansage ist leer.");
-            }
-
-            if (info.Length > EmbeddedSoundsEditor.MaxEmbeddedBytes)
-            {
-                File.Delete(outputWavPath);
-                throw new InvalidOperationException(
-                    $"Zusammengefügte Ansage zu groß (max. {EmbeddedSoundsEditor.MaxEmbeddedBytes / (1024 * 1024)} MB).");
-            }
+            WriteWaveFileAtomically(outputWavPath, tempPath =>
+                WaveFileWriter.CreateWaveFile16(tempPath, new ConcatenatingSampleProvider(providers)));
         }
         finally
         {
@@ -111,7 +98,8 @@ public static class EmbeddedSoundConcatenator
         return sample;
     }
 
-    private const int TargetSampleRate = 44100;
+    // Hambloch-Ansagen (Dropbox) sind überwiegend 22,05 kHz – Gong (44,1 kHz) wird ggf. heruntergerechnet.
+    private const int TargetSampleRate = 22050;
     private const int TargetChannels = 1;
 
     public static void ConcatenateToWav(
@@ -152,21 +140,8 @@ public static class EmbeddedSoundConcatenator
                 }
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(outputWavPath)!);
-            WaveFileWriter.CreateWaveFile16(outputWavPath, new ConcatenatingSampleProvider(providers));
-
-            var info = new FileInfo(outputWavPath);
-            if (info.Length == 0)
-            {
-                throw new InvalidOperationException("Die zusammengefügte Ansage ist leer.");
-            }
-
-            if (info.Length > EmbeddedSoundsEditor.MaxEmbeddedBytes)
-            {
-                File.Delete(outputWavPath);
-                throw new InvalidOperationException(
-                    $"Zusammengefügte Ansage zu groß (max. {EmbeddedSoundsEditor.MaxEmbeddedBytes / (1024 * 1024)} MB).");
-            }
+            WriteWaveFileAtomically(outputWavPath, tempPath =>
+                WaveFileWriter.CreateWaveFile16(tempPath, new ConcatenatingSampleProvider(providers)));
         }
         finally
         {
@@ -174,6 +149,48 @@ public static class EmbeddedSoundConcatenator
             {
                 reader.Dispose();
             }
+        }
+    }
+
+    private static void WriteWaveFileAtomically(string outputWavPath, Action<string> writeToTempPath)
+    {
+        var directory = Path.GetDirectoryName(outputWavPath)!;
+        Directory.CreateDirectory(directory);
+        var tempPath = Path.Combine(directory, $".{Path.GetFileName(outputWavPath)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            writeToTempPath(tempPath);
+
+            var info = new FileInfo(tempPath);
+            if (info.Length == 0)
+            {
+                throw new InvalidOperationException("Die zusammengefügte Ansage ist leer.");
+            }
+
+            if (info.Length > EmbeddedSoundsEditor.MaxEmbeddedBytes)
+            {
+                throw new InvalidOperationException(
+                    $"Zusammengefügte Ansage zu groß (max. {EmbeddedSoundsEditor.MaxEmbeddedBytes / (1024 * 1024)} MB).");
+            }
+
+            File.Move(tempPath, outputWavPath, overwrite: true);
+        }
+        catch
+        {
+            if (File.Exists(tempPath))
+            {
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch
+                {
+                    // ignore cleanup errors
+                }
+            }
+
+            throw;
         }
     }
 

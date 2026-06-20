@@ -10,6 +10,17 @@
 
              HorizontalAlignment="Stretch">
 
+    <UserControl.Resources>
+        <Style x:Key="AnnouncementSaveJsonButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SaveJsonButtonIsSuccess}" Value="True">
+                    <Setter Property="Background" Value="#FF4CAF50" />
+                    <Setter Property="BorderBrush" Value="#FF4CAF50" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
     <Grid Margin="0,0,0,8">
 
         <Grid.ColumnDefinitions>
@@ -42,7 +53,7 @@
 
                                Opacity="0.65" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
 
-                    <TextBox materialDesign:HintAssist.Hint="Suchen (Ansagen-ID, Bezeichnung, Beschreibung)"
+                    <TextBox materialDesign:HintAssist.Hint="Suchen (Ansagen-ID, Bezeichnung, Beschreibung, Linie)"
 
                              Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
 
@@ -58,7 +69,7 @@
 
                             Command="{Binding SaveChangesCommand}"
 
-                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Style="{StaticResource AnnouncementSaveJsonButtonStyle}"
 
                             Margin="0,0,0,6"
 
@@ -228,6 +239,10 @@
 
                                 <RowDefinition Height="Auto" />
 
+                                <RowDefinition Height="Auto" />
+
+                                <RowDefinition Height="Auto" />
+
                             </Grid.RowDefinitions>
 
 
@@ -284,11 +299,29 @@
 
 
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Sonderansagen:"
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Linien:"
+
+                                       VerticalAlignment="Top" Margin="0,4,12,10" Opacity="0.9" />
+
+                            <TextBox Grid.Row="4" Grid.Column="1"
+
+                                     Text="{Binding Lines, UpdateSourceTrigger=PropertyChanged}"
+
+                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40"
+
+                                     materialDesign:HintAssist.Hint="z. B. SB19, NE4, 682 (kommagetrennt)"
+
+                                     ToolTip="Linien, die diese Ansage nutzen könnten – nur in der Suche, nicht in der Kartei-Liste"
+
+                                     Margin="0,0,0,10" />
+
+
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Sonderansagen:"
 
                                        VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
 
-                            <CheckBox Grid.Row="4" Grid.Column="1"
+                            <CheckBox Grid.Row="5" Grid.Column="1"
 
                                       Content="In Sonderansagen anzeigen (ITCS / Handy-Liste)"
 
@@ -298,17 +331,47 @@
 
 
 
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Eingebetteter Ton:"
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Eingebetteter Ton:"
 
                                        VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.9" />
 
-                            <TextBox Grid.Row="5" Grid.Column="1"
+                            <Grid Grid.Row="6" Grid.Column="1">
 
-                                     Text="{Binding EmbeddedSoundFileName, UpdateSourceTrigger=PropertyChanged}"
+                                <Grid.ColumnDefinitions>
 
-                                     IsReadOnly="True" Opacity="0.85"
+                                    <ColumnDefinition Width="*" />
 
-                                     ToolTip="Wird beim Speichern aus der Sequenz erzeugt" />
+                                    <ColumnDefinition Width="Auto" />
+
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox Grid.Column="0"
+
+                                         Text="{Binding DataContext.SelectedEmbeddedSoundFileName, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=OneWay}"
+
+                                         IsReadOnly="True" Opacity="0.85"
+
+                                         ToolTip="Wird beim Speichern aus der Sequenz erzeugt" />
+
+                                <Button Grid.Column="1"
+
+                                        Content="✕"
+
+                                        Command="{Binding DataContext.ClearEmbeddedSoundCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+
+                                        Padding="0"
+
+                                        Width="28"
+
+                                        Height="28"
+
+                                        Margin="6,0,0,0"
+
+                                        ToolTip="Eingebettete Tondatei entfernen"
+
+                                        VerticalAlignment="Center" />
+
+                            </Grid>
 
                         </Grid>
 
@@ -334,7 +397,7 @@
 
                                         Command="{Binding SaveChangesCommand}"
 
-                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Style="{StaticResource AnnouncementSaveJsonButtonStyle}"
 
                                         Margin="0,0,0,10"
 
@@ -372,15 +435,11 @@
 
                                           ToolTip="Next Stop.mp3 nach Nächste Haltestelle (1 s Pause dazwischen)" />
 
-                                <CheckBox Content="Endhaltestelle einfügen"
-
-                                          IsChecked="{Binding IncludeEndStopInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
-
-                                          Foreground="White"
-
-                                          Margin="0,0,0,8"
-
-                                          ToolTip="Endhalestelle.wav am Ende der Sequenz (Dropbox/Ansagen)" />
+                                <TextBlock Text="Endhaltestelle: in der Route markieren und „Endhaltestellen-Ansage“ aktivieren – Ton aus der Kartei-Eintrag „Endhaltestelle“."
+                                           Foreground="White"
+                                           Opacity="0.85"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,8" />
 
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
 

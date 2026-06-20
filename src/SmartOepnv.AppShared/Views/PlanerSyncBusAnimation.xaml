@@ -29,10 +29,9 @@
                    Stretch="Uniform"
                    SnapsToDevicePixels="True"
                    RenderOptions.BitmapScalingMode="HighQuality"
-                   Source="pack://application:,,,/SmartOepnv.AppShared;component/Assets/planer_sync_solaris_bus.png"
                    RenderTransformOrigin="0,1">
                 <Image.RenderTransform>
-                    <TranslateTransform x:Name="BusTransform" X="-520" />
+                    <TranslateTransform x:Name="BusTransform" X="0" />
                 </Image.RenderTransform>
             </Image>
         </Canvas>

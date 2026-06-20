@@ -141,6 +141,10 @@ public static class AutoSchedulePlanner
             }
 
             editor.StopsByRoute[displayKey] = newStops;
+            RouteNavigationMetadataCopy.CopyForRoute(
+                editor.PackageRoot,
+                request.TemplateRouteKey,
+                displayKey);
         }
 
         return firstRouteKey ?? string.Empty;

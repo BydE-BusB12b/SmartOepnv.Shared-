@@ -42,8 +42,8 @@ internal static class AnnouncementPreviewPlayer
     {
         lock (Sync)
         {
-            _player ??= new MediaPlayer();
-            _player.Stop();
+            ReleasePlayer();
+            _player = new MediaPlayer();
             _player.Open(new Uri(Path.GetFullPath(filePath), UriKind.Absolute));
             _player.Volume = 1.0;
             _player.Play();
@@ -54,7 +54,19 @@ internal static class AnnouncementPreviewPlayer
     {
         lock (Sync)
         {
-            _player?.Stop();
+            ReleasePlayer();
         }
+    }
+
+    private static void ReleasePlayer()
+    {
+        if (_player is null)
+        {
+            return;
+        }
+
+        _player.Stop();
+        _player.Close();
+        _player = null;
     }
 }

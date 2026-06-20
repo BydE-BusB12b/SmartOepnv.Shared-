@@ -30,7 +30,10 @@ public static class GpsAnsagenRouteExportSync
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts");
         DateBasedHintsEditor.SaveToRoot(root, package.DateBasedHints);
         RoutePackagePhoneMetadata.SaveOutsideDisplays(root, package.OutsideDisplays);
-        RoutePackagePhoneMetadata.SaveAllowedRoutes(root, collectedRoutes, package.AdditionalAllowedRoutes);
+        RoutePackagePhoneMetadata.SaveAllowedRoutes(
+            root,
+            collectedRoutes.Select(RouteDisplayHelper.ToDistributionDisplayString),
+            package.AdditionalAllowedRoutes);
         EmployeeRosterEditor.SaveToRoot(root, package.Employees);
         RegisteredVehiclesEditor.SaveToRoot(
             root,
@@ -45,7 +48,37 @@ public static class GpsAnsagenRouteExportSync
         EnsureAnnouncementSoundsFromWorkspace(root, package, workspace);
         ManagedAnnouncementTemplateEditor.SaveToRoot(root, package.AnnouncementTemplates);
         SyncEmbeddedSounds(package, root, workspace);
+        SyncEndStopAnnouncementMetadata(package, root, workspace);
         SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
+    }
+
+    private static void SyncEndStopAnnouncementMetadata(
+        EditableRoutePackage package,
+        JsonObject root,
+        LocalWorkspaceStore? workspace)
+    {
+        var needsEndStopAudio = package.StopsByRoute.Values
+            .SelectMany(stops => stops)
+            .Any(s => s.IsEndStop && s.PlayEndStopAnnouncement);
+
+        if (!needsEndStopAudio)
+        {
+            root.Remove(EndStopAnnouncementResolver.RootJsonFieldName);
+            return;
+        }
+
+        var fileName = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
+            package.AnnouncementTemplates,
+            root,
+            workspace);
+
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            root.Remove(EndStopAnnouncementResolver.RootJsonFieldName);
+            return;
+        }
+
+        root[EndStopAnnouncementResolver.RootJsonFieldName] = fileName;
     }
 
     /// <summary>
@@ -114,8 +147,9 @@ public static class GpsAnsagenRouteExportSync
             }
 
             var lineCourse = RouteDisplayHelper.NormalizeLineCourse(parsed.LineCourse);
-            var tripNumber = (parsed.TripNumber ?? string.Empty).Trim();
+            var tripNumber = RouteDisplayHelper.NormalizeTripNumber(parsed.TripNumber);
             var pureName = parsed.Name.Trim();
+            var passengerLine = (parsed.PassengerDisplayLine ?? string.Empty).Trim();
 
             if (lineCourseRoutes[lineCourse] is not JsonArray arr)
             {
@@ -123,12 +157,18 @@ public static class GpsAnsagenRouteExportSync
                 lineCourseRoutes[lineCourse] = arr;
             }
 
-            arr.Add(new JsonObject
+            var routeObj = new JsonObject
             {
                 ["name"] = pureName,
                 ["lineCourse"] = lineCourse,
                 ["tripNumber"] = tripNumber
-            });
+            };
+            if (!string.IsNullOrEmpty(passengerLine))
+            {
+                routeObj["passengerDisplayLine"] = passengerLine;
+            }
+
+            arr.Add(routeObj);
         }
 
         root["routes"] = simpleRoutes;
@@ -147,13 +187,14 @@ public static class GpsAnsagenRouteExportSync
         var routeStopsObject = new JsonObject();
         foreach (var route in routesToExport.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
         {
+            var distributionKey = RouteDisplayHelper.ToDistributionDisplayString(route);
             var stopsArray = new JsonArray();
             foreach (var stop in package.GetStops(route))
             {
-                stopsArray.Add(GpsAnsagenStopJson.Write(stop, route));
+                stopsArray.Add(GpsAnsagenStopJson.Write(stop, distributionKey));
             }
 
-            routeStopsObject[route] = stopsArray;
+            routeStopsObject[distributionKey] = stopsArray;
         }
 
         root["routeStops"] = routeStopsObject;
@@ -171,7 +212,111 @@ public static class GpsAnsagenRouteExportSync
             .Concat(package.AnnouncementTemplates.Select(t => t.EmbeddedSoundFileName))
             .Concat(package.AnnouncementTemplates
                 .Where(t => t.IncludeInSpecialAnnouncements)
-                .Select(t => t.EmbeddedSoundFileName));
+                .Select(t => t.EmbeddedSoundFileName))
+            .ToList();
+
+        if (package.StopsByRoute.Values.SelectMany(stops => stops).Any(s => s.IsEndStop && s.PlayEndStopAnnouncement))
+        {
+            var endStopFile = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
+                package.AnnouncementTemplates,
+                root,
+                workspace);
+            if (!string.IsNullOrWhiteSpace(endStopFile))
+            {
+                names.Add(endStopFile);
+            }
+        }
+
+        GpsAnsagenEmbeddedSoundsJson.SyncToRoot(root, names, workspace);
+    }
+
+    /// <summary>
+    /// Teilpaket für Fahrzeuge: nur ausgewählte Routen (inkl. Routenwechsel-Ziele).
+    /// <paramref name="pruneOthersOnDevice"/> = true setzt <c>allowedRoutes</c> (Senden), false entfernt die Allowlist (Update).
+    /// </summary>
+    public static string BuildVehicleTransferJson(
+        EditableRoutePackage package,
+        IReadOnlyList<string> selectedRouteNames,
+        bool pruneOthersOnDevice,
+        LocalWorkspaceStore? workspace)
+    {
+        if (selectedRouteNames.Count == 0)
+        {
+            throw new InvalidOperationException("Mindestens eine Route auswählen.");
+        }
+
+        var allStops = package.StopsByRoute.Values.SelectMany(s => s).ToList();
+        var routesToExport = RouteDistributionRouteCollector.CollectAllRoutesForDistribution(
+            selectedRouteNames,
+            allStops);
+
+        var root = JsonNode.Parse(package.ToJson()) as JsonObject
+            ?? throw new InvalidOperationException("Route-Paket konnte nicht gelesen werden.");
+
+        ApplyRouteSubsetToRoot(package, root, routesToExport, workspace);
+
+        if (pruneOthersOnDevice)
+        {
+            RoutePackagePhoneMetadata.SaveAllowedRoutes(
+                root,
+                routesToExport.Select(RouteDisplayHelper.ToDistributionDisplayString),
+                package.AdditionalAllowedRoutes);
+        }
+        else
+        {
+            root.Remove("allowedRoutes");
+        }
+
+        root["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        root["autoImport"] = true;
+        return root.ToJsonString();
+    }
+
+    private static void ApplyRouteSubsetToRoot(
+        EditableRoutePackage package,
+        JsonObject root,
+        HashSet<string> routesToExport,
+        LocalWorkspaceStore? workspace)
+    {
+        SyncRoutesAndLineCourse(routesToExport, root);
+        SyncRouteStops(package, routesToExport, root);
+        root.Remove("routeDirections");
+        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", routesToExport);
+        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", routesToExport);
+        SyncEmbeddedSoundsForRoutes(package, root, routesToExport, workspace);
+    }
+
+    private static void SyncEmbeddedSoundsForRoutes(
+        EditableRoutePackage package,
+        JsonObject root,
+        HashSet<string> routesToExport,
+        LocalWorkspaceStore? workspace)
+    {
+        var exportedStops = package.StopsByRoute
+            .Where(kv => routesToExport.Contains(kv.Key))
+            .SelectMany(kv => kv.Value)
+            .ToList();
+
+        var names = exportedStops
+            .Select(s => s.EmbeddedSoundFileName)
+            .Concat(package.StopTemplates.Select(t => t.EmbeddedSoundFileName))
+            .Concat(package.AnnouncementTemplates.Select(t => t.EmbeddedSoundFileName))
+            .Concat(package.AnnouncementTemplates
+                .Where(t => t.IncludeInSpecialAnnouncements)
+                .Select(t => t.EmbeddedSoundFileName))
+            .ToList();
+
+        if (exportedStops.Any(s => s.IsEndStop && s.PlayEndStopAnnouncement))
+        {
+            var endStopFile = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
+                package.AnnouncementTemplates,
+                root,
+                workspace);
+            if (!string.IsNullOrWhiteSpace(endStopFile))
+            {
+                names.Add(endStopFile);
+            }
+        }
 
         GpsAnsagenEmbeddedSoundsJson.SyncToRoot(root, names, workspace);
     }

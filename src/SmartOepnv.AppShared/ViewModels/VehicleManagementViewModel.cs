@@ -7,12 +7,23 @@ using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
+public enum VehicleManagementButtonState
+{
+    Idle,
+    Success
+}
+
 public sealed record DispoRowColorOption(string Hex, string Label);
 
 public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaViewModel
 {
+    private const int SuccessFeedbackMs = 5000;
+
     private readonly EditorAreaSyncState _sync = new();
     private string? _loadedFingerprint;
+    private CancellationTokenSource? _saveFeedbackCts;
+    private CancellationTokenSource? _deleteFeedbackCts;
+
     public static IReadOnlyList<DispoRowColorOption> DispoRowColorOptions { get; } =
     [
         new(string.Empty, "Standard"),
@@ -25,6 +36,8 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private RegisteredVehicleItem? selectedVehicle;
+    [ObservableProperty] private VehicleManagementButtonState saveButtonState = VehicleManagementButtonState.Idle;
+    [ObservableProperty] private VehicleManagementButtonState deleteButtonState = VehicleManagementButtonState.Idle;
 
     public IReadOnlyList<DispoRowColorOption> RowColorOptions => DispoRowColorOptions;
 
@@ -75,7 +88,7 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
         Maengelkarte.RefreshVehicleFilterOptions();
         var redirectCount = editor.RegisteredVehiclePhoneRedirects.Count;
         StatusMessage =
-            $"{Vehicles.Count} Fahrzeuge – KOM für die App; Planer-Zusatzdaten und Nummern-Historie ({redirectCount} Umleitung/en) im Paket (Dropbox).";
+            $"{Vehicles.Count} Fahrzeuge – lokal bearbeiten; Dropbox-Upload erst beim Abmelden oder „Planer-Arbeitsstand speichern“.";
         _sync.AfterRefresh();
         _loadedFingerprint = ComputeFingerprint();
     }
@@ -88,7 +101,7 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
             return;
         }
 
-        CommitChanges();
+        CommitChanges(showSuccessFeedback: false);
     }
 
     /// <summary>Wählt das Fahrzeug mit passender Telefonnummer (nur Ziffern). Keine Aktion, wenn keine Übereinstimmung.</summary>
@@ -108,13 +121,15 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
         }
     }
 
-    public void CommitChanges()
+    public void CommitChanges(bool showSuccessFeedback = true)
     {
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
             return;
         }
+
+        var savedSelectionKey = BuildVehicleSelectionKey(SelectedVehicle);
 
         var redirects = editor.RegisteredVehiclePhoneRedirects.ToList();
         foreach (var vehicle in Vehicles)
@@ -127,16 +142,26 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
                 baseline,
                 vehicle.PhoneNumber);
             vehicle.LoadedPhoneNumber = vehicle.PhoneNumber;
+            vehicle.NotifyDisplayLabelChanged();
         }
 
         editor.ReplaceRegisteredVehicles(Vehicles.Select(CloneForSave).ToList());
         editor.ReplaceRegisteredVehiclePhoneRedirects(redirects);
         AppServices.Routes.ApplyEditorChanges("fahrzeugverwaltung");
         AppServices.PlannerLocal?.PersistFromEditor(editor);
+        Maengelkarte.RefreshVehicleFilterOptions();
+
+        SelectedVehicle = FindVehicleBySelectionKey(savedSelectionKey) ?? Vehicles.FirstOrDefault();
+
         StatusMessage =
-            $"{Vehicles.Count} Fahrzeuge im Planer gespeichert (lokal, höchste Priorität) – KOM und Planer-Daten gehen mit Routen-Export/Dropbox.";
+            $"{Vehicles.Count} Fahrzeuge lokal gespeichert – Dropbox-Upload erst beim Abmelden oder „Planer-Arbeitsstand speichern“.";
         _sync.AfterCommit();
         _loadedFingerprint = ComputeFingerprint();
+
+        if (showSuccessFeedback)
+        {
+            _ = ShowSaveSuccessFeedbackAsync();
+        }
     }
 
     [RelayCommand]
@@ -181,10 +206,91 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
             : Vehicles[Math.Clamp(idx, 0, Vehicles.Count - 1)];
         _sync.MarkDirty();
         StatusMessage = "Fahrzeug entfernt – „Speichern“ nicht vergessen.";
+
+        _ = ShowDeleteSuccessFeedbackAsync();
     }
 
     [RelayCommand]
     private void SaveChanges() => CommitChanges();
+
+    private static string? BuildVehicleSelectionKey(RegisteredVehicleItem? vehicle)
+    {
+        if (vehicle is null)
+        {
+            return null;
+        }
+
+        var phone = RegisteredVehiclesEditor.NormalizePhoneKey(vehicle.PhoneNumber);
+        if (phone.Length > 0)
+        {
+            return $"phone:{phone}";
+        }
+
+        var name = vehicle.Name?.Trim() ?? string.Empty;
+        return name.Length > 0 ? $"name:{name}" : null;
+    }
+
+    private RegisteredVehicleItem? FindVehicleBySelectionKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return null;
+        }
+
+        if (key.StartsWith("phone:", StringComparison.Ordinal))
+        {
+            var phone = key["phone:".Length..];
+            return Vehicles.FirstOrDefault(
+                v => RegisteredVehiclesEditor.NormalizePhoneKey(v.PhoneNumber) == phone);
+        }
+
+        if (key.StartsWith("name:", StringComparison.Ordinal))
+        {
+            var name = key["name:".Length..];
+            return Vehicles.FirstOrDefault(
+                v => string.Equals(v.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return null;
+    }
+
+    private async Task ShowSaveSuccessFeedbackAsync()
+    {
+        _saveFeedbackCts?.Cancel();
+        _saveFeedbackCts?.Dispose();
+        _saveFeedbackCts = new CancellationTokenSource();
+        var token = _saveFeedbackCts.Token;
+
+        SaveButtonState = VehicleManagementButtonState.Success;
+        try
+        {
+            await Task.Delay(SuccessFeedbackMs, token).ConfigureAwait(true);
+            SaveButtonState = VehicleManagementButtonState.Idle;
+        }
+        catch (TaskCanceledException)
+        {
+            // neuer Klick hat Feedback zurückgesetzt
+        }
+    }
+
+    private async Task ShowDeleteSuccessFeedbackAsync()
+    {
+        _deleteFeedbackCts?.Cancel();
+        _deleteFeedbackCts?.Dispose();
+        _deleteFeedbackCts = new CancellationTokenSource();
+        var token = _deleteFeedbackCts.Token;
+
+        DeleteButtonState = VehicleManagementButtonState.Success;
+        try
+        {
+            await Task.Delay(SuccessFeedbackMs, token).ConfigureAwait(true);
+            DeleteButtonState = VehicleManagementButtonState.Idle;
+        }
+        catch (TaskCanceledException)
+        {
+            // neuer Klick hat Feedback zurückgesetzt
+        }
+    }
 
     private string ComputeFingerprint() =>
         JsonSerializer.Serialize(Vehicles.Select(v => new

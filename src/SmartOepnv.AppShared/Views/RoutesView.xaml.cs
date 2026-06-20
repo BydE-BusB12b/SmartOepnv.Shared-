@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using SmartOepnv.AppShared.ViewModels;
@@ -16,7 +17,7 @@ public partial class RoutesView : UserControl
         InitializeComponent();
     }
 
-    private void StopsGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void StopsList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (_openingStopDialog || DataContext is not RoutesViewModel vm)
         {
@@ -28,8 +29,8 @@ public partial class RoutesView : UserControl
             return;
         }
 
-        var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
-        if (row?.Item is not RouteStopItem stop)
+        var row = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (row?.Content is not RouteStopItem stop)
         {
             return;
         }
@@ -57,6 +58,7 @@ public partial class RoutesView : UserControl
             owner = Window.GetWindow(this);
             var dialog = new RouteStopEditDialog(vm, stop) { Owner = owner };
             dialog.ShowDialog();
+            CollectionViewSource.GetDefaultView(vm.Stops)?.Refresh();
         }
         catch (Exception ex)
         {

@@ -212,8 +212,10 @@ public sealed class EditableRoutePackage
         if (!string.IsNullOrWhiteSpace(copyStopsFromRouteKey) &&
             StopsByRoute.TryGetValue(copyStopsFromRouteKey.Trim(), out var sourceStops))
         {
+            var sourceKey = copyStopsFromRouteKey.Trim();
             var targetKey = displayKey;
             StopsByRoute[targetKey] = sourceStops.Select(s => CloneStopForRoute(s, targetKey)).ToList();
+            RouteNavigationMetadataCopy.CopyForRoute(_root, sourceKey, targetKey);
         }
 
         error = null;
@@ -242,6 +244,7 @@ public sealed class EditableRoutePackage
             EndDestination = source.EndDestination,
             Ds003aEndDestination = source.Ds003aEndDestination,
             IsEndStop = source.IsEndStop,
+            PlayEndStopAnnouncement = source.PlayEndStopAnnouncement,
             RouteChangeEnabled = source.RouteChangeEnabled,
             SelectedLineCourseTrip = source.SelectedLineCourseTrip,
             EndDestinationCoordinates = source.EndDestinationCoordinates,

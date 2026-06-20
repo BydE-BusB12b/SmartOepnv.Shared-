@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
 using MaterialDesignColors;
@@ -6,12 +7,16 @@ using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.Session;
+using SmartOepnv.Core.Updates;
 
 namespace SmartOepnv.AppShared;
 
 public static class SmartOepnvAppHost
 {
     private static bool _shutdownHandlersRegistered;
+
+    /// <summary>Beim Schließen ohne Speichern – verhindert den automatischen Exit-Export.</summary>
+    public static bool SkipShutdownSave { get; set; }
 
     public static SmartOepnvAppProfile Profile { get; private set; } = SmartOepnvAppProfile.Planer;
 
@@ -20,6 +25,10 @@ public static class SmartOepnvAppHost
         Profile = profile;
         var settingsFolder = profile.IsLeitstelle ? "Leitstelle" : "Planer";
         AppServices.Initialize(settingsFolder);
+        if (!profile.IsLeitstelle)
+        {
+            PlanerSyncBusAnimation.PreloadBusImage();
+        }
         RegisterShutdownHandlersIfNeeded();
     }
 
@@ -95,12 +104,15 @@ public static class SmartOepnvAppHost
         return window;
     }
 
+    /// <summary>Ergebnis des Anmeldedialogs – Dropbox-Anmeldung folgt im Synchronisationsdialog.</summary>
+    public readonly record struct PlanerLoginGateResult(bool Success, string? Username, string? Password);
+
     /// <summary>Planer: Sperre prüfen, Login-Dialog über verschwommenem Hauptfenster.</summary>
-    public static async Task<bool> RunPlanerLoginGateAsync(MainShellWindow owner)
+    public static async Task<PlanerLoginGateResult> RunPlanerLoginGateAsync(MainShellWindow owner)
     {
         if (Profile.IsLeitstelle || AppServices.PlanerSession is null)
         {
-            return true;
+            return new PlanerLoginGateResult(true, null, null);
         }
 
         var session = AppServices.PlanerSession;
@@ -122,7 +134,8 @@ public static class SmartOepnvAppHost
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             ShowInTaskbar = false
         };
-        return login.ShowDialog() == true;
+        var ok = login.ShowDialog() == true;
+        return new PlanerLoginGateResult(ok, login.PendingUsername, login.PendingPassword);
     }
 
     public static async Task ReleasePlanerSessionAsync()
@@ -138,7 +151,7 @@ public static class SmartOepnvAppHost
     /// <summary>Beim Beenden synchron speichern und Dropbox-Sperre freigeben (blockiert bis Upload fertig).</summary>
     public static void EnsurePlanerShutdownSaveAndRelease()
     {
-        if (!AppServices.IsPlannerApp || !AppServices.IsInitialized)
+        if (!AppServices.IsPlannerApp || !AppServices.IsInitialized || SkipShutdownSave)
         {
             return;
         }
@@ -149,7 +162,7 @@ public static class SmartOepnvAppHost
             return;
         }
 
-        if (PlanerWorkspaceSaveCoordinator.WasPersistedRecently())
+        if (PlanerWorkspaceSaveCoordinator.WasDropboxExportedRecently())
         {
             AppServices.PlanerSession.ReleaseLockBestEffortSync();
             return;
@@ -158,7 +171,6 @@ public static class SmartOepnvAppHost
         try
         {
             AppServices.FlushAllPendingEditsBestEffort();
-            SmartOepnvDataBackupService.BackupAllProfiles("app-exit-sync");
         }
         catch
         {
@@ -167,18 +179,146 @@ public static class SmartOepnvAppHost
 
         try
         {
-            PlanerDropboxWorkspaceSync.TryExportAsync().GetAwaiter().GetResult();
+            PlanerDropboxWorkspaceSync.TryExportAsync(flushBeforeCapture: true).GetAwaiter().GetResult();
         }
         catch
         {
             // trotzdem Sperre freigeben
         }
 
-        PlanerWorkspaceSaveCoordinator.MarkPersisted();
         AppServices.PlanerSession.ReleaseLockBestEffortSync();
     }
 
     public static void SaveAndReleasePlanerSessionSync() => EnsurePlanerShutdownSaveAndRelease();
+
+    /// <summary>Dropbox <c>software_versions.json</c> prüfen; bei OK Installer aus Dropbox laden.</summary>
+    public static async Task CheckForSoftwareUpdateAsync(Window? owner)
+    {
+        if (!AppServices.IsInitialized)
+        {
+            return;
+        }
+
+        SoftwareUpdateNotice? notice;
+        try
+        {
+            notice = await DesktopSoftwareUpdateChecker.CheckAsync().ConfigureAwait(true);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (notice is null)
+        {
+            return;
+        }
+
+        var app = Application.Current;
+        if (app is null)
+        {
+            return;
+        }
+
+        var confirmed = false;
+        await app.Dispatcher.InvokeAsync(() =>
+        {
+            var text =
+                $"Version {notice.AvailableVersion} verfügbar.\n\n" +
+                $"Installiert: {notice.InstalledVersion}\n\n" +
+                "Mit OK wird der Installer aus Dropbox in den Download-Ordner geladen.";
+            if (!string.IsNullOrWhiteSpace(notice.Message))
+            {
+                text += $"\n\n{notice.Message}";
+            }
+
+            confirmed = MessageBox.Show(
+                owner,
+                text,
+                $"{Profile.ProductName} – Update verfügbar",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Information) == MessageBoxResult.OK;
+        });
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        AppExitSavingDialog? savingDialog = null;
+        await app.Dispatcher.InvokeAsync(() =>
+        {
+            savingDialog = new AppExitSavingDialog(
+                $"Installer Version {notice.AvailableVersion} wird aus Dropbox heruntergeladen…")
+            {
+                Owner = owner,
+                WindowStartupLocation = owner is null
+                    ? WindowStartupLocation.CenterScreen
+                    : WindowStartupLocation.CenterOwner
+            };
+            savingDialog.Show();
+        });
+
+        try
+        {
+            var targetPath = await DesktopSoftwareUpdateDownloader.DownloadAsync(notice).ConfigureAwait(true);
+            DesktopSoftwareUpdateChecker.MarkNoticeAcknowledged(notice);
+
+            await app.Dispatcher.InvokeAsync(() =>
+            {
+                var openFolder = MessageBox.Show(
+                    owner,
+                    $"Setup wurde gespeichert:\n{targetPath}\n\nOrdner öffnen?",
+                    $"{Profile.ProductName} – Download abgeschlossen",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information) == MessageBoxResult.Yes;
+                if (openFolder)
+                {
+                    OpenDownloadedFileInExplorer(targetPath);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            await app.Dispatcher.InvokeAsync(() =>
+            {
+                MessageBox.Show(
+                    owner,
+                    $"Download fehlgeschlagen:\n{ex.Message}",
+                    $"{Profile.ProductName} – Update",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            });
+        }
+        finally
+        {
+            if (savingDialog is not null)
+            {
+                await app.Dispatcher.InvokeAsync(() =>
+                {
+                    savingDialog.PrepareToClose();
+                    savingDialog.Close();
+                });
+            }
+        }
+    }
+
+    private static void OpenDownloadedFileInExplorer(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{path}\"",
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // optional
+        }
+    }
 
     private static Color Blend(Color a, Color b, double amount)
     {

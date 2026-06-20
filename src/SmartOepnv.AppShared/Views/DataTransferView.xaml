@@ -112,6 +112,81 @@
             </Grid>
         </materialDesign:Card>
 
+        <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
+                             Background="{StaticResource SmartSurfaceBrush}"
+                             Margin="0,0,0,8">
+            <StackPanel>
+                <TextBlock Text="Routen an Fahrzeuge senden"
+                           FontWeight="SemiBold"
+                           FontSize="15"
+                           Margin="0,0,0,4" />
+                <TextBlock Text="Routen auswählen und per Dropbox übertragen. Update = nur ergänzen/aktualisieren. Senden = Abgleich, nicht ausgewählte Routen werden auf dem Gerät gelöscht."
+                           Opacity="0.75"
+                           FontSize="11"
+                           LineHeight="15"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,8" />
+                <Border BorderBrush="#334155"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Margin="0,0,0,8"
+                        MaxHeight="160">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding RouteTransferItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Content="{Binding RouteName}"
+                                              IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                              Margin="6,2"
+                                              Foreground="White" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+                <TextBlock Text="Keine Routen im Paket – zuerst importieren."
+                           Opacity="0.7"
+                           FontSize="11"
+                           Margin="0,0,0,8">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasRouteTransferItems}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Alle"
+                            Command="{Binding SelectAllRoutesForTransferCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Padding="10,4"
+                            Margin="0,0,6,0"
+                            ToolTip="Alle Routen auswählen" />
+                    <Button Content="Keine"
+                            Command="{Binding DeselectAllRoutesForTransferCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Padding="10,4"
+                            Margin="0,0,12,0"
+                            ToolTip="Auswahl aufheben" />
+                    <Button Content="Update"
+                            Command="{Binding TransferSelectedRoutesUpdateCommand}"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Padding="12,4"
+                            Margin="0,0,6,0"
+                            ToolTip="Genau eine Route: nur hinzufügen/aktualisieren (ohne Löschen auf dem Gerät)" />
+                    <Button Content="Senden"
+                            Command="{Binding TransferSelectedRoutesSendCommand}"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Padding="12,4"
+                            ToolTip="Ausgewählte Routen senden; nicht enthaltene Routen werden auf dem Gerät entfernt" />
+                </StackPanel>
+            </StackPanel>
+        </materialDesign:Card>
+
         <materialDesign:Card Padding="10,8" UniformCornerRadius="10" Background="{StaticResource SmartPrimaryDarkBrush}">
             <Grid>
                 <Grid.RowDefinitions>
@@ -187,6 +262,96 @@
                            TextWrapping="Wrap"
                            MaxHeight="32"
                            ToolTip="{Binding LastActionMessage}" />
+            </Grid>
+        </materialDesign:Card>
+
+        <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
+                             Background="{StaticResource SmartPrimaryBrush}"
+                             Margin="0,8,0,0">
+            <materialDesign:Card.Style>
+                <Style TargetType="materialDesign:Card">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowPlanerWorkspaceSync}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </materialDesign:Card.Style>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Planer-Arbeitsstand"
+                               FontWeight="SemiBold"
+                               FontSize="15"
+                               Foreground="White"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Von Dropbox laden"
+                                Command="{Binding ImportPlanerWorkspaceFromDropboxCommand}"
+                                Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                Margin="0,0,6,0"
+                                Padding="12,4"
+                                ToolTip="Lädt planer_workspace.json (Ansagen, Fahrer, Fahrzeuge, Dienstvorlagen, …) von Dropbox" />
+                        <Button Content="Nach Dropbox speichern"
+                                Command="{Binding ExportPlanerWorkspaceToDropboxCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Foreground="White"
+                                BorderBrush="White"
+                                Padding="12,4"
+                                ToolTip="Speichert den vollständigen Planer-Arbeitsstand nach Dropbox (wie beim Abmelden)" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock Grid.Row="1"
+                           Foreground="White"
+                           Opacity="0.82"
+                           Margin="0,4,0,0"
+                           FontSize="11"
+                           LineHeight="15"
+                           TextWrapping="Wrap"
+                           Text="Vollständiger Arbeitsstand für alle Planer-Bereiche (planer_workspace.json). Beim Laden wird nur übernommen, wenn Dropbox neuer ist – sonst Bestätigung." />
+                <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsTransferProgressVisible}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="{Binding TransferProgressPhase}"
+                               Foreground="White"
+                               Opacity="0.9"
+                               FontSize="11"
+                               Margin="0,0,0,6" />
+                    <ProgressBar Minimum="0"
+                                 Maximum="100"
+                                 Height="8"
+                                 Value="{Binding TransferProgressPercent}" />
+                    <Grid Margin="0,4,0,0">
+                        <TextBlock HorizontalAlignment="Left"
+                                   Foreground="White"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Text="{Binding TransferProgressPercent, StringFormat={}{0:0}%}" />
+                        <TextBlock Text="{Binding TransferProgressEta}"
+                                   HorizontalAlignment="Right"
+                                   Foreground="White"
+                                   Opacity="0.85"
+                                   FontSize="11" />
+                    </Grid>
+                </StackPanel>
             </Grid>
         </materialDesign:Card>
 

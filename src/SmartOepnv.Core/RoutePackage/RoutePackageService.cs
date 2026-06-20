@@ -162,6 +162,41 @@ public sealed class RoutePackageService
         return _currentJson;
     }
 
+    /// <summary>Teil-Export für Fahrzeuge (ausgewählte Routen per Update oder Senden).</summary>
+    public string PrepareVehicleTransferJson(
+        IReadOnlyList<string> selectedRouteNames,
+        bool pruneOthersOnDevice)
+    {
+        if (AppServices.IsInitialized)
+        {
+            AppServices.FlushAllPendingEdits();
+        }
+
+        if (Editor is null)
+        {
+            throw new InvalidOperationException("Kein Route-Paket geladen.");
+        }
+
+        if (selectedRouteNames.Count == 0)
+        {
+            throw new InvalidOperationException("Mindestens eine Route auswählen.");
+        }
+
+        var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
+        var json = GpsAnsagenRouteExportSync.BuildVehicleTransferJson(
+            Editor,
+            selectedRouteNames,
+            pruneOthersOnDevice,
+            workspace);
+
+        if (AppServices.IsPlannerApp)
+        {
+            json = StripPlannerSecretsFromExportJson(json);
+        }
+
+        return json;
+    }
+
     public void ApplyEditorChanges(string source = "editor", bool archivePreviousSave = false)
     {
         if (Editor is null)
@@ -169,13 +204,13 @@ public sealed class RoutePackageService
             return;
         }
 
-        _currentJson = Editor.ToJson();
+        _currentJson = Editor.ToJson(indented: false);
         Stats = ParseStats(_currentJson);
         EditorDataRevision++;
 
         if (AppServices.IsInitialized)
         {
-            AppServices.Workspace.SavePackage(_currentJson, source, archivePreviousSave);
+            AppServices.Workspace.SavePackage(GetPersistableJson(), source, archivePreviousSave);
         }
     }
 

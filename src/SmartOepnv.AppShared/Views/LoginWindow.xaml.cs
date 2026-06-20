@@ -8,6 +8,10 @@ namespace SmartOepnv.AppShared.Views;
 
 public partial class LoginWindow : Window
 {
+    public string? PendingUsername { get; private set; }
+
+    public string? PendingPassword { get; private set; }
+
     public LoginWindow(string? lockWarning = null)
     {
         InitializeComponent();
@@ -99,7 +103,7 @@ public partial class LoginWindow : Window
         }
     }
 
-    private async Task TryLoginAsync()
+    private Task TryLoginAsync()
     {
         ErrorText.Text = string.Empty;
         LoginButton.IsEnabled = false;
@@ -109,24 +113,27 @@ public partial class LoginWindow : Window
             if (!AppServices.Dropbox.Settings.IsConnected)
             {
                 ErrorText.Text = "Dropbox ist nicht verbunden. Bitte zuerst „Dropbox einrichten…“ öffnen.";
-                return;
+                return Task.CompletedTask;
             }
 
-            var session = AppServices.PlanerSession;
-            if (session is null)
+            if (AppServices.PlanerSession is null)
             {
                 ErrorText.Text = "Anmeldung im Planer nicht verfügbar.";
-                return;
+                return Task.CompletedTask;
             }
 
-            var result = await session.TryLoginAsync(UsernameBox.Text, PasswordBox.Password);
-            if (!result.Success)
+            if (!PlanerCredentialValidator.TryValidate(UsernameBox.Text, PasswordBox.Password, out var authenticatedName))
             {
-                ErrorText.Text = result.Message;
-                return;
+                ErrorText.Text =
+                    "Benutzername oder Passwort ist falsch.\n\n" +
+                    "Anmeldung nur für Hauptnutzer mit Planerpasswort (Personalverwaltung).";
+                return Task.CompletedTask;
             }
 
+            PendingUsername = authenticatedName;
+            PendingPassword = PasswordBox.Password;
             DialogResult = true;
+            return Task.CompletedTask;
         }
         finally
         {

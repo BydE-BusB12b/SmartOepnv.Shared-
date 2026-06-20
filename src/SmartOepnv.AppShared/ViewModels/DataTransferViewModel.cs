@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -35,11 +36,18 @@ public partial class DataTransferViewModel : ObservableObject
     [ObservableProperty] private bool hasDocumentCheckWarnings;
     [ObservableProperty] private string newVersionLabel = string.Empty;
     [ObservableProperty] private PlannerPackageVersionInfo? selectedPackageVersion;
+    [ObservableProperty] private bool isTransferProgressVisible;
+    [ObservableProperty] private double transferProgressPercent;
+    [ObservableProperty] private string transferProgressPhase = string.Empty;
+    [ObservableProperty] private string transferProgressEta = string.Empty;
 
     public ObservableCollection<VehicleInspectionWarningItem> InspectionWarnings { get; } = [];
     public ObservableCollection<DriverCredentialWarningItem> DriverCredentialWarnings { get; } = [];
     public ObservableCollection<EmployeeDocumentCheckWarningItem> DocumentCheckWarnings { get; } = [];
     public ObservableCollection<PlannerPackageVersionInfo> PackageVersions { get; } = [];
+    public ObservableCollection<RouteTransferSelectionItem> RouteTransferItems { get; } = [];
+
+    public bool HasRouteTransferItems => RouteTransferItems.Count > 0;
 
     /// <summary>Wird beim Klick auf einen HU-/SP-Hinweis ausgelöst (normalisierte Telefonnummer oder leer).</summary>
     public event Action<string?>? NavigateToVehicleManagementRequested;
@@ -63,6 +71,9 @@ public partial class DataTransferViewModel : ObservableObject
 
     /// <summary>Nur Planer: JSON-Snapshots als Versionen speichern/laden.</summary>
     public bool ShowVersionManagement => !_isLeitstelleProfile && AppServices.PlannerVersions is not null;
+
+    /// <summary>Nur Planer: planer_workspace.json manuell mit Dropbox abgleichen.</summary>
+    public bool ShowPlanerWorkspaceSync => !_isLeitstelleProfile && AppServices.IsPlannerApp;
 
     public string PlannerLocalOverlayHint =>
         AppServices.PlannerLocal is null
@@ -115,6 +126,153 @@ public partial class DataTransferViewModel : ObservableObject
         RefreshInspectionWarnings();
         RefreshDriverCredentialWarnings();
         RefreshDocumentCheckWarnings();
+        RefreshRouteTransferSelections();
+    }
+
+    private void RefreshRouteTransferSelections()
+    {
+        foreach (var item in RouteTransferItems)
+        {
+            item.PropertyChanged -= OnRouteTransferItemPropertyChanged;
+        }
+
+        RouteTransferItems.Clear();
+        OnPropertyChanged(nameof(HasRouteTransferItems));
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            NotifyRouteTransferCommandsCanExecute();
+            return;
+        }
+
+        foreach (var route in editor.RouteNames.OrderBy(r => r, StringComparer.OrdinalIgnoreCase))
+        {
+            var item = new RouteTransferSelectionItem(route);
+            item.PropertyChanged += OnRouteTransferItemPropertyChanged;
+            RouteTransferItems.Add(item);
+        }
+
+        OnPropertyChanged(nameof(HasRouteTransferItems));
+        NotifyRouteTransferCommandsCanExecute();
+    }
+
+    private void OnRouteTransferItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RouteTransferSelectionItem.IsSelected))
+        {
+            NotifyRouteTransferCommandsCanExecute();
+        }
+    }
+
+    private List<string> GetSelectedRouteNames() =>
+        RouteTransferItems.Where(i => i.IsSelected).Select(i => i.RouteName).ToList();
+
+    private void NotifyRouteTransferCommandsCanExecute()
+    {
+        TransferSelectedRoutesUpdateCommand.NotifyCanExecuteChanged();
+        TransferSelectedRoutesSendCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanTransferSingleRouteUpdate() =>
+        !IsBusy &&
+        HasLoadedPackage &&
+        IsDropboxConnected &&
+        GetSelectedRouteNames().Count == 1;
+
+    private bool CanTransferMultipleRoutesSend() =>
+        !IsBusy &&
+        HasLoadedPackage &&
+        IsDropboxConnected &&
+        GetSelectedRouteNames().Count > 0;
+
+    [RelayCommand]
+    private void SelectAllRoutesForTransfer()
+    {
+        foreach (var item in RouteTransferItems)
+        {
+            item.IsSelected = true;
+        }
+    }
+
+    [RelayCommand]
+    private void DeselectAllRoutesForTransfer()
+    {
+        foreach (var item in RouteTransferItems)
+        {
+            item.IsSelected = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanTransferSingleRouteUpdate))]
+    private async Task TransferSelectedRoutesUpdateAsync()
+    {
+        var selected = GetSelectedRouteNames();
+        if (selected.Count != 1)
+        {
+            LastActionMessage = "Update: bitte genau eine Route auswählen.";
+            return;
+        }
+
+        await UploadVehicleTransferAsync(selected, pruneOthersOnDevice: false, "Update");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanTransferMultipleRoutesSend))]
+    private async Task TransferSelectedRoutesSendAsync()
+    {
+        var selected = GetSelectedRouteNames();
+        if (selected.Count == 0)
+        {
+            LastActionMessage = "Senden: bitte mindestens eine Route auswählen.";
+            return;
+        }
+
+        await UploadVehicleTransferAsync(selected, pruneOthersOnDevice: true, "Senden");
+    }
+
+    private async Task UploadVehicleTransferAsync(
+        IReadOnlyList<string> selectedRoutes,
+        bool pruneOthersOnDevice,
+        string actionLabel)
+    {
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            LastActionMessage = "Dropbox nicht verbunden – bitte Einstellungen öffnen.";
+            return;
+        }
+
+        if (!AppServices.Routes.HasPackage)
+        {
+            LastActionMessage = "Kein Paket geladen – zuerst importieren.";
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var json = AppServices.Routes.PrepareVehicleTransferJson(selectedRoutes, pruneOthersOnDevice);
+            await AppServices.Dropbox.UploadRouteFileAsync(json);
+
+            var routeLabel = selectedRoutes.Count == 1
+                ? $"„{selectedRoutes[0]}“"
+                : $"{selectedRoutes.Count} Routen";
+
+            LastActionMessage = pruneOthersOnDevice
+                ? $"{actionLabel}: {routeLabel} nach Dropbox gesendet – Fahrzeuge gleichen ab, andere Routen werden entfernt."
+                : $"{actionLabel}: {routeLabel} nach Dropbox gesendet – Fahrzeuge ergänzen/aktualisieren nur diese Route(n).";
+
+            DropboxExportButtonState = DropboxExportButtonState.Sent;
+        }
+        catch (Exception ex)
+        {
+            LastActionMessage = $"{actionLabel} fehlgeschlagen: {ex.Message}";
+            DropboxExportButtonState = DropboxExportButtonState.Idle;
+        }
+        finally
+        {
+            IsBusy = false;
+            NotifyRouteTransferCommandsCanExecute();
+        }
     }
 
     public void RefreshInspectionWarnings()
@@ -258,6 +416,71 @@ public partial class DataTransferViewModel : ObservableObject
             }
         });
     }
+
+    [RelayCommand(CanExecute = nameof(CanUsePlanerWorkspaceSync))]
+    private async Task ImportPlanerWorkspaceFromDropboxAsync()
+    {
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            LastActionMessage = "Dropbox nicht verbunden – bitte Einstellungen öffnen.";
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var progress = CreateTransferProgress();
+            var result = await PlanerDropboxWorkspaceSync.TryImportFromDropboxAsync(forceOverwrite: false, progress)
+                .ConfigureAwait(true);
+            if (!result.Imported &&
+                result.RemoteTimestamp > 0 &&
+                (result.LocalTimestamp > result.RemoteTimestamp || result.RemoteHasMoreContent))
+            {
+                var reason = result.RemoteHasMoreContent
+                    ? "Dropbox enthält mehr Daten als der lokale Stand (z. B. vom anderen Rechner)."
+                    : "Der lokale Planer-Arbeitsstand ist neuer als Dropbox.";
+                var confirm = MessageBox.Show(
+                    $"{reason}\n\n" +
+                    "Trotzdem von Dropbox laden? Ungespeicherte lokale Änderungen gehen dabei verloren.",
+                    "Planer-Arbeitsstand laden",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                if (confirm == MessageBoxResult.Yes)
+                {
+                    result = await PlanerDropboxWorkspaceSync.TryImportFromDropboxAsync(forceOverwrite: true, progress)
+                        .ConfigureAwait(true);
+                }
+            }
+
+            LastActionMessage = result.Message;
+            if (result.Imported)
+            {
+                RefreshStats();
+                RefreshPackageVersions();
+                RoutePackageImported?.Invoke();
+            }
+        });
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUsePlanerWorkspaceSync))]
+    private async Task ExportPlanerWorkspaceToDropboxAsync()
+    {
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            LastActionMessage = "Dropbox nicht verbunden – bitte Einstellungen öffnen.";
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            AppServices.FlushAllPendingEditsBestEffort();
+            var progress = CreateTransferProgress();
+            var result = await PlanerDropboxWorkspaceSync.TryExportAsync(flushBeforeCapture: true, progress: progress)
+                .ConfigureAwait(true);
+            LastActionMessage = result.Message;
+        });
+    }
+
+    private bool CanUsePlanerWorkspaceSync() => !IsBusy && IsDropboxConnected;
 
     /// <summary>
     /// Lädt routes_export.json von Dropbox in den Editor. Wird beim Programmstart und manuell aufgerufen.
@@ -470,6 +693,25 @@ public partial class DataTransferViewModel : ObservableObject
         LastActionMessage = $"Version gelöscht: {label}";
     }
 
+    private IProgress<DropboxTransferProgress> CreateTransferProgress()
+    {
+        return new Progress<DropboxTransferProgress>(p =>
+        {
+            IsTransferProgressVisible = true;
+            TransferProgressPhase = p.Phase;
+            TransferProgressPercent = p.Percent;
+            TransferProgressEta = p.EtaDisplay;
+        });
+    }
+
+    private void ResetTransferProgress()
+    {
+        IsTransferProgressVisible = false;
+        TransferProgressPhase = string.Empty;
+        TransferProgressPercent = 0;
+        TransferProgressEta = string.Empty;
+    }
+
     private async Task RunAsync(Func<Task> action)
     {
         IsBusy = true;
@@ -484,14 +726,30 @@ public partial class DataTransferViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            ResetTransferProgress();
         }
     }
 
     partial void OnDropboxExportButtonStateChanged(DropboxExportButtonState value) =>
         ExportToDropboxCommand.NotifyCanExecuteChanged();
 
-    partial void OnIsBusyChanged(bool value) =>
+    partial void OnIsBusyChanged(bool value)
+    {
         ExportToDropboxCommand.NotifyCanExecuteChanged();
+        ImportPlanerWorkspaceFromDropboxCommand.NotifyCanExecuteChanged();
+        ExportPlanerWorkspaceToDropboxCommand.NotifyCanExecuteChanged();
+        NotifyRouteTransferCommandsCanExecute();
+    }
+
+    partial void OnIsDropboxConnectedChanged(bool value)
+    {
+        ImportPlanerWorkspaceFromDropboxCommand.NotifyCanExecuteChanged();
+        ExportPlanerWorkspaceToDropboxCommand.NotifyCanExecuteChanged();
+        NotifyRouteTransferCommandsCanExecute();
+    }
+
+    partial void OnHasLoadedPackageChanged(bool value) =>
+        NotifyRouteTransferCommandsCanExecute();
 
     private bool CanExportToDropbox() =>
         !IsBusy && DropboxExportButtonState != DropboxExportButtonState.Sending;

@@ -37,6 +37,11 @@ public static class SmartOepnvDataBackupService
 
     public static void BackupAllProfiles(string reason = "manual", bool force = false)
     {
+        if (!force && IsSkippedAutomaticReason(reason))
+        {
+            return;
+        }
+
         if (!force &&
             !string.Equals(reason, "manual", StringComparison.OrdinalIgnoreCase) &&
             _lastBackupTickMs > 0 &&
@@ -49,4 +54,9 @@ public static class SmartOepnvDataBackupService
         BackupAppData("Leitstelle", reason);
         _lastBackupTickMs = Environment.TickCount64;
     }
+
+    private static bool IsSkippedAutomaticReason(string reason) =>
+        string.Equals(reason, "app-exit", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(reason, "planer-logout", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(reason, "app-exit-sync", StringComparison.OrdinalIgnoreCase);
 }

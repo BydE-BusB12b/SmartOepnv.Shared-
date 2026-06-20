@@ -115,6 +115,7 @@ public static class ManagedAnnouncementTemplateEditor
             AnnouncementCode = code,
             DisplayName = obj["displayName"]?.GetValue<string>() ?? string.Empty,
             Description = obj["description"]?.GetValue<string>() ?? string.Empty,
+            Lines = obj["lines"]?.GetValue<string>() ?? string.Empty,
             Category = obj["category"]?.GetValue<string>() ?? "haltestelle",
             EmbeddedSoundFileName = obj["embeddedSoundFileName"]?.GetValue<string>() ?? string.Empty,
             IncludeInSpecialAnnouncements = obj["includeInSpecialAnnouncements"]?.GetValue<bool>() ?? false
@@ -128,6 +129,7 @@ public static class ManagedAnnouncementTemplateEditor
         ["announcementCode"] = ManagedAnnouncementTemplateItem.NormalizeCode(t.AnnouncementCode),
         ["displayName"] = t.DisplayName,
         ["description"] = t.Description,
+        ["lines"] = t.Lines,
         ["category"] = string.IsNullOrWhiteSpace(t.Category) ? "haltestelle" : t.Category,
         ["embeddedSoundFileName"] = t.EmbeddedSoundFileName,
         ["includeInSpecialAnnouncements"] = t.IncludeInSpecialAnnouncements

@@ -46,6 +46,36 @@ public static class RouteDisplayHelper
         return $"{name} ({string.Join(", ", parts)})";
     }
 
+    /// <summary>Fahrtnummer wie in der App (ohne führende Nullen: „01“ → „1“).</summary>
+    public static string NormalizeTripNumber(string? tripNumber)
+    {
+        var value = (tripNumber ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = value.TrimStart('0');
+        return trimmed.Length == 0 ? "0" : trimmed;
+    }
+
+    /// <summary>
+    /// Routenname für <c>routes_export.json</c> / Handy-zu-Handy (wie <c>RouteDistributionManager</c>):
+    /// technische Linie/Kurs, Fahrt ohne führende Nullen, ohne <c>PassengerLine</c> im Schlüssel.
+    /// </summary>
+    public static string ToDistributionDisplayString(RouteDefinition route)
+    {
+        var distributionRoute = new RouteDefinition(
+            route.Name,
+            NormalizeLineCourse(route.LineCourse),
+            NormalizeTripNumber(route.TripNumber),
+            string.Empty);
+        return ToDisplayString(distributionRoute);
+    }
+
+    public static string ToDistributionDisplayString(string displayString) =>
+        ToDistributionDisplayString(Parse(displayString));
+
     public static RouteDefinition Parse(string displayString)
     {
         var text = (displayString ?? string.Empty).Trim();

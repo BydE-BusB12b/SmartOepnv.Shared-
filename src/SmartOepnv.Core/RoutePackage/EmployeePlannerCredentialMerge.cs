@@ -60,6 +60,34 @@ internal static class EmployeePlannerCredentialMerge
             source.DriverCardCheckConfirmedAtUtcMs,
             e => e.DriverCardCheckConfirmedAtUtcMs,
             (e, v) => e.DriverCardCheckConfirmedAtUtcMs = v);
+
+        MergeExpiryIfNewerCheck(target, source,
+            e => e.LicenseCheckConfirmedAtUtcMs,
+            e => e.LicenseExpiry,
+            (e, v) => e.LicenseExpiry = v);
+        MergeExpiryIfNewerCheck(target, source,
+            e => e.FqnCheckConfirmedAtUtcMs,
+            e => e.FqnExpiry,
+            (e, v) => e.FqnExpiry = v);
+        MergeExpiryIfNewerCheck(target, source,
+            e => e.DriverCardCheckConfirmedAtUtcMs,
+            e => e.DriverCardExpiry,
+            (e, v) => e.DriverCardExpiry = v);
+    }
+
+    private static void MergeExpiryIfNewerCheck(
+        EmployeeRosterItem target,
+        EmployeeRosterItem source,
+        Func<EmployeeRosterItem, long> getCheckMs,
+        Func<EmployeeRosterItem, string> getExpiry,
+        Action<EmployeeRosterItem, string> setExpiry)
+    {
+        if (getCheckMs(source) <= getCheckMs(target) || string.IsNullOrWhiteSpace(getExpiry(source)))
+        {
+            return;
+        }
+
+        setExpiry(target, getExpiry(source).Trim());
     }
 
     private static void MergeCheckTimestamp(
@@ -92,6 +120,10 @@ internal static class EmployeePlannerCredentialMerge
             if (byKey.TryGetValue(key, out var target))
             {
                 MergeInto(target, source);
+            }
+            else
+            {
+                byKey[key] = Clone(source);
             }
         }
 

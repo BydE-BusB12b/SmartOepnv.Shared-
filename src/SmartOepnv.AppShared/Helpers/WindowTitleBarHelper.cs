@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace SmartOepnv.AppShared.Helpers;
 
@@ -16,21 +17,19 @@ public static class WindowTitleBarHelper
         window.Background = DarkWindowBackground;
     }
 
-    /// <summary>Zeigt Fenster erst nach erstem Render – vermeidet weißen HWND-Aufblitzer.</summary>
+    /// <summary>Zeigt Fenster sichtbar und aktiviert es – dunkler Hintergrund verhindert den weißen Aufblitzer.</summary>
     public static void ShowWhenContentReady(Window window)
     {
         ApplyDarkWindowBackground(window);
-        window.Opacity = 0;
-
-        void OnContentRendered(object? sender, EventArgs e)
-        {
-            window.ContentRendered -= OnContentRendered;
-            window.Opacity = 1;
-        }
-
-        window.ContentRendered += OnContentRendered;
+        window.Opacity = 1;
         window.Show();
+        window.Activate();
+        window.UpdateLayout();
     }
+
+    /// <summary>Gibt dem Dialog einen Layout-/Render-Durchlauf, bevor lange Arbeit beginnt.</summary>
+    public static Task WaitForInitialRenderAsync(Window window) =>
+        window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render).Task;
 
     private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
     {
