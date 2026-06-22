@@ -436,7 +436,8 @@ public sealed class PlannerLocalOverlayService
         PlannerPassword = e.PlannerPassword,
         LicenseCheckConfirmedAtUtcMs = e.LicenseCheckConfirmedAtUtcMs,
         FqnCheckConfirmedAtUtcMs = e.FqnCheckConfirmedAtUtcMs,
-        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs
+        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs,
+        LastEditedAtUtcMs = e.LastEditedAtUtcMs
     };
 
     private static RegisteredVehicleItem CloneVehicle(RegisteredVehicleItem v) => new()

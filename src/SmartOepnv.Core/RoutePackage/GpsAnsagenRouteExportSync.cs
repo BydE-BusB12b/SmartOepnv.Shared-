@@ -50,6 +50,7 @@ public static class GpsAnsagenRouteExportSync
         SyncEmbeddedSounds(package, root, workspace);
         SyncEndStopAnnouncementMetadata(package, root, workspace);
         SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
+        RouteOperatingDaysEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDaysByRoute);
     }
 
     private static void SyncEndStopAnnouncementMetadata(
@@ -205,28 +206,7 @@ public static class GpsAnsagenRouteExportSync
         JsonObject root,
         LocalWorkspaceStore? workspace)
     {
-        var names = package.StopsByRoute.Values
-            .SelectMany(stops => stops)
-            .Select(s => s.EmbeddedSoundFileName)
-            .Concat(package.StopTemplates.Select(t => t.EmbeddedSoundFileName))
-            .Concat(package.AnnouncementTemplates.Select(t => t.EmbeddedSoundFileName))
-            .Concat(package.AnnouncementTemplates
-                .Where(t => t.IncludeInSpecialAnnouncements)
-                .Select(t => t.EmbeddedSoundFileName))
-            .ToList();
-
-        if (package.StopsByRoute.Values.SelectMany(stops => stops).Any(s => s.IsEndStop && s.PlayEndStopAnnouncement))
-        {
-            var endStopFile = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
-                package.AnnouncementTemplates,
-                root,
-                workspace);
-            if (!string.IsNullOrWhiteSpace(endStopFile))
-            {
-                names.Add(endStopFile);
-            }
-        }
-
+        var names = EmbeddedSoundReferences.CollectFromPackage(package, root, workspace).ToList();
         GpsAnsagenEmbeddedSoundsJson.SyncToRoot(root, names, workspace);
     }
 
@@ -297,26 +277,9 @@ public static class GpsAnsagenRouteExportSync
             .SelectMany(kv => kv.Value)
             .ToList();
 
-        var names = exportedStops
-            .Select(s => s.EmbeddedSoundFileName)
-            .Concat(package.StopTemplates.Select(t => t.EmbeddedSoundFileName))
-            .Concat(package.AnnouncementTemplates.Select(t => t.EmbeddedSoundFileName))
-            .Concat(package.AnnouncementTemplates
-                .Where(t => t.IncludeInSpecialAnnouncements)
-                .Select(t => t.EmbeddedSoundFileName))
+        var names = EmbeddedSoundReferences
+            .CollectFromPackage(package, root, workspace, exportedStops)
             .ToList();
-
-        if (exportedStops.Any(s => s.IsEndStop && s.PlayEndStopAnnouncement))
-        {
-            var endStopFile = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
-                package.AnnouncementTemplates,
-                root,
-                workspace);
-            if (!string.IsNullOrWhiteSpace(endStopFile))
-            {
-                names.Add(endStopFile);
-            }
-        }
 
         GpsAnsagenEmbeddedSoundsJson.SyncToRoot(root, names, workspace);
     }

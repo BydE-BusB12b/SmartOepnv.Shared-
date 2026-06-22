@@ -103,6 +103,11 @@ public partial class RoutesViewModel
     public bool ShowEndStopFields => HasSelectedStop && IsEndStop;
     public bool ShowRouteChangeFields => HasSelectedStop && IsEndStop && RouteChangeEnabled;
 
+    [ObservableProperty]
+    private string selectedStopVrrStopId = string.Empty;
+
+    private bool _syncingStopVrrStopId;
+
     public string? SelectedDestinationDs021t
     {
         get => ToComboLabel(SelectedStop?.Destination, RouteStopEditorCatalog.NoDestinationLabel);
@@ -183,8 +188,68 @@ public partial class RoutesViewModel
         }
     }
 
+    partial void OnSelectedStopVrrStopIdChanged(string value)
+    {
+        if (_syncingStopVrrStopId || SelectedStop is null)
+        {
+            return;
+        }
+
+        var trimmed = value?.Trim() ?? string.Empty;
+        if (string.Equals(SelectedStop.VrrStopId, trimmed, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        SelectedStop.VrrStopId = trimmed;
+        MarkStopDetailDirty();
+    }
+
     [RelayCommand]
     private void StopDetailEdited() => MarkStopDetailDirty();
+
+    [RelayCommand]
+    private void PickEndDestinationCoordinatesOnMap()
+    {
+        if (SelectedStop is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var owner = Application.Current?.MainWindow;
+            if (owner is not null && !owner.IsLoaded)
+            {
+                owner = null;
+            }
+
+            var initial = string.IsNullOrWhiteSpace(SelectedStop.EndDestinationCoordinates)
+                ? SelectedStop.GpsCoordinates
+                : SelectedStop.EndDestinationCoordinates;
+            var dialog = new GpsMapPickerDialog(
+                "Endziel-GPS",
+                initial,
+                SelectedStop.GpsCoordinates,
+                "Haltestelle")
+            {
+                Owner = owner
+            };
+            if (dialog.ShowDialog() != true || !dialog.HasSelection)
+            {
+                return;
+            }
+
+            SelectedStop.EndDestinationCoordinates = dialog.SelectedCoordinates;
+            OnPropertyChanged(nameof(SelectedStop));
+            MarkStopDetailDirty();
+            StatusMessage = "Endziel-GPS auf der Karte gesetzt.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Karte: {ex.Message}";
+        }
+    }
 
     [RelayCommand]
     private void PickVrrStop()
@@ -213,6 +278,7 @@ public partial class RoutesViewModel
 
             var assignment = VrrStopAssignmentManager.FromCatalogEntry(dialog.SelectedEntry);
             VrrStopAssignmentManager.ApplyToRouteStop(SelectedStop, assignment);
+            SyncSelectedStopVrrStopIdFromStop();
             NotifyStopEditorStateChanged();
             MarkStopDetailDirty();
             StatusMessage = $"VRR-ID „{SelectedStop.VrrStopId}“ übernommen ({assignment.DisplayName}).";
@@ -235,6 +301,14 @@ public partial class RoutesViewModel
         SelectedStop = stop;
         RefreshStopEditorCatalogs();
         EnsureCatalogContainsStopSelections(stop);
+        SyncSelectedStopVrrStopIdFromStop();
+    }
+
+    private void SyncSelectedStopVrrStopIdFromStop()
+    {
+        _syncingStopVrrStopId = true;
+        SelectedStopVrrStopId = SelectedStop?.VrrStopId ?? string.Empty;
+        _syncingStopVrrStopId = false;
     }
 
     private void EnsureCatalogContainsStopSelections(RouteStopItem stop)

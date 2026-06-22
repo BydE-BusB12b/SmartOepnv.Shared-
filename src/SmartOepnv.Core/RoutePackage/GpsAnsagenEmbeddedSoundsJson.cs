@@ -21,10 +21,13 @@ public static class GpsAnsagenEmbeddedSoundsJson
 
         if (names.Count == 0)
         {
-            if (ReadAllEntries(root).Count == 0)
+            root.Remove("embeddedSounds");
+
+            if (workspace is not null)
             {
-                root.Remove("embeddedSounds");
+                PlanerEmbeddedSoundsWorkspace.PruneUnreferencedFiles(workspace, []);
             }
+
             return;
         }
 
@@ -51,6 +54,11 @@ public static class GpsAnsagenEmbeddedSoundsJson
         }
 
         root["embeddedSounds"] = output;
+
+        if (workspace is not null)
+        {
+            PlanerEmbeddedSoundsWorkspace.PruneUnreferencedFiles(workspace, names);
+        }
     }
 
     public static IReadOnlyDictionary<string, (string Base64, int Size)> ReadAllEntries(JsonObject root)

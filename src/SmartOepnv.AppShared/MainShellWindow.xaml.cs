@@ -114,6 +114,17 @@ public partial class MainShellWindow : Window
         _idleLogoutMonitor?.Stop();
         SetLoginOverlay(true);
 
+        if (idleTimeout)
+        {
+            if (WindowState == WindowState.Minimized)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            Show();
+            Activate();
+        }
+
         var savingDialog = new AppExitSavingDialog(
             idleTimeout
                 ? "Inaktivität – Arbeitsstand wird gespeichert und Planer-Sperre freigegeben…"

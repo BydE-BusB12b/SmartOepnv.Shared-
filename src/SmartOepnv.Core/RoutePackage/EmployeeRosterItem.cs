@@ -61,6 +61,31 @@ public sealed class EmployeeRosterItem : INotifyPropertyChanged
     /// <summary>Planer: letzte Fahrerkartenkontrolle bestätigt (UTC ms).</summary>
     public long DriverCardCheckConfirmedAtUtcMs { get; set; }
 
+    /// <summary>Planer: Akte zuletzt gespeichert/bearbeitet (UTC ms).</summary>
+    private long _lastEditedAtUtcMs;
+    public long LastEditedAtUtcMs
+    {
+        get => _lastEditedAtUtcMs;
+        set
+        {
+            if (_lastEditedAtUtcMs == value)
+            {
+                return;
+            }
+
+            _lastEditedAtUtcMs = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LastEditedDisplayText));
+        }
+    }
+
+    public string LastEditedDisplayText =>
+        LastEditedAtUtcMs > 0
+            ? DateTimeOffset.FromUnixTimeMilliseconds(LastEditedAtUtcMs)
+                .ToLocalTime()
+                .ToString("dd.MM.yyyy HH:mm")
+            : "–";
+
     public bool LicenseCheckConfirmationDue =>
         EmployeeDocumentCheck.IsCheckRequired(LicenseExpiry, LicenseCheckConfirmedAtUtcMs);
 

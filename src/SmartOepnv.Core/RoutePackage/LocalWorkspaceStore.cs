@@ -9,7 +9,8 @@ namespace SmartOepnv.Core.RoutePackage;
 /// Lokaler Arbeits-Speicher für das vollständige Route-Paket (Routen, Navidaten, Fahrer, …).
 /// Dieselbe <c>routes_export.json</c> wie auf Dropbox – damit andere Planer-PCs nach
 /// Upload/Download denselben Stand haben (routePathDrafts, Hinweise, …).
-/// Zusätzlich Unterordner <c>embedded_sounds</c> für Tondateien aus dem JSON.
+/// Zusätzlich Unterordner <c>embedded_sounds</c> für Tondateien aus dem JSON
+/// und <c>ansagen_roh</c> für Roh-Tondateien der Ansagen-Kartei.
 /// </summary>
 public sealed class LocalWorkspaceStore
 {

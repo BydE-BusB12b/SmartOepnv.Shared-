@@ -730,17 +730,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        var dialog = new OpenFileDialog
-
-        {
-
-            Title = "Tondatei für Ansage wählen",
-
-            Filter = "Audio (*.mp3;*.wav;*.ogg)|*.mp3;*.wav;*.ogg|Alle Dateien (*.*)|*.*"
-
-        };
-
-
+        var dialog = CreateAudioOpenFileDialog();
 
         if (dialog.ShowDialog() != true)
 

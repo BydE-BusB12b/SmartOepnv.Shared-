@@ -21,15 +21,21 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid Margin="0,0,0,8">
+    <Grid Margin="0,0,0,8" VerticalAlignment="Stretch">
 
-        <Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-            <ColumnDefinition Width="340" />
+        <Grid Grid.Row="0" VerticalAlignment="Stretch">
 
-            <ColumnDefinition Width="*" />
+            <Grid.ColumnDefinitions>
 
-        </Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340" />
+
+                <ColumnDefinition Width="*" />
+
+            </Grid.ColumnDefinitions>
 
 
 
@@ -39,11 +45,23 @@
 
                              VerticalAlignment="Stretch">
 
-            <!-- DockPanel: Buttons unten immer sichtbar (wie Haltestellenbibliothek) -->
+            <!-- Grid: Kopf, scrollbare Liste, Buttons – keine Überlagerung -->
 
-            <DockPanel LastChildFill="True">
+            <Grid VerticalAlignment="Stretch">
 
-                <StackPanel DockPanel.Dock="Top">
+                <Grid.RowDefinitions>
+
+                    <RowDefinition Height="Auto" />
+
+                    <RowDefinition Height="*" MinHeight="280" />
+
+                    <RowDefinition Height="Auto" />
+
+                </Grid.RowDefinitions>
+
+
+
+                <StackPanel Grid.Row="0">
 
                     <TextBlock Text="Ansagen-Kartei"
 
@@ -63,7 +81,69 @@
 
 
 
-                <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                <ListBox Grid.Row="1"
+
+                         ItemsSource="{Binding FilteredAnnouncements}"
+
+                         SelectedItem="{Binding SelectedAnnouncement}"
+
+                         BorderThickness="1"
+
+                         BorderBrush="#334155"
+
+                         Background="Transparent"
+
+                         VerticalAlignment="Stretch"
+
+                         Margin="0,2,0,8"
+
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+
+                         ScrollViewer.CanContentScroll="False"
+
+                         VirtualizingPanel.IsVirtualizing="True"
+
+                         VirtualizingPanel.VirtualizationMode="Recycling">
+
+                    <ListBox.ItemContainerStyle>
+
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+
+                            <Setter Property="Padding" Value="8,3" />
+
+                            <Setter Property="Margin" Value="0,0,0,2" />
+
+                            <Setter Property="MinHeight" Value="0" />
+
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+
+                        </Style>
+
+                    </ListBox.ItemContainerStyle>
+
+                    <ListBox.ItemTemplate>
+
+                        <DataTemplate>
+
+                            <TextBlock Text="{Binding DisplayLabel}"
+
+                                       TextWrapping="Wrap"
+
+                                       FontSize="12"
+
+                                       LineHeight="16" />
+
+                        </DataTemplate>
+
+                    </ListBox.ItemTemplate>
+
+                </ListBox>
+
+
+
+                <StackPanel Grid.Row="2">
 
                     <Button Content="Speichern &amp; JSON"
 
@@ -76,6 +156,30 @@
                             Padding="10,6"
 
                             ToolTip="Fügt Tonsequenz zusammen und schreibt Ansagen ins routes_export.json" />
+
+                    <Button Content="Ordner Rohdateien öffnen"
+
+                            Command="{Binding OpenRawSoundsFolderCommand}"
+
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                            Margin="0,0,0,4"
+
+                            Padding="10,4"
+
+                            ToolTip="Workspace-Ordner ansagen_roh – wird mit planer_workspace.json auf andere Planer-PCs synchronisiert" />
+
+                    <Button Content="Aus Rohdateien übernehmen"
+
+                            Command="{Binding ImportFromRawSoundsFolderCommand}"
+
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                            Margin="0,0,0,4"
+
+                            Padding="10,4"
+
+                            ToolTip="Legt für jede neue MP3/WAV/OGG im Rohdateien-Ordner eine Ansage an" />
 
                     <Button Content="Neue Ansage mit Tondatei"
 
@@ -117,27 +221,7 @@
 
                 </StackPanel>
 
-
-
-                <ListBox ItemsSource="{Binding FilteredAnnouncements}"
-
-                         SelectedItem="{Binding SelectedAnnouncement}"
-
-                         DisplayMemberPath="DisplayLabel"
-
-                         BorderThickness="1"
-
-                         BorderBrush="#334155"
-
-                         Background="Transparent"
-
-                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-
-                         MinHeight="120" />
-
-            </DockPanel>
+            </Grid>
 
         </materialDesign:Card>
 
@@ -644,6 +728,8 @@
             </ScrollViewer>
 
         </materialDesign:Card>
+
+        </Grid>
 
     </Grid>
 

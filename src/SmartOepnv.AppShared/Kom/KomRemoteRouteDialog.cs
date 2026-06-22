@@ -22,9 +22,8 @@ public sealed class KomRemoteRouteDialog : Window
             Loaded += (_, _) => { DialogResult = false; Close(); };
         }
 
-        var routes = AppServices.Routes.Editor?.RouteNames
-            .OrderBy(r => r, StringComparer.OrdinalIgnoreCase)
-            .ToList() ?? [];
+        var routes = RouteDisplayHelper.SortRoutesByLineCourseAndTrip(
+            AppServices.Routes.Editor?.RouteNames ?? []);
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });

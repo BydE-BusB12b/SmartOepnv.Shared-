@@ -27,6 +27,8 @@ internal static class PlanerWorkspaceContentCompare
         score += document.SevSignDrafts.Count * 5;
         score += (document.DutyTemplates?.Count ?? 0) * 20;
         score += document.PackageVersionSnapshots.Count * 10;
+        score += document.AnnouncementRawSounds.Count * 4;
+        score += document.AnnouncementRawSounds.Values.Sum(p => p.Size > 0 ? (int)Math.Min(p.Size / 4096, 50) : 0);
 
         return score;
     }

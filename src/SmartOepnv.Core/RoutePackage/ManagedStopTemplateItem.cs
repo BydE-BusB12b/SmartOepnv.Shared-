@@ -34,8 +34,21 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
         set => SetField(ref _stopNameItcs, value, nameof(StopNameItcs), nameof(DisplayLabel), nameof(AnnouncementsLibraryDisplayLabel));
     }
 
-    public string StopDisplay { get; set; } = string.Empty;
-    public string VrrStopId { get; set; } = string.Empty;
+    public string StopDisplay
+    {
+        get => _stopDisplay;
+        set => SetField(ref _stopDisplay, value);
+    }
+
+    private string _stopDisplay = string.Empty;
+
+    public string VrrStopId
+    {
+        get => _vrrStopId;
+        set => SetField(ref _vrrStopId, value);
+    }
+
+    private string _vrrStopId = string.Empty;
 
     private string _directionDescription = string.Empty;
 
@@ -43,6 +56,15 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
     {
         get => _directionDescription;
         set => SetField(ref _directionDescription, value, nameof(DirectionDescription), nameof(DisplayLabel));
+    }
+
+    private string _lines = string.Empty;
+
+    /// <summary>Linien-Hinweis für die Suche (z. B. „005 006 008“), nicht in der Listen-Anzeige.</summary>
+    public string Lines
+    {
+        get => _lines;
+        set => SetField(ref _lines, value);
     }
 
     public string AnnouncementLat { get; set; } = string.Empty;
@@ -132,6 +154,11 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
     public bool HasPersistableContent()
     {
         if (!string.IsNullOrWhiteSpace(VrrStopId))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Lines))
         {
             return true;
         }

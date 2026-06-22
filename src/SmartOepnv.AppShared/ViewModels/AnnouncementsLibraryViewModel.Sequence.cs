@@ -157,9 +157,24 @@ public partial class AnnouncementsLibraryViewModel
         {
             path = announcement.LocalAudioPath;
         }
-        else if (!string.IsNullOrWhiteSpace(announcement.EmbeddedSoundFileName))
+        else if (AppServices.IsInitialized)
         {
-            path = EmbeddedSoundPathResolver.TryResolveLocalPath(
+            path = PlanerAnnouncementRawSoundsWorkspace.ResolveAudioPath(
+                AppServices.Workspace,
+                announcement.LocalAudioPath,
+                announcement.EmbeddedSoundFileName);
+        }
+
+        if (path is null && !string.IsNullOrWhiteSpace(announcement.EmbeddedSoundFileName))
+        {
+            if (AppServices.IsInitialized)
+            {
+                path = PlanerAnnouncementRawSoundsWorkspace.TryGetLocalFilePath(
+                    AppServices.Workspace,
+                    announcement.EmbeddedSoundFileName);
+            }
+
+            path ??= EmbeddedSoundPathResolver.TryResolveLocalPath(
                 announcement.EmbeddedSoundFileName,
                 editor.PackageRoot,
                 AppServices.IsInitialized ? AppServices.Workspace : null);
@@ -317,11 +332,29 @@ public partial class AnnouncementsLibraryViewModel
         AnnouncementSequence.Insert(index + 1, item);
     }
 
-    private static OpenFileDialog CreateAudioOpenFileDialog() => new()
+    private OpenFileDialog CreateAudioOpenFileDialog()
     {
-        Title = "Tondatei für Ansage wählen",
-        Filter = "Audio (*.mp3;*.wav;*.ogg)|*.mp3;*.wav;*.ogg|Alle Dateien (*.*)|*.*"
-    };
+        var dialog = new OpenFileDialog
+        {
+            Title = "Tondatei für Ansage wählen",
+            Filter = "Audio (*.mp3;*.wav;*.ogg)|*.mp3;*.wav;*.ogg|Alle Dateien (*.*)|*.*"
+        };
+
+        if (AppServices.IsInitialized)
+        {
+            try
+            {
+                dialog.InitialDirectory =
+                    PlanerAnnouncementRawSoundsWorkspace.GetRawSoundsDirectory(AppServices.Workspace);
+            }
+            catch
+            {
+                // Dateidialog ohne Startordner
+            }
+        }
+
+        return dialog;
+    }
 
     private bool TryParseDefaultPauseSeconds(out double seconds, out string? error) =>
         TryParseMergePauseSeconds(AnnouncementMergePauseSeconds, out seconds, out error);
@@ -552,16 +585,23 @@ public partial class AnnouncementsLibraryViewModel
             switch (item.Kind)
             {
                 case AnnouncementSequenceEntryKind.Audio:
-                    if (string.IsNullOrWhiteSpace(item.SourcePath) || !File.Exists(item.SourcePath))
+                    var audioPath = AppServices.IsInitialized
+                        ? PlanerAnnouncementRawSoundsWorkspace.ResolveAudioPath(
+                            AppServices.Workspace,
+                            item.SourcePath,
+                            item.DisplayName)
+                        : item.SourcePath;
+                    if (string.IsNullOrWhiteSpace(audioPath) || !File.Exists(audioPath))
                     {
                         error = $"Tondatei „{item.DisplayName}“ nicht gefunden.";
                         return false;
                     }
 
+                    item.SourcePath = audioPath;
                     parts.Add(new EmbeddedSoundSequencePart
                     {
                         Kind = EmbeddedSoundSequencePartKind.Audio,
-                        AudioPath = item.SourcePath
+                        AudioPath = audioPath
                     });
                     break;
                 case AnnouncementSequenceEntryKind.Pause:

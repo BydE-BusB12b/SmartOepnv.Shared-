@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using SmartOepnv.Core.Dienstvorlagen;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -44,6 +45,35 @@ public static class RouteDisplayHelper
         }
 
         return $"{name} ({string.Join(", ", parts)})";
+    }
+
+    /// <summary>Anzeigename inkl. Verkehrstags-Kennung bei Teiltages-Routen.</summary>
+    public static string ToDisplayStringWithOperatingDays(
+        RouteDefinition route,
+        IReadOnlyCollection<DutyOperatingDay> operatingDays)
+    {
+        var baseDisplay = ToDisplayString(route);
+        if (string.IsNullOrEmpty(baseDisplay) ||
+            RouteOperatingDaysEditor.IsConfiguredForAllDays(operatingDays))
+        {
+            return baseDisplay;
+        }
+
+        var label = DutyOperatingDayHelper.FormatDisplay(operatingDays);
+        if (string.IsNullOrEmpty(label))
+        {
+            return baseDisplay;
+        }
+
+        if (!baseDisplay.Contains('('))
+        {
+            return $"{baseDisplay} (Verkehr: {label})";
+        }
+
+        var closeIndex = baseDisplay.LastIndexOf(')');
+        return closeIndex < 0
+            ? $"{baseDisplay} (Verkehr: {label})"
+            : baseDisplay[..closeIndex] + $", Verkehr: {label})";
     }
 
     /// <summary>Fahrtnummer wie in der App (ohne führende Nullen: „01“ → „1“).</summary>
@@ -110,6 +140,10 @@ public static class RouteDisplayHelper
             {
                 passengerLine = trimmed["PassengerLine:".Length..].Trim();
             }
+            else if (trimmed.StartsWith("Verkehr:", StringComparison.OrdinalIgnoreCase))
+            {
+                // Nur Anzeige-Kennung – Linie/Kurs/Fahrt bleiben unverändert.
+            }
         }
 
         return new RouteDefinition(name, lineCourse, tripNumber, passengerLine);
@@ -147,20 +181,38 @@ public static class RouteDisplayHelper
         return parts[0].PadLeft(3, '0') + "/" + parts[1].PadLeft(2, '0');
     }
 
-    public static bool HasDuplicateTripInLineCourse(IEnumerable<string> routeKeys, RouteDefinition candidate)
+    public static bool HasDuplicateTripInLineCourse(IEnumerable<string> routeKeys, RouteDefinition candidate) =>
+        HasOperatingDayConflict(routeKeys, null, candidate, RouteOperatingDaysEditor.AllDays);
+
+    /// <summary>Gleiche Linie/Kurs + Fahrt nur verboten bei überschneidenden Verkehrstagen.</summary>
+    public static bool HasOperatingDayConflict(
+        IEnumerable<string> routeKeys,
+        IDictionary<string, HashSet<DutyOperatingDay>>? operatingDaysByRoute,
+        RouteDefinition candidate,
+        IReadOnlyCollection<DutyOperatingDay> candidateDays)
     {
         var lineCourse = NormalizeLineCourse(candidate.LineCourse);
-        var trip = (candidate.TripNumber ?? string.Empty).Trim();
+        var trip = NormalizeTripNumber(candidate.TripNumber);
         if (string.IsNullOrEmpty(lineCourse) || string.IsNullOrEmpty(trip))
         {
             return false;
         }
 
+        var candidateSet = RouteOperatingDaysEditor.EffectiveDaySet(candidateDays);
         foreach (var key in routeKeys)
         {
             var existing = Parse(key);
-            if (NormalizeLineCourse(existing.LineCourse) == lineCourse &&
-                string.Equals((existing.TripNumber ?? string.Empty).Trim(), trip, StringComparison.Ordinal))
+            if (NormalizeLineCourse(existing.LineCourse) != lineCourse ||
+                !string.Equals(NormalizeTripNumber(existing.TripNumber), trip, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var existingSet = RouteOperatingDaysEditor.EffectiveDaySet(
+                operatingDaysByRoute is null
+                    ? []
+                    : RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, key));
+            if (RouteOperatingDaysEditor.DaysOverlap(existingSet, candidateSet))
             {
                 return true;
             }

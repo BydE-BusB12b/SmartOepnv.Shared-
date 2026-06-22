@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.Views;
@@ -16,12 +17,23 @@ public sealed class AddRouteDialog : Window
     private readonly TextBox _tripNumberBox;
     private readonly TextBox _passengerLineBox;
     private readonly TextBlock _errorText;
+    private readonly List<CheckBox> _operatingDayChecks = [];
     private bool _formattingLineCourse;
 
     public RouteDefinition? ResultDefinition { get; private set; }
+    public IReadOnlyList<DutyOperatingDay> ResultOperatingDays { get; private set; } = [];
     public string? CopyStopsFromRouteKey { get; private set; }
 
-    public AddRouteDialog(IReadOnlyList<string> existingRoutes, RouteDefinition? initial = null, string? copyFromRouteKey = null)
+    public AddRouteDialog(EditableRoutePackage package, RouteDefinition? initial = null, string? copyFromRouteKey = null)
+        : this(package.RouteNames.ToList(), package.RouteOperatingDaysByRoute, initial, copyFromRouteKey)
+    {
+    }
+
+    public AddRouteDialog(
+        IReadOnlyList<string> existingRoutes,
+        IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute,
+        RouteDefinition? initial = null,
+        string? copyFromRouteKey = null)
     {
         Title = "Neue Route hinzufügen";
         Width = 460;
@@ -73,6 +85,31 @@ public sealed class AddRouteDialog : Window
         split.Children.Add(right);
         root.Children.Add(split);
 
+        root.Children.Add(MakeLabel("Verkehrstage"));
+        root.Children.Add(new TextBlock
+        {
+            Text = "Gleiche Linie/Kurs + Fahrt nur einmal pro Tag · Betriebstag 00:01–03:59 Folgetag",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        var dayWrap = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
+        foreach (var (day, name) in DutyOperatingDayHelper.AllDays)
+        {
+            var check = new CheckBox
+            {
+                Content = name,
+                IsChecked = true,
+                Tag = day,
+                Foreground = LabelForeground,
+                Margin = new Thickness(0, 0, 12, 4)
+            };
+            _operatingDayChecks.Add(check);
+            dayWrap.Children.Add(check);
+        }
+        root.Children.Add(dayWrap);
+
         var copyButton = new Button
         {
             Content = "Route kopieren",
@@ -80,7 +117,7 @@ public sealed class AddRouteDialog : Window
             Margin = new Thickness(0, 4, 0, 8),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        copyButton.Click += (_, _) => PickRouteToCopy(existingRoutes);
+        copyButton.Click += (_, _) => PickRouteToCopy(existingRoutes, operatingDaysByRoute);
         root.Children.Add(copyButton);
 
         _errorText = new TextBlock
@@ -101,7 +138,7 @@ public sealed class AddRouteDialog : Window
         var cancel = new Button { Content = "Abbrechen", MinWidth = 100, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
         var add = new Button { Content = "Hinzufügen", MinWidth = 110, IsDefault = true };
         cancel.Click += (_, _) => { DialogResult = false; Close(); };
-        add.Click += (_, _) => ConfirmAdd(existingRoutes);
+        add.Click += (_, _) => ConfirmAdd(existingRoutes, operatingDaysByRoute);
         buttons.Children.Add(cancel);
         buttons.Children.Add(add);
         root.Children.Add(buttons);
@@ -110,7 +147,9 @@ public sealed class AddRouteDialog : Window
         Loaded += (_, _) => _routeNameBox.Focus();
     }
 
-    private void PickRouteToCopy(IReadOnlyList<string> existingRoutes)
+    private void PickRouteToCopy(
+        IReadOnlyList<string> existingRoutes,
+        IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute)
     {
         var routes = existingRoutes
             .Where(r => !string.IsNullOrWhiteSpace(r))
@@ -180,10 +219,14 @@ public sealed class AddRouteDialog : Window
         _lineCourseBox.Text = parsed.LineCourse;
         _tripNumberBox.Text = string.Empty;
         _passengerLineBox.Text = parsed.PassengerDisplayLine;
-        ShowError($"Haltestellen werden von „{selected}“ kopiert – bitte neue Fahrtnummer setzen.");
+        ApplyOperatingDaysToChecks(
+            RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, selected));
+        ShowError($"Haltestellen werden von „{selected}“ kopiert – bitte neue Fahrtnummer und Verkehrstage setzen.");
     }
 
-    private void ConfirmAdd(IReadOnlyList<string> existingRoutes)
+    private void ConfirmAdd(
+        IReadOnlyList<string> existingRoutes,
+        IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute)
     {
         var name = _routeNameBox.Text.Trim();
         if (string.IsNullOrEmpty(name))
@@ -192,21 +235,60 @@ public sealed class AddRouteDialog : Window
             return;
         }
 
+        var selectedDays = GetSelectedOperatingDays();
+        if (selectedDays.Count == 0)
+        {
+            ShowError("Bitte mindestens einen Verkehrstag auswählen.");
+            return;
+        }
+
         var lineCourse = RouteDisplayHelper.NormalizeLineCourse(
             RouteDisplayHelper.FormatLineCourseInput(_lineCourseBox.Text));
         var tripNumber = _tripNumberBox.Text.Trim();
         var passengerLine = _passengerLineBox.Text.Trim();
         var definition = new RouteDefinition(name, lineCourse, tripNumber, passengerLine);
+        var displayKey = RouteDisplayHelper.ToDisplayStringWithOperatingDays(definition, selectedDays);
 
-        if (RouteDisplayHelper.HasDuplicateTripInLineCourse(existingRoutes, definition))
+        if (existingRoutes.Contains(displayKey, StringComparer.Ordinal))
         {
-            ShowError("Route schon vorhanden (gleiche Linie/Kurs und Fahrtnummer).");
+            ShowError("Route schon vorhanden.");
+            return;
+        }
+
+        if (RouteDisplayHelper.HasOperatingDayConflict(
+                existingRoutes,
+                operatingDaysByRoute,
+                definition,
+                selectedDays))
+        {
+            ShowError("Route schon vorhanden (Linie/Kurs, Fahrt und Verkehrstag überschneiden sich).");
             return;
         }
 
         ResultDefinition = definition;
+        ResultOperatingDays = selectedDays.ToList();
         DialogResult = true;
         Close();
+    }
+
+    private HashSet<DutyOperatingDay> GetSelectedOperatingDays() =>
+        _operatingDayChecks
+            .Where(check => check.IsChecked == true && check.Tag is DutyOperatingDay)
+            .Select(check => (DutyOperatingDay)check.Tag!)
+            .ToHashSet();
+
+    private void ApplyOperatingDaysToChecks(HashSet<DutyOperatingDay> days)
+    {
+        var effective = RouteOperatingDaysEditor.IsConfiguredForAllDays(days)
+            ? RouteOperatingDaysEditor.AllDays.ToHashSet()
+            : days;
+        foreach (var check in _operatingDayChecks)
+        {
+            if (check.Tag is DutyOperatingDay day)
+            {
+                check.IsChecked = effective.Contains(day);
+            }
+        }
     }
 
     private void FormatLineCourseField()

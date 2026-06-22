@@ -122,6 +122,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
         {
             _selectedNavMarkerKey = null;
             PushDraftToMap();
+            DeleteNavSymbolCommand.NotifyCanExecuteChanged();
             return;
         }
 
@@ -133,6 +134,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
         SelectedManeuverText = value.Instruction;
         StatusMessage = $"Navi-Hinweis {value.DisplayNumber} gewählt – Symbol oder Text anpassen.";
         PushDraftToMap(skipNavListRefresh: true);
+        DeleteNavSymbolCommand.NotifyCanExecuteChanged();
     }
 
     private void MarkDraftDirty()
@@ -157,7 +159,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             return;
         }
 
-        PushDraftToMap(CollectStopsForSelectedRoute(), resetMapView: false);
+        PushDraftToMap(CollectStopsForSelectedRoute(), resetMapView: false, restoreMapView: HasSavedMapView(_draft));
     }
 
     public void RefreshRoutes()
@@ -220,7 +222,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
                 : _draft.RouteLineColor;
             ReportDraftStatus();
             MarkDraftSaved();
-            PushDraftToMap(stops, resetMapView: !HasSavedMapView(_draft));
+            PushDraftToMap(stops, resetMapView: !HasSavedMapView(_draft), restoreMapView: HasSavedMapView(_draft));
         }
         finally
         {
@@ -347,7 +349,13 @@ public partial class RoutePathEditorViewModel : ObservableObject
                                         navForwardProgress);
             var allowWhileBlocked = forceFromMap || forceNavManeuverSync;
 
-            if ((_awaitingMapLoadAfterPlannerPush || _applyingNavSymbol) && !allowWhileBlocked)
+            // Nach PushDraftToMap: Karten-JSON ist veraltet, bis draftLoaded (sonst kommen gelöschte Symbole zurück).
+            if (_awaitingMapLoadAfterPlannerPush && !forceFromMap && !forceApplyFromMap)
+            {
+                return false;
+            }
+
+            if (_applyingNavSymbol && !allowWhileBlocked)
             {
                 return false;
             }
@@ -1440,6 +1448,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
         {
             SelectNavManeuverInListByMarkerKey(markerKey);
         }
+
+        DeleteNavSymbolCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
@@ -1644,6 +1654,99 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
     }
 
+    private bool CanDeleteNavSymbol() => TryResolveSelectedNavManeuver(out _, out _, out _, out _);
+
+    [RelayCommand(CanExecute = nameof(CanDeleteNavSymbol))]
+    private void DeleteNavSymbol()
+    {
+        if (_draft is null || !TryResolveSelectedNavManeuver(out var from, out var to, out var maneuverIndex, out var maneuver))
+        {
+            StatusMessage = "Bitte zuerst ein Navi-Symbol auf der Karte oder in der Liste wählen.";
+            return;
+        }
+
+        _applyingNavSymbol = true;
+        _suppressNavManeuverSelectionSync = true;
+
+        try
+        {
+            PushUndoSnapshot();
+            var key = RoutePathDraft.SegmentEdgeKey(from, to);
+            if (!_draft.RoadSegmentManeuvers.TryGetValue(key, out var mans) || mans.Count == 0)
+            {
+                StatusMessage = "Kein Navi-Hinweis zum Löschen gefunden.";
+                return;
+            }
+
+            var idx = Math.Clamp(maneuverIndex, 0, mans.Count - 1);
+            mans.RemoveAt(idx);
+            if (mans.Count == 0)
+            {
+                _draft.RoadSegmentManeuvers.Remove(key);
+            }
+
+            _selectedSegmentFrom = null;
+            _selectedSegmentTo = null;
+            _selectedManeuverIndex = 0;
+            _selectedNavMarkerKey = null;
+            SelectedManeuverText = null;
+            SelectedNavSymbol = "straight";
+            _suppressNavManeuverSelectionSync = true;
+            SelectedNavManeuverItem = null;
+            _suppressNavManeuverSelectionSync = false;
+
+            RoutePathDraftMutator.DeduplicateSegmentsByEdge(_draft);
+            RoutePathDraftMutator.DeduplicateManeuversPerEdge(_draft);
+            RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(_draft);
+            StatusMessage = "Navi-Symbol entfernt.";
+            MarkDraftDirty();
+            RefreshNavManeuverList();
+            PushDraftToMap(skipNavListRefresh: true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Symbol konnte nicht gelöscht werden: {ex.Message}";
+        }
+        finally
+        {
+            _suppressNavManeuverSelectionSync = false;
+            DeleteNavSymbolCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool TryResolveSelectedNavManeuver(
+        out string from,
+        out string to,
+        out int maneuverIndex,
+        out RoutePathSnapManeuver maneuver)
+    {
+        from = SelectedNavManeuverItem?.FromNodeId ?? _selectedSegmentFrom ?? string.Empty;
+        to = SelectedNavManeuverItem?.ToNodeId ?? _selectedSegmentTo ?? string.Empty;
+        maneuverIndex = SelectedNavManeuverItem?.ManeuverIndex ?? _selectedManeuverIndex;
+        maneuver = null!;
+
+        if (_draft is null || string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
+        {
+            return false;
+        }
+
+        var key = RoutePathDraft.SegmentEdgeKey(from, to);
+        if (!_draft.RoadSegmentManeuvers.TryGetValue(key, out var mans) || mans.Count == 0)
+        {
+            return false;
+        }
+
+        var idx = Math.Clamp(maneuverIndex, 0, mans.Count - 1);
+        maneuver = mans[idx];
+        var fromId = from;
+        var toId = to;
+        var segment = _draft.Segments.FirstOrDefault(s => s.FromNodeId == fromId && s.ToNodeId == toId)
+                      ?? new RoutePathSegment { FromNodeId = fromId, ToNodeId = toId };
+        var symbolType = NavManeuverDisplayHelper.EffectiveSymbolType(maneuver);
+        var segmentLength = NavManeuverDisplayHelper.SegmentLengthMeters(_draft, segment);
+        return NavManeuverDisplayHelper.ShouldShowOnMap(maneuver, symbolType, segmentLength);
+    }
+
     /// <summary>Manuell/leer → Symbolname; sonst eigener Anweisungstext aus dem Feld.</summary>
     private string ResolveInstructionForApply(string symbolLabel, RoutePathSnapManeuver? existing = null)
     {
@@ -1839,7 +1942,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
     private void PushDraftToMap(
         IList<RouteStopItem>? stopsForBounds = null,
         bool resetMapView = false,
-        bool skipNavListRefresh = false)
+        bool skipNavListRefresh = false,
+        bool restoreMapView = false)
     {
         if (_draft is null) return;
         try
@@ -1884,7 +1988,6 @@ public partial class RoutePathEditorViewModel : ObservableObject
             var bounds = resetMapView
                 ? BuildBoundsJson(stopsForBounds ?? CollectStopsForSelectedRoute())
                 : null;
-            var restoreMapView = !resetMapView && HasSavedMapView(_draft);
             PushDraftToMapRequested?.Invoke(json, bounds, resetMapView, restoreMapView);
             if (!resetMapView && !skipNavListRefresh)
             {

@@ -264,7 +264,15 @@
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Foreground="White"
                                 BorderBrush="#6642A5F5"
+                                Margin="0,0,0,6"
                                 HorizontalAlignment="Stretch" />
+                        <Button Content="Symbol löschen"
+                                Command="{Binding DeleteNavSymbolCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Foreground="#FFCDD2"
+                                BorderBrush="#66EF5350"
+                                HorizontalAlignment="Stretch"
+                                ToolTip="Entfernt nur den gewählten Navi-Hinweis (nicht die ganze Verbindung)." />
                     </StackPanel>
                 </materialDesign:Card>
             </StackPanel>

@@ -59,7 +59,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBox Text="{Binding SelectedStop.VrrStopId, UpdateSourceTrigger=LostFocus}"
+                <TextBox Text="{Binding SelectedStopVrrStopId, UpdateSourceTrigger=PropertyChanged}"
                          LostFocus="Field_LostFocus" />
                 <Button Grid.Column="1" Content="VRR suchen…" Command="{Binding PickVrrStopCommand}"
                         Margin="6,0,0,0" Padding="10,4" MinHeight="32"
@@ -111,8 +111,18 @@
             <ComboBox ItemsSource="{Binding Ds003aDestinations}"
                       SelectedItem="{Binding SelectedEndDestinationDs003a, Mode=TwoWay}" Margin="0,0,0,8" />
             <TextBlock Text="Endziel-GPS (lat, lon):" Margin="0,0,0,4" Opacity="0.9" />
-            <TextBox Text="{Binding SelectedStop.EndDestinationCoordinates, UpdateSourceTrigger=LostFocus}"
-                     LostFocus="Field_LostFocus" Margin="0,0,0,8" />
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Text="{Binding SelectedStop.EndDestinationCoordinates, UpdateSourceTrigger=LostFocus}"
+                         LostFocus="Field_LostFocus" />
+                <Button Grid.Column="1" Content="Karte…" Command="{Binding PickEndDestinationCoordinatesOnMapCommand}"
+                        Margin="6,0,0,0" Padding="10,4" MinHeight="32"
+                        Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5"
+                        ToolTip="Endziel-GPS auf der Karte wählen (wie in der App)" />
+            </Grid>
 
             <CheckBox Content="Endhaltestellen-Ansage"
                       IsChecked="{Binding PlayEndStopAnnouncement, Mode=TwoWay}"

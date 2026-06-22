@@ -92,6 +92,12 @@ public static class EmployeeRosterEditor
             item.DriverCardCheckConfirmedAtUtcMs = cardCheckValue.GetValue<long>();
         }
 
+        if (obj.TryGetPropertyValue("lastEditedAtUtcMs", out var lastEditedNode) &&
+            lastEditedNode is JsonValue lastEditedValue)
+        {
+            item.LastEditedAtUtcMs = lastEditedValue.GetValue<long>();
+        }
+
         return item;
     }
 
@@ -134,6 +140,11 @@ public static class EmployeeRosterEditor
             obj["driverCardCheckConfirmedAtUtcMs"] = e.DriverCardCheckConfirmedAtUtcMs;
         }
 
+        if (e.LastEditedAtUtcMs > 0)
+        {
+            obj["lastEditedAtUtcMs"] = e.LastEditedAtUtcMs;
+        }
+
         return obj;
     }
 
@@ -152,6 +163,7 @@ public static class EmployeeRosterEditor
             node.Remove("licenseCheckConfirmedAtUtcMs");
             node.Remove("fqnCheckConfirmedAtUtcMs");
             node.Remove("driverCardCheckConfirmedAtUtcMs");
+            node.Remove("lastEditedAtUtcMs");
         }
     }
 }

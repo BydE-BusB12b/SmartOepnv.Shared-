@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -10,14 +11,20 @@ public sealed class EmbeddedSoundPickerDialog : Window
     private readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly ObservableCollection<string> _filtered = [];
     private readonly List<string> _allNames;
+    private readonly IReadOnlyDictionary<string, string> _searchHintsByFileName;
     private readonly TextBlock _status;
     private string _pendingQuery = string.Empty;
 
     public string? SelectedFileName { get; private set; }
 
-    public EmbeddedSoundPickerDialog(IReadOnlyList<string> soundFileNames, string? initialSearch = null)
+    public EmbeddedSoundPickerDialog(
+        IReadOnlyList<string> soundFileNames,
+        string? initialSearch = null,
+        IReadOnlyDictionary<string, string>? searchHintsByFileName = null)
     {
         _allNames = soundFileNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        _searchHintsByFileName = searchHintsByFileName
+                                 ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         Title = "Ansage wählen";
         Width = 560;
@@ -134,7 +141,10 @@ public sealed class EmbeddedSoundPickerDialog : Window
         IEnumerable<string> source = _allNames;
         if (!string.IsNullOrWhiteSpace(query))
         {
-            source = _allNames.Where(n => n.Contains(query, StringComparison.OrdinalIgnoreCase));
+            source = _allNames.Where(n => EmbeddedSoundSearch.Matches(
+                n,
+                query,
+                _searchHintsByFileName.GetValueOrDefault(n)));
         }
 
         foreach (var name in source)

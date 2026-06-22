@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -27,6 +28,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     [ObservableProperty] private string? selectedRouteForInsert;
     [ObservableProperty] private string selectedAnnouncementCoordinates = string.Empty;
     [ObservableProperty] private string selectedStopCoordinates = string.Empty;
+    [ObservableProperty] private string selectedVrrStopId = string.Empty;
     [ObservableProperty] private string announcementMergePauseSeconds = "0,3";
     [ObservableProperty] private bool saveButtonIsSuccess;
     [ObservableProperty] private bool removeTemplateButtonIsSuccess;
@@ -124,6 +126,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             t.StopDisplay,
             t.VrrStopId,
             t.DirectionDescription,
+            t.Lines,
             t.AnnouncementLat,
             t.AnnouncementLng,
             t.StopLat,
@@ -286,6 +289,23 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         MarkDirty();
     }
 
+    partial void OnSelectedVrrStopIdChanged(string value)
+    {
+        if (_syncingCoordinates || SelectedTemplate is null)
+        {
+            return;
+        }
+
+        var trimmed = value?.Trim() ?? string.Empty;
+        if (string.Equals(SelectedTemplate.VrrStopId, trimmed, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        SelectedTemplate.VrrStopId = trimmed;
+        MarkDirty();
+    }
+
     partial void OnSelectedStopCoordinatesChanged(string value)
     {
         if (_syncingCoordinates || SelectedTemplate is null)
@@ -308,6 +328,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         {
             SelectedAnnouncementCoordinates = string.Empty;
             SelectedStopCoordinates = string.Empty;
+            SelectedVrrStopId = string.Empty;
         }
         else
         {
@@ -317,6 +338,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             SelectedStopCoordinates = CoordinateFormatting.FormatFromParts(
                 SelectedTemplate.StopLat,
                 SelectedTemplate.StopLng);
+            SelectedVrrStopId = SelectedTemplate.VrrStopId;
         }
 
         _syncingCoordinates = false;
@@ -514,7 +536,6 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             var assignment = VrrStopAssignmentManager.FromCatalogEntry(dialog.SelectedEntry);
             VrrStopAssignmentManager.ApplyToTemplate(SelectedTemplate, assignment);
             SyncCoordinateFieldsFromSelected();
-            RefreshSelectedTemplateBinding();
             StatusMessage = $"VRR-ID „{SelectedTemplate.VrrStopId}“ übernommen ({assignment.DisplayName}).";
             MarkDirty();
         }
@@ -653,7 +674,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         var owner = ResolveDialogOwner();
-        var dialog = new EmbeddedSoundPickerDialog(names, prefill) { Owner = owner };
+        var searchHints = BuildEmbeddedSoundSearchHints(names);
+        var dialog = new EmbeddedSoundPickerDialog(names, prefill, searchHints) { Owner = owner };
         if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.SelectedFileName))
         {
             return;
@@ -708,7 +730,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         var owner = ResolveDialogOwner();
-        var dialog = new EmbeddedSoundMultiPickerDialog(names, prefill) { Owner = owner };
+        var searchHints = BuildEmbeddedSoundSearchHints(names);
+        var dialog = new EmbeddedSoundMultiPickerDialog(names, prefill, searchHintsByFileName: searchHints) { Owner = owner };
         if (dialog.ShowDialog() != true || dialog.SelectedFileNames.Count < 2)
         {
             return;
@@ -768,13 +791,32 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             return null;
         }
 
-        var extra = editor.AnnouncementTemplates
+        var extraNames = _allTemplates
             .Select(t => t.EmbeddedSoundFileName)
-            .Concat(_allTemplates.Select(t => t.EmbeddedSoundFileName));
-        var names = EmbeddedSoundCatalog.ListAvailable(
+            .Where(n => !string.IsNullOrWhiteSpace(n));
+        var names = EmbeddedSoundCatalog.ListReferenced(
+            editor,
             editor.PackageRoot,
             AppServices.IsInitialized ? AppServices.Workspace : null,
-            extra);
+            extraNames)
+            .ToList();
+
+        foreach (var template in _allTemplates)
+        {
+            var fileName = template.EmbeddedSoundFileName?.Trim();
+            if (string.IsNullOrWhiteSpace(fileName) ||
+                names.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(template.LocalAudioPath) && File.Exists(template.LocalAudioPath))
+            {
+                names.Add(fileName);
+            }
+        }
+
+        names.Sort(StringComparer.OrdinalIgnoreCase);
 
         if (names.Count == 0)
         {
@@ -783,6 +825,63 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         return names;
+    }
+
+    private Dictionary<string, string> BuildEmbeddedSoundSearchHints(IReadOnlyList<string> fileNames)
+    {
+        var hints = new Dictionary<string, StringBuilder>(StringComparer.OrdinalIgnoreCase);
+
+        void Append(string? fileName, params string?[] parts)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return;
+            }
+
+            var text = string.Join(' ', parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            if (!hints.TryGetValue(fileName, out var builder))
+            {
+                builder = new StringBuilder();
+                hints[fileName] = builder;
+            }
+
+            builder.Append(' ').Append(text);
+        }
+
+        foreach (var template in _allTemplates)
+        {
+            Append(
+                template.EmbeddedSoundFileName,
+                template.StopNameItcs,
+                template.StopDisplay,
+                template.DirectionDescription,
+                template.Lines);
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is not null)
+        {
+            foreach (var announcement in ManagedAnnouncementTemplateEditor.LoadFromRoot(editor.PackageRoot))
+            {
+                Append(
+                    announcement.EmbeddedSoundFileName,
+                    announcement.DisplayName,
+                    announcement.Description,
+                    announcement.Lines);
+            }
+        }
+
+        return fileNames.ToDictionary(
+            name => name,
+            name => hints.TryGetValue(name, out var builder)
+                ? builder.ToString().Trim()
+                : string.Empty,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     private static Window? ResolveDialogOwner()
@@ -1016,7 +1115,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
                 (t.StopNameItcs?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                 (t.StopDisplay?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                 (t.VrrStopId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (t.DirectionDescription?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
+                (t.DirectionDescription?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (t.Lines?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
         }
 
         foreach (var t in source)
@@ -1039,6 +1139,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         StopDisplay = source.StopDisplay,
         VrrStopId = source.VrrStopId,
         DirectionDescription = source.DirectionDescription,
+        Lines = source.Lines,
         AnnouncementLat = source.AnnouncementLat,
         AnnouncementLng = source.AnnouncementLng,
         StopLat = source.StopLat,

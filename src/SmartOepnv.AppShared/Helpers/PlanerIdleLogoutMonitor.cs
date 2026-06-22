@@ -7,25 +7,21 @@ namespace SmartOepnv.AppShared.Helpers;
 
 /// <summary>
 /// Meldet den Planer-Nutzer nach Inaktivität automatisch ab (Dropbox-Sperre freigeben).
+/// Nutzt Wall-Clock-Zeit, damit Countdown und Abmeldung auch im Hintergrund greifen.
 /// </summary>
 public sealed class PlanerIdleLogoutMonitor : IDisposable
 {
     public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
 
-    private readonly DispatcherTimer _timeoutTimer = new() { Interval = IdleTimeout };
-    private readonly DispatcherTimer _countdownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly object _sync = new();
+    private System.Threading.Timer? _wallClockTimer;
     private DateTime _idleDeadlineUtc;
     private bool _isActive;
     private bool _logoutInProgress;
 
     public event Func<Task>? IdleTimeoutReached;
     public event Action<TimeSpan?>? CountdownChanged;
-
-    public PlanerIdleLogoutMonitor()
-    {
-        _timeoutTimer.Tick += OnTimeoutTick;
-        _countdownTimer.Tick += OnCountdownTick;
-    }
 
     public void Start()
     {
@@ -35,36 +31,140 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
         }
 
         InputManager.Current.PreProcessInput += OnPreProcessInput;
-        _isActive = true;
-        ResetTimer();
+        lock (_sync)
+        {
+            _isActive = true;
+            ResetTimerCore();
+            EnsureWallClockTimerRunning();
+        }
     }
 
     public void Stop()
     {
-        if (!_isActive)
+        lock (_sync)
         {
-            return;
+            if (!_isActive)
+            {
+                return;
+            }
+
+            _wallClockTimer?.Dispose();
+            _wallClockTimer = null;
+            _isActive = false;
         }
 
-        _timeoutTimer.Stop();
-        _countdownTimer.Stop();
         InputManager.Current.PreProcessInput -= OnPreProcessInput;
-        _isActive = false;
-        CountdownChanged?.Invoke(null);
+        PublishCountdownOnUi(null);
     }
 
     public void ResetTimer()
     {
-        if (!_isActive || _logoutInProgress)
+        lock (_sync)
         {
+            if (!_isActive || _logoutInProgress)
+            {
+                return;
+            }
+
+            ResetTimerCore();
+        }
+    }
+
+    private void ResetTimerCore()
+    {
+        _idleDeadlineUtc = DateTime.UtcNow + IdleTimeout;
+        PublishCountdownOnUi(GetRemaining());
+    }
+
+    private void EnsureWallClockTimerRunning()
+    {
+        _wallClockTimer ??= new System.Threading.Timer(
+            OnWallClockTick,
+            null,
+            TickInterval,
+            TickInterval);
+    }
+
+    private void OnWallClockTick(object? state)
+    {
+        TimeSpan remaining;
+        var shouldLogout = false;
+
+        lock (_sync)
+        {
+            if (!_isActive || _logoutInProgress)
+            {
+                return;
+            }
+
+            if (AppServices.PlanerSession?.IsLoggedIn != true)
+            {
+                return;
+            }
+
+            remaining = GetRemaining();
+            shouldLogout = remaining <= TimeSpan.Zero;
+        }
+
+        PublishCountdownOnUi(shouldLogout ? TimeSpan.Zero : remaining);
+
+        if (shouldLogout)
+        {
+            BeginIdleLogout();
+        }
+    }
+
+    private void BeginIdleLogout()
+    {
+        lock (_sync)
+        {
+            if (!_isActive || _logoutInProgress)
+            {
+                return;
+            }
+
+            _logoutInProgress = true;
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.HasShutdownStarted)
+        {
+            CompleteIdleLogoutAttempt();
             return;
         }
 
-        _idleDeadlineUtc = DateTime.UtcNow + IdleTimeout;
-        _timeoutTimer.Stop();
-        _timeoutTimer.Start();
-        _countdownTimer.Start();
-        PublishCountdown();
+        _ = dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                if (!_isActive || AppServices.PlanerSession?.IsLoggedIn != true)
+                {
+                    return;
+                }
+
+                var handler = IdleTimeoutReached;
+                if (handler is not null)
+                {
+                    await handler().ConfigureAwait(true);
+                }
+            }
+            finally
+            {
+                CompleteIdleLogoutAttempt();
+            }
+        }, DispatcherPriority.Normal);
+    }
+
+    private void CompleteIdleLogoutAttempt()
+    {
+        lock (_sync)
+        {
+            _logoutInProgress = false;
+            if (_isActive && AppServices.PlanerSession?.IsLoggedIn == true)
+            {
+                ResetTimerCore();
+            }
+        }
     }
 
     private void OnPreProcessInput(object sender, PreProcessInputEventArgs e)
@@ -90,59 +190,29 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
     private static bool IsUserActivity(InputEventArgs input) =>
         input is MouseEventArgs or KeyEventArgs or TextCompositionEventArgs or TouchEventArgs;
 
-    private void OnCountdownTick(object? sender, EventArgs e) => PublishCountdown();
-
-    private void PublishCountdown()
+    private TimeSpan GetRemaining()
     {
-        if (!_isActive || _logoutInProgress)
-        {
-            return;
-        }
-
         var remaining = _idleDeadlineUtc - DateTime.UtcNow;
-        if (remaining < TimeSpan.Zero)
-        {
-            remaining = TimeSpan.Zero;
-        }
-
-        CountdownChanged?.Invoke(remaining);
+        return remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining;
     }
 
-    private async void OnTimeoutTick(object? sender, EventArgs e)
+    private void PublishCountdownOnUi(TimeSpan? remaining)
     {
-        _timeoutTimer.Stop();
-        _countdownTimer.Stop();
-        CountdownChanged?.Invoke(TimeSpan.Zero);
-
-        if (!_isActive || _logoutInProgress)
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.HasShutdownStarted)
         {
             return;
         }
 
-        if (AppServices.PlanerSession?.IsLoggedIn != true)
+        if (dispatcher.CheckAccess())
         {
+            CountdownChanged?.Invoke(remaining);
             return;
         }
 
-        var handler = IdleTimeoutReached;
-        if (handler is null)
-        {
-            return;
-        }
-
-        _logoutInProgress = true;
-        try
-        {
-            await handler().ConfigureAwait(true);
-        }
-        finally
-        {
-            _logoutInProgress = false;
-            if (_isActive && AppServices.PlanerSession?.IsLoggedIn == true)
-            {
-                ResetTimer();
-            }
-        }
+        _ = dispatcher.BeginInvoke(
+            () => CountdownChanged?.Invoke(remaining),
+            DispatcherPriority.Background);
     }
 
     public void Dispose() => Stop();

@@ -114,6 +114,7 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
+        ApplyLastEditedTimestamps(editor.Employees);
         editor.ReplaceEmployees(Employees.Select(Clone).ToList());
         AppServices.Routes.ApplyEditorChanges("fahrer");
         AppServices.PlannerLocal?.PersistFromEditor(editor);
@@ -261,22 +262,7 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
     }
 
     private string ComputeFingerprint() =>
-        JsonSerializer.Serialize(Employees.Select(e => new
-        {
-            e.Name,
-            e.PhoneNumber,
-            e.PersonnelNumber,
-            e.Password,
-            e.LicenseExpiry,
-            e.FqnExpiry,
-            e.DriverCardExpiry,
-            e.LoginAsMainDevice,
-            e.PlannerLoginEnabled,
-            e.PlannerPassword,
-            e.LicenseCheckConfirmedAtUtcMs,
-            e.FqnCheckConfirmedAtUtcMs,
-            e.DriverCardCheckConfirmedAtUtcMs
-        }));
+        JsonSerializer.Serialize(Employees.Select(EmployeeDataFingerprint));
 
     private static EmployeeRosterItem Clone(EmployeeRosterItem e) => new()
     {
@@ -292,6 +278,46 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
         PlannerPassword = e.PlannerPassword,
         LicenseCheckConfirmedAtUtcMs = e.LicenseCheckConfirmedAtUtcMs,
         FqnCheckConfirmedAtUtcMs = e.FqnCheckConfirmedAtUtcMs,
-        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs
+        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs,
+        LastEditedAtUtcMs = e.LastEditedAtUtcMs
     };
+
+    private void ApplyLastEditedTimestamps(IList<EmployeeRosterItem> previousEmployees)
+    {
+        var previousFingerprints = previousEmployees
+            .GroupBy(EmployeeDispoKeys.FromEmployee, StringComparer.Ordinal)
+            .Where(g => !string.IsNullOrEmpty(g.Key))
+            .ToDictionary(g => g.Key, g => EmployeeDataFingerprint(g.First()), StringComparer.Ordinal);
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        foreach (var employee in Employees)
+        {
+            var key = EmployeeDispoKeys.FromEmployee(employee);
+            var fingerprint = EmployeeDataFingerprint(employee);
+            if (string.IsNullOrEmpty(key) ||
+                !previousFingerprints.TryGetValue(key, out var previousFingerprint) ||
+                !string.Equals(previousFingerprint, fingerprint, StringComparison.Ordinal))
+            {
+                employee.LastEditedAtUtcMs = now;
+            }
+        }
+    }
+
+    private static string EmployeeDataFingerprint(EmployeeRosterItem e) =>
+        JsonSerializer.Serialize(new
+        {
+            e.Name,
+            e.PhoneNumber,
+            e.PersonnelNumber,
+            e.Password,
+            e.LicenseExpiry,
+            e.FqnExpiry,
+            e.DriverCardExpiry,
+            e.LoginAsMainDevice,
+            e.PlannerLoginEnabled,
+            e.PlannerPassword,
+            e.LicenseCheckConfirmedAtUtcMs,
+            e.FqnCheckConfirmedAtUtcMs,
+            e.DriverCardCheckConfirmedAtUtcMs
+        });
 }

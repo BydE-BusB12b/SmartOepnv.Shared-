@@ -59,7 +59,14 @@
                                  Background="{StaticResource SmartSurfaceBrush}">
                 <DockPanel DataContext="{Binding SelectedEmployee}">
                     <TextBlock DockPanel.Dock="Top" Text="Stammdaten"
-                               FontWeight="SemiBold" FontSize="16" Margin="0,0,0,12" />
+                               FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
+                    <TextBlock DockPanel.Dock="Top"
+                               Opacity="0.7"
+                               FontSize="11"
+                               Margin="0,0,0,12">
+                        <Run Text="Akte zuletzt bearbeitet: " />
+                        <Run Text="{Binding LastEditedDisplayText, Mode=OneWay}" FontWeight="SemiBold" />
+                    </TextBlock>
                     <TextBlock DockPanel.Dock="Bottom"
                                Text="{Binding DataContext.StatusMessage, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                Margin="0,12,0,0" TextWrapping="Wrap" Opacity="0.85" FontSize="12" />

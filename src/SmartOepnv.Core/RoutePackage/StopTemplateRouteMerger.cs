@@ -41,7 +41,7 @@ public static class StopTemplateRouteMerger
 
                 if (TryFindMatch(templates, stop, out var existing))
                 {
-                    if (EnrichFromRouteStop(existing!, stop, routeName))
+                    if (EnrichFromRouteStop(existing!, stop))
                     {
                         enriched++;
                     }
@@ -60,11 +60,6 @@ public static class StopTemplateRouteMerger
                 }
 
                 usedCodes.Add(code);
-
-                if (string.IsNullOrWhiteSpace(tpl.DirectionDescription))
-                {
-                    tpl.DirectionDescription = routeName;
-                }
 
                 templates.Add(tpl);
                 added++;
@@ -118,9 +113,22 @@ public static class StopTemplateRouteMerger
         var source = template.ToRouteStop(routeName);
         var changed = false;
 
-        if (!string.Equals(stop.PlannerStopCode, source.PlannerStopCode, StringComparison.Ordinal))
+        var routeCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
+        var templateCode = PlannerStopCode.Normalize(template.StopCode);
+        if (!PlannerStopCode.IsValid(routeCode))
         {
-            stop.PlannerStopCode = source.PlannerStopCode;
+            if (PlannerStopCode.IsValid(templateCode) &&
+                !string.Equals(stop.PlannerStopCode, templateCode, StringComparison.Ordinal))
+            {
+                stop.PlannerStopCode = templateCode;
+                changed = true;
+            }
+        }
+        else if (PlannerStopCode.IsValid(templateCode) &&
+                 string.Equals(routeCode, templateCode, StringComparison.Ordinal) &&
+                 !string.Equals(stop.PlannerStopCode, templateCode, StringComparison.Ordinal))
+        {
+            stop.PlannerStopCode = templateCode;
             changed = true;
         }
 
@@ -195,11 +203,13 @@ public static class StopTemplateRouteMerger
     {
         var routeCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
         var templateCode = PlannerStopCode.Normalize(template.StopCode);
-        if (routeCode.Length == PlannerStopCode.DigitCount &&
-            templateCode.Length == PlannerStopCode.DigitCount &&
-            string.Equals(routeCode, templateCode, StringComparison.Ordinal))
+
+        // Route hat bereits eine Kartei-ID (z. B. nach „In Route einfügen“) –
+        // nur dieselbe Vorlage darf synchronisieren (Hin-/Rückfahrt teilen oft VRR/Name).
+        if (PlannerStopCode.IsValid(routeCode))
         {
-            return true;
+            return PlannerStopCode.IsValid(templateCode) &&
+                   string.Equals(routeCode, templateCode, StringComparison.Ordinal);
         }
 
         var vrrRoute = stop.VrrStopId.Trim();
@@ -256,8 +266,7 @@ public static class StopTemplateRouteMerger
 
     private static bool EnrichFromRouteStop(
         ManagedStopTemplateItem template,
-        RouteStopItem stop,
-        string routeName)
+        RouteStopItem stop)
     {
         var changed = false;
 
@@ -312,31 +321,6 @@ public static class StopTemplateRouteMerger
             changed = true;
         }
 
-        changed |= AppendRouteHint(template, routeName);
         return changed;
-    }
-
-    private static bool AppendRouteHint(ManagedStopTemplateItem template, string routeName)
-    {
-        var route = routeName.Trim();
-        if (route.Length == 0)
-        {
-            return false;
-        }
-
-        var dir = template.DirectionDescription.Trim();
-        if (dir.Length == 0)
-        {
-            template.DirectionDescription = route;
-            return true;
-        }
-
-        if (dir.Contains(route, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        template.DirectionDescription = $"{dir} · {route}";
-        return true;
     }
 }

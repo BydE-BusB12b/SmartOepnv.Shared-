@@ -33,4 +33,7 @@ public sealed class PlanerWorkspaceDocument
 
     /// <summary>Gespeicherte Planer-Snapshots (Übersicht → Versionen).</summary>
     public List<PlannerPackageVersionSnapshotData> PackageVersionSnapshots { get; set; } = [];
+
+    /// <summary>Ansagen-Rohdateien (Dateiname → Base64) für Sync zwischen Planern.</summary>
+    public Dictionary<string, PlanerWorkspaceBinaryPayload> AnnouncementRawSounds { get; set; } = [];
 }

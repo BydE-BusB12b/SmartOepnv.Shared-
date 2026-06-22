@@ -49,7 +49,7 @@
 
             <Grid.ColumnDefinitions>
 
-                <ColumnDefinition Width="1.55*" MinWidth="400" />
+                <ColumnDefinition Width="*" MinWidth="300" />
 
                 <ColumnDefinition Width="*" MinWidth="300" />
 
@@ -105,7 +105,7 @@
 
 
 
-                        <TextBox materialDesign:HintAssist.Hint="Suchen (Name, Anzeige, VRR, Richtung)"
+                        <TextBox materialDesign:HintAssist.Hint="Suchen (Name, Anzeige, VRR, Richtung, Linien)"
 
                                  Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
 
@@ -445,6 +445,10 @@
 
                                     <RowDefinition Height="Auto" />
 
+                                    <RowDefinition Height="Auto" />
+
+                                    <RowDefinition Height="Auto" />
+
                                 </Grid.RowDefinitions>
 
 
@@ -505,7 +509,7 @@
 
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBox Text="{Binding VrrStopId, UpdateSourceTrigger=PropertyChanged}"
+                                    <TextBox Text="{Binding DataContext.SelectedVrrStopId, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
 
                                              Padding="6,4" VerticalContentAlignment="Center" />
 
@@ -539,11 +543,29 @@
 
 
 
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Ansage (GPS):"
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Linien:"
+
+                                           VerticalAlignment="Top" Margin="0,4,10,6" Opacity="0.9" FontSize="12" />
+
+                                <TextBox Grid.Row="5" Grid.Column="1"
+
+                                         Text="{Binding Lines, UpdateSourceTrigger=PropertyChanged}"
+
+                                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40"
+
+                                         materialDesign:HintAssist.Hint="z. B. 005, 006, 008 (kommagetrennt)"
+
+                                         ToolTip="Linien dieser Haltestelle – nur in der Suche, nicht in der Listen-Anzeige"
+
+                                         Margin="0,0,0,6" Padding="6,4" />
+
+
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Ansage (GPS):"
 
                                            VerticalAlignment="Center" Margin="0,0,10,6" Opacity="0.9" FontSize="12" />
 
-                                <Grid Grid.Row="5" Grid.Column="1" Margin="0,0,0,6">
+                                <Grid Grid.Row="6" Grid.Column="1" Margin="0,0,0,6">
 
                                     <Grid.ColumnDefinitions>
 
@@ -579,11 +601,11 @@
 
 
 
-                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Haltestelle (GPS):"
+                                <TextBlock Grid.Row="7" Grid.Column="0" Text="Haltestelle (GPS):"
 
                                            VerticalAlignment="Center" Margin="0,0,10,6" Opacity="0.9" FontSize="12" />
 
-                                <Grid Grid.Row="6" Grid.Column="1" Margin="0,0,0,6">
+                                <Grid Grid.Row="7" Grid.Column="1" Margin="0,0,0,6">
 
                                     <Grid.ColumnDefinitions>
 
@@ -619,11 +641,11 @@
 
 
 
-                                <TextBlock Grid.Row="7" Grid.Column="0" Text="Radius (m):"
+                                <TextBlock Grid.Row="8" Grid.Column="0" Text="Radius (m):"
 
                                            VerticalAlignment="Center" Margin="0,0,10,6" Opacity="0.9" FontSize="12" />
 
-                                <TextBox Grid.Row="7" Grid.Column="1"
+                                <TextBox Grid.Row="8" Grid.Column="1"
 
                                          Text="{Binding RadiusMeters, UpdateSourceTrigger=PropertyChanged}"
 
@@ -631,11 +653,11 @@
 
 
 
-                                <TextBlock Grid.Row="8" Grid.Column="0" Text="Eingebetteter Ton:"
+                                <TextBlock Grid.Row="9" Grid.Column="0" Text="Eingebetteter Ton:"
 
                                            VerticalAlignment="Top" Margin="0,6,10,0" Opacity="0.9" FontSize="12" />
 
-                                <StackPanel Grid.Row="8" Grid.Column="1">
+                                <StackPanel Grid.Row="9" Grid.Column="1">
 
                                     <Grid Margin="0,0,0,6">
 

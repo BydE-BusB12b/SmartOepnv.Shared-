@@ -119,7 +119,7 @@ public static class AutoSchedulePlanner
             var tripNumber = tripNumbers[tripIndex];
             var definition = new RouteDefinition(routeName, lineCourse, tripNumber);
 
-            if (!editor.TryAddRoute(definition, null, out var displayKey, out var addError))
+            if (!editor.TryAddRoute(definition, null, null, out var displayKey, out var addError))
             {
                 throw new InvalidOperationException(addError ?? "Route konnte nicht angelegt werden.");
             }
@@ -225,7 +225,11 @@ public static class AutoSchedulePlanner
             }
 
             var definition = new RouteDefinition(routeName, lineCourse, normalized);
-            if (RouteDisplayHelper.HasDuplicateTripInLineCourse(editor.RouteNames, definition))
+            if (RouteDisplayHelper.HasOperatingDayConflict(
+                    editor.RouteNames,
+                    editor.RouteOperatingDaysByRoute,
+                    definition,
+                    RouteOperatingDaysEditor.AllDays))
             {
                 error = $"Fahrtnummer {normalized} existiert in dieser Linie/Kurs bereits.";
                 return false;

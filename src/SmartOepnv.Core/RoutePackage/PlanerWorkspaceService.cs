@@ -81,7 +81,10 @@ public sealed class PlanerWorkspaceService
             DriverDispositionAssignments = _driverDispositionStore.Load().Select(a => a.Clone()).ToList(),
             SevSignDrafts = _sevStore.LoadAll().Select(CloneSevDraft).ToList(),
             DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
-            PackageVersionSnapshots = CapturePackageVersionSnapshots(request?.ReuseSnapshotPackageJsonFrom)
+            PackageVersionSnapshots = CapturePackageVersionSnapshots(request?.ReuseSnapshotPackageJsonFrom),
+            AnnouncementRawSounds = AppServices.IsInitialized
+                ? PlanerAnnouncementRawSoundsWorkspace.CaptureForSync(AppServices.Workspace)
+                : []
         };
     }
 
@@ -142,6 +145,14 @@ public sealed class PlanerWorkspaceService
         }
 
         MergePackageVersionSnapshots(document.PackageVersionSnapshots);
+
+        if (AppServices.IsInitialized)
+        {
+            PlanerAnnouncementRawSoundsWorkspace.ApplyFromSync(
+                AppServices.Workspace,
+                document.AnnouncementRawSounds,
+                replaceExtraneous: authoritative);
+        }
 
         if (!string.IsNullOrWhiteSpace(document.RoutesPackageJson))
         {
@@ -275,8 +286,9 @@ public sealed class PlanerWorkspaceService
         _driverDispositionStore.Save(DriverDispositionMerge.Merge(local, incoming));
     }
 
-    private PlanerWorkspaceDocument RefreshDocumentFromStores(PlanerWorkspaceDocument document) =>
-        new()
+    private PlanerWorkspaceDocument RefreshDocumentFromStores(PlanerWorkspaceDocument document)
+    {
+        var refreshed = new PlanerWorkspaceDocument
         {
             SavedAtUtcMs = document.SavedAtUtcMs,
             RoutesPackageJson = document.RoutesPackageJson,
@@ -285,8 +297,13 @@ public sealed class PlanerWorkspaceService
             DriverDispositionAssignments = _driverDispositionStore.Load().Select(a => a.Clone()).ToList(),
             SevSignDrafts = _sevStore.LoadAll().Select(CloneSevDraft).ToList(),
             DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
-            PackageVersionSnapshots = CapturePackageVersionSnapshots(document.PackageVersionSnapshots)
+            PackageVersionSnapshots = CapturePackageVersionSnapshots(document.PackageVersionSnapshots),
+            AnnouncementRawSounds = AppServices.IsInitialized
+                ? PlanerAnnouncementRawSoundsWorkspace.CaptureForSync(AppServices.Workspace)
+                : document.AnnouncementRawSounds
         };
+        return refreshed;
+    }
 
     public void WriteLocalCopy(PlanerWorkspaceDocument document)
     {

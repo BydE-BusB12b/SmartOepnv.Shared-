@@ -448,7 +448,8 @@
 
     function effectiveSymbolType(m) {
       const explicit = (m.navSymbolType || '').trim();
-      if (explicit && !isNavHidden(explicit)) return explicit;
+      if (isNavHidden(explicit)) return NAV_HIDDEN;
+      if (explicit) return explicit;
       return mapInstructionToSymbol(m.instruction);
     }
 
@@ -483,7 +484,7 @@
     }
 
     function shouldDisplayManeuverOnMap(m, symbolType, segmentLengthMeters) {
-      if (isNavHidden(symbolType)) return false;
+      if (isNavHidden(symbolType) || isNavHidden((m.navSymbolType || '').trim())) return false;
       const instruction = (m.instruction || '').trim().toLowerCase();
       if (instruction === 'start' || instruction === 'ziel') return false;
       if (isManualManeuver(m)) return true;
@@ -805,6 +806,9 @@
           delete draft.mapViewLon;
           delete draft.mapViewZoom;
         }
+      } else if (!options.restoreMapView) {
+        userAdjustedMapView = true;
+        autoFitRouteView = false;
       }
       normalizeDraftNodes(draft);
       draft.mapEditGeneration = 0;
@@ -838,6 +842,7 @@
       } else if (options.restoreMapView && tryRestoreMapView(draft)) {
         invalidateMapSize(false);
       } else {
+        schedulePersistMapView();
         invalidateMapSize(false);
       }
     }

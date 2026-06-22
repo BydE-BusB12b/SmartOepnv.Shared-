@@ -6,8 +6,12 @@ public static class NavManeuverDisplayHelper
     public static string EffectiveSymbolType(RoutePathSnapManeuver maneuver)
     {
         var explicitType = (maneuver.NavSymbolType ?? string.Empty).Trim();
-        if (!string.IsNullOrEmpty(explicitType) &&
-            !string.Equals(explicitType, NavSymbolCatalog.Hidden, StringComparison.Ordinal))
+        if (string.Equals(explicitType, NavSymbolCatalog.Hidden, StringComparison.Ordinal))
+        {
+            return NavSymbolCatalog.Hidden;
+        }
+
+        if (!string.IsNullOrEmpty(explicitType))
         {
             return explicitType;
         }
@@ -20,7 +24,8 @@ public static class NavManeuverDisplayHelper
         string symbolType,
         double segmentLengthMeters)
     {
-        if (string.Equals(symbolType, NavSymbolCatalog.Hidden, StringComparison.Ordinal))
+        if (string.Equals((maneuver.NavSymbolType ?? string.Empty).Trim(), NavSymbolCatalog.Hidden, StringComparison.Ordinal) ||
+            string.Equals(symbolType, NavSymbolCatalog.Hidden, StringComparison.Ordinal))
         {
             return false;
         }

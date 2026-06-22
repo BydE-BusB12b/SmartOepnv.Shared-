@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -11,6 +12,7 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
     private readonly ObservableCollection<string> _filtered = [];
     private readonly ObservableCollection<string> _selected = [];
     private readonly List<string> _allNames;
+    private readonly IReadOnlyDictionary<string, string> _searchHintsByFileName;
     private readonly int _minimumSelectedCount;
     private readonly TextBlock _status;
     private string _pendingQuery = string.Empty;
@@ -23,10 +25,13 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
         int minimumSelectedCount = 2,
         string? dialogTitle = null,
         string? instructionHint = null,
-        IReadOnlyList<string>? initialSelected = null)
+        IReadOnlyList<string>? initialSelected = null,
+        IReadOnlyDictionary<string, string>? searchHintsByFileName = null)
     {
         _minimumSelectedCount = Math.Max(1, minimumSelectedCount);
         _allNames = soundFileNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        _searchHintsByFileName = searchHintsByFileName
+                                 ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         Title = dialogTitle ?? "Mehrere Ansagen zusammenfügen";
         Width = 760;
@@ -275,7 +280,10 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
         IEnumerable<string> source = _allNames;
         if (!string.IsNullOrWhiteSpace(query))
         {
-            source = _allNames.Where(n => n.Contains(query, StringComparison.OrdinalIgnoreCase));
+            source = _allNames.Where(n => EmbeddedSoundSearch.Matches(
+                n,
+                query,
+                _searchHintsByFileName.GetValueOrDefault(n)));
         }
 
         foreach (var name in source)
