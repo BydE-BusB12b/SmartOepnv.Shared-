@@ -7,8 +7,8 @@
     </UserControl.Resources>
     <Grid Margin="0,0,0,8">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="360" MinWidth="300" />
-            <ColumnDefinition Width="*" MinWidth="400" />
+            <ColumnDefinition Width="1.1*" MinWidth="300" />
+            <ColumnDefinition Width="2*" MinWidth="400" />
         </Grid.ColumnDefinitions>
 
         <materialDesign:Card Grid.Column="0" Margin="0,0,12,0" Padding="16" UniformCornerRadius="12"
@@ -28,7 +28,14 @@
                 </StackPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <ListBox ItemsSource="{Binding FilteredRoutes}" SelectedItem="{Binding SelectedRoute}"
-                             BorderThickness="0" Background="Transparent" />
+                             BorderThickness="0" Background="Transparent"
+                             HorizontalContentAlignment="Stretch">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </ScrollViewer>
             </DockPanel>
         </materialDesign:Card>
@@ -73,36 +80,57 @@
                                FontSize="11"
                                Margin="0,0,0,10"
                                Visibility="{Binding HasRouteOperatingDaysDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Text="Haltestellenanzeige Zieltext"
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               Margin="0,0,0,4" />
+                    <TextBlock Text="DS009-Wechselanzeige Linie/Ziel (z. B. W-Vohwinkel) – wechselt mit Datum/Uhrzeit, wenn die Haltestelle erreicht ist."
+                               Opacity="0.7"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6" />
+                    <TextBox materialDesign:HintAssist.Hint="Zieltext (z. B. W-Vohwinkel)"
+                             Text="{Binding RouteInteriorDisplayDestination, UpdateSourceTrigger=PropertyChanged}"
+                             MaxLength="16"
+                             Margin="0,0,0,10" />
                     <TextBlock Text="Haltestellen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
                     <TextBlock Text="Haltestelle anklicken zum Bearbeiten · ▲▼ Reihenfolge · ✕ löschen"
                                Opacity="0.75" FontSize="11" Margin="0,0,0,8" />
-                    <StackPanel Orientation="Horizontal">
-                        <Button Content="Aus Kartei" Command="{Binding AddStopFromLibraryCommand}" Margin="0,0,8,0"
+                    <WrapPanel Margin="0,0,0,4">
+                        <Button Content="Aus Kartei" Command="{Binding AddStopFromLibraryCommand}" Margin="0,0,8,8"
                                 Style="{StaticResource MaterialDesignRaisedButton}"
                                 ToolTip="Haltestelle aus der Haltestellenbibliothek einfügen" />
-                        <Button Content="+" Command="{Binding AddStopCommand}" Margin="0,0,8,0" Width="36"
+                        <Button Content="+" Command="{Binding AddStopCommand}" Margin="0,0,8,8" Width="36"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 ToolTip="Leere Haltestelle" />
-                        <Button Content="Zeile löschen" Command="{Binding RemoveSelectedStopCommand}" Margin="0,0,8,0"
+                        <Button Content="Zeile löschen" Command="{Binding RemoveSelectedStopCommand}" Margin="0,0,8,8"
                                 Style="{StaticResource MaterialDesignOutlinedButton}" />
-                        <Button Content="▲" Command="{Binding MoveSelectedStopUpCommand}" Margin="0,0,4,0" Width="36"
+                        <Button Content="▲" Command="{Binding MoveSelectedStopUpCommand}" Margin="0,0,4,8" Width="36"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 ToolTip="Nach oben" />
-                        <Button Content="▼" Command="{Binding MoveSelectedStopDownCommand}" Margin="0,0,8,0" Width="36"
+                        <Button Content="▼" Command="{Binding MoveSelectedStopDownCommand}" Margin="0,0,8,8" Width="36"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 ToolTip="Nach unten" />
-                        <Button Content="Fahrplan" Command="{Binding ShowAutoScheduleCommand}" Margin="0,0,8,0"
+                        <Button Content="Fahrplan" Command="{Binding ShowAutoScheduleCommand}" Margin="0,0,8,8"
                                 Style="{StaticResource MaterialDesignRaisedButton}"
                                 ToolTip="Automatische Fahrplanerstellung (wie in der App)" />
-                        <Button Content="📄 Fahrplan" Command="{Binding ExportScheduleHtmlCommand}" Margin="0,0,8,0"
+                        <Button Content="📄 Fahrplan" Command="{Binding ExportScheduleHtmlCommand}" Margin="0,0,8,8"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 ToolTip="HTML-Fahrplan der ausgewählten Route öffnen" />
-                        <Button Content="Speichern" Command="{Binding SaveChangesCommand}"
-                                Style="{StaticResource MaterialDesignOutlinedButton}" />
-                    </StackPanel>
+                    </WrapPanel>
                 </StackPanel>
-                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Margin="0,12,0,0" Opacity="0.8"
-                           TextWrapping="Wrap" />
+                <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                    <Button DockPanel.Dock="Right"
+                            Content="Speichern"
+                            Command="{Binding SaveChangesCommand}"
+                            MinWidth="120"
+                            Margin="12,0,0,0"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                    <TextBlock Text="{Binding StatusMessage}"
+                               VerticalAlignment="Center"
+                               Opacity="0.8"
+                               TextWrapping="Wrap" />
+                </DockPanel>
                 <Grid Grid.IsSharedSizeScope="True">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />

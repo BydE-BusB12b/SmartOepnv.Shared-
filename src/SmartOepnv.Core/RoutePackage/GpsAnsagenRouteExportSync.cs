@@ -23,7 +23,7 @@ public static class GpsAnsagenRouteExportSync
             .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routePathDrafts"))
             .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routeOfflineGuidance"));
 
-        SyncRoutesAndLineCourse(packageRoutes, root);
+        SyncRoutesAndLineCourse(packageRoutes, root, package.RouteInteriorDisplayDestinationsByRoute);
         SyncRouteStops(package, packageRoutes, root);
         root.Remove("routeDirections");
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance");
@@ -51,6 +51,10 @@ public static class GpsAnsagenRouteExportSync
         SyncEndStopAnnouncementMetadata(package, root, workspace);
         SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
         RouteOperatingDaysEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDaysByRoute);
+        RouteInteriorDisplayDestinationEditor.SaveToRoot(
+            root,
+            packageRoutes,
+            package.RouteInteriorDisplayDestinationsByRoute);
     }
 
     private static void SyncEndStopAnnouncementMetadata(
@@ -133,7 +137,10 @@ public static class GpsAnsagenRouteExportSync
         }
     }
 
-    private static void SyncRoutesAndLineCourse(IEnumerable<string> routesToExport, JsonObject root)
+    private static void SyncRoutesAndLineCourse(
+        IEnumerable<string> routesToExport,
+        JsonObject root,
+        IDictionary<string, string> interiorDisplayDestinations)
     {
         var simpleRoutes = new JsonArray();
         var lineCourseRoutes = new JsonObject();
@@ -167,6 +174,19 @@ public static class GpsAnsagenRouteExportSync
             if (!string.IsNullOrEmpty(passengerLine))
             {
                 routeObj["passengerDisplayLine"] = passengerLine;
+            }
+
+            var displayKey = RouteDisplayHelper.ToDisplayString(
+                new RouteDefinition(pureName, lineCourse, tripNumber, passengerLine));
+            if (!string.IsNullOrWhiteSpace(displayKey))
+            {
+                var interiorDestination = RouteInteriorDisplayDestinationEditor.GetForRoute(
+                    interiorDisplayDestinations,
+                    displayKey);
+                if (!string.IsNullOrEmpty(interiorDestination))
+                {
+                    routeObj["interiorDestinationText"] = interiorDestination;
+                }
             }
 
             arr.Add(routeObj);
@@ -258,7 +278,7 @@ public static class GpsAnsagenRouteExportSync
         HashSet<string> routesToExport,
         LocalWorkspaceStore? workspace)
     {
-        SyncRoutesAndLineCourse(routesToExport, root);
+        SyncRoutesAndLineCourse(routesToExport, root, package.RouteInteriorDisplayDestinationsByRoute);
         SyncRouteStops(package, routesToExport, root);
         root.Remove("routeDirections");
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", routesToExport);

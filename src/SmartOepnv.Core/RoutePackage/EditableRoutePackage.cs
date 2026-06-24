@@ -26,6 +26,9 @@ public sealed class EditableRoutePackage
     public IDictionary<string, HashSet<DutyOperatingDay>> RouteOperatingDaysByRoute { get; } =
         new Dictionary<string, HashSet<DutyOperatingDay>>(StringComparer.Ordinal);
 
+    public IDictionary<string, string> RouteInteriorDisplayDestinationsByRoute { get; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
     public static EditableRoutePackage FromJson(string json)
     {
         var node = JsonNode.Parse(json) ?? throw new InvalidOperationException("Ungültiges JSON.");
@@ -73,6 +76,7 @@ public sealed class EditableRoutePackage
         DateBasedHints.Clear();
         OutsideDisplays.Clear();
         RouteOperatingDaysByRoute.Clear();
+        RouteInteriorDisplayDestinationsByRoute.Clear();
 
         if (_root["routes"] is JsonArray routes)
         {
@@ -84,6 +88,13 @@ public sealed class EditableRoutePackage
                     AddRouteNameIfMissing(name);
                 }
             }
+        }
+
+        LoadRouteNamesFromLineCourseRoutes(_root);
+
+        foreach (var (key, text) in RouteInteriorDisplayDestinationEditor.LoadFromRoot(_root))
+        {
+            RouteInteriorDisplayDestinationsByRoute[key] = text;
         }
 
         if (_root["routeStops"] is JsonObject routeStops)
@@ -172,8 +183,35 @@ public sealed class EditableRoutePackage
         }
     }
 
-    public IList<RouteStopItem> GetStops(string routeName) =>
-        StopsByRoute.TryGetValue(routeName, out var stops) ? stops : new List<RouteStopItem>();
+    public IList<RouteStopItem> GetStops(string routeName)
+    {
+        if (string.IsNullOrWhiteSpace(routeName))
+        {
+            return [];
+        }
+
+        var trimmed = routeName.Trim();
+        if (StopsByRoute.TryGetValue(trimmed, out var direct))
+        {
+            return direct;
+        }
+
+        var canonical = RouteDisplayHelper.ToCanonicalRouteKey(trimmed);
+        if (StopsByRoute.TryGetValue(canonical, out var byCanonical))
+        {
+            return byCanonical;
+        }
+
+        foreach (var pair in StopsByRoute)
+        {
+            if (RouteDisplayHelper.RouteKeysMatch(pair.Key, trimmed))
+            {
+                return pair.Value;
+            }
+        }
+
+        return [];
+    }
 
     public void AddRoute(string routeName)
     {
@@ -233,13 +271,18 @@ public sealed class EditableRoutePackage
 
         AddRoute(displayKey);
         SetRouteOperatingDays(displayKey, days);
-        if (!string.IsNullOrWhiteSpace(copyStopsFromRouteKey) &&
-            StopsByRoute.TryGetValue(copyStopsFromRouteKey.Trim(), out var sourceStops))
+        if (!string.IsNullOrWhiteSpace(copyStopsFromRouteKey))
         {
             var sourceKey = copyStopsFromRouteKey.Trim();
-            var targetKey = displayKey;
-            StopsByRoute[targetKey] = sourceStops.Select(s => CloneStopForRoute(s, targetKey)).ToList();
-            RouteNavigationMetadataCopy.CopyForRoute(_root, sourceKey, targetKey);
+            var sourceStops = GetStops(sourceKey);
+            if (sourceStops.Count > 0)
+            {
+                var storageKey = RouteDisplayHelper.ToCanonicalRouteKey(displayKey);
+                StopsByRoute[storageKey] = sourceStops
+                    .Select(s => CloneStopForRoute(s, storageKey))
+                    .ToList();
+                RouteNavigationMetadataCopy.CopyForRoute(_root, sourceKey, storageKey);
+            }
         }
 
         error = null;
@@ -288,6 +331,7 @@ public sealed class EditableRoutePackage
         RouteNames.Remove(routeName);
         StopsByRoute.Remove(routeName);
         RouteOperatingDaysEditor.RemoveRoute(RouteOperatingDaysByRoute, routeName);
+        RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, routeName);
     }
 
     public HashSet<DutyOperatingDay> GetRouteOperatingDays(string routeDisplayKey) =>
@@ -295,6 +339,12 @@ public sealed class EditableRoutePackage
 
     public void SetRouteOperatingDays(string routeDisplayKey, IEnumerable<DutyOperatingDay> days) =>
         RouteOperatingDaysEditor.SetDaysForRoute(RouteOperatingDaysByRoute, routeDisplayKey, days);
+
+    public string GetRouteInteriorDisplayDestination(string routeDisplayKey) =>
+        RouteInteriorDisplayDestinationEditor.GetForRoute(RouteInteriorDisplayDestinationsByRoute, routeDisplayKey);
+
+    public void SetRouteInteriorDisplayDestination(string routeDisplayKey, string? text) =>
+        RouteInteriorDisplayDestinationEditor.SetForRoute(RouteInteriorDisplayDestinationsByRoute, routeDisplayKey, text);
 
     public void AddStop(string routeName, RouteStopItem? template = null)
     {
@@ -359,6 +409,56 @@ public sealed class EditableRoutePackage
         if (!RouteNames.Contains(routeName))
         {
             RouteNames.Add(routeName);
+        }
+    }
+
+    private void LoadRouteNamesFromLineCourseRoutes(JsonObject root)
+    {
+        if (root["lineCourseRoutes"] is not JsonObject lineCourseRoutes)
+        {
+            return;
+        }
+
+        var operatingDays = root[RouteOperatingDaysEditor.RootFieldName] is JsonObject map
+            ? RouteOperatingDaysEditor.LoadFromRoot(root)
+            : new Dictionary<string, HashSet<DutyOperatingDay>>(StringComparer.Ordinal);
+
+        foreach (var group in lineCourseRoutes)
+        {
+            if (group.Value is not JsonArray routes)
+            {
+                continue;
+            }
+
+            foreach (var routeNode in routes.OfType<JsonObject>())
+            {
+                var definition = new RouteDefinition(
+                    routeNode["name"]?.GetValue<string>() ?? string.Empty,
+                    routeNode["lineCourse"]?.GetValue<string>() ?? string.Empty,
+                    routeNode["tripNumber"]?.GetValue<string>() ?? string.Empty,
+                    routeNode["passengerDisplayLine"]?.GetValue<string>() ?? string.Empty);
+                var interiorDestination = routeNode["interiorDestinationText"]?.GetValue<string>()?.Trim();
+                var display = RouteDisplayHelper.ToDisplayString(definition);
+                if (string.IsNullOrWhiteSpace(display))
+                {
+                    continue;
+                }
+
+                var days = RouteOperatingDaysEditor.GetDaysForRoute(operatingDays, display);
+                if (!RouteOperatingDaysEditor.IsConfiguredForAllDays(days))
+                {
+                    display = RouteDisplayHelper.ToDisplayStringWithOperatingDays(definition, days);
+                }
+
+                AddRouteNameIfMissing(display);
+                if (!string.IsNullOrEmpty(interiorDestination))
+                {
+                    RouteInteriorDisplayDestinationEditor.SetForRoute(
+                        RouteInteriorDisplayDestinationsByRoute,
+                        display,
+                        interiorDestination);
+                }
+            }
         }
     }
 

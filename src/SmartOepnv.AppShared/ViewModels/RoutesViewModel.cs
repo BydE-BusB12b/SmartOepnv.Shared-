@@ -20,8 +20,10 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private string searchQuery = string.Empty;
     [ObservableProperty] private string routeOperatingDaysDisplay = string.Empty;
+    [ObservableProperty] private string routeInteriorDisplayDestination = string.Empty;
 
     private bool _suppressOperatingDaySync;
+    private bool _suppressInteriorDestinationSync;
 
     private readonly List<string> _allRoutes = [];
     public ObservableCollection<string> FilteredRoutes { get; } = [];
@@ -207,11 +209,22 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     partial void OnRouteOperatingDaysDisplayChanged(string value) =>
         OnPropertyChanged(nameof(HasRouteOperatingDaysDisplay));
 
+    partial void OnRouteInteriorDisplayDestinationChanged(string value)
+    {
+        if (_suppressInteriorDestinationSync)
+        {
+            return;
+        }
+
+        PersistRouteInteriorDisplayDestinationFromSelection();
+    }
+
     partial void OnSelectedRouteChanged(string? value)
     {
         Stops.Clear();
         SelectedStop = null;
         LoadRouteOperatingDaysForSelection(value);
+        LoadRouteInteriorDisplayDestinationForSelection(value);
         if (string.IsNullOrWhiteSpace(value))
         {
             RemoveSelectedStopCommand.NotifyCanExecuteChanged();
@@ -586,6 +599,40 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             : configured;
         ApplyRouteOperatingDayToSelection(selected);
         RouteOperatingDaysDisplay = DutyOperatingDayHelper.FormatDisplay(selected);
+    }
+
+    private void LoadRouteInteriorDisplayDestinationForSelection(string? routeKey)
+    {
+        var editor = AppServices.Routes.Editor;
+        _suppressInteriorDestinationSync = true;
+        try
+        {
+            RouteInteriorDisplayDestination = string.IsNullOrWhiteSpace(routeKey) || editor is null
+                ? string.Empty
+                : editor.GetRouteInteriorDisplayDestination(routeKey);
+        }
+        finally
+        {
+            _suppressInteriorDestinationSync = false;
+        }
+    }
+
+    private void PersistRouteInteriorDisplayDestinationFromSelection()
+    {
+        if (_suppressInteriorDestinationSync || string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.SetRouteInteriorDisplayDestination(SelectedRoute, RouteInteriorDisplayDestination);
+        _sync.MarkDirty();
+        StatusMessage = $"Haltestellenanzeige-Zieltext für „{SelectedRoute}“ geändert – bitte speichern.";
     }
 
     private void AttachRouteOperatingDayHandler(OperatingDayOptionItem item)
