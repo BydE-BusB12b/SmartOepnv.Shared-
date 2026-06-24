@@ -52,8 +52,6 @@ public partial class RoutePathEditorViewModel : ObservableObject
     public event Action<string, string?, bool, bool>? PushDraftToMapRequested;
 
     /// <summary>Listet den gewählten Hinweis in der Sidebar sichtbar (Karten↔Liste).</summary>
-    public event Action<RoutePathNavManeuverListItem?>? NavManeuverListFocusRequested;
-
     /// <summary>Liest den aktuellen Karten-Entwurf (WebView) – gesetzt von RoutePathEditorView.</summary>
     public Func<Task<string?>>? PullMapDraftJsonAsync { get; set; }
 
@@ -325,7 +323,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
 
         try
         {
-            var root = JsonNode.Parse(json)?.AsObject()
+            var root = RoutePathDraftSerializer.CoerceToObject(JsonNode.Parse(json))
                        ?? throw new InvalidOperationException("Ungültiges JSON.");
 
             var manualConnectFrom = root["manualConnectFrom"]?.GetValue<string>()?.Trim();
@@ -374,7 +372,6 @@ public partial class RoutePathEditorViewModel : ObservableObject
             }
 
             var previousSegmentCount = _draft?.Segments.Count ?? 0;
-            var previousSegments = _draft?.Segments.ToList();
             if (recordUndo && _draft is not null)
             {
                 PushUndoSnapshot();
@@ -392,28 +389,60 @@ public partial class RoutePathEditorViewModel : ObservableObject
             }
 
             var movedNodeIds = new HashSet<string>(StringComparer.Ordinal);
-            if (_draft is not null)
+            if (forceFromMap && _draft is not null)
             {
-                parsed.CreatedAtEpochMs = _draft.CreatedAtEpochMs;
-                if (previousSegments is not null && parsed.Segments.Count < previousSegments.Count)
+                if (parsed.Segments.Count < _draft.Segments.Count)
                 {
-                    parsed.Segments = previousSegments;
+                    parsed.Segments = _draft.Segments
+                        .Select(s => new RoutePathSegment
+                        {
+                            Order = s.Order,
+                            FromNodeId = s.FromNodeId,
+                            ToNodeId = s.ToNodeId
+                        })
+                        .ToList();
                 }
 
+                MergePreservedSnapData(
+                    _draft, parsed, manualConnectFrom, manualConnectTo, movedNodeIds, forceRestoreAllSnaps: true);
+            }
+            else if (_draft is not null)
+            {
+                parsed.CreatedAtEpochMs = _draft.CreatedAtEpochMs;
                 movedNodeIds = DetectMovedNodeIds(_draft, parsed);
-                foreach (var nodeId in movedNodeIds)
+                // Neue gelbe Verbindung: Snap benachbarter Segments nicht löschen (Knoten-Precision / gemeinsamer Knoten).
+                if (!forceApplyFromMap)
                 {
-                    foreach (var seg in parsed.Segments.Where(s =>
-                                 s.FromNodeId == nodeId || s.ToNodeId == nodeId))
+                    foreach (var nodeId in movedNodeIds)
                     {
-                        ClearSegmentSnapState(parsed, seg.FromNodeId, seg.ToNodeId);
+                        foreach (var seg in parsed.Segments.Where(s =>
+                                     s.FromNodeId == nodeId || s.ToNodeId == nodeId))
+                        {
+                            ClearSegmentSnapState(parsed, seg.FromNodeId, seg.ToNodeId);
+                        }
                     }
                 }
 
                 MergePreservedSnapData(_draft, parsed, manualConnectFrom, manualConnectTo, movedNodeIds);
             }
 
+            if (_draft is not null && forceFromMap)
+            {
+                parsed.CreatedAtEpochMs = _draft.CreatedAtEpochMs;
+            }
+
             SyncRoadManeuversFromMapSegmentSnaps(root, parsed);
+            if (_draft is not null && !forceApplyFromMap && parsed.Segments.Count > _draft.Segments.Count)
+            {
+                // Veraltete Karten-Kopie nach Planer-Löschung darf gelöschte Verbindungen nicht zurückholen.
+                var allowedKeys = _draft.Segments
+                    .Select(s => RoutePathDraft.SegmentEdgeKey(s.FromNodeId, s.ToNodeId))
+                    .ToHashSet(StringComparer.Ordinal);
+                parsed.Segments = parsed.Segments
+                    .Where(s => allowedKeys.Contains(RoutePathDraft.SegmentEdgeKey(s.FromNodeId, s.ToNodeId)))
+                    .ToList();
+            }
+
             _draft = parsed;
             if (incomingGeneration > 0)
             {
@@ -432,7 +461,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             SyncSelectionFromMapJson(root);
             MarkDraftDirty();
 
-            if (movedNodeIds.Count > 0)
+            if (movedNodeIds.Count > 0 && !forceApplyFromMap)
             {
                 var touched = _draft.Segments
                     .Where(s => movedNodeIds.Contains(s.FromNodeId) || movedNodeIds.Contains(s.ToNodeId))
@@ -457,26 +486,26 @@ public partial class RoutePathEditorViewModel : ObservableObject
                 }
             }
 
-            if (!string.IsNullOrEmpty(manualConnectFrom) && !string.IsNullOrEmpty(manualConnectTo))
-            {
-                RememberLastManualSegment(manualConnectFrom, manualConnectTo);
-            }
-
             if (_draft.Segments.Count > previousSegmentCount)
             {
-                var newest = _draft.Segments.MaxBy(s => s.Order);
-                if (newest is not null)
+                var added = !string.IsNullOrEmpty(manualConnectFrom) && !string.IsNullOrEmpty(manualConnectTo)
+                    ? _draft.Segments.FirstOrDefault(s =>
+                        s.FromNodeId == manualConnectFrom && s.ToNodeId == manualConnectTo)
+                    : null;
+                added ??= _draft.Segments.MaxBy(s => s.Order);
+                if (added is not null)
                 {
-                    RememberLastManualSegment(newest.FromNodeId, newest.ToNodeId);
-                    SetSelectedSegment(newest.FromNodeId, newest.ToNodeId, segmentOrder: newest.Order);
+                    RememberLastManualSegment(added.FromNodeId, added.ToNodeId, clearSnapState: false);
+                    SetSelectedSegment(added.FromNodeId, added.ToNodeId, segmentOrder: added.Order);
                     StatusMessage =
-                        $"Gelbe Verbindung #{newest.Order} ({newest.FromNodeId} → {newest.ToNodeId}) – jetzt snappen.";
+                        $"Gelbe Verbindung #{added.Order} ({added.FromNodeId} → {added.ToNodeId}) – jetzt snappen.";
                     return true;
                 }
             }
 
             if (!string.IsNullOrEmpty(manualConnectFrom) && !string.IsNullOrEmpty(manualConnectTo))
             {
+                RememberLastManualSegment(manualConnectFrom, manualConnectTo, clearSnapState: false);
                 StatusMessage =
                     $"Gelbe Verbindung ({manualConnectFrom} → {manualConnectTo}) – „Straße snappen“ oder Busspur.";
                 PushDraftToMap();
@@ -614,13 +643,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             return;
         }
 
-        _selectedSegmentFrom = null;
-        _selectedSegmentTo = null;
-        _selectedNavMarkerKey = null;
-        SelectedManeuverText = null;
-        _suppressNavManeuverSelectionSync = true;
-        SelectedNavManeuverItem = null;
-        _suppressNavManeuverSelectionSync = false;
+        ClearSegmentSelectionAfterDelete();
         StatusMessage = $"Verbindung gelöscht – {_draft.Segments.Count} Verbindungen übrig.";
         MarkDraftDirty();
         PushDraftToMap();
@@ -771,12 +794,22 @@ public partial class RoutePathEditorViewModel : ObservableObject
             return;
         }
 
-        _selectedSegmentFrom = null;
-        _selectedSegmentTo = null;
-        SelectedManeuverText = null;
+        ClearSegmentSelectionAfterDelete();
         StatusMessage = $"Verbindung gelöscht – {_draft.Segments.Count} übrig.";
         MarkDraftDirty();
         PushDraftToMap();
+    }
+
+    private void ClearSegmentSelectionAfterDelete()
+    {
+        _selectedSegmentFrom = null;
+        _selectedSegmentTo = null;
+        _selectedNavMarkerKey = null;
+        _activeEditSegmentOrder = null;
+        SelectedManeuverText = null;
+        _suppressNavManeuverSelectionSync = true;
+        SelectedNavManeuverItem = null;
+        _suppressNavManeuverSelectionSync = false;
     }
 
     private static HashSet<string> DetectMovedNodeIds(RoutePathDraft previous, RoutePathDraft current)
@@ -790,7 +823,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
                 continue;
             }
 
-            if (Math.Abs(prev.Lat - node.Lat) > 1e-7 || Math.Abs(prev.Lon - node.Lon) > 1e-7)
+            if (Math.Abs(prev.Lat - node.Lat) > 1e-5 || Math.Abs(prev.Lon - node.Lon) > 1e-5)
             {
                 moved.Add(node.Id);
             }
@@ -964,8 +997,64 @@ public partial class RoutePathEditorViewModel : ObservableObject
         RoutePathDraft current,
         string? manualConnectFrom = null,
         string? manualConnectTo = null,
-        IReadOnlySet<string>? skipRestoreForMovedNodes = null)
+        IReadOnlySet<string>? skipRestoreForMovedNodes = null,
+        bool forceRestoreAllSnaps = false)
     {
+        var freshManualKey = !string.IsNullOrEmpty(manualConnectFrom) && !string.IsNullOrEmpty(manualConnectTo)
+            ? RoutePathDraft.SegmentEdgeKey(manualConnectFrom, manualConnectTo)
+            : null;
+
+        if (forceRestoreAllSnaps)
+        {
+            foreach (var key in previous.RoadSegmentPolylines.Keys
+                         .Concat(previous.RoadSegmentManeuvers.Keys)
+                         .Concat(previous.RoadSnappedEdgeKeys)
+                         .Concat(previous.RoadBusStraightEdgeKeys)
+                         .Distinct(StringComparer.Ordinal))
+            {
+                if (freshManualKey is not null && string.Equals(key, freshManualKey, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (skipRestoreForMovedNodes is not null && EdgeTouchesNode(key, skipRestoreForMovedNodes))
+                {
+                    continue;
+                }
+
+                if (previous.RoadSegmentPolylines.TryGetValue(key, out var prevPts) && prevPts.Count >= 2)
+                {
+                    current.RoadSegmentPolylines[key] = prevPts
+                        .Select(p => new RoutePathLatLng { Lat = p.Lat, Lon = p.Lon })
+                        .ToList();
+                }
+
+                if (previous.RoadSegmentManeuvers.TryGetValue(key, out var prevMans) && prevMans.Count > 0)
+                {
+                    current.RoadSegmentManeuvers[key] = prevMans
+                        .Select(m => new RoutePathSnapManeuver
+                        {
+                            DistanceM = m.DistanceM,
+                            Instruction = m.Instruction,
+                            CurrentStreet = m.CurrentStreet,
+                            NextStreet = m.NextStreet,
+                            NavSymbolType = m.NavSymbolType
+                        })
+                        .ToList();
+                }
+
+                if (previous.RoadSnappedEdgeKeys.Contains(key))
+                {
+                    current.RoadSnappedEdgeKeys.Add(key);
+                }
+
+                if (previous.RoadBusStraightEdgeKeys.Contains(key))
+                {
+                    current.RoadBusStraightEdgeKeys.Add(key);
+                }
+            }
+        }
+
         foreach (var seg in current.Segments)
         {
             var key = RoutePathDraft.SegmentEdgeKey(seg.FromNodeId, seg.ToNodeId);
@@ -990,6 +1079,12 @@ public partial class RoutePathEditorViewModel : ObservableObject
                 pts.Count >= 2)
             {
                 current.RoadSegmentPolylines[key] = pts;
+                current.RoadSnappedEdgeKeys.Add(key);
+            }
+            else if (previous.RoadSnappedEdgeKeys.Contains(key) &&
+                     current.RoadSegmentPolylines.TryGetValue(key, out var existingPts) &&
+                     existingPts.Count >= 2)
+            {
                 current.RoadSnappedEdgeKeys.Add(key);
             }
 
@@ -1031,11 +1126,18 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
     }
 
+    private static bool EdgeTouchesNode(string edgeKey, IReadOnlySet<string> nodeIds)
+    {
+        var parts = edgeKey.Split('\u0001', 2);
+        return parts.Length == 2 &&
+               (nodeIds.Contains(parts[0]) || nodeIds.Contains(parts[1]));
+    }
+
     private bool IsSegmentRoadSnapped(RoutePathSegment segment)
     {
         if (_draft is null) return false;
-        var key = RoutePathDraft.SegmentEdgeKey(segment.FromNodeId, segment.ToNodeId);
-        return _draft.RoadSnappedEdgeKeys.Contains(key);
+        if (IsSegmentBusStraight(segment)) return false;
+        return HasRealRoadGeometry(segment);
     }
 
     private bool IsSegmentBusStraight(RoutePathSegment segment)
@@ -1045,13 +1147,24 @@ public partial class RoutePathEditorViewModel : ObservableObject
         return _draft.RoadBusStraightEdgeKeys.Contains(key);
     }
 
+    private bool HasRealRoadGeometry(RoutePathSegment segment)
+    {
+        if (_draft is null) return false;
+        return RoutePathSnapOrchestrator.SegmentHasRealRoadGeometry(_draft, segment);
+    }
+
+    private bool IsManualUnsnappedSegment(RoutePathSegment segment)
+    {
+        if (_draft is null) return false;
+        if (IsSegmentBusStraight(segment)) return false;
+        return !HasRealRoadGeometry(segment);
+    }
+
     private bool IsSegmentOpen(RoutePathSegment segment)
     {
         if (_draft is null) return false;
-        var key = RoutePathDraft.SegmentEdgeKey(segment.FromNodeId, segment.ToNodeId);
-        if (_draft.RoadBusStraightEdgeKeys.Contains(key)) return false;
-        if (!_draft.RoadSegmentPolylines.TryGetValue(key, out var pts) || pts.Count < 2) return true;
-        return !_draft.RoadSnappedEdgeKeys.Contains(key);
+        if (IsSegmentBusStraight(segment)) return false;
+        return !HasRealRoadGeometry(segment);
     }
 
     private RoutePathSegment PrepareSegmentForResnap(RoutePathSegment segment)
@@ -1074,65 +1187,64 @@ public partial class RoutePathEditorViewModel : ObservableObject
             return null;
         }
 
-        if (!string.IsNullOrEmpty(_selectedSegmentFrom) && !string.IsNullOrEmpty(_selectedSegmentTo))
+        RoutePathSegment? FindSegment(string? from, string? to)
         {
-            var selected = _draft.Segments.FirstOrDefault(s =>
-                s.FromNodeId == _selectedSegmentFrom && s.ToNodeId == _selectedSegmentTo);
-            if (selected is not null && !IsSegmentBusStraight(selected))
+            if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
             {
-                var key = RoutePathDraft.SegmentEdgeKey(selected.FromNodeId, selected.ToNodeId);
-                if (!IsSegmentOpen(selected) || _edgesNeedingResnap.Contains(key))
-                {
-                    return PrepareSegmentForResnap(selected);
-                }
-
-                return selected;
-            }
-        }
-
-        foreach (var key in _edgesNeedingResnap.ToList())
-        {
-            var parts = key.Split('\u0001', 2);
-            if (parts.Length != 2) continue;
-            var pending = _draft.Segments.FirstOrDefault(s =>
-                s.FromNodeId == parts[0] && s.ToNodeId == parts[1]);
-            if (pending is not null && !IsSegmentBusStraight(pending))
-            {
-                return PrepareSegmentForResnap(pending);
+                return null;
             }
 
-            _edgesNeedingResnap.Remove(key);
+            var segment = _draft!.Segments.FirstOrDefault(s =>
+                s.FromNodeId == from && s.ToNodeId == to);
+            return segment is not null && !IsSegmentBusStraight(segment) ? segment : null;
         }
 
-        if (!string.IsNullOrEmpty(_lastManualConnectFrom) && !string.IsNullOrEmpty(_lastManualConnectTo))
+        bool NeedsSnap(RoutePathSegment segment)
         {
-            var manual = _draft.Segments.FirstOrDefault(s =>
-                s.FromNodeId == _lastManualConnectFrom && s.ToNodeId == _lastManualConnectTo);
-            if (manual is not null && !IsSegmentBusStraight(manual))
-            {
-                var key = RoutePathDraft.SegmentEdgeKey(manual.FromNodeId, manual.ToNodeId);
-                if (!IsSegmentOpen(manual) || _edgesNeedingResnap.Contains(key))
-                {
-                    return PrepareSegmentForResnap(manual);
-                }
-
-                return manual;
-            }
+            var key = RoutePathDraft.SegmentEdgeKey(segment.FromNodeId, segment.ToNodeId);
+            return _edgesNeedingResnap.Contains(key) || IsSegmentOpen(segment);
         }
 
+        // 1. Explizites Karten-Ziel (Linien-Klick / neue Verbindung) – vor älterer Segment-Auswahl.
         if (_activeEditSegmentOrder is int editOrder)
         {
             var editing = _draft.Segments.FirstOrDefault(s => s.Order == editOrder);
             if (editing is not null && !IsSegmentBusStraight(editing))
             {
-                var key = RoutePathDraft.SegmentEdgeKey(editing.FromNodeId, editing.ToNodeId);
-                if (!IsSegmentOpen(editing) || _edgesNeedingResnap.Contains(key))
-                {
-                    return PrepareSegmentForResnap(editing);
-                }
-
                 return editing;
             }
+        }
+
+        // 2. Zuletzt manuell verbundene gelbe Kante.
+        var manual = FindSegment(_lastManualConnectFrom, _lastManualConnectTo);
+        if (manual is not null && NeedsSnap(manual))
+        {
+            return manual;
+        }
+
+        // 3. Nach Knoten-Verschieben offene Kanten.
+        foreach (var key in _edgesNeedingResnap.ToList())
+        {
+            var parts = key.Split('\u0001', 2);
+            if (parts.Length != 2)
+            {
+                continue;
+            }
+
+            var pending = FindSegment(parts[0], parts[1]);
+            if (pending is not null)
+            {
+                return pending;
+            }
+
+            _edgesNeedingResnap.Remove(key);
+        }
+
+        // 4. Auswahl nur, wenn das Teilstück noch gelb/offen ist (nicht bereits gesnapptes Blau).
+        var selected = FindSegment(_selectedSegmentFrom, _selectedSegmentTo);
+        if (selected is not null && NeedsSnap(selected))
+        {
+            return selected;
         }
 
         var newestOpen = _draft.Segments
@@ -1158,7 +1270,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
         return null;
     }
 
-    private async Task<bool> TrySyncDraftFromMapAsync()
+    private async Task<bool> TrySyncDraftFromMapAsync(bool pickUnsnappedTarget = true)
     {
         if (PullMapDraftJsonAsync is null)
         {
@@ -1178,7 +1290,11 @@ public partial class RoutePathEditorViewModel : ObservableObject
                 return false;
             }
 
-            PickLastUnsnappedSegmentTarget();
+            if (pickUnsnappedTarget)
+            {
+                PickLastUnsnappedSegmentTarget();
+            }
+
             return true;
         }
         catch (Exception ex)
@@ -1234,8 +1350,6 @@ public partial class RoutePathEditorViewModel : ObservableObject
     [RelayCommand]
     private async Task ApplyBusStraightLane()
     {
-        await TrySyncDraftFromMapAsync();
-
         if (_draft is null || _draft.Segments.Count == 0)
         {
             StatusMessage = "Keine Verbindung vorhanden.";
@@ -1243,6 +1357,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
 
         CancelPreviewSnap();
+        await TrySyncDraftFromMapAsync(pickUnsnappedTarget: false);
         var target = ResolveSegmentForSnapOrBus();
         if (target is null)
         {
@@ -1339,7 +1454,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
                 SetActiveEditSegmentOrder(order);
                 _selectedSegmentFrom = seg.FromNodeId;
                 _selectedSegmentTo = seg.ToNodeId;
-                if (IsSegmentOpen(seg))
+                if (IsManualUnsnappedSegment(seg))
                 {
                     RememberLastManualSegment(seg.FromNodeId, seg.ToNodeId, clearSnapState: true);
                 }
@@ -1452,6 +1567,23 @@ public partial class RoutePathEditorViewModel : ObservableObject
         DeleteNavSymbolCommand.NotifyCanExecuteChanged();
     }
 
+    public void ClearNavSymbolSelectionFromMap()
+    {
+        if (_applyingNavSymbol)
+        {
+            return;
+        }
+
+        _selectedNavMarkerKey = null;
+        _selectedSegmentFrom = null;
+        _selectedSegmentTo = null;
+        SelectedManeuverText = null;
+        _suppressNavManeuverSelectionSync = true;
+        SelectedNavManeuverItem = null;
+        _suppressNavManeuverSelectionSync = false;
+        DeleteNavSymbolCommand.NotifyCanExecuteChanged();
+    }
+
     [RelayCommand]
     private void AutoBuildRoute()
     {
@@ -1470,8 +1602,6 @@ public partial class RoutePathEditorViewModel : ObservableObject
     [RelayCommand]
     private async Task SnapSelectedSegmentAsync()
     {
-        await TrySyncDraftFromMapAsync();
-
         if (_draft is null)
         {
             StatusMessage = "Kein Entwurf geladen.";
@@ -1483,6 +1613,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
             StatusMessage = "Zuerst zwei Punkte auf der Karte verbinden: Knoten A tippen, dann Knoten B.";
             return;
         }
+
+        await TrySyncDraftFromMapAsync(pickUnsnappedTarget: false);
 
         var segment = ResolveSegmentForSnapOrBus();
         if (segment is null)
@@ -1498,7 +1630,11 @@ public partial class RoutePathEditorViewModel : ObservableObject
         StatusMessage = $"Straßensnap für Segment #{segment.Order} (Knoten {from} → {to})…";
         try
         {
-            RoutePathSegmentOrdering.ApplyOrderForNewEdge(_draft, from, to);
+            if (IsSegmentOpen(segment))
+            {
+                RoutePathSegmentOrdering.ApplyOrderForNewEdge(_draft, from, to);
+            }
+
             PrepareSegmentForResnap(segment);
             await RoutePathSnapOrchestrator.SnapSegmentAsync(_draft, from, to, _osrm);
             CommitSegmentEditTarget(segment);
@@ -1512,7 +1648,12 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            DiscardLastUndoSnapshot();
+            var restored = PopUndoSnapshot();
+            if (restored is not null)
+            {
+                _draft = restored;
+            }
+
             StatusMessage = $"Einzel-Snap fehlgeschlagen: {ex.Message}";
             MarkDraftDirty();
             PushDraftToMap();
@@ -1930,8 +2071,6 @@ public partial class RoutePathEditorViewModel : ObservableObject
                 _selectedSegmentTo = SelectedNavManeuverItem.ToNodeId;
                 _selectedManeuverIndex = SelectedNavManeuverItem.ManeuverIndex;
             }
-
-            NavManeuverListFocusRequested?.Invoke(SelectedNavManeuverItem);
         }
         finally
         {
@@ -1951,7 +2090,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             _draftGeneration++;
             _lastAppliedMapEditGeneration = 0;
             _awaitingMapLoadAfterPlannerPush = true;
-            var node = JsonNode.Parse(RoutePathDraftSerializer.ToJson(_draft))!.AsObject();
+            var node = RoutePathDraftSerializer.ToJsonNode(_draft);
             node["draftGeneration"] = _draftGeneration;
             node["mapEditGeneration"] = 0;
             node["navSymbolLabels"] = NavSymbolCatalog.BuildNavSymbolLabelsJson();

@@ -82,7 +82,7 @@
     const SEGMENT_LINE_DOUBLE_TAP_MS = 450;
 
     function post(msg) {
-      if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(JSON.stringify(msg));
+      if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(msg);
     }
 
     function nodeColor(type) {
@@ -181,8 +181,6 @@
       draft.roadBusStraightEdgeKeys = (draft.roadBusStraightEdgeKeys || []).filter(k => k !== key);
       draft.segmentSnaps = (draft.segmentSnaps || []).filter(s =>
         !(s.fromNodeId === fromId && s.toNodeId === toId));
-      draft.snappedShape = [];
-      draft.snappedManeuvers = [];
     }
 
     function insertWaypointOnSegment(seg, clickLatLng, latlngs) {
@@ -229,21 +227,26 @@
 
     function segmentEdgeSnapped(seg) {
       const key = segmentEdgeKey(seg);
-      const snapKeys = draft.roadSnappedEdgeKeys || [];
       const busKeys = draft.roadBusStraightEdgeKeys || [];
-      if (snapKeys.includes(key) || busKeys.includes(key)) return true;
-      return isRoadGeometrySnap(seg);
+      if (busKeys.includes(key)) return true;
+      if (isRoadGeometrySnap(seg)) return true;
+      const snapKeys = draft.roadSnappedEdgeKeys || [];
+      if (!snapKeys.includes(key)) return false;
+      const hit = segmentSnap(seg);
+      return !!(hit && hit.points && hit.points.length >= 3);
     }
 
     function isRoadGeometrySnap(seg) {
       const hit = segmentSnap(seg);
-      if (!hit || !hit.points || hit.points.length < 4) return false;
+      if (!hit || !hit.points || hit.points.length < 2) return false;
+      const pts = hit.points.map(normalizePoint).filter(Boolean);
+      if (pts.length >= 3) return true;
       const a = draft.nodes.find(x => x.id === seg.fromNodeId);
       const b = draft.nodes.find(x => x.id === seg.toNodeId);
       const ca = nodeCoord(a), cb = nodeCoord(b);
       if (!ca || !cb) return false;
       const air = haversineMeters(ca, cb);
-      const path = polylineLengthMeters(hit.points.map(normalizePoint).filter(Boolean));
+      const path = polylineLengthMeters(pts);
       return path > air * 1.15 + 8;
     }
 
@@ -274,9 +277,6 @@
       (draft.segmentSnaps || []).forEach(s => {
         if (!s || !s.fromNodeId || !s.toNodeId) return;
         const key = edgeKey(s.fromNodeId, s.toNodeId);
-        if (s.maneuvers && s.maneuvers.length > 0 && !draft.roadSnappedEdgeKeys.includes(key)) {
-          draft.roadSnappedEdgeKeys.push(key);
-        }
         const hasBus = (s.maneuvers || []).some(m =>
           String(m.instruction || '').toLowerCase().includes('busspur'));
         const hasMultiManual = (s.maneuvers || []).length > 1 &&
@@ -297,7 +297,8 @@
       draft.segmentSnaps = (draft.segmentSnaps || []).filter(s => {
         const key = edgeKey(s.fromNodeId, s.toNodeId);
         if (snapKeys.includes(key) || busKeys.includes(key)) return true;
-        return !!(s.maneuvers && s.maneuvers.length > 0);
+        if (s.points && s.points.length >= 3) return true;
+        return false;
       });
     }
 
@@ -369,7 +370,7 @@
     function symbolFileForType(symbolType) {
       const s = (symbolType || '').toLowerCase();
       const map = {
-        roundabout_1_4: 'Navi Kreisverkehr gerade aus.png', roundabout_1_5: 'Navi Kreisverkehr gerade aus.png',
+        roundabout_1_4: 'Navi Kreisverkehr 1.Ausfahrt.png', roundabout_1_5: 'Navi Kreisverkehr 1.Ausfahrt bei 5.png',
         roundabout_2_4: 'Navi Kreisverkehr gerade aus.png', roundabout_2_5: 'Navi Kreisverkehr gerade aus.png',
         roundabout_3_4: 'Navi Kreisverkehr 3.Ausfahrt.png', roundabout_3_5: 'Navi Kreisverkehr 3.Ausfahrt.png',
         roundabout_4_4: 'Navi Kreisverkehr 4.Ausfahrt bei 4.png',
@@ -419,16 +420,12 @@
       if (t.includes('linienweg verlassen') || t.includes('route verlassen')) return 'off_route';
       if (t.includes('u-turn') || t.includes('uturn') || t.includes('wenden')) return 'u_turn_custom';
       if (t.includes('kreisverkehr') || t.includes('ausfahrt')) {
-        if (t.includes('5') || t.includes('fünf')) {
-          if (t.includes('4')) return 'roundabout_4_5';
-          if (t.includes('3')) return 'roundabout_3_5';
-          if (t.includes('2')) return 'roundabout_2_5';
-          return 'roundabout_5_5';
-        }
-        if (t.includes('4')) return 'roundabout_4_4';
-        if (t.includes('3')) return 'roundabout_3_4';
-        if (t.includes('2')) return 'roundabout_2_4';
-        return 'roundabout_2_4';
+        const isFiveArm = t.includes('5') || t.includes('fünf');
+        const suffix = isFiveArm ? '_5' : '_4';
+        if (t.includes('4')) return 'roundabout_4' + suffix;
+        if (t.includes('3')) return 'roundabout_3' + suffix;
+        if (t.includes('2')) return 'roundabout_2' + suffix;
+        return 'roundabout_1' + suffix;
       }
       const hasLeft = t.includes('links');
       const hasRight = t.includes('rechts');
@@ -997,8 +994,8 @@
         const busStraight = busStraightKeys.includes(key);
         const isSelected = isSegmentSelected(seg);
         const pts = segmentPoints(seg);
-        const snappedOnRoad = !!(pts && pts.length >= 2);
-        const latlngs = snappedOnRoad
+        const snappedOnRoad = busStraight || segmentEdgeSnapped(seg) || !!(pts && pts.length >= 3);
+        const latlngs = (pts && pts.length >= 2)
           ? pts.map(p => [Number(p.lat), Number(p.lon)])
           : [[ca.lat, ca.lon], [cb.lat, cb.lon]];
         let lineColor;
@@ -1092,6 +1089,7 @@
           m.bindTooltip((displaySeq) + '. ' + maneuverDisplayLabel(maneuver, symbolType) + ' (' + dist + ' m)', { direction: 'top' });
           m.on('click', ev => {
             if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev);
+            selectedFrom = null;
             selectedNavMarkerKey = key;
             draft.selectedNavMarkerKey = key;
             render();
@@ -1134,7 +1132,8 @@
         const selFrom = draft.selectedSegmentFrom;
         const selTo = draft.selectedSegmentTo;
         const isSelected = selectedFrom === n.id ||
-          n.id === selFrom || n.id === selTo;
+          (!selectedFrom && !selectedNavMarkerKey &&
+            (n.id === selFrom || n.id === selTo));
         const selectedClass = isSelected ? ' node-selected' : '';
         const icon = L.divIcon({
           className: 'node-marker-wrap',
@@ -1226,10 +1225,28 @@
       draft.activeEditSegmentOrder = seg.order;
     }
 
+    function resetNavSymbolSelection() {
+      if (!selectedNavMarkerKey) return false;
+      selectedNavMarkerKey = null;
+      if (draft) delete draft.selectedNavMarkerKey;
+      return true;
+    }
+
+    function clearSegmentHighlight() {
+      if (!draft) return;
+      delete draft.selectedSegmentFrom;
+      delete draft.selectedSegmentTo;
+      delete draft.activeEditSegmentOrder;
+    }
+
     function onNodeClick(node) {
+      const hadNavSymbol = resetNavSymbolSelection();
+      clearSegmentHighlight();
+
       if (!selectedFrom) {
         selectedFrom = node.id;
         render();
+        if (hadNavSymbol) post({ type: 'mapSelectionCleared' });
         return;
       }
       if (selectedFrom === node.id) {

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -5,6 +6,7 @@ using System.Windows.Controls;
 using Microsoft.Web.WebView2.Core;
 using SmartOepnv.AppShared.ViewModels;
 using SmartOepnv.Core;
+using SmartOepnv.Core.RoutePath;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -59,7 +61,7 @@ public partial class RoutePathEditorView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PushDraftToMapRequested -= OnPushDraftToMapHandler;
-            _viewModel.NavManeuverListFocusRequested -= OnNavManeuverListFocusRequested;
+            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.PullMapDraftJsonAsync = null;
         }
 
@@ -67,27 +69,27 @@ public partial class RoutePathEditorView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PushDraftToMapRequested += OnPushDraftToMapHandler;
-            _viewModel.NavManeuverListFocusRequested += OnNavManeuverListFocusRequested;
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             _viewModel.PullMapDraftJsonAsync = PullMapDraftJsonAsync;
             _viewModel.RefreshRoutes();
         }
     }
 
-    private void OnNavManeuverListFocusRequested(RoutePathNavManeuverListItem? item)
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (item is null)
+        if (e.PropertyName is nameof(RoutePathEditorViewModel.SelectedNavManeuverItem)
+            or nameof(RoutePathEditorViewModel.NavManeuverItems))
         {
-            return;
+            PreserveRightPanelScrollPosition();
         }
+    }
 
-        Dispatcher.BeginInvoke(() =>
-        {
-            NavManeuverListBox.UpdateLayout();
-            if (NavManeuverListBox.ItemContainerGenerator.ContainerFromItem(item) is System.Windows.Controls.ListBoxItem listItem)
-            {
-                listItem.BringIntoView();
-            }
-        }, System.Windows.Threading.DispatcherPriority.Background);
+    private void PreserveRightPanelScrollPosition()
+    {
+        var offset = RightPanelScrollViewer.VerticalOffset;
+        Dispatcher.BeginInvoke(
+            () => RightPanelScrollViewer.ScrollToVerticalOffset(offset),
+            System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private async void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
@@ -228,9 +230,9 @@ public partial class RoutePathEditorView : UserControl
 
         try
         {
-            var root = JsonNode.Parse(e.WebMessageAsJson)?.AsObject();
+            var root = ParseWebMessageRoot(e);
             if (root is null) return;
-            var type = root["type"]?.GetValue<string>();
+            var type = GetMessageString(root["type"]);
             switch (type)
             {
                 case "ready":
@@ -248,18 +250,20 @@ public partial class RoutePathEditorView : UserControl
                     break;
                 case "draftLoaded":
                     _viewModel?.OnMapDraftLoadedFromView();
-                    _viewModel?.NotifyMapStatus(root["message"]?.GetValue<string>() ?? string.Empty);
+                    _viewModel?.NotifyMapStatus(GetMessageString(root["message"]) ?? string.Empty);
                     _ = InvalidateMapSizeAsync(fitRoute: false);
                     break;
                 case "draftChanged":
                     var draftNode = root["draft"];
                     if (draftNode is not null)
                     {
-                        var recordUndo = root["recordUndo"]?.GetValue<bool>() == true;
+                        var recordUndo = root["recordUndo"] is JsonValue undoFlag &&
+                                         undoFlag.TryGetValue<bool>(out var undo) &&
+                                         undo;
                         if (draftNode is JsonObject draftObj)
                         {
-                            var manualFrom = root["manualConnectFrom"]?.GetValue<string>();
-                            var manualTo = root["manualConnectTo"]?.GetValue<string>();
+                            var manualFrom = GetMessageString(root["manualConnectFrom"]);
+                            var manualTo = GetMessageString(root["manualConnectTo"]);
                             if (!string.IsNullOrWhiteSpace(manualFrom) && !string.IsNullOrWhiteSpace(manualTo))
                             {
                                 draftObj["manualConnectFrom"] = manualFrom.Trim();
@@ -267,43 +271,48 @@ public partial class RoutePathEditorView : UserControl
                             }
                         }
 
-                        _viewModel?.ApplyDraftJsonFromMap(draftNode.ToJsonString(), recordUndo);
+                        var draftJson = RoutePathDraftSerializer.CoerceToObject(draftNode)?.ToJsonString()
+                                        ?? draftNode.ToJsonString();
+                        _viewModel?.ApplyDraftJsonFromMap(draftJson, recordUndo);
                     }
                     break;
                 case "segmentDeleteRequested":
                     _viewModel?.DeleteSegmentFromMap(
-                        root["from"]?.GetValue<string>(),
-                        root["to"]?.GetValue<string>());
+                        GetMessageString(root["from"]),
+                        GetMessageString(root["to"]));
                     break;
                 case "segmentSelected":
                     _viewModel?.SetSelectedSegment(
-                        root["from"]?.GetValue<string>(),
-                        root["to"]?.GetValue<string>(),
-                        root["maneuverIndex"]?.GetValue<int>(),
-                        root["segmentOrder"]?.GetValue<int>());
+                        GetMessageString(root["from"]),
+                        GetMessageString(root["to"]),
+                        GetMessageInt(root["maneuverIndex"]),
+                        GetMessageInt(root["segmentOrder"]));
                     break;
                 case "navSymbolSelected":
                     // Nur Auswahl – kein erneutes ApplyDraftJsonFromMap (verhindert Doppel-Liste nach „Symbol übernehmen“ / Klick-Durchgriff).
                     _viewModel?.SelectNavManeuverFromMap(
-                        root["from"]?.GetValue<string>(),
-                        root["to"]?.GetValue<string>(),
-                        root["maneuverIndex"]?.GetValue<int>(),
-                        root["symbolType"]?.GetValue<string>(),
-                        root["instruction"]?.GetValue<string>());
+                        GetMessageString(root["from"]),
+                        GetMessageString(root["to"]),
+                        GetMessageInt(root["maneuverIndex"]),
+                        GetMessageString(root["symbolType"]),
+                        GetMessageString(root["instruction"]));
+                    break;
+                case "mapSelectionCleared":
+                    _viewModel?.ClearNavSymbolSelectionFromMap();
                     break;
                 case "segmentAdded":
                     _viewModel?.OnSegmentAddedFromMap(
-                        root["from"]?.GetValue<string>(),
-                        root["to"]?.GetValue<string>());
+                        GetMessageString(root["from"]),
+                        GetMessageString(root["to"]));
                     break;
                 case "nodeMoved":
-                    _viewModel?.OnNodeMovedFromMap(root["nodeId"]?.GetValue<string>());
+                    _viewModel?.OnNodeMovedFromMap(GetMessageString(root["nodeId"]));
                     break;
                 case "mapViewChanged":
                     _viewModel?.OnMapViewChangedFromMap(
-                        root["lat"]?.GetValue<double>() ?? double.NaN,
-                        root["lon"]?.GetValue<double>() ?? double.NaN,
-                        root["zoom"]?.GetValue<double>() ?? double.NaN);
+                        GetMessageDouble(root["lat"]),
+                        GetMessageDouble(root["lon"]),
+                        GetMessageDouble(root["zoom"]));
                     break;
             }
         }
@@ -330,6 +339,95 @@ public partial class RoutePathEditorView : UserControl
         {
             return null;
         }
+    }
+
+    private static JsonObject? ParseWebMessageRoot(CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(e.WebMessageAsJson))
+        {
+            try
+            {
+                var fromJson = RoutePathDraftSerializer.CoerceToObject(JsonNode.Parse(e.WebMessageAsJson));
+                if (fromJson is not null)
+                {
+                    return fromJson;
+                }
+            }
+            catch
+            {
+                // Fallback: reine String-Nachricht (ältere Karten-Posts).
+            }
+        }
+
+        try
+        {
+            var rawJson = e.TryGetWebMessageAsString();
+            if (!string.IsNullOrWhiteSpace(rawJson))
+            {
+                return RoutePathDraftSerializer.CoerceToObject(JsonNode.Parse(rawJson));
+            }
+        }
+        catch
+        {
+            // Kein String-Post – WebMessageAsJson hätte greifen müssen.
+        }
+
+        return null;
+    }
+
+    private static string? GetMessageString(JsonNode? node)
+    {
+        if (node is null)
+        {
+            return null;
+        }
+
+        return node is JsonValue value && value.TryGetValue<string>(out var text) ? text : node.GetValue<string>();
+    }
+
+    private static int? GetMessageInt(JsonNode? node)
+    {
+        if (node is not JsonValue value)
+        {
+            return null;
+        }
+
+        if (value.TryGetValue<int>(out var i))
+        {
+            return i;
+        }
+
+        if (value.TryGetValue<long>(out var l))
+        {
+            return (int)l;
+        }
+
+        if (value.TryGetValue<double>(out var d) && double.IsFinite(d))
+        {
+            return (int)Math.Round(d);
+        }
+
+        return null;
+    }
+
+    private static double GetMessageDouble(JsonNode? node, double fallback = double.NaN)
+    {
+        if (node is not JsonValue value)
+        {
+            return fallback;
+        }
+
+        if (value.TryGetValue<double>(out var d) && double.IsFinite(d))
+        {
+            return d;
+        }
+
+        if (value.TryGetValue<int>(out var i))
+        {
+            return i;
+        }
+
+        return fallback;
     }
 
     private static string? UnwrapWebViewScriptString(string? scriptResult)
