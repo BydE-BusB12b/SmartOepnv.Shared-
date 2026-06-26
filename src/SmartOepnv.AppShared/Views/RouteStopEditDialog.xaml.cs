@@ -32,22 +32,63 @@ public partial class RouteStopEditDialog : Window
 
         EditPanel.DataContext = viewModel;
         viewModel.NotifyStopEditorStateChanged();
+        EditPanel.SyncComboSelectionsFromStop(_stop);
+
+        EditorScroll.SizeChanged += (_, _) => SyncEditPanelWidth();
+        Loaded += (_, _) => SyncEditPanelWidth();
+        ContentRendered += (_, _) => SyncEditPanelWidth();
+        Closed += (_, _) => DetachEditorBindings();
+    }
+
+    private void DetachEditorBindings()
+    {
+        EditPanel.DataContext = null;
+        _viewModel.SelectedStop = null;
+    }
+
+    private void SyncEditPanelWidth()
+    {
+        var width = EditorScroll.ViewportWidth;
+        if (width > 0)
+        {
+            EditPanel.Width = width;
+            EditPanel.MinWidth = width;
+            EditPanel.SyncComboSelectionsFromStop(_stop);
+        }
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
-        FlushPendingFieldBindings(EditPanel);
+        FlushPendingFieldBindings(EditPanel, includeComboBoxes: false);
+        EditPanel.ApplyComboSelectionsToStop(_stop);
         _viewModel.StopDetailEditedCommand.Execute(null);
         _viewModel.SaveChangesCommand.Execute(null);
+        _viewModel.RefreshStopAfterEdit(_stop);
+        EditPanel.DataContext = null;
         DialogResult = true;
         Close();
     }
 
-    private static void FlushPendingFieldBindings(DependencyObject root)
+    private static void FlushPendingFieldBindings(DependencyObject root, bool includeComboBoxes = true)
     {
         foreach (var textBox in EnumerateVisualChildren<TextBox>(root))
         {
             textBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+        }
+
+        foreach (var comboBox in EnumerateVisualChildren<ComboBox>(root))
+        {
+            if (!includeComboBoxes)
+            {
+                continue;
+            }
+
+            comboBox.GetBindingExpression(ComboBox.SelectedItemProperty)?.UpdateSource();
+        }
+
+        foreach (var checkBox in EnumerateVisualChildren<CheckBox>(root))
+        {
+            checkBox.GetBindingExpression(CheckBox.IsCheckedProperty)?.UpdateSource();
         }
     }
 
@@ -72,7 +113,8 @@ public partial class RouteStopEditDialog : Window
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
         _stop.CopyFrom(_snapshot);
-        _viewModel.NotifyStopEditorStateChanged();
+        EditPanel.DataContext = null;
+        _viewModel.SelectedStop = null;
         DialogResult = false;
         Close();
     }

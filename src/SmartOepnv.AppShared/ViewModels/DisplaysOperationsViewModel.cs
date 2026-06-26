@@ -12,12 +12,14 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
 {
     private readonly List<string> _preservedRawEntries = [];
     private bool _hasUnsavedChanges;
+    private bool _committingChanges;
     private int _loadedRevision = -1;
     private OutsideDisplayProgram? _subscribedOutsideProgram;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private DateBasedHintItem? selectedHint;
     [ObservableProperty] private OutsideDisplayProgram? selectedOutsideProgram;
+    [ObservableProperty] private int selectedWechseltextIndex;
     [ObservableProperty] private string newHintText = string.Empty;
     [ObservableProperty] private string newHintStartDate = string.Empty;
     [ObservableProperty] private string newHintEndDate = string.Empty;
@@ -83,6 +85,8 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             }
         }
 
+        SortOutsidePrograms();
+
         SelectedHint = DateBasedHints.FirstOrDefault();
         SelectedOutsideProgram = OutsidePrograms.FirstOrDefault();
         var enabledCount = OutsidePrograms.Count(p => p.IsListEnabled);
@@ -104,22 +108,65 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             return;
         }
 
-        editor.ReplaceDateBasedHints(DateBasedHints.ToList());
+        _committingChanges = true;
+        try
+        {
+            editor.ReplaceDateBasedHints(DateBasedHints.ToList());
+            SortOutsidePrograms();
+
+            var programs = OutsidePrograms.ToList();
+            foreach (var program in programs)
+            {
+                program.ApplyStartTargetName();
+            }
+
+            var outsideEntries = programs
+                .Select(p => p.ToStorageEntry())
+                .Concat(_preservedRawEntries)
+                .Where(e => !string.IsNullOrWhiteSpace(e))
+                .ToList();
+            editor.ReplaceOutsideDisplays(outsideEntries);
+            AppServices.Routes.ApplyEditorChanges("anzeigen-hinweise");
+            _hasUnsavedChanges = false;
+            RefreshOutsideProgramListLabels();
+            var enabledCount = OutsidePrograms.Count(p => p.IsListEnabled);
+            StatusMessage =
+                $"Gespeichert – {OutsidePrograms.Count} Zielanzeigen ({enabledCount} in ITCS-Liste), {DateBasedHints.Count} Hinweise (Dropbox/Handy).";
+        }
+        finally
+        {
+            _committingChanges = false;
+        }
+    }
+
+    private void RefreshOutsideProgramListLabels()
+    {
         foreach (var program in OutsidePrograms)
         {
-            program.ApplyStartTargetName();
+            program.RefreshListDisplayProperties();
+        }
+    }
+
+    private void SortOutsidePrograms()
+    {
+        if (OutsidePrograms.Count <= 1)
+        {
+            return;
         }
 
-        var outsideEntries = OutsidePrograms
-            .Select(p => p.ToStorageEntry())
-            .Concat(_preservedRawEntries)
-            .Where(e => !string.IsNullOrWhiteSpace(e))
+        var selected = SelectedOutsideProgram;
+        var sorted = OutsidePrograms
+            .OrderBy(p => p, Comparer<OutsideDisplayProgram>.Create(OutsideDisplayProgram.CompareForZielliste))
             .ToList();
-        editor.ReplaceOutsideDisplays(outsideEntries);
-        AppServices.Routes.ApplyEditorChanges("anzeigen-hinweise");
-        _hasUnsavedChanges = false;
-        StatusMessage =
-            $"Gespeichert – {OutsidePrograms.Count} Zielanzeigen, {DateBasedHints.Count} Hinweise (Dropbox/Handy).";
+        OutsidePrograms.Clear();
+        foreach (var program in sorted)
+        {
+            OutsidePrograms.Add(program);
+        }
+
+        SelectedOutsideProgram = selected is not null && OutsidePrograms.Contains(selected)
+            ? selected
+            : OutsidePrograms.FirstOrDefault();
     }
 
     private void MarkDirty()
@@ -135,22 +182,147 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         _subscribedOutsideProgram = value;
+        SelectedWechseltextIndex = 0;
 
         if (value is not null)
         {
             value.PropertyChanged += OnOutsideProgramPropertyChanged;
         }
+
+        NotifyActiveWechseltextBindings();
+    }
+
+    partial void OnSelectedWechseltextIndexChanged(int value) => NotifyActiveWechseltextBindings();
+
+    public string? ActiveFrontLine1
+    {
+        get => GetActiveFrontCycle()?.Line1;
+        set
+        {
+            var cycle = GetActiveFrontCycle();
+            if (cycle is null || value is null)
+            {
+                return;
+            }
+
+            cycle.Line1 = value;
+            MarkDirty();
+            NotifyActiveWechseltextBindings();
+        }
+    }
+
+    public string? ActiveFrontLine2
+    {
+        get => GetActiveFrontCycle()?.Line2;
+        set
+        {
+            var cycle = GetActiveFrontCycle();
+            if (cycle is null || value is null)
+            {
+                return;
+            }
+
+            cycle.Line2 = value;
+            MarkDirty();
+            NotifyActiveWechseltextBindings();
+        }
+    }
+
+    public string? ActiveSideLine1
+    {
+        get => GetActiveSideCycle()?.Line1;
+        set
+        {
+            var cycle = GetActiveSideCycle();
+            if (cycle is null || value is null)
+            {
+                return;
+            }
+
+            cycle.Line1 = value;
+            MarkDirty();
+            NotifyActiveWechseltextBindings();
+        }
+    }
+
+    public string? ActiveSideLine2
+    {
+        get => GetActiveSideCycle()?.Line2;
+        set
+        {
+            var cycle = GetActiveSideCycle();
+            if (cycle is null || value is null)
+            {
+                return;
+            }
+
+            cycle.Line2 = value;
+            MarkDirty();
+            NotifyActiveWechseltextBindings();
+        }
+    }
+
+    private OutsideDisplayTextCycle? GetActiveFrontCycle() =>
+        SelectedOutsideProgram?.FrontCycles.ElementAtOrDefault(SelectedWechseltextIndex);
+
+    private OutsideDisplayTextCycle? GetActiveSideCycle() =>
+        SelectedOutsideProgram?.SideCycles.ElementAtOrDefault(SelectedWechseltextIndex);
+
+    private void NotifyActiveWechseltextBindings()
+    {
+        OnPropertyChanged(nameof(ActiveFrontLine1));
+        OnPropertyChanged(nameof(ActiveFrontLine2));
+        OnPropertyChanged(nameof(ActiveSideLine1));
+        OnPropertyChanged(nameof(ActiveSideLine2));
+    }
+
+    [RelayCommand]
+    private void SelectWechseltext(string? indexText)
+    {
+        if (!int.TryParse(indexText, out var index))
+        {
+            return;
+        }
+
+        SelectedWechseltextIndex = Math.Clamp(index, 0, OutsideDisplayCycleParser.MaxCycles - 1);
     }
 
     private void OnOutsideProgramPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(OutsideDisplayProgram.IsListEnabled))
+        if (!_committingChanges)
         {
             MarkDirty();
+        }
+
+        if (!_committingChanges &&
+            e.PropertyName is nameof(OutsideDisplayProgram.IsStartTarget) or nameof(OutsideDisplayProgram.Name))
+        {
+            SortOutsidePrograms();
+        }
+
+        if (_committingChanges)
+        {
+            return;
+        }
+
+        if (e.PropertyName is nameof(OutsideDisplayProgram.FrontPreview) or
+            nameof(OutsideDisplayProgram.SidePreview) or
+            nameof(OutsideDisplayProgram.WechseltextPreview) or
+            nameof(OutsideDisplayProgram.WechseltextCount))
+        {
+            NotifyActiveWechseltextBindings();
+        }
+
+        if (e.PropertyName is nameof(OutsideDisplayProgram.IsListEnabled))
+        {
             var enabledCount = OutsidePrograms.Count(p => p.IsListEnabled);
             StatusMessage =
-                $"{OutsidePrograms.Count} Zielanzeigen ({enabledCount} in ITCS-Liste), {DateBasedHints.Count} Hinweise – mit Dropbox übertragbar.";
+                $"{OutsidePrograms.Count} Zielanzeigen ({enabledCount} in ITCS-Liste), {DateBasedHints.Count} Hinweise – Änderungen bitte speichern.";
+            return;
         }
+
+        StatusMessage =
+            $"{OutsidePrograms.Count} Zielanzeigen, {DateBasedHints.Count} Hinweise – Änderungen bitte speichern.";
     }
 
     [RelayCommand]
@@ -210,6 +382,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     {
         var program = OutsideDisplayProgram.CreateDs021t($"Ziel {OutsidePrograms.Count + 1}");
         OutsidePrograms.Add(program);
+        SortOutsidePrograms();
         SelectedOutsideProgram = program;
         MarkDirty();
         StatusMessage = "Neue Zielanzeige (DS021T) – Texte anpassen und speichern.";
@@ -220,6 +393,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     {
         var program = OutsideDisplayProgram.CreateKrefeld($"Ziel {OutsidePrograms.Count + 1}");
         OutsidePrograms.Add(program);
+        SortOutsidePrograms();
         SelectedOutsideProgram = program;
         MarkDirty();
         StatusMessage = "Neue Zielanzeige (DS003a Krefeld) – Texte anpassen und speichern.";

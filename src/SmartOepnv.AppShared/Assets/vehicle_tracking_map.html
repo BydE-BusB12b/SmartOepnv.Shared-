@@ -72,7 +72,9 @@
 
   <script>
 
-    let map, markerLayer, markers = {}, selectedId = null, lastVehicles = [];
+    let map, markerLayer, routePathLayer, markers = {}, selectedId = null, lastVehicles = [];
+
+    let lastRoutePaths = [], lastHighlightRouteKey = null;
 
     let userAdjustedMapView = false;
 
@@ -244,6 +246,8 @@
 
       markerLayer = L.layerGroup().addTo(map);
 
+      routePathLayer = L.layerGroup().addTo(map);
+
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
         maxZoom: 19, attribution: '&copy; OpenStreetMap'
@@ -269,6 +273,118 @@
         pendingSavedView = null;
 
       }
+
+    }
+
+
+
+    function pointToLatLng(p) {
+
+      return [Number(p.lat), Number(p.lon)];
+
+    }
+
+
+
+    function isValidPoint(p) {
+
+      if (!p) return false;
+
+      const lat = Number(p.lat);
+
+      const lon = Number(p.lon);
+
+      return isValidCoord(lat, lon);
+
+    }
+
+
+
+    function overviewRouteKey(overview) {
+
+      return overview.routeName || overview.routeKey || '';
+
+    }
+
+
+
+    function drawRoutePaths(routePaths, highlightRouteKey) {
+
+      if (!map || !routePathLayer) return;
+
+      routePathLayer.clearLayers();
+
+      if (!routePaths || !routePaths.length) return;
+
+
+
+      routePaths.forEach(function(overview) {
+
+        const color = overview.routeLineColor || overview.color || '#2196f3';
+
+        const key = overviewRouteKey(overview);
+
+        const highlighted = highlightRouteKey &&
+
+          (key === highlightRouteKey ||
+
+           String(key).toLowerCase() === String(highlightRouteKey).toLowerCase());
+
+        const weight = highlighted ? 6 : 4;
+
+        const opacity = highlighted ? 0.92 : 0.5;
+
+        let drew = false;
+
+
+
+        (overview.segmentSnaps || []).forEach(function(snap) {
+
+          const pts = (snap.points || []).filter(isValidPoint);
+
+          if (pts.length < 2) return;
+
+          L.polyline(pts.map(pointToLatLng), {
+
+            color: color,
+
+            weight: weight,
+
+            opacity: opacity,
+
+            interactive: false
+
+          }).addTo(routePathLayer);
+
+          drew = true;
+
+        });
+
+
+
+        if (!drew) {
+
+          const shape = (overview.snappedShape || []).filter(isValidPoint);
+
+          if (shape.length >= 2) {
+
+            L.polyline(shape.map(pointToLatLng), {
+
+              color: color,
+
+              weight: weight,
+
+              opacity: opacity,
+
+              interactive: false
+
+            }).addTo(routePathLayer);
+
+          }
+
+        }
+
+      });
 
     }
 
@@ -310,15 +426,23 @@
 
       }
 
+      lastRoutePaths = data.routePaths || [];
+
+      lastHighlightRouteKey = data.highlightRouteKey || null;
+
       if (options.mapView && applySavedMapView(options.mapView)) {
 
         render(lastVehicles, { skipFit: true });
+
+        drawRoutePaths(lastRoutePaths, lastHighlightRouteKey);
 
         return;
 
       }
 
       render(lastVehicles, { fitIfNeeded: options.fitIfNeeded !== false });
+
+      drawRoutePaths(lastRoutePaths, lastHighlightRouteKey);
 
     };
 
@@ -332,6 +456,8 @@
 
       if (lastVehicles.length) render(lastVehicles, { skipFit: userAdjustedMapView || initialFitDone });
 
+      drawRoutePaths(lastRoutePaths, lastHighlightRouteKey);
+
     };
 
 
@@ -341,6 +467,8 @@
       selectedId = id;
 
       render(lastVehicles, { skipFit: true });
+
+      drawRoutePaths(lastRoutePaths, lastHighlightRouteKey);
 
       const m = markers[id];
 

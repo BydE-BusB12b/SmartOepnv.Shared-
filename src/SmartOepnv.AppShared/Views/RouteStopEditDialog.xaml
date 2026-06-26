@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SmartOepnv.AppShared.Views"
         Title="Haltestelle bearbeiten"
-        Width="520"
-        MinWidth="460"
+        Width="640"
+        MinWidth="600"
         Height="640"
         MinHeight="480"
         WindowStartupLocation="CenterOwner"
@@ -22,11 +22,14 @@
         </StackPanel>
         <TextBlock x:Name="TitleText" DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold"
                    Margin="0,0,0,12" TextWrapping="Wrap" />
-        <ScrollViewer VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer x:Name="EditorScroll"
+                      VerticalScrollBarVisibility="Visible"
+                      HorizontalScrollBarVisibility="Disabled">
             <ScrollViewer.Resources>
                 <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
             </ScrollViewer.Resources>
-            <local:RouteStopEditPanel x:Name="EditPanel" />
+            <local:RouteStopEditPanel x:Name="EditPanel"
+                                      HorizontalAlignment="Stretch" />
         </ScrollViewer>
     </DockPanel>
 </Window>

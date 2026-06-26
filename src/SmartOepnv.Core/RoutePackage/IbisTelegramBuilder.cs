@@ -158,13 +158,16 @@ public static class OutsideDisplayTelegramFactory
 
     public static (byte[] Front, byte[] Side) BuildDs021tTelegrams(OutsideDisplayProgram program)
     {
-        var goals = new List<(string, string)> { (program.FrontLine1, program.FrontLine2) };
-        var sideGoals = !string.IsNullOrWhiteSpace(program.SideLine1) || !string.IsNullOrWhiteSpace(program.SideLine2)
-            ? new List<(string, string)> { (program.SideLine1, program.SideLine2) }
-            : goals;
+        var frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(program.FrontCycles);
+        if (frontGoals.Count == 0)
+        {
+            frontGoals = [(program.FrontLine1, program.FrontLine2)];
+        }
+
+        var sideGoals = OutsideDisplayCycleParser.CollectSideGoals(program.SideCycles, frontGoals);
 
         string? special = program.Ds001Type == "special" ? program.Ds001Value.ToUpperInvariant() : null;
-        var front = Ds021tProgramBuilder.CreateFrontProgramA2(goals, program.IntervalSeconds, special);
+        var front = Ds021tProgramBuilder.CreateFrontProgramA2(frontGoals, program.IntervalSeconds, special);
         var side = Ds021tProgramBuilder.CreateSideProgramA2(sideGoals, program.IntervalSeconds, special);
         return (front, side);
     }

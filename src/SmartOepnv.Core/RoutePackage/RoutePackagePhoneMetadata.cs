@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using SmartOepnv.Core.RoutePath;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -105,11 +106,11 @@ public static class RoutePackagePhoneMetadata
             return;
         }
 
-        HashSet<string>? exportSet = onlyRoutes is null ? null : onlyRoutes.ToHashSet(StringComparer.Ordinal);
         var filtered = new JsonObject();
         foreach (var entry in existing)
         {
-            if (exportSet is not null && !exportSet.Contains(entry.Key))
+            if (onlyRoutes is not null &&
+                !RoutePackageRouteKeyHelper.IsRouteKeyAllowed(entry.Key, onlyRoutes))
             {
                 continue;
             }
@@ -130,6 +131,43 @@ public static class RoutePackagePhoneMetadata
         else
         {
             root.Remove(propertyName);
+        }
+    }
+
+    public static void RemoveRouteKeysFromBlocks(JsonObject root, string routeKey)
+    {
+        RemoveMatchingKeysFromBlock(root, "routePathDrafts", routeKey);
+        RemoveMatchingKeysFromBlock(root, "routeOfflineGuidance", routeKey);
+        RemoveMatchingKeysFromBlock(root, LeitstelleRoutePathOverview.OverviewsKey, routeKey);
+
+        if (root["routeStops"] is JsonObject routeStops)
+        {
+            RemoveMatchingKeysFromObject(routeStops, routeKey);
+        }
+    }
+
+    private static void RemoveMatchingKeysFromBlock(JsonObject root, string propertyName, string routeKey)
+    {
+        if (root[propertyName] is not JsonObject block)
+        {
+            return;
+        }
+
+        RemoveMatchingKeysFromObject(block, routeKey);
+        if (block.Count == 0)
+        {
+            root.Remove(propertyName);
+        }
+    }
+
+    private static void RemoveMatchingKeysFromObject(JsonObject block, string routeKey)
+    {
+        foreach (var key in block.Select(entry => entry.Key).ToList())
+        {
+            if (RouteDisplayHelper.RouteKeysMatch(key, routeKey))
+            {
+                block.Remove(key);
+            }
         }
     }
 

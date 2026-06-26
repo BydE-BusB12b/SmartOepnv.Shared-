@@ -28,14 +28,6 @@ public partial class RoutesViewModel
             }
 
             SelectedStop.IsAnnouncementEnabled = !value;
-            if (value &&
-                string.IsNullOrWhiteSpace(SelectedStop.Destination) &&
-                string.IsNullOrWhiteSpace(SelectedStop.Ds003aDestination) &&
-                string.IsNullOrWhiteSpace(SelectedStop.LineNumber))
-            {
-                SelectedStop.Destination = "Starthaltestelle";
-            }
-
             NotifyStopEditorStateChanged();
             MarkStopDetailDirty();
         }
@@ -383,13 +375,43 @@ public partial class RoutesViewModel
 
     private void MarkStopDetailDirty()
     {
+        CancelSaveButtonSuccessFeedback();
         _sync.MarkDirty();
         StatusMessage = "Haltestellen-Änderungen – bitte „Speichern“.";
     }
 
+    public void ApplyDestinationComboSelection(string fieldKey, string? comboLabel)
+    {
+        if (SelectedStop is null)
+        {
+            return;
+        }
+
+        switch (fieldKey)
+        {
+            case "startDs021t":
+                SelectedDestinationDs021t = comboLabel;
+                break;
+            case "startDs003a":
+                SelectedDestinationDs003a = comboLabel;
+                break;
+            case "endDs021t":
+                SelectedEndDestinationDs021t = comboLabel;
+                break;
+            case "endDs003a":
+                SelectedEndDestinationDs003a = comboLabel;
+                break;
+            case "lineCourseTrip":
+                SelectedLineCourseTrip = comboLabel;
+                break;
+            default:
+                return;
+        }
+    }
+
     private static string? ToComboLabel(string? value, string emptyLabel) =>
-        string.IsNullOrWhiteSpace(value) ? emptyLabel : value.Trim();
+        RouteStopEditorCatalog.ToComboLabel(value, emptyLabel);
 
     private static string FromComboLabel(string? value, string emptyLabel) =>
-        string.Equals(value?.Trim(), emptyLabel, StringComparison.Ordinal) ? string.Empty : value?.Trim() ?? string.Empty;
+        RouteStopEditorCatalog.FromComboLabel(value, emptyLabel);
 }

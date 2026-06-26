@@ -6,6 +6,21 @@ public static class RouteStopEditorCatalog
     public const string NoDestinationLabel = "Kein Ziel";
     public const string NoLineCourseTripLabel = "Keine Fahrt ausgewählt";
 
+    public static string ToComboLabel(string? value, string emptyLabel)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) ||
+            string.Equals(trimmed, "Starthaltestelle", StringComparison.OrdinalIgnoreCase))
+        {
+            return emptyLabel;
+        }
+
+        return trimmed;
+    }
+
+    public static string FromComboLabel(string? value, string emptyLabel) =>
+        string.Equals(value?.Trim(), emptyLabel, StringComparison.Ordinal) ? string.Empty : value?.Trim() ?? string.Empty;
+
     public static IReadOnlyList<string> LoadDs021tNames(EditableRoutePackage? editor) =>
         LoadProtocolNames(editor, isKrefeld: false);
 

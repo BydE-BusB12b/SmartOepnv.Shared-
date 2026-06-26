@@ -308,6 +308,8 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
         var count = filteredCount ?? _filtered.Count;
         _status.Text = count == 0
             ? $"Keine Treffer für „{query}“"
-            : $"{_selected.Count} gewählt{suffix} · {count} von {_allNames.Count} Treffern";
+            : count == 1
+                ? $"{_selected.Count} gewählt{suffix} · 1 Treffer"
+                : $"{_selected.Count} gewählt{suffix} · {count} Treffer";
     }
 }

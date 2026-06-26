@@ -48,13 +48,14 @@
     </UserControl.Resources>
     <DockPanel x:Name="RootDock" LastChildFill="True" ClipToBounds="True">
         <!-- Rechts: feste Breite, scrollt bei wenig Fensterhöhe (treibt Layout-Höhe nicht auf) -->
-        <ScrollViewer DockPanel.Dock="Right"
+        <ScrollViewer x:Name="RightPanelScrollViewer"
+                      DockPanel.Dock="Right"
                       Width="400"
                       MaxWidth="440"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalAlignment="Stretch">
-            <StackPanel>
+            <StackPanel MinWidth="360">
                 <materialDesign:Card Padding="14" UniformCornerRadius="12"
                                      Background="{StaticResource SmartSurfaceBrush}"
                                      Margin="0,0,0,8">
@@ -149,7 +150,7 @@
                             <LineBreak />
                             <Run Text="• Snap/Busspur-Button nur für gelbe Verbindungen" />
                             <LineBreak />
-                            <Run Text="• Doppelklick auf Linie = Verbindung löschen" />
+                            <Run Text="• Doppelklick auf Linie = Navi-Symbol setzen" />
                             <LineBreak />
                             <Run Text="• Orange gestrichelt = Busspur/direkt (ohne PKW-Umweg)" />
                             <LineBreak />
@@ -238,10 +239,13 @@
                                    Foreground="#BBDEFB"
                                    FontSize="12"
                                    Margin="0,0,0,4" />
-                        <ComboBox ItemsSource="{Binding NavSymbolPickerOptions}"
+                        <ComboBox Style="{StaticResource SmartDarkComboBox}"
+                                  ItemsSource="{Binding NavSymbolPickerOptions}"
                                   SelectedValuePath="Id"
                                   SelectedValue="{Binding SelectedNavSymbol}"
                                   MaxDropDownHeight="420"
+                                  HorizontalAlignment="Stretch"
+                                  MinWidth="320"
                                   Margin="0,0,0,8">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -251,7 +255,9 @@
                                                Margin="0,0,8,0"
                                                Stretch="Uniform" />
                                         <TextBlock Text="{Binding Label}"
-                                                   VerticalAlignment="Center" />
+                                                   Foreground="White"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>

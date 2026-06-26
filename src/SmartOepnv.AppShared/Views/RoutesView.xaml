@@ -4,6 +4,18 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <Style x:Key="RoutesSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SaveButtonIsSuccess}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
     <Grid Margin="0,0,0,8">
         <Grid.ColumnDefinitions>
@@ -23,6 +35,8 @@
                 <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
                     <Button Content="Route hinzufügen" Command="{Binding AddRouteCommand}"
                             Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,0,8" />
+                    <Button Content="Route bearbeiten" Command="{Binding EditRouteCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,0,8" />
                     <Button Content="Route löschen" Command="{Binding RemoveRouteCommand}"
                             Style="{StaticResource MaterialDesignOutlinedButton}" />
                 </StackPanel>
@@ -49,50 +63,57 @@
                                TextWrapping="Wrap"
                                FontWeight="SemiBold"
                                FontSize="14"
-                               Margin="0,0,0,10"
+                               Margin="0,0,0,8"
                                Foreground="{StaticResource SmartPrimaryBrush}" />
-                    <TextBlock Text="Verkehrstage"
-                               FontWeight="SemiBold"
-                               FontSize="12"
-                               Margin="0,0,0,4" />
-                    <TextBlock Text="Betriebstag je Tag: 00:01 bis 03:59 Uhr am Folgetag (Überschneidungen möglich) · alle Tage = täglich in der App"
-                               Opacity="0.7"
-                               FontSize="10"
-                               TextWrapping="Wrap"
-                               Margin="0,0,0,6" />
-                    <ItemsControl ItemsSource="{Binding RouteOperatingDaySelections}"
-                                  Margin="0,0,0,4">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <CheckBox Content="{Binding Label}"
-                                          IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          Margin="0,0,12,4" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <TextBlock Text="{Binding RouteOperatingDaysDisplay}"
-                               Opacity="0.75"
-                               FontSize="11"
-                               Margin="0,0,0,10"
-                               Visibility="{Binding HasRouteOperatingDaysDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <TextBlock Text="Haltestellenanzeige Zieltext"
-                               FontWeight="SemiBold"
-                               FontSize="12"
-                               Margin="0,0,0,4" />
-                    <TextBlock Text="DS009-Wechselanzeige Linie/Ziel (z. B. W-Vohwinkel) – wechselt mit Datum/Uhrzeit, wenn die Haltestelle erreicht ist."
-                               Opacity="0.7"
-                               FontSize="10"
-                               TextWrapping="Wrap"
-                               Margin="0,0,0,6" />
-                    <TextBox materialDesign:HintAssist.Hint="Zieltext (z. B. W-Vohwinkel)"
-                             Text="{Binding RouteInteriorDisplayDestination, UpdateSourceTrigger=PropertyChanged}"
-                             MaxLength="16"
-                             Margin="0,0,0,10" />
+                    <Button Content="{Binding RouteSettingsButtonLabel}"
+                            Command="{Binding ToggleRouteSettingsCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Margin="0,0,0,10"
+                            HorizontalAlignment="Left" />
+                    <StackPanel Margin="0,0,0,10"
+                                Visibility="{Binding IsRouteSettingsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Text="Verkehrstage"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="Betriebstag je Tag: 00:01 bis 03:59 Uhr am Folgetag (Überschneidungen möglich) · alle Tage = täglich in der App"
+                                   Opacity="0.7"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,6" />
+                        <ItemsControl ItemsSource="{Binding RouteOperatingDaySelections}"
+                                      Margin="0,0,0,4">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Content="{Binding Label}"
+                                              IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Margin="0,0,12,4" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="{Binding RouteOperatingDaysDisplay}"
+                                   Opacity="0.75"
+                                   FontSize="11"
+                                   Margin="0,0,0,10"
+                                   Visibility="{Binding HasRouteOperatingDaysDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBlock Text="Haltestellenanzeige Zieltext"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="DS009-Wechselanzeige Linie/Ziel (z. B. W-Vohwinkel) – wechselt mit Datum/Uhrzeit, wenn die Haltestelle erreicht ist."
+                                   Opacity="0.7"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,6" />
+                        <TextBox materialDesign:HintAssist.Hint="Zieltext (z. B. W-Vohwinkel)"
+                                 Text="{Binding RouteInteriorDisplayDestination, UpdateSourceTrigger=PropertyChanged}"
+                                 MaxLength="16" />
+                    </StackPanel>
                     <TextBlock Text="Haltestellen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
                     <TextBlock Text="Haltestelle anklicken zum Bearbeiten · ▲▼ Reihenfolge · ✕ löschen"
                                Opacity="0.75" FontSize="11" Margin="0,0,0,8" />
@@ -117,6 +138,9 @@
                         <Button Content="📄 Fahrplan" Command="{Binding ExportScheduleHtmlCommand}" Margin="0,0,8,8"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 ToolTip="HTML-Fahrplan der ausgewählten Route öffnen" />
+                        <Button Content="Routenschnur" Command="{Binding ShowRouteChainCommand}" Margin="0,0,8,8"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                ToolTip="Linie/Kurs-Fahrten und verbundene Routenschnur mit Fahrplan prüfen" />
                     </WrapPanel>
                 </StackPanel>
                 <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
@@ -125,7 +149,7 @@
                             Command="{Binding SaveChangesCommand}"
                             MinWidth="120"
                             Margin="12,0,0,0"
-                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                            Style="{StaticResource RoutesSaveButtonStyle}" />
                     <TextBlock Text="{Binding StatusMessage}"
                                VerticalAlignment="Center"
                                Opacity="0.8"

@@ -5,6 +5,7 @@ using MaterialDesignColors;
 using MaterialDesignThemes.Wpf;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.Session;
 using SmartOepnv.Core.Updates;
@@ -146,6 +147,48 @@ public static class SmartOepnvAppHost
         }
 
         await AppServices.PlanerSession.ReleaseLockAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Dropbox-Export nach UI-Commit (ohne Dispatcher). Für Logout-Dialog und Hintergrund-Beenden.
+    /// </summary>
+    public static async Task ExportPlanerWorkspaceForShutdownAsync(
+        IProgress<DropboxTransferProgress>? transferProgress = null)
+    {
+        PlanerDropboxWorkspaceSync.ExportResult? exportResult = null;
+        await Task.Run(async () =>
+        {
+            const int maxExportAttempts = 3;
+            for (var attempt = 1; attempt <= maxExportAttempts; attempt++)
+            {
+                exportResult = await PlanerDropboxWorkspaceSync.TryExportAsync(
+                        flushBeforeCapture: true,
+                        progress: transferProgress)
+                    .ConfigureAwait(false);
+                if (exportResult is { Exported: true })
+                {
+                    return;
+                }
+
+                if (exportResult?.Message.Contains("payload_too_large", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    break;
+                }
+
+                if (attempt < maxExportAttempts)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(8 * attempt)).ConfigureAwait(false);
+                }
+            }
+        }).ConfigureAwait(false);
+
+        if (exportResult is { Exported: false })
+        {
+            var hint = exportResult.LocalSaved
+                ? "\n\nDer Arbeitsstand liegt lokal vor – bitte Internetverbindung prüfen und erneut speichern."
+                : string.Empty;
+            throw new InvalidOperationException(exportResult.Message + hint);
+        }
     }
 
     /// <summary>Beim Beenden synchron speichern und Dropbox-Sperre freigeben (blockiert bis Upload fertig).</summary>

@@ -74,12 +74,13 @@
             <!-- Hauptbereich mit Navigation -->
             <Grid Grid.Row="1" ClipToBounds="True">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="280" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <materialDesign:Card Grid.Column="0"
-                                     Margin="12"
+                                     HorizontalAlignment="Left"
+                                     Margin="12,12,6,12"
                                      Padding="0"
                                      UniformCornerRadius="12"
                                      Background="{StaticResource SmartSurfaceBrush}">
@@ -93,12 +94,13 @@
                                  SelectedItem="{Binding SelectedNavigationItem}"
                                  BorderThickness="0"
                                  Background="Transparent"
+                                 HorizontalContentAlignment="Left"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  Margin="8,0,8,12">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
                                     <Setter Property="Padding" Value="12,10" />
-                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
                                 </Style>
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
@@ -134,7 +136,8 @@
                                                                      Foreground="{StaticResource SmartAccentBrush}" />
                                             <TextBlock Text="{Binding Title}"
                                                        VerticalAlignment="Center"
-                                                       FontSize="15" />
+                                                       FontSize="15"
+                                                       TextWrapping="NoWrap" />
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>

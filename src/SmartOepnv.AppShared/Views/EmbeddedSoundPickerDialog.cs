@@ -157,6 +157,8 @@ public sealed class EmbeddedSoundPickerDialog : Window
             ? "Dateiname antippen oder doppelklicken."
             : count == 0
                 ? $"Keine Treffer für „{query}“"
-                : $"{count} von {_allNames.Count} Treffern";
+                : count == 1
+                    ? "1 Treffer"
+                    : $"{count} Treffer";
     }
 }

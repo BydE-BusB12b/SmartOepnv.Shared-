@@ -80,7 +80,9 @@ public static class PlanerDropboxWorkspaceSync
 
         var remoteTimestamp = document.SavedAtUtcMs;
         var remoteHasMoreContent = PlanerWorkspaceContentCompare.RemoteHasMoreContentThanLocal(document, localDocument);
-        var preferRemote = ShouldPreferRemoteDespiteLocalTimestamp(document, localDocument) || remoteHasMoreContent;
+        var localIsNewerThanRemote = localTimestamp > 0 && remoteTimestamp < localTimestamp;
+        var preferRemote = !localIsNewerThanRemote &&
+                           (ShouldPreferRemoteDespiteLocalTimestamp(document, localDocument) || remoteHasMoreContent);
 
         if (!forceOverwrite &&
             localTimestamp > 0 &&

@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmartOepnv.Core;
+using SmartOepnv.Core.RoutePath;
 using SmartOepnv.Core.VehicleTracking;
 
 namespace SmartOepnv.AppShared.ViewModels;
@@ -183,8 +185,75 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
     private void PushVehiclesToMap()
     {
-        var payload = JsonSerializer.Serialize(new { vehicles = BuildMapVehicles() });
-        PushVehiclesToMapRequested?.Invoke(payload);
+        var payload = BuildMapPayload();
+        PushVehiclesToMapRequested?.Invoke(payload.ToJsonString());
+    }
+
+    private JsonObject BuildMapPayload()
+    {
+        var root = AppServices.Routes.Editor?.PackageRoot;
+        var payload = new JsonObject
+        {
+            ["vehicles"] = JsonSerializer.SerializeToNode(BuildMapVehicles())
+        };
+
+        var routePaths = new JsonArray();
+        foreach (var key in CollectRouteKeysForMap(root))
+        {
+            var overviewJson = LeitstelleRoutePathOverview.TryGetOverviewJson(root, key);
+            if (string.IsNullOrWhiteSpace(overviewJson))
+            {
+                continue;
+            }
+
+            try
+            {
+                routePaths.Add(JsonNode.Parse(overviewJson));
+            }
+            catch
+            {
+                // defektes Overview überspringen
+            }
+        }
+
+        payload["routePaths"] = routePaths;
+
+        if (!string.IsNullOrWhiteSpace(SelectedVehicle?.RouteName) && root is not null)
+        {
+            var highlightKey = LeitstelleRoutePathOverview.ResolveRouteKey(root, SelectedVehicle.RouteName);
+            if (highlightKey is not null)
+            {
+                payload["highlightRouteKey"] = highlightKey;
+            }
+        }
+
+        return payload;
+    }
+
+    private HashSet<string> CollectRouteKeysForMap(JsonObject? root)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (root is null)
+        {
+            return keys;
+        }
+
+        foreach (var vehicle in _vehicles.Where(v =>
+                     v.Status is VehicleOnlineStatus.Online or VehicleOnlineStatus.Stale))
+        {
+            if (string.IsNullOrWhiteSpace(vehicle.RouteName))
+            {
+                continue;
+            }
+
+            var key = LeitstelleRoutePathOverview.ResolveRouteKey(root, vehicle.RouteName);
+            if (key is not null)
+            {
+                keys.Add(key);
+            }
+        }
+
+        return keys;
     }
 
     internal VehicleTrackingMapView? LoadSavedMapViewForMap() => GetSavedMapView();

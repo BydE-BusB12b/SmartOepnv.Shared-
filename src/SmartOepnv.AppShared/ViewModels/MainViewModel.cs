@@ -119,18 +119,28 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        StatusText = "Lade Arbeitsstand…";
+        StatusText = "Lade Planer-Arbeitsstand…";
         PlanerWorkspaceSaveCoordinator.Reset();
         try
         {
+            // Maßgeblich: planer_workspace.json lokal – routes_export.json nur manueller Fallback.
+            if (await TryLoadLocalPlanerWorkspaceAsync().ConfigureAwait(true))
+            {
+                StatusText = BuildLocalStatusText("Planer-Arbeitsstand geladen");
+            }
+
             var syncResult = await SyncDropboxAfterLoginAsync(transferProgress).ConfigureAwait(true);
 
             if (syncResult?.Imported == true)
             {
+                StatusText = AppServices.Routes.HasPackage
+                    ? BuildLocalStatusText("Dropbox synchronisiert")
+                    : "Planer-Arbeitsstand aus Dropbox übernommen.";
                 return;
             }
 
-            if (syncResult is { Imported: false, RemoteTimestamp: > 0, RemoteHasMoreContent: true })
+            if (!AppServices.Routes.HasPackage &&
+                syncResult is { Imported: false, RemoteTimestamp: > 0, RemoteHasMoreContent: true })
             {
                 var forced = await PlanerDropboxWorkspaceSync.TryImportFromDropboxAsync(
                         forceOverwrite: true,
@@ -150,37 +160,41 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
-            if (syncResult is null or { RemoteTimestamp: 0 })
+            if (!AppServices.Routes.HasPackage)
             {
-                if (PlanerDropboxWorkspaceSync.TryApplyLocalWorkspace())
+                var localJson = await Task.Run(AppServices.Workspace.TryLoadPackageJson).ConfigureAwait(true);
+                if (!string.IsNullOrWhiteSpace(localJson) && LoadLocalWorkspaceOnStartup(localJson))
                 {
-                    OnRoutePackageLoaded();
-                    StatusText = AppServices.Routes.HasPackage
-                        ? BuildLocalStatusText("Lokal geladen")
-                        : "Planer-Arbeitsstand lokal geladen.";
+                    StatusText = BuildLocalStatusText("routes_export lokal geladen");
                     return;
                 }
             }
-            else if (syncResult.LocalTimestamp > syncResult.RemoteTimestamp)
-            {
-                _dataTransferViewModel.LastActionMessage = syncResult.Message +
-                    " Tipp: Unter Versand → Planer-Arbeitsstand → „Von Dropbox laden“ erzwingen.";
-            }
 
-            var localJson = await Task.Run(AppServices.Workspace.TryLoadPackageJson).ConfigureAwait(true);
-            if (!string.IsNullOrWhiteSpace(localJson) && LoadLocalWorkspaceOnStartup(localJson))
-            {
-                StatusText = BuildLocalStatusText("Lokal wiederhergestellt");
-            }
-            else if (syncResult is not null)
+            if (!AppServices.Routes.HasPackage && syncResult is not null)
             {
                 StatusText = syncResult.Message;
+            }
+            else if (AppServices.Routes.HasPackage && syncResult is { Imported: false })
+            {
+                _dataTransferViewModel.LastActionMessage = syncResult.Message;
             }
         }
         catch (Exception ex)
         {
             StatusText = $"Laden fehlgeschlagen: {ex.Message}";
         }
+    }
+
+    private async Task<bool> TryLoadLocalPlanerWorkspaceAsync()
+    {
+        var loaded = await Task.Run(PlanerDropboxWorkspaceSync.TryApplyLocalWorkspace).ConfigureAwait(true);
+        if (!loaded)
+        {
+            return false;
+        }
+
+        OnRoutePackageLoaded();
+        return AppServices.Routes.HasPackage;
     }
 
     [ObservableProperty] private string productName = string.Empty;

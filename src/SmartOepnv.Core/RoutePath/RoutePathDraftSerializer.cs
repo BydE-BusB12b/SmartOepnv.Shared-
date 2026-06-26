@@ -101,8 +101,33 @@ public static class RoutePathDraftSerializer
 
     public static RoutePathDraft FromJson(string json)
     {
-        var node = JsonNode.Parse(json) ?? throw new InvalidOperationException("Ungültiges JSON.");
-        return FromJsonNode(node.AsObject());
+        var obj = CoerceToObject(JsonNode.Parse(json))
+                  ?? throw new InvalidOperationException("Ungültiges JSON.");
+        return FromJsonNode(obj);
+    }
+
+    /// <summary>Entwurf aus Karten-JSON – auch doppelt kodierte String-Knoten (kopierte Routen).</summary>
+    public static JsonObject? CoerceToObject(JsonNode? node)
+    {
+        for (var depth = 0; depth < 4 && node is not null; depth++)
+        {
+            if (node is JsonObject obj)
+            {
+                return obj;
+            }
+
+            if (node is JsonValue value &&
+                value.TryGetValue<string>(out var text) &&
+                !string.IsNullOrWhiteSpace(text))
+            {
+                node = JsonNode.Parse(text.Trim());
+                continue;
+            }
+
+            break;
+        }
+
+        return null;
     }
 
     public static RoutePathDraft FromJsonNode(JsonObject obj)

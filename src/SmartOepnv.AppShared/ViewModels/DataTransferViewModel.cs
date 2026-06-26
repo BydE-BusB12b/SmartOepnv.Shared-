@@ -89,7 +89,8 @@ public partial class DataTransferViewModel : ObservableObject
         }
 
         var routesHint =
-            $"Routen-Arbeitsstand: {AppServices.Workspace.PackageFilePath} (Dropbox routes_export.json).";
+            $"Planer-Arbeitsstand: {new PlanerWorkspaceService(AppServices.SettingsSubfolder).LocalFilePath} " +
+            $"(routes_export.json nur manuell: {AppServices.Workspace.PackageFilePath}).";
         var overlayHint = PlannerLocalOverlayHint;
         LocalWorkspaceHint = string.IsNullOrWhiteSpace(overlayHint)
             ? routesHint
@@ -482,9 +483,7 @@ public partial class DataTransferViewModel : ObservableObject
 
     private bool CanUsePlanerWorkspaceSync() => !IsBusy && IsDropboxConnected;
 
-    /// <summary>
-    /// Lädt routes_export.json von Dropbox in den Editor. Wird beim Programmstart und manuell aufgerufen.
-    /// </summary>
+    /// <summary>Lädt routes_export.json manuell von Dropbox in den Editor.</summary>
     public async Task<bool> TryImportFromDropboxAsync(CancellationToken cancellationToken = default)
     {
         if (!AppServices.Dropbox.Settings.IsConnected)

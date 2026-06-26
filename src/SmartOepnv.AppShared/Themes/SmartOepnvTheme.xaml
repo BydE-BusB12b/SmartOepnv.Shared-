@@ -1,4 +1,5 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary x:Class="SmartOepnv.AppShared.Themes.SmartOepnvTheme"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Smart-ÖPNV Planer: Dunkelblau (Material Blue 900 / 800) -->
@@ -54,6 +55,7 @@
 
     <!-- Dunkle ComboBox (Dropdown + Scrollbar) für Dialoge auf SmartPrimaryDark -->
     <Style x:Key="SmartDarkComboBoxItem" TargetType="ComboBoxItem">
+        <EventSetter Event="RequestBringIntoView" Handler="ComboBoxItem_RequestBringIntoView" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Padding" Value="8,6" />
         <Setter Property="Background" Value="{StaticResource SmartPrimaryDarkBrush}" />
@@ -125,9 +127,13 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="20" />
                 </Grid.ColumnDefinitions>
-                <ContentPresenter Margin="{TemplateBinding Padding}"
-                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                <ContentPresenter Grid.Column="0"
+                                  Margin="{TemplateBinding Padding}"
+                                  HorizontalAlignment="Stretch"
                                   VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}"
                                   IsHitTestVisible="False"
                                   SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
                 <Path Grid.Column="1"
@@ -148,8 +154,11 @@
     </ControlTemplate>
 
     <ControlTemplate x:Key="SmartDarkComboBoxTemplate" TargetType="ComboBox">
-        <Grid SnapsToDevicePixels="True">
+        <Grid SnapsToDevicePixels="True"
+              HorizontalAlignment="Stretch">
             <ToggleButton x:Name="ToggleButton"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
                           Background="{TemplateBinding Background}"
                           BorderBrush="{TemplateBinding BorderBrush}"
                           BorderThickness="{TemplateBinding BorderThickness}"
@@ -162,7 +171,7 @@
                 <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
                                   ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                   ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
-                                  HorizontalAlignment="Left"
+                                  HorizontalAlignment="Stretch"
                                   VerticalAlignment="Center"
                                   IsHitTestVisible="False" />
             </ToggleButton>
@@ -182,7 +191,7 @@
                                   SnapsToDevicePixels="True"
                                   HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Visible"
-                                  CanContentScroll="True">
+                                  CanContentScroll="False">
                         <ScrollViewer.Resources>
                             <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
                         </ScrollViewer.Resources>
@@ -208,9 +217,27 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,6" />
         <Setter Property="MinHeight" Value="32" />
+        <Setter Property="MinWidth" Value="160" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="ItemTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
         <Setter Property="MaxDropDownHeight" Value="260" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Visible" />
+        <Setter Property="ScrollViewer.CanContentScroll" Value="False" />
+        <Setter Property="ItemsPanel">
+            <Setter.Value>
+                <ItemsPanelTemplate>
+                    <VirtualizingStackPanel ScrollUnit="Pixel" />
+                </ItemsPanelTemplate>
+            </Setter.Value>
+        </Setter>
         <Setter Property="ItemContainerStyle" Value="{StaticResource SmartDarkComboBoxItem}" />
         <Setter Property="Template" Value="{StaticResource SmartDarkComboBoxTemplate}" />
     </Style>

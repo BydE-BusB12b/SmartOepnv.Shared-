@@ -23,9 +23,10 @@ public sealed class AddRouteDialog : Window
     public RouteDefinition? ResultDefinition { get; private set; }
     public IReadOnlyList<DutyOperatingDay> ResultOperatingDays { get; private set; } = [];
     public string? CopyStopsFromRouteKey { get; private set; }
+    public string? EditingRouteKey { get; }
 
-    public AddRouteDialog(EditableRoutePackage package, RouteDefinition? initial = null, string? copyFromRouteKey = null)
-        : this(package.RouteNames.ToList(), package.RouteOperatingDaysByRoute, initial, copyFromRouteKey)
+    public AddRouteDialog(EditableRoutePackage package, RouteDefinition? initial = null, string? copyFromRouteKey = null, string? editingRouteKey = null)
+        : this(package.RouteNames.ToList(), package.RouteOperatingDaysByRoute, initial, copyFromRouteKey, editingRouteKey)
     {
     }
 
@@ -33,9 +34,13 @@ public sealed class AddRouteDialog : Window
         IReadOnlyList<string> existingRoutes,
         IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute,
         RouteDefinition? initial = null,
-        string? copyFromRouteKey = null)
+        string? copyFromRouteKey = null,
+        string? editingRouteKey = null)
     {
-        Title = "Neue Route hinzufügen";
+        EditingRouteKey = string.IsNullOrWhiteSpace(editingRouteKey) ? null : editingRouteKey.Trim();
+        var isEdit = EditingRouteKey is not null;
+
+        Title = isEdit ? "Route bearbeiten" : "Neue Route hinzufügen";
         Width = 460;
         MinWidth = 420;
         SizeToContent = SizeToContent.Height;
@@ -43,13 +48,15 @@ public sealed class AddRouteDialog : Window
         ResizeMode = ResizeMode.NoResize;
         Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
 
-        initial ??= new RouteDefinition(string.Empty);
+        initial ??= isEdit && EditingRouteKey is not null
+            ? RouteDisplayHelper.Parse(EditingRouteKey)
+            : new RouteDefinition(string.Empty);
         CopyStopsFromRouteKey = copyFromRouteKey;
 
         var root = new StackPanel { Margin = new Thickness(24) };
         root.Children.Add(new TextBlock
         {
-            Text = "Neue Route hinzufügen",
+            Text = isEdit ? "Route bearbeiten" : "Neue Route hinzufügen",
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
             Foreground = LabelForeground,
@@ -109,13 +116,19 @@ public sealed class AddRouteDialog : Window
             dayWrap.Children.Add(check);
         }
         root.Children.Add(dayWrap);
+        if (isEdit)
+        {
+            ApplyOperatingDaysToChecks(
+                RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, EditingRouteKey!));
+        }
 
         var copyButton = new Button
         {
             Content = "Route kopieren",
             MinHeight = 36,
             Margin = new Thickness(0, 4, 0, 8),
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Visibility = isEdit ? Visibility.Collapsed : Visibility.Visible
         };
         copyButton.Click += (_, _) => PickRouteToCopy(existingRoutes, operatingDaysByRoute);
         root.Children.Add(copyButton);
@@ -136,9 +149,9 @@ public sealed class AddRouteDialog : Window
             Margin = new Thickness(0, 8, 0, 0)
         };
         var cancel = new Button { Content = "Abbrechen", MinWidth = 100, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
-        var add = new Button { Content = "Hinzufügen", MinWidth = 110, IsDefault = true };
+        var add = new Button { Content = isEdit ? "Speichern" : "Hinzufügen", MinWidth = 110, IsDefault = true };
         cancel.Click += (_, _) => { DialogResult = false; Close(); };
-        add.Click += (_, _) => ConfirmAdd(existingRoutes, operatingDaysByRoute);
+        add.Click += (_, _) => ConfirmSave(existingRoutes, operatingDaysByRoute);
         buttons.Children.Add(cancel);
         buttons.Children.Add(add);
         root.Children.Add(buttons);
@@ -224,7 +237,7 @@ public sealed class AddRouteDialog : Window
         ShowError($"Haltestellen werden von „{selected}“ kopiert – bitte neue Fahrtnummer und Verkehrstage setzen.");
     }
 
-    private void ConfirmAdd(
+    private void ConfirmSave(
         IReadOnlyList<string> existingRoutes,
         IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute)
     {
@@ -249,14 +262,20 @@ public sealed class AddRouteDialog : Window
         var definition = new RouteDefinition(name, lineCourse, tripNumber, passengerLine);
         var displayKey = RouteDisplayHelper.ToDisplayStringWithOperatingDays(definition, selectedDays);
 
-        if (existingRoutes.Contains(displayKey, StringComparer.Ordinal))
+        var routesToCheck = EditingRouteKey is null
+            ? existingRoutes
+            : existingRoutes
+                .Where(route => !RouteDisplayHelper.RouteKeysMatch(route, EditingRouteKey))
+                .ToList();
+
+        if (routesToCheck.Contains(displayKey, StringComparer.Ordinal))
         {
             ShowError("Route schon vorhanden.");
             return;
         }
 
         if (RouteDisplayHelper.HasOperatingDayConflict(
-                existingRoutes,
+                routesToCheck,
                 operatingDaysByRoute,
                 definition,
                 selectedDays))

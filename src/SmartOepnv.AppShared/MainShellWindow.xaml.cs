@@ -330,7 +330,6 @@ public partial class MainShellWindow : Window
         bool bestEffortFlush = false,
         IProgress<DropboxTransferProgress>? transferProgress = null)
     {
-        PlanerDropboxWorkspaceSync.ExportResult? exportResult = null;
         Exception? flushError = null;
 
         await Dispatcher.InvokeAsync(() =>
@@ -364,44 +363,12 @@ public partial class MainShellWindow : Window
             throw flushError;
         }
 
-        await Task.Run(async () =>
+        if (string.Equals(backupReason, "manual", StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(backupReason, "manual", StringComparison.OrdinalIgnoreCase))
-            {
-                SmartOepnvDataBackupService.BackupAllProfiles(backupReason);
-            }
-
-            const int maxExportAttempts = 3;
-            for (var attempt = 1; attempt <= maxExportAttempts; attempt++)
-            {
-                exportResult = await PlanerDropboxWorkspaceSync.TryExportAsync(
-                        flushBeforeCapture: true,
-                        progress: transferProgress)
-                    .ConfigureAwait(false);
-                if (exportResult is { Exported: true })
-                {
-                    return;
-                }
-
-                if (exportResult?.Message.Contains("payload_too_large", StringComparison.OrdinalIgnoreCase) == true)
-                {
-                    break;
-                }
-
-                if (attempt < maxExportAttempts)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(8 * attempt)).ConfigureAwait(false);
-                }
-            }
-        }).ConfigureAwait(true);
-
-        if (exportResult is { Exported: false })
-        {
-            var hint = exportResult.LocalSaved
-                ? "\n\nDer Arbeitsstand liegt lokal vor – bitte Internetverbindung prüfen und erneut abmelden."
-                : string.Empty;
-            throw new InvalidOperationException(exportResult.Message + hint);
+            await Task.Run(() => SmartOepnvDataBackupService.BackupAllProfiles(backupReason)).ConfigureAwait(true);
         }
+
+        await SmartOepnvAppHost.ExportPlanerWorkspaceForShutdownAsync(transferProgress).ConfigureAwait(true);
     }
 
     private async Task ShowSavingDialogAsync(AppExitSavingDialog savingDialog)

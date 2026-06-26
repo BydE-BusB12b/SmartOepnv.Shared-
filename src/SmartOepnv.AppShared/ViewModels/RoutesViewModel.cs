@@ -13,7 +13,10 @@ namespace SmartOepnv.AppShared.ViewModels;
 
 public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 {
+    private const int SaveSuccessFeedbackMs = 5000;
+
     private readonly EditorAreaSyncState _sync = new();
+    private CancellationTokenSource? _saveButtonFeedbackCts;
 
     [ObservableProperty] private string? selectedRoute;
     [ObservableProperty] private RouteStopItem? selectedStop;
@@ -21,6 +24,11 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private string searchQuery = string.Empty;
     [ObservableProperty] private string routeOperatingDaysDisplay = string.Empty;
     [ObservableProperty] private string routeInteriorDisplayDestination = string.Empty;
+    [ObservableProperty] private bool saveButtonIsSuccess;
+    [ObservableProperty] private bool isRouteSettingsExpanded;
+
+    public string RouteSettingsButtonLabel =>
+        IsRouteSettingsExpanded ? "Verkehrstage & Zieltext ausblenden" : "Verkehrstage & Zieltext";
 
     private bool _suppressOperatingDaySync;
     private bool _suppressInteriorDestinationSync;
@@ -180,7 +188,20 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         UpdateRouteStatusMessage();
     }
 
-    private void ReloadStopsForSelectedRoute()
+    /// <summary>
+    /// Übernimmt die sichtbare Haltestellenliste in den Editor, damit die Fahrplanerstellung aktuelle Zeiten nutzt.
+    /// </summary>
+    private void PrepareEditorForAutoSchedule(EditableRoutePackage editor)
+    {
+        if (!string.IsNullOrWhiteSpace(SelectedRoute) && Stops.Count > 0)
+        {
+            editor.ReplaceStopsForRoute(SelectedRoute, Stops);
+        }
+
+        editor.ConsolidateRouteKeys();
+    }
+
+    public void ReloadStopsForSelectedRoute()
     {
         Stops.Clear();
         SelectedStop = null;
@@ -206,8 +227,33 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         NotifyMoveStopCommandsCanExecute();
     }
 
-    partial void OnRouteOperatingDaysDisplayChanged(string value) =>
+    /// <summary>Nach Haltestellen-Dialog: Liste und Zielauswahl aus dem Editor neu laden.</summary>
+    public void RefreshStopAfterEdit(RouteStopItem stop)
+    {
+        var plannerCode = stop.PlannerStopCode;
+        var route = SelectedRoute;
+        ReloadStopsForSelectedRoute();
+        if (string.IsNullOrWhiteSpace(route))
+        {
+            return;
+        }
+
+        SelectedStop = Stops.FirstOrDefault(item =>
+            string.Equals(item.PlannerStopCode, plannerCode, StringComparison.Ordinal))
+            ?? Stops.FirstOrDefault(item => ReferenceEquals(item, stop));
+        NotifyStopEditorStateChanged();
+    }
+
+    partial void OnRouteOperatingDaysDisplayChanged(string value)
+    {
         OnPropertyChanged(nameof(HasRouteOperatingDaysDisplay));
+    }
+
+    partial void OnIsRouteSettingsExpandedChanged(bool value) =>
+        OnPropertyChanged(nameof(RouteSettingsButtonLabel));
+
+    [RelayCommand]
+    private void ToggleRouteSettings() => IsRouteSettingsExpanded = !IsRouteSettingsExpanded;
 
     partial void OnRouteInteriorDisplayDestinationChanged(string value)
     {
@@ -221,6 +267,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     partial void OnSelectedRouteChanged(string? value)
     {
+        IsRouteSettingsExpanded = false;
+        EditRouteCommand.NotifyCanExecuteChanged();
         Stops.Clear();
         SelectedStop = null;
         LoadRouteOperatingDaysForSelection(value);
@@ -277,10 +325,47 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
+        AppServices.Routes.Editor.ConsolidateRouteKeys();
+
+        var routeKey = SyncSelectedRouteOperatingDaysToEditor();
+        if (!string.IsNullOrWhiteSpace(routeKey))
+        {
+            SelectedRoute = routeKey;
+            ReloadRoutesList(routeKey);
+        }
+
         EnrichStopTemplatesFromRoutes(AppServices.Routes.Editor);
         AppServices.Routes.ApplyEditorChanges("routes");
         StatusMessage = $"{_allRoutes.Count} Route(n) – lokal gespeichert.";
+        SaveButtonIsSuccess = true;
+        _ = ShowSaveButtonSuccessFeedbackAsync();
         _sync.AfterCommit();
+    }
+
+    private async Task ShowSaveButtonSuccessFeedbackAsync()
+    {
+        _saveButtonFeedbackCts?.Cancel();
+        _saveButtonFeedbackCts?.Dispose();
+        _saveButtonFeedbackCts = new CancellationTokenSource();
+        var token = _saveButtonFeedbackCts.Token;
+
+        try
+        {
+            await Task.Delay(SaveSuccessFeedbackMs, token).ConfigureAwait(true);
+            SaveButtonIsSuccess = false;
+        }
+        catch (TaskCanceledException)
+        {
+            // neuer Speichervorgang oder Bearbeitung hat Feedback zurückgesetzt
+        }
+    }
+
+    private void CancelSaveButtonSuccessFeedback()
+    {
+        _saveButtonFeedbackCts?.Cancel();
+        _saveButtonFeedbackCts?.Dispose();
+        _saveButtonFeedbackCts = null;
+        SaveButtonIsSuccess = false;
     }
 
     private static void EnrichStopTemplatesFromRoutes(EditableRoutePackage? editor)
@@ -335,6 +420,48 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         CommitChanges();
     }
 
+    [RelayCommand(CanExecute = nameof(CanEditSelectedRoute))]
+    private void EditRoute()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            StatusMessage = "Kein Route-Paket geladen.";
+            return;
+        }
+
+        var owner = Application.Current?.MainWindow;
+        var dialog = new AddRouteDialog(editor, editingRouteKey: SelectedRoute) { Owner = owner };
+        if (dialog.ShowDialog() != true || dialog.ResultDefinition is null)
+        {
+            return;
+        }
+
+        if (!editor.TryUpdateRoute(
+                SelectedRoute,
+                dialog.ResultDefinition,
+                dialog.ResultOperatingDays,
+                out var displayKey,
+                out var error))
+        {
+            StatusMessage = error ?? "Route konnte nicht gespeichert werden.";
+            return;
+        }
+
+        _sync.MarkDirty();
+        RefreshFromEditor();
+        SelectedRoute = displayKey;
+        StatusMessage = $"Route „{displayKey}“ gespeichert.";
+        CommitChanges();
+    }
+
+    private bool CanEditSelectedRoute() => !string.IsNullOrWhiteSpace(SelectedRoute);
+
     [RelayCommand]
     private void RemoveRoute()
     {
@@ -345,7 +472,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
         AppServices.Routes.Editor?.RemoveRoute(SelectedRoute);
         _sync.MarkDirty();
-        RefreshFromEditor();
+        ReloadRoutesList(null);
         CommitChanges();
     }
 
@@ -508,6 +635,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
+        PrepareEditorForAutoSchedule(editor);
+
         if (AutoSchedulePlanner.GetSortedTemplateRoutes(editor).Count == 0)
         {
             StatusMessage = "Keine Routen als Vorlage verfügbar.";
@@ -531,6 +660,39 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         catch (Exception ex)
         {
             StatusMessage = $"Fahrplan fehlgeschlagen: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void ShowRouteChain()
+    {
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            StatusMessage = "Kein Route-Paket geladen.";
+            return;
+        }
+
+        try
+        {
+            PrepareEditorForAutoSchedule(editor);
+            var owner = Application.Current?.MainWindow;
+            string? initialLineCourse = null;
+            if (!string.IsNullOrWhiteSpace(SelectedRoute))
+            {
+                var parsed = RouteDisplayHelper.Parse(SelectedRoute);
+                if (!string.IsNullOrWhiteSpace(parsed.LineCourse))
+                {
+                    initialLineCourse = parsed.LineCourse;
+                }
+            }
+
+            var dialog = new RouteChainDialog(editor, initialLineCourse) { Owner = owner };
+            dialog.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Routenschnur konnte nicht geöffnet werden: {ex.Message}";
         }
     }
 
@@ -655,19 +817,36 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
+        var newRouteKey = SyncSelectedRouteOperatingDaysToEditor();
+        if (string.IsNullOrWhiteSpace(newRouteKey))
+        {
+            return;
+        }
+
+        MarkRoutesDirty();
+        ReloadRoutesList(newRouteKey);
+    }
+
+    private string? SyncSelectedRouteOperatingDaysToEditor()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return SelectedRoute;
+        }
+
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
-            return;
+            return SelectedRoute;
         }
 
         var selected = RouteOperatingDaySelections
             .Where(option => option.IsSelected)
             .Select(option => option.Day)
             .ToList();
-        editor.SetRouteOperatingDays(SelectedRoute, selected);
+        var newRouteKey = editor.ApplyOperatingDaysChange(SelectedRoute, selected);
         RouteOperatingDaysDisplay = DutyOperatingDayHelper.FormatDisplay(selected);
-        MarkRoutesDirty();
+        return newRouteKey;
     }
 
     private void ApplyRouteOperatingDayToSelection(IEnumerable<DutyOperatingDay> days)
@@ -691,6 +870,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     private void MarkRoutesDirty()
     {
+        CancelSaveButtonSuccessFeedback();
         _sync.MarkDirty();
         StatusMessage = string.IsNullOrWhiteSpace(SelectedRoute)
             ? StatusMessage

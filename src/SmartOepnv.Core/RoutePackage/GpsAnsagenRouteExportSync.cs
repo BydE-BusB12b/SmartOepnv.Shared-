@@ -16,18 +16,15 @@ public static class GpsAnsagenRouteExportSync
             package.RouteNames,
             allStops);
 
-        // Vollständiges Planer-Paket (lokal + Dropbox zwischen Planern): alle Routen/Navidaten behalten.
-        var packageRoutes = collectedRoutes
-            .Union(package.RouteNames)
-            .Union(package.StopsByRoute.Keys)
-            .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routePathDrafts"))
-            .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routeOfflineGuidance"));
+        var packageRoutes = RoutePackageRouteKeyHelper
+            .DistinctCanonicalKeys(collectedRoutes.Union(package.RouteNames))
+            .ToList();
 
         SyncRoutesAndLineCourse(packageRoutes, root, package.RouteInteriorDisplayDestinationsByRoute);
         SyncRouteStops(package, packageRoutes, root);
         root.Remove("routeDirections");
-        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance");
-        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts");
+        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", packageRoutes);
+        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", packageRoutes);
         DateBasedHintsEditor.SaveToRoot(root, package.DateBasedHints);
         RoutePackagePhoneMetadata.SaveOutsideDisplays(root, package.OutsideDisplays);
         RoutePackagePhoneMetadata.SaveAllowedRoutes(
@@ -206,11 +203,14 @@ public static class GpsAnsagenRouteExportSync
     private static void SyncRouteStops(EditableRoutePackage package, IEnumerable<string> routesToExport, JsonObject root)
     {
         var routeStopsObject = new JsonObject();
-        foreach (var route in routesToExport.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+        foreach (var canonical in routesToExport
+                     .Select(RouteDisplayHelper.ToCanonicalRouteKey)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
         {
-            var distributionKey = RouteDisplayHelper.ToDistributionDisplayString(route);
+            var distributionKey = RouteDisplayHelper.ToDistributionDisplayString(canonical);
             var stopsArray = new JsonArray();
-            foreach (var stop in package.GetStops(route))
+            foreach (var stop in package.GetStops(canonical))
             {
                 stopsArray.Add(GpsAnsagenStopJson.Write(stop, distributionKey));
             }

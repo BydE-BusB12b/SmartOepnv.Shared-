@@ -11,14 +11,94 @@ namespace SmartOepnv.Core.RoutePackage;
 public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 {
     private bool _isListEnabled = true;
+    private string _name = string.Empty;
+    private string _frontLine1 = string.Empty;
+    private string _frontLine2 = string.Empty;
+    private string _sideLine1 = string.Empty;
+    private string _sideLine2 = string.Empty;
+    private bool _isStartTarget;
+
+    public OutsideDisplayProgram()
+    {
+        for (var i = 0; i < OutsideDisplayCycleParser.MaxCycles; i++)
+        {
+            var front = new OutsideDisplayTextCycle();
+            var side = new OutsideDisplayTextCycle();
+            front.PropertyChanged += (_, _) => OnCycleChanged();
+            side.PropertyChanged += (_, _) => OnCycleChanged();
+            FrontCycles.Add(front);
+            SideCycles.Add(side);
+        }
+    }
+
+    /// <summary>Wechseltext 1–4 (Front), wie Slider im Handy-Dialog.</summary>
+    public IList<OutsideDisplayTextCycle> FrontCycles { get; } = [];
+
+    /// <summary>Wechseltext 1–4 (Seite); leer = Front übernehmen.</summary>
+    public IList<OutsideDisplayTextCycle> SideCycles { get; } = [];
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public string Name { get; set; } = string.Empty;
-    public string FrontLine1 { get; set; } = string.Empty;
-    public string FrontLine2 { get; set; } = string.Empty;
-    public string SideLine1 { get; set; } = string.Empty;
-    public string SideLine2 { get; set; } = string.Empty;
+    private void OnCycleChanged()
+    {
+        SyncLegacyLinesFromCycles();
+        OnPropertyChanged(nameof(FrontPreview));
+        OnPropertyChanged(nameof(SidePreview));
+        OnPropertyChanged(nameof(WechseltextPreview));
+        OnPropertyChanged(nameof(WechseltextCount));
+    }
+
+    private void SyncLegacyLinesFromCycles()
+    {
+        var firstFront = FrontCycles.FirstOrDefault();
+        var firstSide = SideCycles.FirstOrDefault();
+        _frontLine1 = firstFront?.Line1 ?? string.Empty;
+        _frontLine2 = firstFront?.Line2 ?? string.Empty;
+        _sideLine1 = firstSide?.Line1 ?? string.Empty;
+        _sideLine2 = firstSide?.Line2 ?? string.Empty;
+    }
+
+    private void SyncCyclesFromLegacyLines()
+    {
+        if (FrontCycles.Count == 0)
+        {
+            return;
+        }
+
+        FrontCycles[0].SetFromPair(_frontLine1, _frontLine2);
+        SideCycles[0].SetFromPair(_sideLine1, _sideLine2);
+    }
+
+    public string Name
+    {
+        get => _name;
+        set => SetProperty(ref _name, value, nameof(DisplayLabel));
+    }
+
+    public string FrontLine1
+    {
+        get => _frontLine1;
+        set => SetProperty(ref _frontLine1, value, nameof(FrontPreview));
+    }
+
+    public string FrontLine2
+    {
+        get => _frontLine2;
+        set => SetProperty(ref _frontLine2, value, nameof(FrontPreview));
+    }
+
+    public string SideLine1
+    {
+        get => _sideLine1;
+        set => SetProperty(ref _sideLine1, value, nameof(SidePreview));
+    }
+
+    public string SideLine2
+    {
+        get => _sideLine2;
+        set => SetProperty(ref _sideLine2, value, nameof(SidePreview));
+    }
+
     public int IntervalSeconds { get; set; } = 3;
     public string Ds001Type { get; set; } = "line";
     public string Ds001Value { get; set; } = "001";
@@ -40,7 +120,13 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
-    public bool IsStartTarget { get; set; }
+
+    public bool IsStartTarget
+    {
+        get => _isStartTarget;
+        set => SetProperty(ref _isStartTarget, value);
+    }
+
     public bool IsKrefeld { get; set; }
 
     public string DisplayLabel =>
@@ -48,17 +134,75 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     public string ProtocolLabel => IsKrefeld ? "DS003a Krefeld" : "DS021T";
 
+    /// <summary>DS021T vor DS003a, innerhalb der Gruppe Startziel zuerst, dann Name.</summary>
+    public static int CompareForZielliste(OutsideDisplayProgram? left, OutsideDisplayProgram? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left is null)
+        {
+            return 1;
+        }
+
+        if (right is null)
+        {
+            return -1;
+        }
+
+        var protocolOrder = left.IsKrefeld.CompareTo(right.IsKrefeld);
+        if (protocolOrder != 0)
+        {
+            return protocolOrder;
+        }
+
+        var leftStart = IsStartzielEntry(left);
+        var rightStart = IsStartzielEntry(right);
+        if (leftStart != rightStart)
+        {
+            return leftStart ? -1 : 1;
+        }
+
+        return string.Compare(left.Name, right.Name, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private static bool IsStartzielEntry(OutsideDisplayProgram program) =>
+        program.IsStartTarget ||
+        string.Equals(program.Name, "Startziel", StringComparison.Ordinal);
+
     public string FrontPreview =>
-        string.IsNullOrWhiteSpace(FrontLine2)
+        BuildCyclesPreview(FrontCycles, fallbackSingle: string.IsNullOrWhiteSpace(FrontLine2)
             ? FrontLine1
-            : $"{FrontLine1} · {FrontLine2}";
+            : $"{FrontLine1} · {FrontLine2}");
 
     public string SidePreview =>
-        string.IsNullOrWhiteSpace(SideLine1) && string.IsNullOrWhiteSpace(SideLine2)
-            ? "—"
-            : string.IsNullOrWhiteSpace(SideLine2)
-                ? SideLine1
-                : $"{SideLine1} · {SideLine2}";
+        BuildCyclesPreview(SideCycles, fallbackSingle:
+            string.IsNullOrWhiteSpace(SideLine1) && string.IsNullOrWhiteSpace(SideLine2)
+                ? "—"
+                : string.IsNullOrWhiteSpace(SideLine2)
+                    ? SideLine1
+                    : $"{SideLine1} · {SideLine2}");
+
+    public int WechseltextCount =>
+        FrontCycles.Count(c => c.HasContent);
+
+    public string WechseltextPreview =>
+        WechseltextCount <= 1
+            ? FrontPreview
+            : $"{WechseltextCount} Wechseltexte: {string.Join(" → ", FrontCycles.Where(c => c.HasContent).Select(c => c.Preview))}";
+
+    private static string BuildCyclesPreview(IEnumerable<OutsideDisplayTextCycle> cycles, string fallbackSingle)
+    {
+        var active = cycles.Where(c => c.HasContent).Select(c => c.Preview).ToList();
+        return active.Count switch
+        {
+            0 => "—",
+            1 => active[0],
+            _ => string.Join(" → ", active)
+        };
+    }
 
     public static OutsideDisplayProgram CreateDs021t(string? name = null) =>
         new()
@@ -103,8 +247,37 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
         var frontLog = DecodeUtf8(parts.ElementAtOrDefault(3));
         var sideLog = DecodeUtf8(parts.ElementAtOrDefault(4));
-        ApplyLogLines(program, frontLog, isFront: true);
-        ApplyLogLines(program, sideLog, isFront: false);
+        byte[]? frontBytes = null;
+        byte[]? sideBytes = null;
+        try
+        {
+            var frontB64 = parts.ElementAtOrDefault(1);
+            if (!string.IsNullOrWhiteSpace(frontB64))
+            {
+                frontBytes = Convert.FromBase64String(frontB64);
+            }
+
+            var sideB64 = parts.ElementAtOrDefault(2);
+            if (!string.IsNullOrWhiteSpace(sideB64))
+            {
+                sideBytes = Convert.FromBase64String(sideB64);
+            }
+        }
+        catch
+        {
+            // Telegramm-Bytes optional für Zyklus-Parsing
+        }
+
+        OutsideDisplayCycleParser.ApplyToCycles(program.FrontCycles, frontLog, frontBytes);
+        OutsideDisplayCycleParser.ApplyToCycles(program.SideCycles, sideLog, sideBytes);
+        program.SyncLegacyLinesFromCycles();
+
+        if (program.FrontCycles.All(c => !c.HasContent))
+        {
+            ApplyLogLines(program, frontLog, isFront: true);
+            ApplyLogLines(program, sideLog, isFront: false);
+            program.SyncCyclesFromLegacyLines();
+        }
 
         var ds001Type = DecodeUtf8(parts.ElementAtOrDefault(5));
         var ds001Value = DecodeUtf8(parts.ElementAtOrDefault(6));
@@ -169,8 +342,15 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     private string BuildEntry(byte[] frontBytes, byte[] sideBytes)
     {
-        var frontLog = BuildLogString(FrontLine1, FrontLine2);
-        var sideLog = BuildLogString(SideLine1, SideLine2);
+        var frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(FrontCycles);
+        if (frontGoals.Count == 0)
+        {
+            frontGoals = [(FrontLine1, FrontLine2)];
+        }
+
+        var sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
+        var frontLog = OutsideDisplayCycleParser.BuildLogString(frontGoals);
+        var sideLog = OutsideDisplayCycleParser.BuildLogString(sideGoals);
         var ds001Type = EncodeUtf8(IsKrefeld ? "line" : Ds001Type);
         var ds001Value = EncodeUtf8(
             IsKrefeld ? NormalizeKrefeldLine(Ds001Value) : Ds001Value.Trim());
@@ -268,4 +448,31 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    private void SetProperty<T>(ref T field, T value, params string[] additionalPropertyNames)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+
+        field = value;
+        OnPropertyChanged();
+        foreach (var name in additionalPropertyNames)
+        {
+            OnPropertyChanged(name);
+        }
+    }
+
+    public void RefreshListDisplayProperties()
+    {
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(DisplayLabel));
+        OnPropertyChanged(nameof(FrontPreview));
+        OnPropertyChanged(nameof(SidePreview));
+        OnPropertyChanged(nameof(WechseltextPreview));
+        OnPropertyChanged(nameof(WechseltextCount));
+        OnPropertyChanged(nameof(ProtocolLabel));
+        OnPropertyChanged(nameof(IsListEnabled));
+    }
 }

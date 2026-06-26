@@ -133,18 +133,12 @@ public static class NavManeuverDisplayHelper
         if (t.Contains("kreisverkehr", StringComparison.Ordinal) ||
             t.Contains("ausfahrt", StringComparison.Ordinal))
         {
-            if (t.Contains('5') || t.Contains("fünf", StringComparison.Ordinal))
-            {
-                if (t.Contains('4')) return "roundabout_4_5";
-                if (t.Contains('3')) return "roundabout_3_5";
-                if (t.Contains('2')) return "roundabout_2_5";
-                return "roundabout_5_5";
-            }
-
-            if (t.Contains('4')) return "roundabout_4_4";
-            if (t.Contains('3')) return "roundabout_3_4";
-            if (t.Contains('2')) return "roundabout_2_4";
-            return "roundabout_2_4";
+            var isFiveArm = t.Contains('5') || t.Contains("fünf", StringComparison.Ordinal);
+            var suffix = isFiveArm ? "_5" : "_4";
+            if (t.Contains('4')) return "roundabout_4" + suffix;
+            if (t.Contains('3')) return "roundabout_3" + suffix;
+            if (t.Contains('2')) return "roundabout_2" + suffix;
+            return "roundabout_1" + suffix;
         }
 
         var hasLeft = t.Contains("links", StringComparison.Ordinal);

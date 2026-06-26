@@ -4,130 +4,132 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch">
-    <DockPanel Margin="0,0,0,8">
-        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+    <!-- Kein äußerer ScrollViewer: Zielliste scrollt links, Statuszeile bleibt sichtbar -->
+    <Grid VerticalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,8">
             <TextBlock Text="Anzeigen &amp; Hinweise"
                        FontWeight="SemiBold" FontSize="18" Margin="0,0,0,4" />
             <TextBlock Text="Zielanzeigen und datumgesteuerte Hinweise – werden mit dem Routen-JSON (Dropbox) übertragen. Linienführung über Navidaten."
                        TextWrapping="Wrap" Opacity="0.7" FontSize="11" />
         </StackPanel>
-        <TextBlock DockPanel.Dock="Bottom"
-                   Text="{Binding StatusMessage}"
-                   Margin="0,8,0,0"
-                   TextWrapping="Wrap"
-                   Opacity="0.85"
-                   FontSize="12" />
 
-        <TabControl Style="{StaticResource MaterialDesignFilledTabControl}" VerticalAlignment="Stretch">
-            <TabItem Header="Zielliste / Außenanzeigen">
-                <Grid Margin="0,8,0,0" MinHeight="420">
+        <TabControl Grid.Row="1"
+                    Style="{StaticResource MaterialDesignFilledTabControl}"
+                    VerticalAlignment="Stretch"
+                    HorizontalAlignment="Stretch">
+            <TabItem Header="Zielliste / Außenanzeigen"
+                     HorizontalContentAlignment="Stretch"
+                     VerticalContentAlignment="Stretch">
+                <Grid Margin="0,8,0,0" VerticalAlignment="Stretch">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="300" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- Liste (eigener Scrollbereich) -->
-                    <materialDesign:Card Grid.Column="0" Margin="0,0,10,0" Padding="12" UniformCornerRadius="12"
+                    <materialDesign:Card Grid.Column="0"
+                                         Margin="0,0,10,0"
+                                         Padding="12"
+                                         UniformCornerRadius="12"
+                                         VerticalAlignment="Stretch"
                                          Background="{StaticResource SmartSurfaceBrush}">
-                        <DockPanel>
+                        <DockPanel LastChildFill="True">
                             <TextBlock DockPanel.Dock="Top"
                                        Text="Zielliste"
                                        FontWeight="SemiBold"
                                        FontSize="15"
                                        Margin="0,0,0,8" />
-                            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled">
-                                <ListBox ItemsSource="{Binding OutsidePrograms}"
-                                         SelectedItem="{Binding SelectedOutsideProgram}"
-                                         BorderThickness="0"
-                                         Background="Transparent"
-                                         MinHeight="120">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Margin="0,4">
-                                                <TextBlock Text="{Binding Name}"
-                                                           FontWeight="SemiBold"
-                                                           FontSize="13"
-                                                           TextWrapping="Wrap" />
-                                                <TextBlock Text="{Binding ProtocolLabel}"
-                                                           Opacity="0.65"
-                                                           FontSize="11"
-                                                           Margin="0,2,0,4" />
-                                                <TextBlock FontSize="10" Opacity="0.75" Margin="0,0,0,4">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="ITCS-Liste: aus" />
-                                                            <Setter Property="Foreground" Value="#FFB0B0B0" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsListEnabled}" Value="True">
-                                                                    <Setter Property="Text" Value="ITCS-Liste: an" />
-                                                                    <Setter Property="Foreground" Value="#FF81C784" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
-                                                    <Run Text="Front: " FontWeight="SemiBold" />
-                                                    <Run Text="{Binding FrontPreview, Mode=OneWay}" />
-                                                </TextBlock>
-                                                <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
-                                                    <Run Text="Seite: " FontWeight="SemiBold" />
-                                                    <Run Text="{Binding SidePreview, Mode=OneWay}" />
-                                                </TextBlock>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </ScrollViewer>
+                            <ListBox ItemsSource="{Binding OutsidePrograms}"
+                                     SelectedItem="{Binding SelectedOutsideProgram}"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.CanContentScroll="False"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     VirtualizingPanel.VirtualizationMode="Recycling">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+                                        <Setter Property="Padding" Value="8,4" />
+                                        <Setter Property="Margin" Value="0,0,0,2" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,2">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="13"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding ProtocolLabel}"
+                                                       Opacity="0.65"
+                                                       FontSize="11"
+                                                       Margin="0,2,0,4" />
+                                            <TextBlock FontSize="10" Opacity="0.75" Margin="0,0,0,4">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="ITCS-Liste: aus" />
+                                                        <Setter Property="Foreground" Value="#FFB0B0B0" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsListEnabled}" Value="True">
+                                                                <Setter Property="Text" Value="ITCS-Liste: an" />
+                                                                <Setter Property="Foreground" Value="#FF81C784" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
+                                                <Run Text="Front: " FontWeight="SemiBold" />
+                                                <Run Text="{Binding WechseltextPreview, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
+                                                <Run Text="Seite: " FontWeight="SemiBold" />
+                                                <Run Text="{Binding SidePreview, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </DockPanel>
                     </materialDesign:Card>
 
-                    <!-- Bearbeiten + Aktionen -->
-                    <materialDesign:Card Grid.Column="1" Padding="14" UniformCornerRadius="12"
+                    <materialDesign:Card Grid.Column="1"
+                                         Padding="14"
+                                         UniformCornerRadius="12"
+                                         VerticalAlignment="Stretch"
                                          Background="{StaticResource SmartSurfaceBrush}">
-                        <DockPanel>
-                            <TextBlock DockPanel.Dock="Top"
+                        <Grid VerticalAlignment="Stretch">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0"
                                        Text="Zielanzeige bearbeiten"
                                        FontWeight="SemiBold"
                                        FontSize="15"
                                        Margin="0,0,0,6" />
-                            <TextBlock DockPanel.Dock="Top"
+                            <TextBlock Grid.Row="1"
                                        TextWrapping="Wrap"
                                        Opacity="0.75"
                                        FontSize="11"
                                        Margin="0,0,0,10"
-                                       Text="DS021T: Schleifenprogramm mit Intervall. DS003a Krefeld: 2×16 Zeichen Front/Seite, DS001, optional Steuerblock (12 Zeichen)." />
+                                       Text="DS021T: bis zu 4 Wechseltexte (Schleifenprogramm mit Intervall). DS003a Krefeld: ein Ziel Front/Seite." />
 
-                            <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-                                <WrapPanel Margin="0,0,0,8">
-                                    <Button Content="+ DS021T"
-                                            Command="{Binding AddOutsideProgramDs021tCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}"
-                                            Margin="0,0,8,6" />
-                                    <Button Content="+ DS003a Krefeld"
-                                            Command="{Binding AddOutsideProgramKrefeldCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}"
-                                            Margin="0,0,8,6" />
-                                    <Button Content="Auswahl löschen"
-                                            Command="{Binding RemoveOutsideProgramCommand}"
-                                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                                            Margin="0,0,8,6" />
-                                    <Button Content="Alle in ITCS-Liste"
-                                            Command="{Binding EnableAllInItcsListCommand}"
-                                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                                            Margin="0,0,8,6" />
-                                    <Button Content="Speichern"
-                                            Command="{Binding SaveCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}"
-                                            Margin="0,0,0,6" />
-                                </WrapPanel>
-                            </StackPanel>
-
-                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                            <ScrollViewer Grid.Row="2"
+                                          VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled"
-                                          MaxHeight="340">
-                                <StackPanel DataContext="{Binding SelectedOutsideProgram}">
+                                          Margin="0,0,0,10">
+                                <StackPanel>
                                     <TextBlock Text="Links ein Ziel wählen oder unten neu anlegen."
                                                Opacity="0.7"
                                                TextWrapping="Wrap"
@@ -136,7 +138,7 @@
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                    <DataTrigger Binding="{Binding SelectedOutsideProgram}" Value="{x:Null}">
                                                         <Setter Property="Visibility" Value="Visible" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
@@ -144,7 +146,7 @@
                                         </TextBlock.Style>
                                     </TextBlock>
 
-                                    <Grid>
+                                    <Grid DataContext="{Binding SelectedOutsideProgram}">
                                         <Grid.Style>
                                             <Style TargetType="Grid">
                                                 <Style.Triggers>
@@ -159,6 +161,8 @@
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
@@ -193,41 +197,10 @@
                                                  Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8" />
 
-                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Front Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="3" Grid.Column="1"
-                                                 Text="{Binding FrontLine1, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="4" Grid.Column="1"
-                                                 Text="{Binding FrontLine2, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="5" Grid.Column="1"
-                                                 Text="{Binding SideLine1, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="6" Grid.Column="1"
-                                                 Text="{Binding SideLine2, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="DS001 Typ" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <ComboBox Grid.Row="7" Grid.Column="1"
-                                                  SelectedValue="{Binding Ds001Type}"
-                                                  SelectedValuePath="Content"
-                                                  Margin="0,0,0,8">
-                                            <ComboBoxItem Content="line" />
-                                            <ComboBoxItem Content="special" />
-                                        </ComboBox>
-
-                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="DS001 Wert" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="8" Grid.Column="1"
-                                                 Text="{Binding Ds001Value, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="9" Grid.Column="0" Text="Intervall (Sek.)" VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <TextBlock Grid.Row="3" Grid.ColumnSpan="2"
+                                                   Text="Wechseltext (DS021T) – Ziel 1 bis 4:"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,4,0,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Style.Triggers>
@@ -238,7 +211,124 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="9" Grid.Column="1"
+
+                                        <UniformGrid Grid.Row="4" Grid.ColumnSpan="2" Columns="4" Margin="0,0,0,10">
+                                            <UniformGrid.Style>
+                                                <Style TargetType="UniformGrid">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </UniformGrid.Style>
+                                            <Button Content="Ziel 1" Margin="0,0,4,0"
+                                                    Command="{Binding DataContext.SelectWechseltextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="0" />
+                                            <Button Content="Ziel 2" Margin="0,0,4,0"
+                                                    Command="{Binding DataContext.SelectWechseltextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="1" />
+                                            <Button Content="Ziel 3" Margin="0,0,4,0"
+                                                    Command="{Binding DataContext.SelectWechseltextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="2" />
+                                            <Button Content="Ziel 4"
+                                                    Command="{Binding DataContext.SelectWechseltextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="3" />
+                                        </UniformGrid>
+
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Front Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="Front Zeile 1" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
+                                                            <Setter Property="Text" Value="Front Zeile 1 (Wechseltext)" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox">
+                                                    <Setter Property="Text" Value="{Binding FrontLine1, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
+                                                            <Setter Property="Text" Value="{Binding DataContext.ActiveFrontLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+
+                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="6" Grid.Column="1" Margin="0,0,0,8">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox">
+                                                    <Setter Property="Text" Value="{Binding FrontLine2, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
+                                                            <Setter Property="Text" Value="{Binding DataContext.ActiveFrontLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+
+                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="7" Grid.Column="1" Margin="0,0,0,8">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox">
+                                                    <Setter Property="Text" Value="{Binding SideLine1, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
+                                                            <Setter Property="Text" Value="{Binding DataContext.ActiveSideLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+
+                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="8" Grid.Column="1" Margin="0,0,0,8">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox">
+                                                    <Setter Property="Text" Value="{Binding SideLine2, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
+                                                            <Setter Property="Text" Value="{Binding DataContext.ActiveSideLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+
+                                        <TextBlock Grid.Row="9" Grid.Column="0" Text="DS001 Typ" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <ComboBox Grid.Row="9" Grid.Column="1"
+                                                  SelectedValue="{Binding Ds001Type}"
+                                                  SelectedValuePath="Content"
+                                                  Margin="0,0,0,8">
+                                            <ComboBoxItem Content="line" />
+                                            <ComboBoxItem Content="special" />
+                                        </ComboBox>
+
+                                        <TextBlock Grid.Row="10" Grid.Column="0" Text="DS001 Wert" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <TextBox Grid.Row="10" Grid.Column="1"
+                                                 Text="{Binding Ds001Value, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="0,0,0,8" />
+
+                                        <TextBlock Grid.Row="11" Grid.Column="0" Text="Intervall (Sek.)" VerticalAlignment="Center" Margin="0,0,8,8">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBox Grid.Row="11" Grid.Column="1"
                                                  Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8">
                                             <TextBox.Style>
@@ -252,7 +342,7 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <TextBlock Grid.Row="10" Grid.Column="0" Text="DS001 Sonderz." VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <TextBlock Grid.Row="12" Grid.Column="0" Text="DS001 Sonderz." VerticalAlignment="Center" Margin="0,0,8,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -264,7 +354,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="10" Grid.Column="1"
+                                        <TextBox Grid.Row="12" Grid.Column="1"
                                                  Text="{Binding Ds001Spec, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8">
                                             <TextBox.Style>
@@ -279,7 +369,7 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <TextBlock Grid.Row="11" Grid.Column="0" Text="Steuerblock" VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <TextBlock Grid.Row="13" Grid.Column="0" Text="Steuerblock" VerticalAlignment="Center" Margin="0,0,8,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -291,7 +381,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="11" Grid.Column="1"
+                                        <TextBox Grid.Row="13" Grid.Column="1"
                                                  materialDesign:HintAssist.Hint="leer = DG5DG7DG7DG7"
                                                  Text="{Binding ControlCodes, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8">
@@ -307,7 +397,7 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <StackPanel Grid.Row="12" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,4">
+                                        <StackPanel Grid.Row="14" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,4">
                                             <StackPanel.Style>
                                                 <Style TargetType="StackPanel">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -325,69 +415,83 @@
                                     </Grid>
                                 </StackPanel>
                             </ScrollViewer>
-                        </DockPanel>
+
+                            <WrapPanel Grid.Row="3">
+                                <Button Content="+ DS021T"
+                                        Command="{Binding AddOutsideProgramDs021tCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ DS003a Krefeld"
+                                        Command="{Binding AddOutsideProgramKrefeldCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="Auswahl löschen"
+                                        Command="{Binding RemoveOutsideProgramCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="Alle in ITCS-Liste"
+                                        Command="{Binding EnableAllInItcsListCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,6" />
+                            </WrapPanel>
+                        </Grid>
                     </materialDesign:Card>
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Datumgesteuerte Hinweise">
-                <Grid Margin="0,8,0,0" MinHeight="380">
+            <TabItem Header="Datumgesteuerte Hinweise"
+                     HorizontalContentAlignment="Stretch"
+                     VerticalContentAlignment="Stretch">
+                <Grid Margin="0,8,0,0" VerticalAlignment="Stretch">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="300" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <materialDesign:Card Grid.Column="0" Margin="0,0,10,0" Padding="12"
+
+                    <materialDesign:Card Grid.Column="0"
+                                         Margin="0,0,10,0"
+                                         Padding="12"
+                                         VerticalAlignment="Stretch"
                                          Background="{StaticResource SmartSurfaceBrush}">
-                        <DockPanel>
+                        <DockPanel LastChildFill="True">
                             <TextBlock DockPanel.Dock="Top" Text="Hinweise" FontWeight="SemiBold" Margin="0,0,0,8" />
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <ListBox ItemsSource="{Binding DateBasedHints}"
-                                         SelectedItem="{Binding SelectedHint}"
-                                         BorderThickness="0"
-                                         Background="Transparent">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Margin="0,2">
-                                                <TextBlock Text="{Binding HintText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                                <TextBlock Opacity="0.7" FontSize="11">
-                                                    <Run Text="{Binding StartDate, Mode=OneWay}" />
-                                                    <Run Text=" – " />
-                                                    <Run Text="{Binding EndDate, Mode=OneWay}" />
-                                                </TextBlock>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </ScrollViewer>
+                            <ListBox ItemsSource="{Binding DateBasedHints}"
+                                     SelectedItem="{Binding SelectedHint}"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.CanContentScroll="False">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,2">
+                                            <TextBlock Text="{Binding HintText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <TextBlock Opacity="0.7" FontSize="11">
+                                                <Run Text="{Binding StartDate, Mode=OneWay}" />
+                                                <Run Text=" – " />
+                                                <Run Text="{Binding EndDate, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </DockPanel>
                     </materialDesign:Card>
-                    <materialDesign:Card Grid.Column="1" Padding="14" Background="{StaticResource SmartSurfaceBrush}">
-                        <DockPanel>
-                            <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-                                <TextBox materialDesign:HintAssist.Hint="Neuer Hinweistext"
-                                         Text="{Binding NewHintText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6" />
-                                <Grid Margin="0,0,0,6">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" Margin="0,0,6,0"
-                                             materialDesign:HintAssist.Hint="Start TT.MM.JJJJ"
-                                             Text="{Binding NewHintStartDate, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBox Grid.Column="1"
-                                             materialDesign:HintAssist.Hint="Ende TT.MM.JJJJ"
-                                             Text="{Binding NewHintEndDate, UpdateSourceTrigger=PropertyChanged}" />
-                                </Grid>
-                                <WrapPanel>
-                                    <Button Content="Hinweis hinzufügen" Command="{Binding AddDateBasedHintCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0" />
-                                    <Button Content="Auswahl löschen" Command="{Binding RemoveDateBasedHintCommand}"
-                                            Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" />
-                                    <Button Content="Speichern" Command="{Binding SaveCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}" />
-                                </WrapPanel>
-                            </StackPanel>
-                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="280">
+
+                    <materialDesign:Card Grid.Column="1"
+                                         Padding="14"
+                                         VerticalAlignment="Stretch"
+                                         Background="{StaticResource SmartSurfaceBrush}">
+                        <Grid VerticalAlignment="Stretch">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <ScrollViewer Grid.Row="0"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          Margin="0,0,0,10">
                                 <StackPanel DataContext="{Binding SelectedHint}">
                                     <TextBlock Text="Hinweis bearbeiten" FontWeight="SemiBold" Margin="0,0,0,10" />
                                     <Grid>
@@ -420,10 +524,47 @@
                                     </Grid>
                                 </StackPanel>
                             </ScrollViewer>
-                        </DockPanel>
+
+                            <StackPanel Grid.Row="1">
+                                <TextBox materialDesign:HintAssist.Hint="Neuer Hinweistext"
+                                         Text="{Binding NewHintText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6" />
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Margin="0,0,6,0"
+                                             materialDesign:HintAssist.Hint="Start TT.MM.JJJJ"
+                                             Text="{Binding NewHintStartDate, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Grid.Column="1"
+                                             materialDesign:HintAssist.Hint="Ende TT.MM.JJJJ"
+                                             Text="{Binding NewHintEndDate, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                                <WrapPanel>
+                                    <Button Content="Hinweis hinzufügen" Command="{Binding AddDateBasedHintCommand}"
+                                            Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0" />
+                                    <Button Content="Auswahl löschen" Command="{Binding RemoveDateBasedHintCommand}"
+                                            Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Grid>
                     </materialDesign:Card>
                 </Grid>
             </TabItem>
         </TabControl>
-    </DockPanel>
+
+        <DockPanel Grid.Row="2" Margin="0,10,0,0">
+            <Button DockPanel.Dock="Right"
+                    Content="Speichern"
+                    Command="{Binding SaveCommand}"
+                    MinWidth="120"
+                    Margin="12,0,0,0"
+                    Style="{StaticResource MaterialDesignRaisedButton}" />
+            <TextBlock Text="{Binding StatusMessage}"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap"
+                       Opacity="0.85"
+                       FontSize="12" />
+        </DockPanel>
+    </Grid>
 </UserControl>

@@ -106,6 +106,16 @@ public static class RouteDisplayHelper
     public static string ToDistributionDisplayString(string displayString) =>
         ToDistributionDisplayString(Parse(displayString));
 
+    /// <summary>Einheitlicher Schlüssel für <c>routeStops</c> / Haltestellen-Zuordnung (ohne PassengerLine).</summary>
+    public static string ToCanonicalRouteKey(string routeKey) =>
+        ToDistributionDisplayString(routeKey);
+
+    public static bool RouteKeysMatch(string? left, string? right) =>
+        string.Equals(
+            ToCanonicalRouteKey(left ?? string.Empty),
+            ToCanonicalRouteKey(right ?? string.Empty),
+            StringComparison.OrdinalIgnoreCase);
+
     public static RouteDefinition Parse(string displayString)
     {
         var text = (displayString ?? string.Empty).Trim();
@@ -179,6 +189,35 @@ public static class RouteDisplayHelper
         }
 
         return parts[0].PadLeft(3, '0') + "/" + parts[1].PadLeft(2, '0');
+    }
+
+    /// <summary>Linie/Kurs aus App-Eingabe (Ziffernblock oder mit „/“) – wie GPSAnsagen <c>normalizeLineCourse</c>.</summary>
+    public static bool TryParseLineCourseUserInput(string? input, out string normalizedLineCourse)
+    {
+        normalizedLineCourse = string.Empty;
+        var raw = (input ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(raw))
+        {
+            return false;
+        }
+
+        if (raw.Contains('/'))
+        {
+            normalizedLineCourse = NormalizeLineCourse(raw);
+            return normalizedLineCourse.Contains('/') &&
+                   normalizedLineCourse.Length >= 6;
+        }
+
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        normalizedLineCourse = digits.Length switch
+        {
+            3 => NormalizeLineCourse($"{digits.PadLeft(3, '0')}/00"),
+            4 => NormalizeLineCourse(
+                $"{digits[..3].PadLeft(3, '0')}/{digits[3..].PadLeft(2, '0')}"),
+            5 => NormalizeLineCourse($"{digits[..3]}/{digits[3..]}"),
+            _ => string.Empty
+        };
+        return !string.IsNullOrEmpty(normalizedLineCourse);
     }
 
     public static bool HasDuplicateTripInLineCourse(IEnumerable<string> routeKeys, RouteDefinition candidate) =>

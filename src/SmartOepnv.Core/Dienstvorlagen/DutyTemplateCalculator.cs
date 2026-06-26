@@ -347,13 +347,18 @@ public static class DutyTemplateCalculator
             .Select(minutes => minutes!.Value)
             .ToList();
 
-        if (fromTimes.Count == 0)
+        return SpansOperatingDayMidnight(fromTimes);
+    }
+
+    public static bool SpansOperatingDayMidnight(IReadOnlyList<int> minutesFromMidnight)
+    {
+        if (minutesFromMidnight.Count == 0)
         {
             return false;
         }
 
-        return fromTimes.Any(minutes => minutes >= EveningTripThresholdMinutes)
-               && fromTimes.Any(minutes => minutes < OperatingDayStartMinutes);
+        return minutesFromMidnight.Any(minutes => minutes >= EveningTripThresholdMinutes)
+               && minutesFromMidnight.Any(minutes => minutes < OperatingDayStartMinutes);
     }
 
     public static int? ParseMinutes(string? text)

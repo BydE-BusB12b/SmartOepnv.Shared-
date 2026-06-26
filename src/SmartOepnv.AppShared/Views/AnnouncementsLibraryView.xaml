@@ -21,15 +21,12 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid Margin="0,0,0,8" VerticalAlignment="Stretch">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalContentAlignment="Top">
+    <Grid Margin="0,0,0,8" VerticalAlignment="Top">
 
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <Grid Grid.Row="0" VerticalAlignment="Stretch">
-
-            <Grid.ColumnDefinitions>
+        <Grid.ColumnDefinitions>
 
                 <ColumnDefinition Width="340" />
 
@@ -43,25 +40,11 @@
 
                              Background="{StaticResource SmartSurfaceBrush}"
 
-                             VerticalAlignment="Stretch">
+                             VerticalAlignment="Top">
 
-            <!-- Grid: Kopf, scrollbare Liste, Buttons – keine Überlagerung -->
+            <DockPanel LastChildFill="True">
 
-            <Grid VerticalAlignment="Stretch">
-
-                <Grid.RowDefinitions>
-
-                    <RowDefinition Height="Auto" />
-
-                    <RowDefinition Height="*" MinHeight="280" />
-
-                    <RowDefinition Height="Auto" />
-
-                </Grid.RowDefinitions>
-
-
-
-                <StackPanel Grid.Row="0">
+                <StackPanel DockPanel.Dock="Top">
 
                     <TextBlock Text="Ansagen-Kartei"
 
@@ -81,69 +64,7 @@
 
 
 
-                <ListBox Grid.Row="1"
-
-                         ItemsSource="{Binding FilteredAnnouncements}"
-
-                         SelectedItem="{Binding SelectedAnnouncement}"
-
-                         BorderThickness="1"
-
-                         BorderBrush="#334155"
-
-                         Background="Transparent"
-
-                         VerticalAlignment="Stretch"
-
-                         Margin="0,2,0,8"
-
-                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-
-                         ScrollViewer.CanContentScroll="False"
-
-                         VirtualizingPanel.IsVirtualizing="True"
-
-                         VirtualizingPanel.VirtualizationMode="Recycling">
-
-                    <ListBox.ItemContainerStyle>
-
-                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
-
-                            <Setter Property="Padding" Value="8,3" />
-
-                            <Setter Property="Margin" Value="0,0,0,2" />
-
-                            <Setter Property="MinHeight" Value="0" />
-
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-
-                        </Style>
-
-                    </ListBox.ItemContainerStyle>
-
-                    <ListBox.ItemTemplate>
-
-                        <DataTemplate>
-
-                            <TextBlock Text="{Binding DisplayLabel}"
-
-                                       TextWrapping="Wrap"
-
-                                       FontSize="12"
-
-                                       LineHeight="16" />
-
-                        </DataTemplate>
-
-                    </ListBox.ItemTemplate>
-
-                </ListBox>
-
-
-
-                <StackPanel Grid.Row="2">
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
 
                     <Button Content="Speichern &amp; JSON"
 
@@ -221,7 +142,69 @@
 
                 </StackPanel>
 
-            </Grid>
+
+
+                <ListBox ItemsSource="{Binding FilteredAnnouncements}"
+
+                         SelectedItem="{Binding SelectedAnnouncement}"
+
+                         BorderThickness="1"
+
+                         BorderBrush="#334155"
+
+                         Background="Transparent"
+
+                         MinHeight="220"
+
+                         MaxHeight="420"
+
+                         Margin="0,2,0,0"
+
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+
+                         ScrollViewer.CanContentScroll="False"
+
+                         VirtualizingPanel.IsVirtualizing="True"
+
+                         VirtualizingPanel.VirtualizationMode="Recycling">
+
+                    <ListBox.ItemContainerStyle>
+
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+
+                            <Setter Property="Padding" Value="8,3" />
+
+                            <Setter Property="Margin" Value="0,0,0,2" />
+
+                            <Setter Property="MinHeight" Value="0" />
+
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+
+                        </Style>
+
+                    </ListBox.ItemContainerStyle>
+
+                    <ListBox.ItemTemplate>
+
+                        <DataTemplate>
+
+                            <TextBlock Text="{Binding DisplayLabel}"
+
+                                       TextWrapping="Wrap"
+
+                                       FontSize="12"
+
+                                       LineHeight="16" />
+
+                        </DataTemplate>
+
+                    </ListBox.ItemTemplate>
+
+                </ListBox>
+
+            </DockPanel>
 
         </materialDesign:Card>
 
@@ -231,9 +214,7 @@
 
                              Background="{StaticResource SmartSurfaceBrush}"
 
-                             VerticalAlignment="Stretch">
-
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                             VerticalAlignment="Top">
 
                 <DockPanel>
 
@@ -725,12 +706,9 @@
 
                 </DockPanel>
 
-            </ScrollViewer>
-
         </materialDesign:Card>
 
         </Grid>
-
-    </Grid>
+    </ScrollViewer>
 
 </UserControl>
