@@ -17,6 +17,7 @@ public sealed class AddRouteDialog : Window
     private readonly TextBox _tripNumberBox;
     private readonly TextBox _passengerLineBox;
     private readonly TextBlock _errorText;
+    private readonly CheckBox _itcsRouteListCheck;
     private readonly List<CheckBox> _operatingDayChecks = [];
     private bool _formattingLineCourse;
 
@@ -24,9 +25,16 @@ public sealed class AddRouteDialog : Window
     public IReadOnlyList<DutyOperatingDay> ResultOperatingDays { get; private set; } = [];
     public string? CopyStopsFromRouteKey { get; private set; }
     public string? EditingRouteKey { get; }
+    public bool ResultItcsRouteListEnabled { get; private set; }
 
     public AddRouteDialog(EditableRoutePackage package, RouteDefinition? initial = null, string? copyFromRouteKey = null, string? editingRouteKey = null)
-        : this(package.RouteNames.ToList(), package.RouteOperatingDaysByRoute, initial, copyFromRouteKey, editingRouteKey)
+        : this(
+            package.RouteNames.ToList(),
+            package.RouteOperatingDaysByRoute,
+            initial,
+            copyFromRouteKey,
+            editingRouteKey,
+            editingRouteKey is not null && package.IsRouteInItcsRouteList(editingRouteKey))
     {
     }
 
@@ -35,7 +43,8 @@ public sealed class AddRouteDialog : Window
         IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute,
         RouteDefinition? initial = null,
         string? copyFromRouteKey = null,
-        string? editingRouteKey = null)
+        string? editingRouteKey = null,
+        bool initialItcsRouteListEnabled = false)
     {
         EditingRouteKey = string.IsNullOrWhiteSpace(editingRouteKey) ? null : editingRouteKey.Trim();
         var isEdit = EditingRouteKey is not null;
@@ -121,6 +130,23 @@ public sealed class AddRouteDialog : Window
             ApplyOperatingDaysToChecks(
                 RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, EditingRouteKey!));
         }
+
+        _itcsRouteListCheck = new CheckBox
+        {
+            Content = "In ITCS-Routenliste (Route wählen)",
+            IsChecked = initialItcsRouteListEnabled,
+            Foreground = LabelForeground,
+            Margin = new Thickness(0, 4, 0, 4)
+        };
+        root.Children.Add(_itcsRouteListCheck);
+        root.Children.Add(new TextBlock
+        {
+            Text = "Linie/Kurs-Suche in der App zeigt alle Fahrten unabhängig davon.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 8)
+        });
 
         var copyButton = new Button
         {
@@ -286,6 +312,7 @@ public sealed class AddRouteDialog : Window
 
         ResultDefinition = definition;
         ResultOperatingDays = selectedDays.ToList();
+        ResultItcsRouteListEnabled = _itcsRouteListCheck.IsChecked == true;
         DialogResult = true;
         Close();
     }

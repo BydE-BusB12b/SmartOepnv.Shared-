@@ -112,7 +112,15 @@
                                    Margin="0,0,0,6" />
                         <TextBox materialDesign:HintAssist.Hint="Zieltext (z. B. W-Vohwinkel)"
                                  Text="{Binding RouteInteriorDisplayDestination, UpdateSourceTrigger=PropertyChanged}"
-                                 MaxLength="16" />
+                                 MaxLength="16"
+                                 Margin="0,0,0,10" />
+                        <CheckBox Content="In ITCS-Routenliste (Route wählen)"
+                                  IsChecked="{Binding RouteItcsRouteListEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                  Margin="0,0,0,4" />
+                        <TextBlock Text="Linie/Kurs-Suche in der App zeigt alle Fahrten unabhängig davon."
+                                   Opacity="0.7"
+                                   FontSize="10"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
                     <TextBlock Text="Haltestellen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
                     <TextBlock Text="Haltestelle anklicken zum Bearbeiten · ▲▼ Reihenfolge · ✕ löschen"

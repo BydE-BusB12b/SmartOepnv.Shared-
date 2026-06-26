@@ -24,6 +24,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private string searchQuery = string.Empty;
     [ObservableProperty] private string routeOperatingDaysDisplay = string.Empty;
     [ObservableProperty] private string routeInteriorDisplayDestination = string.Empty;
+    [ObservableProperty] private bool routeItcsRouteListEnabled = true;
     [ObservableProperty] private bool saveButtonIsSuccess;
     [ObservableProperty] private bool isRouteSettingsExpanded;
 
@@ -32,6 +33,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     private bool _suppressOperatingDaySync;
     private bool _suppressInteriorDestinationSync;
+    private bool _suppressItcsRouteListSync;
 
     private readonly List<string> _allRoutes = [];
     public ObservableCollection<string> FilteredRoutes { get; } = [];
@@ -265,6 +267,16 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         PersistRouteInteriorDisplayDestinationFromSelection();
     }
 
+    partial void OnRouteItcsRouteListEnabledChanged(bool value)
+    {
+        if (_suppressItcsRouteListSync)
+        {
+            return;
+        }
+
+        PersistRouteItcsRouteListFromSelection();
+    }
+
     partial void OnSelectedRouteChanged(string? value)
     {
         IsRouteSettingsExpanded = false;
@@ -273,6 +285,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         SelectedStop = null;
         LoadRouteOperatingDaysForSelection(value);
         LoadRouteInteriorDisplayDestinationForSelection(value);
+        LoadRouteItcsRouteListForSelection(value);
         if (string.IsNullOrWhiteSpace(value))
         {
             RemoveSelectedStopCommand.NotifyCanExecuteChanged();
@@ -405,7 +418,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 dialog.ResultOperatingDays,
                 dialog.CopyStopsFromRouteKey,
                 out var displayKey,
-                out var error))
+                out var error,
+                dialog.ResultItcsRouteListEnabled))
         {
             StatusMessage = error ?? "Route konnte nicht angelegt werden.";
             return;
@@ -446,6 +460,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 SelectedRoute,
                 dialog.ResultDefinition,
                 dialog.ResultOperatingDays,
+                dialog.ResultItcsRouteListEnabled,
                 out var displayKey,
                 out var error))
         {
@@ -795,6 +810,41 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         editor.SetRouteInteriorDisplayDestination(SelectedRoute, RouteInteriorDisplayDestination);
         _sync.MarkDirty();
         StatusMessage = $"Haltestellenanzeige-Zieltext für „{SelectedRoute}“ geändert – bitte speichern.";
+    }
+
+    private void LoadRouteItcsRouteListForSelection(string? routeKey)
+    {
+        var editor = AppServices.Routes.Editor;
+        _suppressItcsRouteListSync = true;
+        try
+        {
+            RouteItcsRouteListEnabled = !string.IsNullOrWhiteSpace(routeKey) && editor is not null &&
+                                        editor.IsRouteInItcsRouteList(routeKey);
+        }
+        finally
+        {
+            _suppressItcsRouteListSync = false;
+        }
+    }
+
+    private void PersistRouteItcsRouteListFromSelection()
+    {
+        if (_suppressItcsRouteListSync || string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.SetRouteInItcsRouteList(SelectedRoute, RouteItcsRouteListEnabled);
+        _sync.MarkDirty();
+        StatusMessage = RouteItcsRouteListEnabled
+            ? $"Route „{SelectedRoute}“ erscheint in der ITCS-Routenliste – bitte speichern."
+            : $"Route „{SelectedRoute}“ nur per Linie/Kurs – bitte speichern.";
     }
 
     private void AttachRouteOperatingDayHandler(OperatingDayOptionItem item)

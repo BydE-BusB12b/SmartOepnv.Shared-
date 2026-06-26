@@ -29,6 +29,9 @@ public sealed class EditableRoutePackage
     public IDictionary<string, string> RouteInteriorDisplayDestinationsByRoute { get; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
+    public HashSet<string> RoutesExcludedFromItcsRouteList { get; } =
+        new(StringComparer.Ordinal);
+
     public static EditableRoutePackage FromJson(string json)
     {
         var node = JsonNode.Parse(json) ?? throw new InvalidOperationException("Ungültiges JSON.");
@@ -79,6 +82,7 @@ public sealed class EditableRoutePackage
         OutsideDisplays.Clear();
         RouteOperatingDaysByRoute.Clear();
         RouteInteriorDisplayDestinationsByRoute.Clear();
+        RoutesExcludedFromItcsRouteList.Clear();
 
         if (_root["routes"] is JsonArray routes)
         {
@@ -202,6 +206,11 @@ public sealed class EditableRoutePackage
             RouteOperatingDaysByRoute[key] = days;
         }
 
+        foreach (var key in RouteItcsRouteListEditor.LoadFromRoot(_root))
+        {
+            RoutesExcludedFromItcsRouteList.Add(key);
+        }
+
         ConsolidateDuplicateRouteKeys();
         NormalizeRouteDisplayNamesForOperatingDays();
         PruneOrphanStopBuckets();
@@ -278,7 +287,8 @@ public sealed class EditableRoutePackage
         IReadOnlyCollection<DutyOperatingDay>? operatingDays,
         string? copyStopsFromRouteKey,
         out string displayKey,
-        out string? error)
+        out string? error,
+        bool inItcsRouteList = false)
     {
         var days = operatingDays is null
             ? RouteOperatingDaysEditor.AllDays.ToList()
@@ -316,6 +326,7 @@ public sealed class EditableRoutePackage
 
         AddRoute(displayKey);
         SetRouteOperatingDays(displayKey, days);
+        SetRouteInItcsRouteList(displayKey, inItcsRouteList);
         if (!string.IsNullOrWhiteSpace(copyStopsFromRouteKey))
         {
             var sourceKey = copyStopsFromRouteKey.Trim();
@@ -344,6 +355,7 @@ public sealed class EditableRoutePackage
         string existingRouteKey,
         RouteDefinition definition,
         IReadOnlyCollection<DutyOperatingDay> operatingDays,
+        bool inItcsRouteList,
         out string displayKey,
         out string? error)
     {
@@ -401,6 +413,7 @@ public sealed class EditableRoutePackage
         }
 
         SetRouteOperatingDays(displayKey, days);
+        SetRouteInItcsRouteList(displayKey, inItcsRouteList);
         error = null;
         return true;
     }
@@ -454,6 +467,7 @@ public sealed class EditableRoutePackage
             RouteNames.Remove(key);
             RouteOperatingDaysEditor.RemoveRoute(RouteOperatingDaysByRoute, key);
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, key);
+            RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, key);
         }
 
         foreach (var stopKey in StopsByRoute.Keys
@@ -583,6 +597,12 @@ public sealed class EditableRoutePackage
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, oldKey);
         }
 
+        if (!RouteItcsRouteListEditor.IsInItcsRouteList(RoutesExcludedFromItcsRouteList, oldKey))
+        {
+            RouteItcsRouteListEditor.SetInItcsRouteList(RoutesExcludedFromItcsRouteList, newKey, false);
+            RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, oldKey);
+        }
+
         RouteNavigationMetadataCopy.CopyForRoute(_root, oldKey, newKey);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, oldKey);
     }
@@ -688,6 +708,12 @@ public sealed class EditableRoutePackage
 
     public void SetRouteInteriorDisplayDestination(string routeDisplayKey, string? text) =>
         RouteInteriorDisplayDestinationEditor.SetForRoute(RouteInteriorDisplayDestinationsByRoute, routeDisplayKey, text);
+
+    public bool IsRouteInItcsRouteList(string routeDisplayKey) =>
+        RouteItcsRouteListEditor.IsInItcsRouteList(RoutesExcludedFromItcsRouteList, routeDisplayKey);
+
+    public void SetRouteInItcsRouteList(string routeDisplayKey, bool inList) =>
+        RouteItcsRouteListEditor.SetInItcsRouteList(RoutesExcludedFromItcsRouteList, routeDisplayKey, inList);
 
     public void AddStop(string routeName, RouteStopItem? template = null)
     {
