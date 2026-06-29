@@ -180,6 +180,40 @@ public partial class RoutesViewModel
         }
     }
 
+    [ObservableProperty] private string lineCourseTripQuickEntry = string.Empty;
+
+    partial void OnLineCourseTripQuickEntryChanged(string value) =>
+        ApplyLineCourseTripByNumberCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand(CanExecute = nameof(CanApplyLineCourseTripByNumber))]
+    private void ApplyLineCourseTripByNumber()
+    {
+        if (SelectedStop is null)
+        {
+            return;
+        }
+
+        var routes = LineCourseTripRoutes
+            .Where(route => !string.Equals(route, RouteStopEditorCatalog.NoLineCourseTripLabel, StringComparison.Ordinal));
+        if (!RouteStopEditorCatalog.TryResolveLineCourseTripByTripNumber(
+                routes,
+                LineCourseTripQuickEntry,
+                SelectedRoute,
+                out var matchedRoute,
+                out var error))
+        {
+            StatusMessage = error ?? "Fahrt konnte nicht übernommen werden.";
+            return;
+        }
+
+        SelectedLineCourseTrip = matchedRoute;
+        LineCourseTripQuickEntry = string.Empty;
+        StatusMessage = $"Routenwechsel-Fahrt übernommen: {matchedRoute}";
+    }
+
+    private bool CanApplyLineCourseTripByNumber() =>
+        ShowRouteChangeFields && !string.IsNullOrWhiteSpace(LineCourseTripQuickEntry);
+
     partial void OnSelectedStopVrrStopIdChanged(string value)
     {
         if (_syncingStopVrrStopId || SelectedStop is null)
@@ -371,6 +405,7 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(SelectedEndDestinationDs021t));
         OnPropertyChanged(nameof(SelectedEndDestinationDs003a));
         OnPropertyChanged(nameof(SelectedLineCourseTrip));
+        ApplyLineCourseTripByNumberCommand.NotifyCanExecuteChanged();
     }
 
     private void MarkStopDetailDirty()

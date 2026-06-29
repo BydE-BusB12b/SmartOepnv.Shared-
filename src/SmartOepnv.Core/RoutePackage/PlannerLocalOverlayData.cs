@@ -29,6 +29,9 @@ public sealed class PlannerLocalOverlayData
     /// <summary>Normalisierte KOM-Telefonnummern gelöschter Fahrzeuge.</summary>
     public List<string> DeletedVehiclePhoneKeys { get; set; } = [];
 
+    /// <summary>Verteil-Schlüssel gelöschter Routen (wie <c>routeStops</c>).</summary>
+    public List<string> DeletedRouteKeys { get; set; } = [];
+
     /// <summary>Fahrzeugdisposition: Touren/Einsätze (nur Planer).</summary>
     public List<VehicleDispositionAssignment> VehicleDispositionAssignments { get; set; } = [];
 
@@ -43,6 +46,7 @@ public sealed class PlannerLocalOverlayData
         DeletedEmployeePersonnel.Count > 0 ||
         DeletedEmployeePhones.Count > 0 ||
         DeletedVehiclePhoneKeys.Count > 0 ||
+        DeletedRouteKeys.Count > 0 ||
         VehicleDispositionAssignments.Count > 0 ||
         DriverDispositionAssignments.Count > 0;
 }

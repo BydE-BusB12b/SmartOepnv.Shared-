@@ -161,6 +161,8 @@ public static class AutoSchedulePlanner
             {
                 editor.SetRouteInteriorDisplayDestination(displayKey, templateInteriorDestination);
             }
+
+            editor.SetAutoScheduleSourceRoute(displayKey, request.TemplateRouteKey);
         }
 
         if (createdCount == 0)

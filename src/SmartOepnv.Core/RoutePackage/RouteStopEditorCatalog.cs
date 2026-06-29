@@ -49,6 +49,75 @@ public static class RouteStopEditorCatalog
             .ToList();
     }
 
+    public static bool TryResolveLineCourseTripByTripNumber(
+        IEnumerable<string> routes,
+        string tripNumberInput,
+        string? contextRouteKey,
+        out string? matchedRoute,
+        out string? error)
+    {
+        matchedRoute = null;
+        error = null;
+        var normalizedTrip = RouteDisplayHelper.NormalizeTripNumber(tripNumberInput);
+        if (string.IsNullOrEmpty(normalizedTrip))
+        {
+            error = "Bitte Fahrtnummer eingeben.";
+            return false;
+        }
+
+        var candidates = routes
+            .Where(route => !string.Equals(route, NoLineCourseTripLabel, StringComparison.Ordinal))
+            .Where(route =>
+                string.Equals(
+                    RouteDisplayHelper.NormalizeTripNumber(RouteDisplayHelper.Parse(route).TripNumber),
+                    normalizedTrip,
+                    StringComparison.Ordinal))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            error = $"Keine Route mit Fahrt {tripNumberInput.Trim()} gefunden.";
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(contextRouteKey))
+        {
+            var contextLineCourse = RouteDisplayHelper.NormalizeLineCourse(
+                RouteDisplayHelper.Parse(contextRouteKey).LineCourse);
+            if (!string.IsNullOrEmpty(contextLineCourse))
+            {
+                var sameLine = candidates
+                    .Where(route =>
+                        string.Equals(
+                            RouteDisplayHelper.NormalizeLineCourse(RouteDisplayHelper.Parse(route).LineCourse),
+                            contextLineCourse,
+                            StringComparison.Ordinal))
+                    .ToList();
+                if (sameLine.Count == 1)
+                {
+                    matchedRoute = sameLine[0];
+                    return true;
+                }
+
+                if (sameLine.Count > 1)
+                {
+                    error = $"Mehrere Fahrten mit Nummer {tripNumberInput.Trim()} auf Linie/Kurs {contextLineCourse}.";
+                    return false;
+                }
+            }
+        }
+
+        if (candidates.Count == 1)
+        {
+            matchedRoute = candidates[0];
+            return true;
+        }
+
+        error = $"Fahrtnummer {tripNumberInput.Trim()} ist mehrfach vorhanden – bitte Linie/Kurs prüfen.";
+        return false;
+    }
+
     private static IReadOnlyList<string> LoadProtocolNames(EditableRoutePackage? editor, bool isKrefeld)
     {
         if (editor is null)

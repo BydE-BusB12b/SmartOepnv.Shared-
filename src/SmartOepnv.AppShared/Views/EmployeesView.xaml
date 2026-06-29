@@ -2,8 +2,25 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels"
+             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch">
+    <UserControl.Resources>
+        <conv:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+        <Style x:Key="EmployeeMgmtSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SaveButtonState}" Value="{x:Static vm:EmployeeManagementButtonState.Success}">
+                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid Margin="0,0,0,8">
             <Grid.RowDefinitions>
@@ -34,13 +51,13 @@
                                 Command="{Binding AddEmployeeCommand}"
                                 Style="{StaticResource MaterialDesignRaisedButton}"
                                 Margin="0,0,0,8" />
-                        <Button Content="Auswahl löschen"
+                        <Button Content="Mitarbeiter löschen"
                                 Command="{Binding RemoveEmployeeCommand}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Margin="0,0,0,8" />
                         <Button Content="Speichern"
                                 Command="{Binding SaveChangesCommand}"
-                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Style="{StaticResource EmployeeMgmtSaveButtonStyle}"
                                 Margin="0,0,0,8" />
                         <Button Content="PDF erstellen"
                                 Command="{Binding ExportBriefingPdfCommand}"
@@ -123,18 +140,21 @@
                                        VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" MinWidth="150" />
                             <TextBox Grid.Row="0" Grid.Column="1"
                                      Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                     IsReadOnly="{Binding IsBuiltinAdmin}"
                                      Margin="0,0,0,10" />
 
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Personalnummer:"
                                        VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
                             <TextBox Grid.Row="1" Grid.Column="1"
                                      Text="{Binding PersonnelNumber, UpdateSourceTrigger=PropertyChanged}"
+                                     IsReadOnly="{Binding IsBuiltinAdmin}"
                                      Margin="0,0,0,10" />
 
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="Passwort (Bus):"
                                        VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
                             <TextBox Grid.Row="2" Grid.Column="1"
                                      Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                                     IsReadOnly="{Binding IsBuiltinAdmin}"
                                      Margin="0,0,0,10" />
 
                             <TextBlock Grid.Row="3" Grid.Column="0" Text="Telefon:"
@@ -201,11 +221,13 @@
                             <CheckBox Grid.Row="11" Grid.ColumnSpan="2"
                                       Content="App (Handy/Tablet) – Hauptnutzer am Bus-Gerät"
                                       IsChecked="{Binding LoginAsMainDevice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      IsEnabled="{Binding IsBuiltinAdmin, Converter={StaticResource InverseBooleanConverter}}"
                                       Margin="0,0,0,8" />
 
                             <CheckBox Grid.Row="12" Grid.ColumnSpan="2"
                                       Content="Planer"
                                       IsChecked="{Binding PlannerLoginEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      IsEnabled="{Binding IsBuiltinAdmin, Converter={StaticResource InverseBooleanConverter}}"
                                       Margin="0,0,0,8" />
 
                             <StackPanel Grid.Row="13" Grid.ColumnSpan="2" Margin="0,0,0,8">
@@ -248,7 +270,8 @@
                                                Opacity="0.9"
                                                MinWidth="150" />
                                     <TextBox Grid.Column="1"
-                                             Text="{Binding PlannerPassword, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{Binding PlannerPassword, UpdateSourceTrigger=PropertyChanged}"
+                                             IsReadOnly="{Binding IsBuiltinAdmin}" />
                                 </Grid>
                                 <TextBlock Text="Anmeldung im Planer mit Vor- und Nachname (Feld Name) und diesem Passwort."
                                            Opacity="0.65"

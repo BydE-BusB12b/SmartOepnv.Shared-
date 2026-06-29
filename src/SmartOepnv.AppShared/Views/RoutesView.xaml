@@ -143,6 +143,9 @@
                         <Button Content="Fahrplan" Command="{Binding ShowAutoScheduleCommand}" Margin="0,0,8,8"
                                 Style="{StaticResource MaterialDesignRaisedButton}"
                                 ToolTip="Automatische Fahrplanerstellung (wie in der App)" />
+                        <Button Content="Navidaten kopieren" Command="{Binding CopyNavigationDataCommand}" Margin="0,0,8,8"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                ToolTip="Fahrweg von der Fahrplan-Vorlagen-Route übernehmen (nur Fahrplan-Fahrten)" />
                         <Button Content="📄 Fahrplan" Command="{Binding ExportScheduleHtmlCommand}" Margin="0,0,8,8"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 ToolTip="HTML-Fahrplan der ausgewählten Route öffnen" />

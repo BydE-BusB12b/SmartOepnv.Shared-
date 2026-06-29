@@ -192,6 +192,8 @@ public sealed class EmployeeRosterItem : INotifyPropertyChanged
             ? Name
             : $"{Name} (PN {PersonnelNumber})";
 
+    public bool IsBuiltinAdmin => BuiltinAdminEmployee.IsBuiltinAdmin(this);
+
     public bool IsDeprecatedDefaultCredential()
     {
         var personnel = NormalizePersonnelDigits(PersonnelNumber);

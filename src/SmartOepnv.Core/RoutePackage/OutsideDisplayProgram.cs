@@ -211,6 +211,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             FrontLine1 = string.Empty,
             Ds001Type = "line",
             Ds001Value = "001",
+            Ds001Spec = "E00",
             IntervalSeconds = 3,
             IsKrefeld = false
         };
@@ -241,8 +242,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
         var program = new OutsideDisplayProgram
         {
-            Name = parts[0],
-            IsKrefeld = parts.Length >= 9
+            Name = parts[0]
         };
 
         var frontLog = DecodeUtf8(parts.ElementAtOrDefault(3));
@@ -281,14 +281,24 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
         var ds001Type = DecodeUtf8(parts.ElementAtOrDefault(5));
         var ds001Value = DecodeUtf8(parts.ElementAtOrDefault(6));
-        if (!string.IsNullOrWhiteSpace(ds001Type))
+        if (string.Equals(ds001Type, "special", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(ds001Value))
         {
-            program.Ds001Type = ds001Type;
+            program.Ds001Spec = ds001Value.Trim().ToUpperInvariant();
+            program.Ds001Type = "line";
+            program.Ds001Value = "001";
         }
-
-        if (!string.IsNullOrWhiteSpace(ds001Value))
+        else
         {
-            program.Ds001Value = ds001Value;
+            if (!string.IsNullOrWhiteSpace(ds001Type))
+            {
+                program.Ds001Type = ds001Type;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ds001Value))
+            {
+                program.Ds001Value = ds001Value;
+            }
         }
 
         if (parts.Length >= 8 && bool.TryParse(parts[7], out var listEnabled))
@@ -308,6 +318,8 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
                 program.Ds001Spec = "E00";
             }
         }
+
+        program.IsKrefeld = InferIsKrefeld(frontBytes, sideBytes, parts);
 
         if (string.Equals(program.Name, "Startziel", StringComparison.Ordinal))
         {
@@ -351,27 +363,6 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         var sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
         var frontLog = OutsideDisplayCycleParser.BuildLogString(frontGoals);
         var sideLog = OutsideDisplayCycleParser.BuildLogString(sideGoals);
-        var ds001Type = EncodeUtf8(IsKrefeld ? "line" : Ds001Type);
-        var ds001Value = EncodeUtf8(
-            IsKrefeld ? NormalizeKrefeldLine(Ds001Value) : Ds001Value.Trim());
-
-        if (IsKrefeld)
-        {
-            return string.Join('|',
-                Name,
-                EncodeBytes(frontBytes),
-                EncodeBytes(sideBytes),
-                EncodeUtf8(frontLog),
-                EncodeUtf8(sideLog),
-                ds001Type,
-                ds001Value,
-                IsListEnabled.ToString().ToLowerInvariant(),
-                EncodeUtf8(NormalizeKrefeldSpec(Ds001Spec)));
-        }
-
-        var ds001Val = Ds001Type == "line"
-            ? NormalizeKrefeldLine(Ds001Value)
-            : Ds001Value.Trim().ToUpperInvariant();
 
         return string.Join('|',
             Name,
@@ -379,9 +370,48 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             EncodeBytes(sideBytes),
             EncodeUtf8(frontLog),
             EncodeUtf8(sideLog),
-            EncodeUtf8(Ds001Type),
-            EncodeUtf8(ds001Val),
-            IsListEnabled.ToString().ToLowerInvariant());
+            EncodeUtf8("line"),
+            EncodeUtf8(NormalizeKrefeldLine(Ds001Value)),
+            IsListEnabled.ToString().ToLowerInvariant(),
+            EncodeUtf8(NormalizeKrefeldSpec(Ds001Spec)));
+    }
+
+    private static bool InferIsKrefeld(byte[]? frontBytes, byte[]? sideBytes, string[] parts)
+    {
+        var tag = DecodeUtf8(parts.ElementAtOrDefault(12));
+        if (string.Equals(tag, "DS003a_Krefeld", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.Equals(tag, "DS021T", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(tag, "DS021", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(tag, "DS003a_UESTRA", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (var bytes in new[] { frontBytes, sideBytes })
+        {
+            if (bytes is null or { Length: 0 })
+            {
+                continue;
+            }
+
+            var ascii = Encoding.ASCII.GetString(bytes);
+            if (ascii.Contains("zA4", StringComparison.Ordinal) ||
+                ascii.Contains("zA5", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (ascii.Contains("aA", StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeKrefeldLine(string value)

@@ -102,7 +102,39 @@ public sealed class PlannerLocalOverlayService
             }
         }
 
+        var driverKey = EmployeeDispoKeys.FromEmployee(employee);
+        RemoveDriverDispositionAssignments(driverKey, overlay);
+
         _store.Save(overlay);
+
+        if (driverKey.Length > 0)
+        {
+            AppServices.NotifyEmployeeRemovedFromRoster(driverKey);
+        }
+    }
+
+    private void RemoveDriverDispositionAssignments(string driverKey, PlannerLocalOverlayData overlay)
+    {
+        if (driverKey.Length == 0)
+        {
+            return;
+        }
+
+        overlay.DriverDispositionAssignments.RemoveAll(a =>
+            string.Equals(a.DriverKey, driverKey, StringComparison.Ordinal));
+
+        if (!_driverDispositionStore.Exists)
+        {
+            return;
+        }
+
+        var assignments = _driverDispositionStore.Load().ToList();
+        var removed = assignments.RemoveAll(a =>
+            string.Equals(a.DriverKey, driverKey, StringComparison.Ordinal));
+        if (removed > 0)
+        {
+            _driverDispositionStore.Save(assignments);
+        }
     }
 
     public void RecordVehicleDeleted(RegisteredVehicleItem vehicle)

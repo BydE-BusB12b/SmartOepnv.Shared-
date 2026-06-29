@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              HorizontalAlignment="Stretch"
              Foreground="White">
     <UserControl.Resources>
@@ -299,6 +300,25 @@
             <StackPanel Visibility="{Binding ShowRouteChangeFields, Converter={StaticResource BoolToVis}}"
                         HorizontalAlignment="Stretch">
                 <TextBlock Text="Linie/Kurs-Fahrt auswählen:" Margin="0,0,0,4" Opacity="0.9" />
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox materialDesign:HintAssist.Hint="Fahrtnummer (z. B. 3112)"
+                             Text="{Binding LineCourseTripQuickEntry, UpdateSourceTrigger=PropertyChanged}"
+                             MaxLength="4" />
+                    <Button Grid.Column="1"
+                            Content="Übernehmen"
+                            Command="{Binding ApplyLineCourseTripByNumberCommand}"
+                            Margin="8,0,0,0"
+                            Padding="12,4"
+                            MinHeight="32"
+                            Background="#1E5A9E"
+                            Foreground="White"
+                            BorderBrush="#42A5F5"
+                            ToolTip="Fahrt per Nummer wählen (gleiche Linie/Kurs wie aktuelle Route)" />
+                </Grid>
                 <Grid HorizontalAlignment="Stretch">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />

@@ -32,6 +32,33 @@ public static class RouteNavigationMetadataCopy
         CopyRawKeyedEntry(packageRoot, LeitstelleRoutePathOverview.OverviewsKey, source, target);
     }
 
+    public static bool HasNavigationData(JsonObject packageRoot, string routeKey)
+    {
+        if (string.IsNullOrWhiteSpace(routeKey))
+        {
+            return false;
+        }
+
+        var key = routeKey.Trim();
+        if (!string.IsNullOrWhiteSpace(RoutePathDraftRepository.TryGetDraftJson(packageRoot, key)))
+        {
+            return true;
+        }
+
+        if (OfflineRouteGuidancePackageSync.HasGuidance(packageRoot, key))
+        {
+            return true;
+        }
+
+        if (packageRoot[LeitstelleRoutePathOverview.OverviewsKey] is JsonObject overviews &&
+            overviews[key] is not null)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     private static void CopyPathDraft(JsonObject root, string source, string target)
     {
         var json = RoutePathDraftRepository.TryGetDraftJson(root, source);

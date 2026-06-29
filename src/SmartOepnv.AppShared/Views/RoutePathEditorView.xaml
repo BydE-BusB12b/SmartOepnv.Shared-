@@ -45,6 +45,32 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="RoutePathRoutePickerCombo" TargetType="ComboBox" BasedOn="{StaticResource SmartDarkComboBox}">
+            <Setter Property="MaxDropDownHeight" Value="320" />
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}"
+                                   Foreground="White"
+                                   TextTrimming="CharacterEllipsis"
+                                   TextWrapping="NoWrap"
+                                   ToolTip="{Binding}" />
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="RoutePathLineColorCombo" TargetType="ComboBox" BasedOn="{StaticResource SmartDarkComboBox}">
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate DataType="{x:Type vm:RouteLineColorOption}">
+                        <TextBlock Text="{Binding Label}"
+                                   Foreground="White"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Label}" />
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
     <DockPanel x:Name="RootDock" LastChildFill="True" ClipToBounds="True">
         <!-- Rechts: feste Breite, scrollt bei wenig Fensterhöhe (treibt Layout-Höhe nicht auf) -->
@@ -63,7 +89,8 @@
                         <TextBlock Text="Route &amp; Fahrweg" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,10" />
 
                         <TextBlock Text="Route" FontWeight="SemiBold" Margin="0,0,0,4" />
-                        <ComboBox ItemsSource="{Binding AvailableRoutes}"
+                        <ComboBox Style="{StaticResource RoutePathRoutePickerCombo}"
+                                  ItemsSource="{Binding AvailableRoutes}"
                                   SelectedItem="{Binding SelectedRoute}"
                                   Margin="0,0,0,10" />
 
@@ -116,8 +143,8 @@
                                 ToolTip="Gerade Linie A→B für Bussonderstreifen oder PKW-gesperrte Bereiche; OSRM-PKW-Routing wird umgangen." />
 
                         <TextBlock Text="Linienfarbe" FontWeight="SemiBold" Margin="0,0,0,4" />
-                        <ComboBox ItemsSource="{Binding RouteLineColorOptions}"
-                                  DisplayMemberPath="Label"
+                        <ComboBox Style="{StaticResource RoutePathLineColorCombo}"
+                                  ItemsSource="{Binding RouteLineColorOptions}"
                                   SelectedValuePath="Hex"
                                   SelectedValue="{Binding SelectedRouteLineColor}"
                                   Margin="0,0,0,10" />

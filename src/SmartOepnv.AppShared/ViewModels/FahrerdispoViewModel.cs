@@ -53,8 +53,27 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
         if (AppServices.IsInitialized)
         {
             AppServices.RegisterFlushBeforeExport(FlushBeforeExport);
+            AppServices.EmployeeRemovedFromRoster += OnEmployeeRemovedFromRoster;
             _flushRegistered = true;
         }
+    }
+
+    private void OnEmployeeRemovedFromRoster(string driverKey)
+    {
+        if (string.IsNullOrEmpty(driverKey))
+        {
+            return;
+        }
+
+        var removed = _assignments.RemoveAll(a =>
+            string.Equals(a.DriverKey, driverKey, StringComparison.Ordinal));
+        if (removed == 0)
+        {
+            return;
+        }
+
+        ScheduleRebuildGrid();
+        StatusMessage = $"Fahrerdisposition: {removed} Dienst(e) für gelöschten Mitarbeiter entfernt.";
     }
 
     private void EnsureFlushRegistered()
@@ -65,6 +84,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
         }
 
         AppServices.RegisterFlushBeforeExport(FlushBeforeExport);
+        AppServices.EmployeeRemovedFromRoster += OnEmployeeRemovedFromRoster;
         _flushRegistered = true;
     }
 

@@ -281,6 +281,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     {
         IsRouteSettingsExpanded = false;
         EditRouteCommand.NotifyCanExecuteChanged();
+        CopyNavigationDataCommand.NotifyCanExecuteChanged();
         Stops.Clear();
         SelectedStop = null;
         LoadRouteOperatingDaysForSelection(value);
@@ -676,6 +677,47 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         {
             StatusMessage = $"Fahrplan fehlgeschlagen: {ex.Message}";
         }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCopyNavigationDataForSelectedRoute))]
+    private void CopyNavigationData()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            StatusMessage = "Kein Route-Paket geladen.";
+            return;
+        }
+
+        if (!editor.TryCopyNavigationDataFromAutoScheduleSource(SelectedRoute, out var error))
+        {
+            StatusMessage = error ?? "Navidaten konnten nicht kopiert werden.";
+            return;
+        }
+
+        var source = editor.GetAutoScheduleSourceRoute(SelectedRoute);
+        _sync.MarkDirty();
+        CommitChanges();
+        StatusMessage = string.IsNullOrWhiteSpace(source)
+            ? "Navidaten kopiert."
+            : $"Navidaten von „{source}“ nach „{SelectedRoute}“ kopiert.";
+    }
+
+    private bool CanCopyNavigationDataForSelectedRoute()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return false;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        return editor is not null &&
+               !string.IsNullOrWhiteSpace(editor.GetAutoScheduleSourceRoute(SelectedRoute));
     }
 
     [RelayCommand]

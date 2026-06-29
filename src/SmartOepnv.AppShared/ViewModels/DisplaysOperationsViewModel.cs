@@ -8,13 +8,22 @@ using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
+public enum DisplaysOperationsButtonState
+{
+    Idle,
+    Success
+}
+
 public partial class DisplaysOperationsViewModel : ObservableObject, IEditorAreaViewModel
 {
+    private const int SuccessFeedbackMs = 5000;
+
     private readonly List<string> _preservedRawEntries = [];
     private bool _hasUnsavedChanges;
     private bool _committingChanges;
     private int _loadedRevision = -1;
     private OutsideDisplayProgram? _subscribedOutsideProgram;
+    private CancellationTokenSource? _saveFeedbackCts;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private DateBasedHintItem? selectedHint;
@@ -23,6 +32,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [ObservableProperty] private string newHintText = string.Empty;
     [ObservableProperty] private string newHintStartDate = string.Empty;
     [ObservableProperty] private string newHintEndDate = string.Empty;
+    [ObservableProperty] private DisplaysOperationsButtonState saveButtonState = DisplaysOperationsButtonState.Idle;
 
     public ObservableCollection<DateBasedHintItem> DateBasedHints { get; } = [];
     public ObservableCollection<OutsideDisplayProgram> OutsidePrograms { get; } = [];
@@ -95,7 +105,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         _loadedRevision = AppServices.Routes.EditorDataRevision;
     }
 
-    public void CommitChanges(bool force = false)
+    public void CommitChanges(bool force = false, bool showSuccessFeedback = false)
     {
         var editor = AppServices.Routes.Editor;
         if (editor is null)
@@ -132,10 +142,34 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             var enabledCount = OutsidePrograms.Count(p => p.IsListEnabled);
             StatusMessage =
                 $"Gespeichert – {OutsidePrograms.Count} Zielanzeigen ({enabledCount} in ITCS-Liste), {DateBasedHints.Count} Hinweise (Dropbox/Handy).";
+
+            if (showSuccessFeedback)
+            {
+                _ = ShowSaveSuccessFeedbackAsync();
+            }
         }
         finally
         {
             _committingChanges = false;
+        }
+    }
+
+    private async Task ShowSaveSuccessFeedbackAsync()
+    {
+        _saveFeedbackCts?.Cancel();
+        _saveFeedbackCts?.Dispose();
+        _saveFeedbackCts = new CancellationTokenSource();
+        var token = _saveFeedbackCts.Token;
+
+        SaveButtonState = DisplaysOperationsButtonState.Success;
+        try
+        {
+            await Task.Delay(SuccessFeedbackMs, token).ConfigureAwait(true);
+            SaveButtonState = DisplaysOperationsButtonState.Idle;
+        }
+        catch (TaskCanceledException)
+        {
+            // neuer Klick hat Feedback zurückgesetzt
         }
     }
 
@@ -326,7 +360,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     }
 
     [RelayCommand]
-    private void Save() => CommitChanges(force: true);
+    private void Save() => CommitChanges(force: true, showSuccessFeedback: true);
 
     [RelayCommand]
     private void AddDateBasedHint()

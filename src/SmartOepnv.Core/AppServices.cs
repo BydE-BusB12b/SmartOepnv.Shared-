@@ -66,6 +66,12 @@ public static class AppServices
     /// <summary>Registriert z. B. „Ansagen speichern“ vor Dropbox-Export.</summary>
     public static void RegisterFlushBeforeExport(Action flush) => _flushBeforeExport.Add(flush);
 
+    /// <summary>Fahrerdisposition: Dienste eines gelöschten Mitarbeiters aus der UI entfernen.</summary>
+    public static event Action<string>? EmployeeRemovedFromRoster;
+
+    public static void NotifyEmployeeRemovedFromRoster(string driverKey) =>
+        EmployeeRemovedFromRoster?.Invoke(driverKey);
+
     public static void FlushAllPendingEdits()
     {
         var errors = CollectFlushErrors(strict: true);

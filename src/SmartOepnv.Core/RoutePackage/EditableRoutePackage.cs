@@ -32,6 +32,9 @@ public sealed class EditableRoutePackage
     public HashSet<string> RoutesExcludedFromItcsRouteList { get; } =
         new(StringComparer.Ordinal);
 
+    public IDictionary<string, string> AutoScheduleSourceByRoute { get; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
     public static EditableRoutePackage FromJson(string json)
     {
         var node = JsonNode.Parse(json) ?? throw new InvalidOperationException("Ungültiges JSON.");
@@ -83,6 +86,7 @@ public sealed class EditableRoutePackage
         RouteOperatingDaysByRoute.Clear();
         RouteInteriorDisplayDestinationsByRoute.Clear();
         RoutesExcludedFromItcsRouteList.Clear();
+        AutoScheduleSourceByRoute.Clear();
 
         if (_root["routes"] is JsonArray routes)
         {
@@ -211,9 +215,78 @@ public sealed class EditableRoutePackage
             RoutesExcludedFromItcsRouteList.Add(key);
         }
 
+        foreach (var (key, source) in AutoScheduleSourceRouteEditor.LoadFromRoot(_root))
+        {
+            AutoScheduleSourceByRoute[key] = source;
+        }
+
         ConsolidateDuplicateRouteKeys();
         NormalizeRouteDisplayNamesForOperatingDays();
+        RecoverOrphanedStopsAfterTripNumberChange();
         PruneOrphanStopBuckets();
+    }
+
+    /// <summary>
+    /// Haltestellen unter alter Fahrtnummer wieder an die Route binden (z. B. nach fehlgeschlagener Umbenennung).
+    /// </summary>
+    private void RecoverOrphanedStopsAfterTripNumberChange()
+    {
+        var orphans = StopsByRoute
+            .Where(pair => pair.Value.Count > 0 &&
+                           !RouteNames.Any(name => RouteDisplayHelper.RouteKeysMatch(name, pair.Key)))
+            .ToList();
+
+        if (orphans.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var routeName in RouteNames)
+        {
+            if (GetStops(routeName).Count > 0)
+            {
+                continue;
+            }
+
+            var routeDef = RouteDisplayHelper.Parse(routeName);
+            var candidates = orphans
+                .Where(pair =>
+                {
+                    var orphanDef = RouteDisplayHelper.Parse(pair.Key);
+                    return string.Equals(orphanDef.Name, routeDef.Name, StringComparison.OrdinalIgnoreCase) &&
+                           string.Equals(
+                               RouteDisplayHelper.NormalizeLineCourse(orphanDef.LineCourse),
+                               RouteDisplayHelper.NormalizeLineCourse(routeDef.LineCourse),
+                               StringComparison.OrdinalIgnoreCase);
+                })
+                .ToList();
+
+            if (candidates.Count != 1)
+            {
+                continue;
+            }
+
+            var orphanKey = candidates[0].Key;
+            var stops = candidates[0].Value;
+            var storageKey = RouteDisplayHelper.ToCanonicalRouteKey(routeName);
+
+            StopsByRoute.Remove(orphanKey);
+            if (StopsByRoute.TryGetValue(storageKey, out var existing) && existing.Count > 0)
+            {
+                AppendDistinctStops(existing, stops);
+            }
+            else
+            {
+                StopsByRoute[storageKey] = stops;
+            }
+
+            foreach (var stop in stops)
+            {
+                stop.RouteName = routeName;
+            }
+
+            orphans.RemoveAll(pair => string.Equals(pair.Key, orphanKey, StringComparison.Ordinal));
+        }
     }
 
     private void PruneOrphanStopBuckets()
@@ -468,6 +541,7 @@ public sealed class EditableRoutePackage
             RouteOperatingDaysEditor.RemoveRoute(RouteOperatingDaysByRoute, key);
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, key);
             RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, key);
+            AutoScheduleSourceRouteEditor.RemoveRoute(AutoScheduleSourceByRoute, key);
         }
 
         foreach (var stopKey in StopsByRoute.Keys
@@ -556,34 +630,8 @@ public sealed class EditableRoutePackage
             RouteNames.Add(newKey);
         }
 
-        if (StopsByRoute.TryGetValue(oldKey, out var stops))
-        {
-            StopsByRoute.Remove(oldKey);
-            if (stops.Count > 0)
-            {
-                if (StopsByRoute.TryGetValue(newKey, out var existingAtNewKey) && existingAtNewKey.Count == 0)
-                {
-                    StopsByRoute.Remove(newKey);
-                }
-
-                if (!StopsByRoute.TryGetValue(newKey, out var target) || target.Count == 0)
-                {
-                    StopsByRoute[newKey] = stops;
-                }
-                else if (!ReferenceEquals(target, stops))
-                {
-                    AppendDistinctStops(target, stops);
-                }
-            }
-
-            if (StopsByRoute.TryGetValue(newKey, out var merged))
-            {
-                foreach (var stop in merged)
-                {
-                    stop.RouteName = newKey;
-                }
-            }
-        }
+        MigrateStopsForRenamedRoute(oldKey, newKey);
+        UpdateRouteChangeReferencesForRenamedRoute(oldKey, newKey);
 
         var interior = RouteInteriorDisplayDestinationEditor.GetForRoute(
             RouteInteriorDisplayDestinationsByRoute,
@@ -603,8 +651,73 @@ public sealed class EditableRoutePackage
             RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, oldKey);
         }
 
+        AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, oldKey, newKey);
+
         RouteNavigationMetadataCopy.CopyForRoute(_root, oldKey, newKey);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, oldKey);
+    }
+
+    private void MigrateStopsForRenamedRoute(string oldKey, string newKey)
+    {
+        var keysToMigrate = StopsByRoute.Keys
+            .Where(key => RouteDisplayHelper.RouteKeysMatch(key, oldKey))
+            .ToList();
+
+        if (keysToMigrate.Count == 0)
+        {
+            return;
+        }
+
+        var mergedStops = new List<RouteStopItem>();
+        foreach (var key in keysToMigrate)
+        {
+            if (StopsByRoute.TryGetValue(key, out var stops) && stops.Count > 0)
+            {
+                mergedStops.AddRange(stops);
+            }
+
+            StopsByRoute.Remove(key);
+        }
+
+        var newStorageKey = RouteDisplayHelper.ToCanonicalRouteKey(newKey);
+        if (mergedStops.Count == 0)
+        {
+            return;
+        }
+
+        if (StopsByRoute.TryGetValue(newStorageKey, out var existingAtNewKey) && existingAtNewKey.Count > 0)
+        {
+            AppendDistinctStops(existingAtNewKey, mergedStops);
+            foreach (var stop in existingAtNewKey)
+            {
+                stop.RouteName = newKey;
+            }
+
+            return;
+        }
+
+        StopsByRoute[newStorageKey] = mergedStops;
+        foreach (var stop in mergedStops)
+        {
+            stop.RouteName = newKey;
+        }
+    }
+
+    private void UpdateRouteChangeReferencesForRenamedRoute(string oldKey, string newKey)
+    {
+        var newReference = RouteDisplayHelper.ToDisplayString(RouteDisplayHelper.Parse(newKey));
+        foreach (var stop in StopsByRoute.Values.SelectMany(stops => stops))
+        {
+            if (!stop.RouteChangeEnabled || string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip))
+            {
+                continue;
+            }
+
+            if (RouteDisplayHelper.RouteKeysMatch(stop.SelectedLineCourseTrip, oldKey))
+            {
+                stop.SelectedLineCourseTrip = newReference;
+            }
+        }
     }
 
     private void NormalizeRouteDisplayNamesForOperatingDays()
@@ -693,6 +806,7 @@ public sealed class EditableRoutePackage
         }
 
         RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, alias);
+        AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, alias, primary);
         RouteNavigationMetadataCopy.CopyForRoute(_root, alias, primary);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, alias);
     }
@@ -714,6 +828,40 @@ public sealed class EditableRoutePackage
 
     public void SetRouteInItcsRouteList(string routeDisplayKey, bool inList) =>
         RouteItcsRouteListEditor.SetInItcsRouteList(RoutesExcludedFromItcsRouteList, routeDisplayKey, inList);
+
+    public string GetAutoScheduleSourceRoute(string routeDisplayKey) =>
+        AutoScheduleSourceRouteEditor.GetSourceRoute(AutoScheduleSourceByRoute, routeDisplayKey);
+
+    public void SetAutoScheduleSourceRoute(string routeDisplayKey, string sourceRouteKey) =>
+        AutoScheduleSourceRouteEditor.SetSourceRoute(AutoScheduleSourceByRoute, routeDisplayKey, sourceRouteKey);
+
+    public bool TryCopyNavigationDataFromAutoScheduleSource(string routeDisplayKey, out string? error)
+    {
+        var targetKey = ResolveExistingRouteKey(routeDisplayKey);
+        var sourceKey = GetAutoScheduleSourceRoute(targetKey);
+        if (string.IsNullOrWhiteSpace(sourceKey))
+        {
+            error = "Nur für per Fahrplan vervielfältigte Fahrten verfügbar.";
+            return false;
+        }
+
+        var resolvedSource = ResolveExistingRouteKey(sourceKey);
+        if (!RouteNames.Any(name => RouteDisplayHelper.RouteKeysMatch(name, resolvedSource)))
+        {
+            error = "Fahrplan-Vorlagen-Route wurde nicht gefunden.";
+            return false;
+        }
+
+        if (!RouteNavigationMetadataCopy.HasNavigationData(_root, resolvedSource))
+        {
+            error = "Die Vorlagen-Route hat keine Navidaten.";
+            return false;
+        }
+
+        RouteNavigationMetadataCopy.CopyForRoute(_root, resolvedSource, targetKey);
+        error = null;
+        return true;
+    }
 
     public void AddStop(string routeName, RouteStopItem? template = null)
     {

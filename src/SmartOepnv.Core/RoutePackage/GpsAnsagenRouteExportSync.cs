@@ -53,6 +53,7 @@ public static class GpsAnsagenRouteExportSync
             packageRoutes,
             package.RouteInteriorDisplayDestinationsByRoute);
         RouteItcsRouteListEditor.SaveToRoot(root, packageRoutes, package.RoutesExcludedFromItcsRouteList);
+        AutoScheduleSourceRouteEditor.SaveToRoot(root, packageRoutes, package.AutoScheduleSourceByRoute);
     }
 
     private static void SyncEndStopAnnouncementMetadata(

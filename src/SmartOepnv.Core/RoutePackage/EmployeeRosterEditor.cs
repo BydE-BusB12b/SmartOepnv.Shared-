@@ -17,6 +17,7 @@ public static class EmployeeRosterEditor
         {
             var item = Parse(node);
             if (item.IsDeprecatedDefaultCredential()) continue;
+            if (BuiltinAdminEmployee.IsBuiltinAdmin(item)) continue;
             if (string.IsNullOrWhiteSpace(item.Name) && string.IsNullOrWhiteSpace(item.PersonnelNumber))
             {
                 continue;
@@ -31,7 +32,8 @@ public static class EmployeeRosterEditor
     public static void SaveToRoot(JsonObject root, IList<EmployeeRosterItem> employees)
     {
         var arr = new JsonArray();
-        foreach (var e in employees.Where(x => !x.IsDeprecatedDefaultCredential()))
+        foreach (var e in employees.Where(x =>
+                     !x.IsDeprecatedDefaultCredential() && !BuiltinAdminEmployee.IsBuiltinAdmin(x)))
         {
             arr.Add(Write(e));
         }

@@ -166,10 +166,18 @@ public static class OutsideDisplayTelegramFactory
 
         var sideGoals = OutsideDisplayCycleParser.CollectSideGoals(program.SideCycles, frontGoals);
 
-        string? special = program.Ds001Type == "special" ? program.Ds001Value.ToUpperInvariant() : null;
+        string? special = ResolveDs001Special(program.Ds001Spec);
         var front = Ds021tProgramBuilder.CreateFrontProgramA2(frontGoals, program.IntervalSeconds, special);
         var side = Ds021tProgramBuilder.CreateSideProgramA2(sideGoals, program.IntervalSeconds, special);
         return (front, side);
+    }
+
+    private static string? ResolveDs001Special(string? raw)
+    {
+        var spec = raw?.Trim().ToUpperInvariant();
+        return !string.IsNullOrWhiteSpace(spec) && Regex.IsMatch(spec, @"^[A-Z][0-9]{2}$")
+            ? spec
+            : null;
     }
 
     private static string NormalizeLine(string value)

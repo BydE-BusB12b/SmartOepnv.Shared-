@@ -73,11 +73,10 @@ public static class RouteChainPlanner
         EditableRoutePackage editor,
         string startRouteKey)
     {
-        var allStops = editor.StopsByRoute.Values.SelectMany(s => s).ToList();
         var chain = new List<string>();
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var firstCanonical = RouteDisplayHelper.ToCanonicalRouteKey(startRouteKey);
-        var currentKey = ResolveRouteKey(editor, startRouteKey);
+        var currentKey = ResolveRouteKey(editor, startRouteKey, null);
         if (currentKey is null)
         {
             return [];
@@ -92,21 +91,23 @@ public static class RouteChainPlanner
             }
 
             chain.Add(currentKey);
-            var targetReference = FindRouteChangeTarget(currentKey, allStops);
+            var targetReference = FindRouteChangeTarget(editor, currentKey);
             if (string.IsNullOrWhiteSpace(targetReference))
             {
                 break;
             }
 
-            if (string.Equals(
-                    RouteDisplayHelper.ToCanonicalRouteKey(targetReference),
+            var resolvedTarget = ResolveRouteKey(editor, targetReference, currentKey);
+            if (resolvedTarget is not null &&
+                string.Equals(
+                    RouteDisplayHelper.ToCanonicalRouteKey(resolvedTarget),
                     firstCanonical,
                     StringComparison.OrdinalIgnoreCase))
             {
                 break;
             }
 
-            currentKey = ResolveRouteKey(editor, targetReference);
+            currentKey = resolvedTarget;
             if (currentKey is null)
             {
                 break;
@@ -121,14 +122,20 @@ public static class RouteChainPlanner
         string startRouteKey)
     {
         var chainKeys = BuildConnectedRouteChain(editor, startRouteKey);
-        var allStops = editor.StopsByRoute.Values.SelectMany(s => s).ToList();
         var segments = new List<ChainSegment>();
         for (var i = 0; i < chainKeys.Count; i++)
         {
             var routeKey = chainKeys[i];
             var stops = editor.GetStops(routeKey).Where(s => !s.IsWaypoint).ToList();
             var startTime = TryGetRouteStartTime(stops);
-            var routeChangeTarget = FindRouteChangeTarget(routeKey, allStops);
+            var routeChangeReference = FindRouteChangeTarget(editor, routeKey);
+            string? routeChangeDisplay = null;
+            if (!string.IsNullOrWhiteSpace(routeChangeReference))
+            {
+                var resolvedTarget = ResolveRouteKey(editor, routeChangeReference, routeKey);
+                routeChangeDisplay = FormatRouteLabel(resolvedTarget ?? routeChangeReference);
+            }
+
             var operatingDays = editor.GetRouteOperatingDays(routeKey);
             var daysLabel = RouteOperatingDaysEditor.IsConfiguredForAllDays(operatingDays)
                 ? null
@@ -148,9 +155,7 @@ public static class RouteChainPlanner
                 FormatRouteLabel(routeKey),
                 startTime?.ToString("HH:mm", CultureInfo.InvariantCulture),
                 daysLabel,
-                string.IsNullOrWhiteSpace(routeChangeTarget)
-                    ? null
-                    : FormatRouteLabel(routeChangeTarget),
+                routeChangeDisplay,
                 rows));
         }
 
@@ -169,10 +174,9 @@ public static class RouteChainPlanner
         return routeKey;
     }
 
-    private static string? FindRouteChangeTarget(string routeKey, IEnumerable<RouteStopItem> allStops)
+    private static string? FindRouteChangeTarget(EditableRoutePackage editor, string routeKey)
     {
-        var candidates = allStops
-            .Where(s => RouteDisplayHelper.RouteKeysMatch(s.RouteName, routeKey))
+        var candidates = editor.GetStops(routeKey)
             .Where(s => s.RouteChangeEnabled)
             .Where(s => !string.IsNullOrWhiteSpace(s.SelectedLineCourseTrip))
             .ToList();
@@ -181,7 +185,10 @@ public static class RouteChainPlanner
                ?? candidates.FirstOrDefault()?.SelectedLineCourseTrip?.Trim();
     }
 
-    private static string? ResolveRouteKey(EditableRoutePackage editor, string routeReference)
+    private static string? ResolveRouteKey(
+        EditableRoutePackage editor,
+        string routeReference,
+        string? contextRouteKey)
     {
         var trimmed = routeReference.Trim();
         var exact = editor.RouteNames.FirstOrDefault(r => string.Equals(r, trimmed, StringComparison.Ordinal));
@@ -190,7 +197,127 @@ public static class RouteChainPlanner
             return exact;
         }
 
-        return editor.RouteNames.FirstOrDefault(r => RouteDisplayHelper.RouteKeysMatch(r, trimmed));
+        var canonicalMatches = editor.RouteNames
+            .Where(r => RouteDisplayHelper.RouteKeysMatch(r, trimmed))
+            .ToList();
+        if (canonicalMatches.Count == 1)
+        {
+            return canonicalMatches[0];
+        }
+
+        if (canonicalMatches.Count > 1)
+        {
+            var disambiguated = DisambiguateByOperatingDays(editor, canonicalMatches, contextRouteKey);
+            if (disambiguated is not null)
+            {
+                return disambiguated;
+            }
+        }
+
+        var tripNumber = RouteDisplayHelper.NormalizeTripNumber(RouteDisplayHelper.Parse(trimmed).TripNumber);
+        if (!string.IsNullOrEmpty(tripNumber) &&
+            RouteStopEditorCatalog.TryResolveLineCourseTripByTripNumber(
+                editor.RouteNames,
+                tripNumber,
+                contextRouteKey,
+                out var tripMatch,
+                out _))
+        {
+            return tripMatch;
+        }
+
+        var referenceDefinition = RouteDisplayHelper.Parse(trimmed);
+        if (string.IsNullOrWhiteSpace(referenceDefinition.Name))
+        {
+            return null;
+        }
+
+        var identityMatches = editor.RouteNames
+            .Where(route =>
+            {
+                var definition = RouteDisplayHelper.Parse(route);
+                return string.Equals(definition.Name, referenceDefinition.Name, StringComparison.OrdinalIgnoreCase) &&
+                       string.Equals(
+                           RouteDisplayHelper.NormalizeLineCourse(definition.LineCourse),
+                           RouteDisplayHelper.NormalizeLineCourse(referenceDefinition.LineCourse),
+                           StringComparison.Ordinal);
+            })
+            .ToList();
+
+        identityMatches = DisambiguateCandidatesByOperatingDays(editor, identityMatches, contextRouteKey);
+        if (identityMatches.Count == 1)
+        {
+            return identityMatches[0];
+        }
+
+        if (identityMatches.Count > 1 && !string.IsNullOrWhiteSpace(contextRouteKey))
+        {
+            return TryResolveNextScheduledRoute(editor, contextRouteKey, identityMatches);
+        }
+
+        return null;
+    }
+
+    private static string? DisambiguateByOperatingDays(
+        EditableRoutePackage editor,
+        IReadOnlyList<string> candidates,
+        string? contextRouteKey)
+    {
+        var filtered = DisambiguateCandidatesByOperatingDays(editor, candidates, contextRouteKey);
+        return filtered.Count == 1 ? filtered[0] : null;
+    }
+
+    private static List<string> DisambiguateCandidatesByOperatingDays(
+        EditableRoutePackage editor,
+        IReadOnlyList<string> candidates,
+        string? contextRouteKey)
+    {
+        if (string.IsNullOrWhiteSpace(contextRouteKey) || candidates.Count <= 1)
+        {
+            return candidates.ToList();
+        }
+
+        var contextDays = editor.GetRouteOperatingDays(contextRouteKey);
+        var filtered = candidates
+            .Where(route => RouteOperatingDaysEditor.DaysOverlap(
+                contextDays,
+                editor.GetRouteOperatingDays(route)))
+            .ToList();
+
+        return filtered.Count > 0 ? filtered : candidates.ToList();
+    }
+
+    private static string? TryResolveNextScheduledRoute(
+        EditableRoutePackage editor,
+        string contextRouteKey,
+        IReadOnlyList<string> candidates)
+    {
+        var contextStops = editor.GetStops(contextRouteKey).Where(stop => !stop.IsWaypoint).ToList();
+        var contextEnd = TryGetRouteEndTime(contextStops) ?? TryGetRouteStartTime(contextStops);
+        if (!contextEnd.HasValue)
+        {
+            return null;
+        }
+
+        var contextMinutes = contextEnd.Value.Hour * 60 + contextEnd.Value.Minute;
+        var ranked = candidates
+            .Select(route =>
+            {
+                var stops = editor.GetStops(route).Where(stop => !stop.IsWaypoint).ToList();
+                var start = TryGetRouteStartTime(stops);
+                return (Route: route, Start: start);
+            })
+            .Where(entry => entry.Start.HasValue)
+            .Select(entry => (
+                entry.Route,
+                StartMinutes: entry.Start!.Value.Hour * 60 + entry.Start!.Value.Minute))
+            .Where(entry => entry.StartMinutes >= contextMinutes)
+            .OrderBy(entry => entry.StartMinutes)
+            .ThenBy(entry => ParseTripSortKey(RouteDisplayHelper.Parse(entry.Route).TripNumber))
+            .ThenBy(entry => entry.Route, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return ranked.Count > 0 ? ranked[0].Route : null;
     }
 
     private static TimeOnly? TryGetRouteStartTime(IReadOnlyList<RouteStopItem> stops)
@@ -198,6 +325,19 @@ public static class RouteChainPlanner
         foreach (var stop in stops)
         {
             if (RouteScheduleTimeCalculator.TryParseTime(stop.Time, out var time))
+            {
+                return time;
+            }
+        }
+
+        return null;
+    }
+
+    private static TimeOnly? TryGetRouteEndTime(IReadOnlyList<RouteStopItem> stops)
+    {
+        for (var index = stops.Count - 1; index >= 0; index--)
+        {
+            if (RouteScheduleTimeCalculator.TryParseTime(stops[index].Time, out var time))
             {
                 return time;
             }

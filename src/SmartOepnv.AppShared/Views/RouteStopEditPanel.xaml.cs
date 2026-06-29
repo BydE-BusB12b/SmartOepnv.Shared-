@@ -17,7 +17,30 @@ public partial class RouteStopEditPanel : UserControl
         }
 
         Loaded += (_, _) => SyncComboSelectionsFromViewModel();
-        DataContextChanged += (_, _) => SyncComboSelectionsFromViewModel();
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is RoutesViewModel oldVm)
+        {
+            oldVm.PropertyChanged -= ViewModel_PropertyChanged;
+        }
+
+        if (e.NewValue is RoutesViewModel newVm)
+        {
+            newVm.PropertyChanged += ViewModel_PropertyChanged;
+        }
+
+        SyncComboSelectionsFromViewModel();
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(RoutesViewModel.SelectedLineCourseTrip))
+        {
+            SyncComboSelectionsFromViewModel();
+        }
     }
 
     public void ApplyComboSelectionsToStop(RouteStopItem? targetStop = null)
