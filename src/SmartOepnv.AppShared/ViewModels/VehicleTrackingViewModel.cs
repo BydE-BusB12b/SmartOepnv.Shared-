@@ -222,18 +222,24 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
     private void RebuildList()
     {
         var previous = Vehicles.ToDictionary(v => v.Id, v => v);
+        var selectedId = SelectedVehicle?.Id;
         Vehicles.Clear();
         foreach (var v in _vehicles)
         {
-            var item = VehicleListItemViewModel.From(v);
-            if (previous.TryGetValue(item.Id, out var old)
-                && CoordinatesMatch(old.Latitude, old.Longitude, item.Latitude, item.Longitude)
-                && !string.IsNullOrWhiteSpace(old.StreetAddress))
+            if (previous.TryGetValue(v.Id, out var existing))
             {
-                item.StreetAddress = old.StreetAddress;
+                existing.ApplyLiveState(v);
+                Vehicles.Add(existing);
             }
+            else
+            {
+                Vehicles.Add(VehicleListItemViewModel.From(v));
+            }
+        }
 
-            Vehicles.Add(item);
+        if (!string.IsNullOrWhiteSpace(selectedId))
+        {
+            SelectedVehicle = Vehicles.FirstOrDefault(x => x.Id == selectedId);
         }
     }
 
@@ -447,30 +453,151 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 public sealed class VehicleListItemViewModel : INotifyPropertyChanged
 {
     private string? _streetAddress;
+    private string? _phoneRaw;
+    private string? _phoneNormalized;
+    private string? _lineCourse;
+    private string? _routeName;
+    private string? _stopName;
+    private string? _destination;
+    private string? _driverName;
+    private string? _driverPersonnelNumber;
+    private int? _batteryLevel;
+    private int? _delaySeconds;
+    private int _speedKmh;
+    private double _latitude;
+    private double _longitude;
+    private double _accuracyM;
+    private VehicleOnlineStatus _onlineStatus;
+    private string _statusLabel = string.Empty;
+    private string _lastUpdateLabel = string.Empty;
+    private string _detailLine = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public required string Id { get; init; }
     public required string DisplayName { get; init; }
-    public string? PhoneNormalized { get; init; }
-    public string? PhoneRaw { get; init; }
-    public string? LineCourse { get; init; }
-    public string? RouteName { get; init; }
-    public string? StopName { get; init; }
-    public string? Destination { get; init; }
-    public string? DriverName { get; init; }
-    public string? DriverPersonnelNumber { get; init; }
-    public int? BatteryLevel { get; init; }
-    public int? DelaySeconds { get; init; }
-    public int SpeedKmh { get; init; }
-    public double Latitude { get; init; }
-    public double Longitude { get; init; }
-    public double AccuracyM { get; init; }
-    public VehicleOnlineStatus OnlineStatus { get; init; }
-    public string StatusLabel { get; init; } = string.Empty;
-    public string LastUpdateLabel { get; init; } = string.Empty;
-    public string DetailLine { get; init; } = string.Empty;
+    public string? PhoneNormalized
+    {
+        get => _phoneNormalized;
+        private set => SetField(ref _phoneNormalized, value);
+    }
+
+    public string? PhoneRaw
+    {
+        get => _phoneRaw;
+        private set => SetField(ref _phoneRaw, value);
+    }
+
+    public string? LineCourse
+    {
+        get => _lineCourse;
+        private set => SetField(ref _lineCourse, value);
+    }
+
+    public string? RouteName
+    {
+        get => _routeName;
+        private set => SetField(ref _routeName, value);
+    }
+
+    public string? StopName
+    {
+        get => _stopName;
+        private set => SetField(ref _stopName, value);
+    }
+
+    public string? Destination
+    {
+        get => _destination;
+        private set => SetField(ref _destination, value);
+    }
+
+    public string? DriverName
+    {
+        get => _driverName;
+        private set => SetField(ref _driverName, value);
+    }
+
+    public string? DriverPersonnelNumber
+    {
+        get => _driverPersonnelNumber;
+        private set => SetField(ref _driverPersonnelNumber, value);
+    }
+
+    public int? BatteryLevel
+    {
+        get => _batteryLevel;
+        private set => SetField(ref _batteryLevel, value);
+    }
+
+    public int? DelaySeconds
+    {
+        get => _delaySeconds;
+        private set => SetField(ref _delaySeconds, value);
+    }
+
+    public int SpeedKmh
+    {
+        get => _speedKmh;
+        private set => SetField(ref _speedKmh, value);
+    }
+
+    public double Latitude
+    {
+        get => _latitude;
+        private set => SetField(ref _latitude, value);
+    }
+
+    public double Longitude
+    {
+        get => _longitude;
+        private set => SetField(ref _longitude, value);
+    }
+
+    public double AccuracyM
+    {
+        get => _accuracyM;
+        private set => SetField(ref _accuracyM, value);
+    }
+
+    public VehicleOnlineStatus OnlineStatus
+    {
+        get => _onlineStatus;
+        private set => SetField(ref _onlineStatus, value);
+    }
+
+    public string StatusLabel
+    {
+        get => _statusLabel;
+        private set => SetField(ref _statusLabel, value);
+    }
+
+    public string LastUpdateLabel
+    {
+        get => _lastUpdateLabel;
+        private set => SetField(ref _lastUpdateLabel, value);
+    }
+
+    public string DetailLine
+    {
+        get => _detailLine;
+        private set => SetField(ref _detailLine, value);
+    }
 
     public static VehicleListItemViewModel From(VehicleLiveState v)
+    {
+        var item = new VehicleListItemViewModel
+        {
+            Id = v.Id,
+            DisplayName = v.DisplayName
+        };
+        item.ApplyLiveState(v);
+        return item;
+    }
+
+    /// <summary>Marker für gebündelte Live-Updates (Detail-Panel).</summary>
+    public bool LiveState => true;
+
+    public void ApplyLiveState(VehicleLiveState v)
     {
         var updated = DateTimeOffset.FromUnixTimeMilliseconds(v.TimestampEpochMs).ToLocalTime();
         var status = v.Status switch
@@ -481,36 +608,54 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
         };
 
         var detailParts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(v.RouteName)) detailParts.Add(v.RouteName);
-        if (!string.IsNullOrWhiteSpace(v.StopName)) detailParts.Add(v.StopName);
-        if (v.SpeedKmh > 0) detailParts.Add($"{v.SpeedKmh} km/h");
-
-        return new VehicleListItemViewModel
+        if (!string.IsNullOrWhiteSpace(v.RouteName))
         {
-            Id = v.Id,
-            DisplayName = v.DisplayName,
-            PhoneRaw = v.PhoneNumber,
-            PhoneNormalized = string.IsNullOrWhiteSpace(v.PhoneNumber)
-                ? null
-                : new string(v.PhoneNumber.Where(char.IsDigit).ToArray()),
-            LineCourse = string.IsNullOrWhiteSpace(v.LineCourse) ? "–" : v.LineCourse,
-            RouteName = v.RouteName,
-            StopName = v.StopName,
-            Destination = v.Destination,
-            DriverName = v.DriverName,
-            DriverPersonnelNumber = v.DriverPersonnelNumber,
-            BatteryLevel = v.BatteryLevel,
-            DelaySeconds = v.DelaySeconds,
-            SpeedKmh = v.SpeedKmh,
-            Latitude = v.Latitude,
-            Longitude = v.Longitude,
-            AccuracyM = v.AccuracyM,
-            OnlineStatus = v.Status,
-            StatusLabel = status,
-            LastUpdateLabel = updated.ToString("dd.MM. HH:mm:ss"),
-            DetailLine = detailParts.Count > 0 ? string.Join(" · ", detailParts) : "Keine Zusatzinfos"
-        };
+            detailParts.Add(v.RouteName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(v.StopName))
+        {
+            detailParts.Add(v.StopName);
+        }
+
+        if (v.SpeedKmh > 0)
+        {
+            detailParts.Add($"{v.SpeedKmh} km/h");
+        }
+
+        var coordsChanged = !CoordinatesMatch(Latitude, Longitude, v.Latitude, v.Longitude);
+
+        PhoneRaw = v.PhoneNumber;
+        PhoneNormalized = string.IsNullOrWhiteSpace(v.PhoneNumber)
+            ? null
+            : new string(v.PhoneNumber.Where(char.IsDigit).ToArray());
+        LineCourse = string.IsNullOrWhiteSpace(v.LineCourse) ? "–" : v.LineCourse;
+        RouteName = v.RouteName;
+        StopName = v.StopName;
+        Destination = v.Destination;
+        DriverName = v.DriverName;
+        DriverPersonnelNumber = v.DriverPersonnelNumber;
+        BatteryLevel = v.BatteryLevel;
+        DelaySeconds = v.DelaySeconds;
+        SpeedKmh = v.SpeedKmh;
+        Latitude = v.Latitude;
+        Longitude = v.Longitude;
+        AccuracyM = v.AccuracyM;
+        OnlineStatus = v.Status;
+        StatusLabel = status;
+        LastUpdateLabel = updated.ToString("dd.MM. HH:mm:ss");
+        DetailLine = detailParts.Count > 0 ? string.Join(" · ", detailParts) : "Keine Zusatzinfos";
+
+        if (coordsChanged)
+        {
+            StreetAddress = null;
+        }
+
+        OnPropertyChanged(nameof(LiveState));
     }
+
+    private static bool CoordinatesMatch(double aLat, double aLon, double bLat, double bLon) =>
+        Math.Abs(aLat - bLat) < 0.00001 && Math.Abs(aLon - bLon) < 0.00001;
 
     public string? ResolvePhoneNumber()
     {
@@ -584,17 +729,7 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
     public string? StreetAddress
     {
         get => _streetAddress;
-        set
-        {
-            if (string.Equals(_streetAddress, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _streetAddress = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(StreetDisplay));
-        }
+        set => SetField(ref _streetAddress, value, nameof(StreetDisplay));
     }
 
     public string StreetDisplay => string.IsNullOrWhiteSpace(StreetAddress) ? "–" : StreetAddress;
@@ -621,6 +756,23 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
 
             return string.IsNullOrWhiteSpace(PhoneNormalized) ? "–" : PhoneNormalized;
         }
+    }
+
+    private bool SetField<T>(ref T field, T value, params string[] additionalProperties)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return false;
+        }
+
+        field = value;
+        OnPropertyChanged();
+        foreach (var name in additionalProperties)
+        {
+            OnPropertyChanged(name);
+        }
+
+        return true;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

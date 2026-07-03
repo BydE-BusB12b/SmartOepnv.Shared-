@@ -288,7 +288,8 @@ public partial class VehicleTrackingView : UserControl
             return;
         }
 
-        if (e.PropertyName is nameof(VehicleListItemViewModel.StreetAddress)
+        if (e.PropertyName is nameof(VehicleListItemViewModel.LiveState)
+            or nameof(VehicleListItemViewModel.StreetAddress)
             or nameof(VehicleListItemViewModel.StreetDisplay))
         {
             RefreshVehicleDetailContent(vehicle);
