@@ -21,10 +21,8 @@
         </Style>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled"
-                  VerticalContentAlignment="Top">
-    <Grid Margin="0,0,0,8" VerticalAlignment="Top">
+    <!-- Kein äußerer ScrollViewer: Kartei-Liste scrollt separat in der linken Spalte -->
+    <Grid Margin="0,2,0,4" VerticalAlignment="Stretch">
 
         <Grid.ColumnDefinitions>
 
@@ -40,7 +38,7 @@
 
                              Background="{StaticResource SmartSurfaceBrush}"
 
-                             VerticalAlignment="Top">
+                             VerticalAlignment="Stretch">
 
             <DockPanel LastChildFill="True">
 
@@ -154,10 +152,6 @@
 
                          Background="Transparent"
 
-                         MinHeight="220"
-
-                         MaxHeight="420"
-
                          Margin="0,2,0,0"
 
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -214,9 +208,9 @@
 
                              Background="{StaticResource SmartSurfaceBrush}"
 
-                             VerticalAlignment="Top">
+                             VerticalAlignment="Stretch">
 
-                <DockPanel>
+                <DockPanel LastChildFill="True">
 
                     <TextBlock DockPanel.Dock="Top" Text="Ansage bearbeiten"
 
@@ -231,6 +225,10 @@
                                Margin="0,12,0,0" TextWrapping="Wrap" Opacity="0.85" FontSize="12" />
 
 
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="0,0,4,0">
 
                     <StackPanel>
 
@@ -704,11 +702,12 @@
 
                     </StackPanel>
 
+                    </ScrollViewer>
+
                 </DockPanel>
 
         </materialDesign:Card>
 
         </Grid>
-    </ScrollViewer>
 
 </UserControl>

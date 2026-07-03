@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using SmartOepnv.AppShared.ViewModels;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
@@ -78,37 +79,30 @@ public sealed class KomRemoteDestinationDialog : Window
 
             if (list.SelectedItem is not string destination)
             {
-                MessageBox.Show(this, "Bitte ein Ziel wählen.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                SmartConfirmDialog.ShowInfo(this, Title, "Bitte ein Ziel wählen.");
                 return;
             }
 
             send.IsEnabled = false;
             cancel.IsEnabled = false;
-            status.Text = "Sende Fernziel …";
             try
             {
-                var commandId = await KomRemoteDestinationService.UploadAsync(
-                    AppServices.Dropbox,
+                var outcome = await KomCommandSendFlow.ExecuteAsync(
+                    this,
+                    status,
+                    vehicle.DisplayName,
                     phone,
-                    destination);
-                if (commandId > 0)
+                    KomRemoteDestinationService.CommandType,
+                    ct => KomRemoteDestinationService.UploadAsync(
+                        AppServices.Dropbox,
+                        phone,
+                        destination,
+                        ct));
+                if (outcome is KomCommandSendOutcome.Success or KomCommandSendOutcome.Timeout)
                 {
-                    MessageBox.Show(this,
-                        $"Fernziel „{destination}“ an {vehicle.DisplayName} gesendet.",
-                        Title,
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
                     DialogResult = true;
                     Close();
                 }
-                else
-                {
-                    status.Text = "Senden fehlgeschlagen.";
-                }
-            }
-            catch (Exception ex)
-            {
-                status.Text = $"Fehler: {ex.Message}";
             }
             finally
             {

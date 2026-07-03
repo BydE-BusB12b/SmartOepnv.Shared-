@@ -30,8 +30,17 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
 
     public bool HasUnreadMail => UnreadMailCount > 0;
 
+    public bool HasHeaderAlerts => HeaderAlertLine1 is not null || HeaderAlertLine2 is not null;
+
+    public LeitstelleInboxItemViewModel? HeaderAlertLine1 { get; private set; }
+
+    public LeitstelleInboxItemViewModel? HeaderAlertLine2 { get; private set; }
+
     /// <summary>SOS eingegangen: normalisierte Telefonnummer des Fahrzeugs.</summary>
     public event Action<string>? SosAlertRaised;
+
+    /// <summary>Meldung angeklickt: Live-Karte mit Fahrzeug-Detail öffnen.</summary>
+    public event Action<string>? OpenVehicleOnMapRequested;
 
     public void RefreshFromEditor()
     {
@@ -179,6 +188,23 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
     }
 
     [RelayCommand]
+    public void OpenOnMap(LeitstelleInboxItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.PhoneNormalized))
+        {
+            StatusMessage = "Keine Telefonnummer – Live-Karte kann nicht geöffnet werden.";
+            return;
+        }
+
+        OpenVehicleOnMapRequested?.Invoke(item.PhoneNormalized);
+    }
+
+    [RelayCommand]
     private void DeleteItem(LeitstelleInboxItemViewModel? item)
     {
         if (item is null || string.IsNullOrWhiteSpace(item.DedupeKey))
@@ -190,6 +216,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         Items.Remove(item);
         UnreadMailCount = Items.Count(i => !i.IsSos && i.IsUnread);
         OnPropertyChanged(nameof(HasUnreadMail));
+        UpdateHeaderAlerts();
         StatusMessage = Items.Count == 0
             ? "Keine Nachrichten in der Liste."
             : $"{Items.Count} Nachricht(en) · {Items.Count(i => i.IsSos)} SOS · {UnreadMailCount} neu.";
@@ -205,6 +232,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
 
         UnreadMailCount = Items.Count(i => !i.IsSos && i.IsUnread);
         OnPropertyChanged(nameof(HasUnreadMail));
+        UpdateHeaderAlerts();
 
         StatusMessage = Items.Count == 0
             ? "Keine MailChat/SOS-Nachrichten – bei neuer Meldung erscheint jede Sendung als eigene Zeile."
@@ -336,6 +364,20 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         return dispatcher.InvokeAsync(action, DispatcherPriority.Normal).Task;
     }
 
+    private void UpdateHeaderAlerts()
+    {
+        var recent = Items
+            .OrderByDescending(i => i.TimestampEpochMs)
+            .Take(2)
+            .ToList();
+
+        HeaderAlertLine1 = recent.ElementAtOrDefault(0);
+        HeaderAlertLine2 = recent.ElementAtOrDefault(1);
+        OnPropertyChanged(nameof(HeaderAlertLine1));
+        OnPropertyChanged(nameof(HeaderAlertLine2));
+        OnPropertyChanged(nameof(HasHeaderAlerts));
+    }
+
     public void Dispose() => StopMonitoring();
 }
 
@@ -360,4 +402,14 @@ public sealed partial class LeitstelleInboxItemViewModel : ObservableObject
     public required bool IsSos { get; init; }
 
     [ObservableProperty] private bool isUnread;
+
+    public string HeaderDisplayText
+    {
+        get
+        {
+            var kind = IsSos ? "Unfallruf" : "MailChat";
+            var text = $"{kind} · {VehicleName}: {Message.Trim()}";
+            return text.Length <= 120 ? text : text[..117] + "…";
+        }
+    }
 }

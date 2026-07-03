@@ -1,0 +1,170 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels">
+    <Storyboard x:Key="TransferBlinkStoryboard" RepeatBehavior="Forever">
+        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)"
+                                      Duration="0:0:0.55"
+                                      AutoReverse="True">
+            <LinearColorKeyFrame Value="#66FFB74D" KeyTime="0:0:0" />
+            <LinearColorKeyFrame Value="#B3FF9800" KeyTime="0:0:0.55" />
+        </ColorAnimationUsingKeyFrames>
+        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Control.BorderBrush).(SolidColorBrush.Color)"
+                                      Duration="0:0:0.55"
+                                      AutoReverse="True">
+            <LinearColorKeyFrame Value="#99FFB74D" KeyTime="0:0:0" />
+            <LinearColorKeyFrame Value="#FFFF9800" KeyTime="0:0:0.55" />
+        </ColorAnimationUsingKeyFrames>
+    </Storyboard>
+
+    <Style x:Key="TransferBlinkOutlinedOnDarkStyle" TargetType="Button"
+           BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="BorderBrush" Value="White" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style x:Key="TransferBlinkRaisedLightOnDarkStyle" TargetType="Button"
+           BasedOn="{StaticResource MaterialDesignRaisedLightButton}" />
+
+    <Style x:Key="DropboxImportTransferButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource TransferBlinkRaisedLightOnDarkStyle}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding DropboxImportButtonState}" Value="{x:Static vm:TransferButtonVisualState.Active}">
+                <Setter Property="Foreground" Value="#FFFFCC80" />
+                <Setter Property="Background" Value="#66FFB74D" />
+                <Setter Property="BorderBrush" Value="#FFFF9800" />
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="DropboxImportBlink" Storyboard="{StaticResource TransferBlinkStoryboard}" />
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="DropboxImportBlink" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding DropboxImportButtonState}" Value="{x:Static vm:TransferButtonVisualState.Done}">
+                <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="DropboxExportTransferButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource TransferBlinkOutlinedOnDarkStyle}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding DropboxExportButtonState}" Value="{x:Static vm:TransferButtonVisualState.Active}">
+                <Setter Property="Foreground" Value="#FFFFCC80" />
+                <Setter Property="Background" Value="#66FFB74D" />
+                <Setter Property="BorderBrush" Value="#FFFF9800" />
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="DropboxExportBlink" Storyboard="{StaticResource TransferBlinkStoryboard}" />
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="DropboxExportBlink" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding DropboxExportButtonState}" Value="{x:Static vm:TransferButtonVisualState.Done}">
+                <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="DropboxRemoteUpdateTransferButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource TransferBlinkRaisedLightOnDarkStyle}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding DropboxRemoteUpdateButtonState}" Value="{x:Static vm:TransferButtonVisualState.Active}">
+                <Setter Property="Foreground" Value="#FFFFCC80" />
+                <Setter Property="Background" Value="#66FFB74D" />
+                <Setter Property="BorderBrush" Value="#FFFF9800" />
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="DropboxRemoteUpdateBlink" Storyboard="{StaticResource TransferBlinkStoryboard}" />
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="DropboxRemoteUpdateBlink" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding DropboxRemoteUpdateButtonState}" Value="{x:Static vm:TransferButtonVisualState.Done}">
+                <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="LeitstelleStandTransferButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource TransferBlinkOutlinedOnDarkStyle}">
+        <Setter Property="Content" Value="Für Leitstelle speichern" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding ShowLeitstelleStandExportButton}" Value="False">
+                <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding LeitstelleStandButtonState}" Value="{x:Static vm:TransferButtonVisualState.Active}">
+                <Setter Property="Foreground" Value="#FFFFCC80" />
+                <Setter Property="Background" Value="#66FFB74D" />
+                <Setter Property="BorderBrush" Value="#FFFF9800" />
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="LeitstelleStandBlink" Storyboard="{StaticResource TransferBlinkStoryboard}" />
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="LeitstelleStandBlink" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding LeitstelleStandButtonState}" Value="{x:Static vm:TransferButtonVisualState.Done}">
+                <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="PlanerWorkspaceImportTransferButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource TransferBlinkRaisedLightOnDarkStyle}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding PlanerWorkspaceImportButtonState}" Value="{x:Static vm:TransferButtonVisualState.Active}">
+                <Setter Property="Foreground" Value="#FFFFCC80" />
+                <Setter Property="Background" Value="#66FFB74D" />
+                <Setter Property="BorderBrush" Value="#FFFF9800" />
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="PlanerWorkspaceImportBlink" Storyboard="{StaticResource TransferBlinkStoryboard}" />
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="PlanerWorkspaceImportBlink" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding PlanerWorkspaceImportButtonState}" Value="{x:Static vm:TransferButtonVisualState.Done}">
+                <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="PlanerWorkspaceExportTransferButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource TransferBlinkOutlinedOnDarkStyle}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding PlanerWorkspaceExportButtonState}" Value="{x:Static vm:TransferButtonVisualState.Active}">
+                <Setter Property="Foreground" Value="#FFFFCC80" />
+                <Setter Property="Background" Value="#66FFB74D" />
+                <Setter Property="BorderBrush" Value="#FFFF9800" />
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="PlanerWorkspaceExportBlink" Storyboard="{StaticResource TransferBlinkStoryboard}" />
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="PlanerWorkspaceExportBlink" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding PlanerWorkspaceExportButtonState}" Value="{x:Static vm:TransferButtonVisualState.Done}">
+                <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+</ResourceDictionary>

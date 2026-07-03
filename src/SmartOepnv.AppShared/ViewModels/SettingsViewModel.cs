@@ -61,7 +61,7 @@ public partial class SettingsViewModel : ObservableObject
     public void ReloadFromStore()
     {
         var s = AppServices.Dropbox.Settings;
-        FolderPath = s.FolderPath;
+        FolderPath = NormalizeFolderPath(s.FolderPath);
         IsConnected = s.IsConnected;
         AccountInfo = s.IsConnected
             ? $"{s.ConnectedAccountName} ({s.ConnectedAccountEmail})"
@@ -305,16 +305,7 @@ public partial class SettingsViewModel : ObservableObject
         BriefingPasswordsStatus = "Keine Änderungen an den Passwörtern.";
     }
 
-    private static string NormalizeFolderPath(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return DropboxConstants.DefaultFolderPath;
-        }
-
-        var trimmed = path.Trim();
-        return trimmed.StartsWith('/') ? trimmed : $"/{trimmed}";
-    }
+    private static string NormalizeFolderPath(string? path) => DropboxConstants.NormalizeFolderPath(path);
 
     [RelayCommand]
     private async Task TestConnectionAsync()

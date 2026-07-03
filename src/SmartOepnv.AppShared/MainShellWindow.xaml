@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
         mc:Ignorable="d"
         Title="{Binding ProductName}"
         Height="900" Width="1440"
@@ -15,6 +16,10 @@
         TextElement.FontWeight="Regular"
         TextElement.FontSize="14"
         FontFamily="{materialDesign:MaterialDesignFont}">
+
+    <Window.Resources>
+        <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+    </Window.Resources>
 
     <materialDesign:DialogHost Identifier="RootDialog">
         <Grid>
@@ -41,6 +46,63 @@
                             <TextBlock Text="{Binding ProductSubtitle}"
                                        FontSize="12" Opacity="0.85" />
                         </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Margin="16,0"
+                                MaxWidth="780">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsLeitstelleApp}" Value="True" />
+                                            <Condition Binding="{Binding LeitstelleMessagesInbox.HasHeaderAlerts}" Value="True" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="{Binding LeitstelleMessagesInbox.HeaderAlertLine1.HeaderDisplayText}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding LeitstelleMessagesInbox.HeaderAlertLine1.HeaderDisplayText}"
+                                   Visibility="{Binding LeitstelleMessagesInbox.HeaderAlertLine1, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#FFF9C4" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LeitstelleMessagesInbox.HeaderAlertLine1.IsSos}" Value="True">
+                                            <Setter Property="Foreground" Value="#FFCDD2" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="{Binding LeitstelleMessagesInbox.HeaderAlertLine2.HeaderDisplayText}"
+                                   FontSize="11"
+                                   Opacity="0.92"
+                                   Margin="0,2,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding LeitstelleMessagesInbox.HeaderAlertLine2.HeaderDisplayText}"
+                                   Visibility="{Binding LeitstelleMessagesInbox.HeaderAlertLine2, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#E3F2FD" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LeitstelleMessagesInbox.HeaderAlertLine2.IsSos}" Value="True">
+                                            <Setter Property="Foreground" Value="#FFCDD2" />
+                                            <Setter Property="Opacity" Value="1" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal"

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using SmartOepnv.AppShared.ViewModels;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 
@@ -122,25 +123,21 @@ public sealed class KomLeitstelleDurchsageDialog : Window
 
         if (!_hasRecording)
         {
-            MessageBox.Show(this, "Bitte zuerst eine Aufnahme erstellen.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            SmartConfirmDialog.ShowInfo(this, Title, "Bitte zuerst eine Aufnahme erstellen.");
             return;
         }
 
-        var confirm = MessageBox.Show(
+        var confirm = SmartConfirmDialog.ShowConfirm(
             this,
-            $"Aufnahme jetzt an {vehicle.DisplayName} senden?\n\nErst nach „Ja“ wird die Durchsage hochgeladen.",
             Title,
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question,
-            MessageBoxResult.No);
-        if (confirm != MessageBoxResult.Yes)
+            $"Aufnahme jetzt an {vehicle.DisplayName} senden?\n\nErst nach „Ja“ wird die Durchsage hochgeladen.");
+        if (!confirm)
         {
             return;
         }
 
         _sendButton.IsEnabled = false;
         _recordButton.IsEnabled = false;
-        _status.Text = "Sende Durchsage …";
         try
         {
             if (_recorder.IsRecording)
@@ -157,15 +154,16 @@ public sealed class KomLeitstelleDurchsageDialog : Window
                 return;
             }
 
-            var commandId = await KomLeitstelleDurchsageService.UploadAsync(AppServices.Dropbox, phone, bytes);
-            if (commandId > 0)
+            var outcome = await KomCommandSendFlow.ExecuteAsync(
+                this,
+                _status,
+                vehicle.DisplayName,
+                phone,
+                KomLeitstelleDurchsageService.CommandType,
+                ct => KomLeitstelleDurchsageService.UploadAsync(AppServices.Dropbox, phone, bytes, ct));
+            if (outcome is KomCommandSendOutcome.Success or KomCommandSendOutcome.Timeout)
             {
-                _status.Text = $"Durchsage an {vehicle.DisplayName} gesendet.";
                 DialogResult = true;
-            }
-            else
-            {
-                _status.Text = "Senden fehlgeschlagen.";
             }
         }
         catch (Exception ex)

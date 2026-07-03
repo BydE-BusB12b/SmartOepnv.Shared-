@@ -13,13 +13,14 @@ internal static class VehicleDetailContentBuilder
         AddRow(root, "Letztes Update", vehicle.LastUpdateLabel);
         AddRow(root, "Telefon", vehicle.PhoneDisplay);
         AddRow(root, "Angemeldeter Fahrer", vehicle.DriverDisplay);
-        AddRow(root, "Linie/Kurs", vehicle.LineCourse ?? "–");
+        AddRow(root, "Linie/Kurs, Fahrt", vehicle.LineCourse ?? "–");
         AddRow(root, "Route", vehicle.RouteDisplay);
         AddRow(root, "Haltestelle", vehicle.StopDisplay);
         AddRow(root, "Ziel", vehicle.DestinationDisplay);
         AddRow(root, "Geschwindigkeit", vehicle.SpeedDisplay);
         AddRow(root, "Verspätung", vehicle.DelayDisplay);
         AddRow(root, "Akku", vehicle.BatteryDisplay);
+        AddRow(root, "Straße", vehicle.StreetDisplay);
         AddRow(root, "Position", vehicle.PositionDisplay);
         AddRow(root, "Genauigkeit", vehicle.AccuracyDisplay, isLast: true);
     }

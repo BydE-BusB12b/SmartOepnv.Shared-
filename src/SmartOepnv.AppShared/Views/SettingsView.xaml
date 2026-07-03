@@ -123,7 +123,7 @@
                 <StackPanel>
                     <TextBlock Text="Dropbox-Ordner" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
                     <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
-                               Text="Standard: /App/Smart ÖPNV – bei geteiltem Ordner ggf. abweichenden Pfad eintragen (wie in der Android-App). Der Pfad wird beim Verbindungstest, beim Verlassen der Seite und in „Dropbox einrichten“ beim Schließen automatisch gespeichert." />
+                               Text="Standard: /smart öpnv – bei geteiltem Ordner ggf. abweichenden Pfad eintragen (wie in der Android-App). Der Pfad wird beim Verbindungstest, beim Verlassen der Seite und in „Dropbox einrichten“ beim Schließen automatisch gespeichert." />
                     <TextBox Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}"
                              materialDesign:HintAssist.Hint="Ordnerpfad"
                              Margin="0,0,0,12" />

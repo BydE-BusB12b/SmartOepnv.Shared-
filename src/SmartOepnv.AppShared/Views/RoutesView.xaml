@@ -1,9 +1,11 @@
 <UserControl x:Class="SmartOepnv.AppShared.Views.RoutesView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <conv:RouteStopStrikeThroughConverter x:Key="RouteStopStrikeThroughConverter" />
         <Style x:Key="RoutesSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
@@ -219,7 +221,20 @@
                                                Margin="4,0" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{Binding Name}"
                                                Margin="12,0,4,0" VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" />
+                                               TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Converter={StaticResource RouteStopStrikeThroughConverter}}"
+                                                                 Value="True">
+                                                        <Setter Property="TextDecorations" Value="Strikethrough" />
+                                                        <Setter Property="Foreground" Value="#FF8A80" />
+                                                        <Setter Property="Opacity" Value="0.9" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                     <TextBlock Grid.Column="2" Text="{Binding Time}"
                                                Margin="4,0" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="3" Text="{Binding StopDisplay}"

@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.ViewModels;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 
@@ -40,11 +41,9 @@ internal static class VehicleKomUi
             return true;
         }
 
-        MessageBox.Show(owner,
-            "Dropbox nicht verbunden – bitte unter Einstellungen verbinden.",
+        SmartConfirmDialog.ShowInfo(owner,
             "Fernsteuerung",
-            MessageBoxButton.OK,
-            MessageBoxImage.Warning);
+            "Dropbox nicht verbunden – bitte unter Einstellungen verbinden.");
         return false;
     }
 
@@ -56,11 +55,9 @@ internal static class VehicleKomUi
             return phone;
         }
 
-        MessageBox.Show(owner,
-            $"Für „{vehicle.DisplayName}“ ist keine Telefonnummer bekannt – Fernsteuerung nicht möglich.",
+        SmartConfirmDialog.ShowInfo(owner,
             "Fernsteuerung",
-            MessageBoxButton.OK,
-            MessageBoxImage.Warning);
+            $"Für „{vehicle.DisplayName}“ ist keine Telefonnummer bekannt – Fernsteuerung nicht möglich.");
         return null;
     }
 

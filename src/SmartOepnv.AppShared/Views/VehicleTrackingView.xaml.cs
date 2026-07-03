@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 
 using System.Text.Json.Nodes;
@@ -9,6 +10,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 
 using System.Windows.Media;
+
+using System.Windows.Threading;
 
 using Microsoft.Web.WebView2.Core;
 
@@ -38,6 +41,8 @@ public partial class VehicleTrackingView : UserControl
 
     private string? _pendingMapJson;
 
+    private VehicleListItemViewModel? _detailVehicle;
+
 
 
     public VehicleTrackingView()
@@ -62,21 +67,35 @@ public partial class VehicleTrackingView : UserControl
 
 
 
-    private void VehicleList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    private void VehicleListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
-        if (item?.Content is not VehicleListItemViewModel vehicle)
+        if (VehicleDetailOverlay.Visibility != Visibility.Visible)
         {
             return;
         }
 
-        if (_viewModel is not null)
+        if (e.AddedItems.Count > 0 && e.RemovedItems.Count > 0)
+        {
+            CloseVehicleDetail();
+        }
+    }
+
+    private void VehicleList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (!TryGetVehicleFromListEvent(sender, e, out var vehicle))
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        if (_viewModel is not null && !ReferenceEquals(_viewModel.SelectedVehicle, vehicle))
         {
             _viewModel.SelectedVehicle = vehicle;
         }
 
-        ShowVehicleDetail(vehicle);
-        e.Handled = true;
+        // Kartenfokus zuerst, Detail-Overlay danach – vermeidet Freeze beim Fahrzeugwechsel.
+        Dispatcher.BeginInvoke(() => OpenVehicleDetail(vehicle), DispatcherPriority.Background);
     }
 
 
@@ -85,9 +104,7 @@ public partial class VehicleTrackingView : UserControl
 
     {
 
-        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
-
-        if (item?.Content is not VehicleListItemViewModel vehicle)
+        if (!TryGetVehicleFromListEvent(sender, e, out var vehicle))
 
         {
 
@@ -124,21 +141,35 @@ public partial class VehicleTrackingView : UserControl
 
     private void VehicleDetailClose_Click(object sender, RoutedEventArgs e) => CloseVehicleDetail();
 
-    private void ShowVehicleDetail(VehicleListItemViewModel vehicle)
+    private static bool TryGetVehicleFromListEvent(
+        object sender,
+        MouseEventArgs e,
+        out VehicleListItemViewModel vehicle)
     {
-        VehicleDetailTitle.Text = VehicleDetailContentBuilder.BuildTitle(vehicle);
-        VehicleDetailContentBuilder.Populate(VehicleDetailContent, vehicle);
-        VehicleDetailOverlay.Visibility = Visibility.Visible;
-        VehicleDetailCloseButton.Focus();
+        vehicle = null!;
+        if (sender is not ListBox listBox)
+        {
+            return false;
+        }
+
+        if (e.OriginalSource is not DependencyObject source)
+        {
+            return false;
+        }
+
+        if (listBox.ContainerFromElement(source) is not ListBoxItem item)
+        {
+            return false;
+        }
+
+        if (item.Content is not VehicleListItemViewModel vm)
+        {
+            return false;
+        }
+
+        vehicle = vm;
+        return true;
     }
-
-    private void CloseVehicleDetail()
-    {
-        VehicleDetailOverlay.Visibility = Visibility.Collapsed;
-        VehicleDetailContent.Children.Clear();
-    }
-
-
 
     private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
 
@@ -158,7 +189,7 @@ public partial class VehicleTrackingView : UserControl
 
 
 
-            current = VisualTreeHelper.GetParent(current);
+            current = GetParentSafe(current);
 
         }
 
@@ -167,6 +198,14 @@ public partial class VehicleTrackingView : UserControl
         return null;
 
     }
+
+    private static DependencyObject? GetParentSafe(DependencyObject current) =>
+        current switch
+        {
+            Visual => VisualTreeHelper.GetParent(current),
+            FrameworkContentElement fce => fce.Parent as DependencyObject,
+            _ => LogicalTreeHelper.GetParent(current)
+        };
 
 
 
@@ -181,6 +220,8 @@ public partial class VehicleTrackingView : UserControl
             _viewModel.PushVehiclesToMapRequested -= OnPushVehiclesToMap;
 
             _viewModel.FocusVehicleOnMapRequested -= OnFocusVehicleOnMap;
+
+            _viewModel.HighlightRouteOnMapRequested -= OnHighlightRouteOnMap;
 
             _viewModel.ShowVehicleDetailRequested -= OnShowVehicleDetailRequested;
 
@@ -200,6 +241,8 @@ public partial class VehicleTrackingView : UserControl
 
             _viewModel.FocusVehicleOnMapRequested += OnFocusVehicleOnMap;
 
+            _viewModel.HighlightRouteOnMapRequested += OnHighlightRouteOnMap;
+
             _viewModel.ShowVehicleDetailRequested += OnShowVehicleDetailRequested;
 
             _viewModel.OnViewActivated();
@@ -210,7 +253,65 @@ public partial class VehicleTrackingView : UserControl
 
 
 
-    private void OnShowVehicleDetailRequested(VehicleListItemViewModel vehicle) => ShowVehicleDetail(vehicle);
+    private void OnShowVehicleDetailRequested(VehicleListItemViewModel vehicle) =>
+        Dispatcher.BeginInvoke(() => OpenVehicleDetail(vehicle), DispatcherPriority.Background);
+
+    private void OpenVehicleDetail(VehicleListItemViewModel vehicle)
+    {
+        try
+        {
+            UnsubscribeDetailVehicle();
+            _detailVehicle = vehicle;
+            _detailVehicle.PropertyChanged += OnDetailVehiclePropertyChanged;
+            RefreshVehicleDetailContent(vehicle);
+            VehicleDetailOverlay.Visibility = Visibility.Visible;
+            VehicleDetailCloseButton.Focus();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"Fahrzeug-Detail konnte nicht geöffnet werden: {ex}");
+        }
+    }
+
+    private void RefreshVehicleDetailContent(VehicleListItemViewModel vehicle)
+    {
+        VehicleDetailTitle.Text = VehicleDetailContentBuilder.BuildTitle(vehicle);
+        VehicleDetailContentBuilder.Populate(VehicleDetailContent, vehicle);
+    }
+
+    private void OnDetailVehiclePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not VehicleListItemViewModel vehicle
+            || !ReferenceEquals(vehicle, _detailVehicle)
+            || VehicleDetailOverlay.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        if (e.PropertyName is nameof(VehicleListItemViewModel.StreetAddress)
+            or nameof(VehicleListItemViewModel.StreetDisplay))
+        {
+            RefreshVehicleDetailContent(vehicle);
+        }
+    }
+
+    private void UnsubscribeDetailVehicle()
+    {
+        if (_detailVehicle is null)
+        {
+            return;
+        }
+
+        _detailVehicle.PropertyChanged -= OnDetailVehiclePropertyChanged;
+        _detailVehicle = null;
+    }
+
+    private void CloseVehicleDetail()
+    {
+        UnsubscribeDetailVehicle();
+        VehicleDetailOverlay.Visibility = Visibility.Collapsed;
+        VehicleDetailContent.Children.Clear();
+    }
 
     private void OnUnloaded(object sender, System.Windows.RoutedEventArgs e)
     {
@@ -558,81 +659,21 @@ public partial class VehicleTrackingView : UserControl
 
 
 
-        var envelope = new JsonObject
-
-        {
-
-            ["type"] = "focusVehicle",
-
-            ["id"] = id
-
-        };
-
-        MapWebView.CoreWebView2.PostWebMessageAsJson(envelope.ToJsonString());
-
-    }
-
-
-
-    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
-
-    {
-
         try
 
         {
 
-            var root = JsonNode.Parse(e.WebMessageAsJson)?.AsObject();
-
-            if (root is null)
+            var envelope = new JsonObject
 
             {
 
-                return;
+                ["type"] = "focusVehicle",
 
-            }
+                ["id"] = id
 
+            };
 
-
-            switch (root["type"]?.GetValue<string>())
-
-            {
-
-                case "ready":
-
-                    _mapReady = true;
-
-                    _viewModel?.OnMapReady();
-
-                    if (_pendingMapJson is not null)
-
-                    {
-
-                        _ = FlushPendingMapDataAsync();
-
-                    }
-
-                    break;
-
-                case "vehicleSelected":
-
-                    _viewModel?.SelectVehicleFromMap(root["id"]?.GetValue<string>());
-
-                    break;
-
-                case "mapViewChanged":
-
-                    _viewModel?.OnMapViewChangedFromMap(
-
-                        root["lat"]?.GetValue<double>() ?? double.NaN,
-
-                        root["lon"]?.GetValue<double>() ?? double.NaN,
-
-                        root["zoom"]?.GetValue<double>() ?? double.NaN);
-
-                    break;
-
-            }
+            MapWebView.CoreWebView2.PostWebMessageAsJson(envelope.ToJsonString());
 
         }
 
@@ -640,10 +681,117 @@ public partial class VehicleTrackingView : UserControl
 
         {
 
-            // ignore malformed map messages
+            // WebView kann beim Tab-Wechsel kurz nicht erreichbar sein
 
         }
 
+    }
+
+
+
+    private void OnHighlightRouteOnMap(string? routeKey)
+
+    {
+
+        if (!_mapReady || MapWebView.CoreWebView2 is null)
+
+        {
+
+            return;
+
+        }
+
+
+
+        try
+
+        {
+
+            var envelope = new JsonObject
+
+            {
+
+                ["type"] = "highlightRoute",
+
+                ["routeKey"] = routeKey ?? string.Empty
+
+            };
+
+            MapWebView.CoreWebView2.PostWebMessageAsJson(envelope.ToJsonString());
+
+        }
+
+        catch
+
+        {
+
+            // ignore transient WebView errors
+
+        }
+
+    }
+
+
+
+    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        string messageJson;
+        try
+        {
+            messageJson = e.WebMessageAsJson;
+        }
+        catch
+        {
+            return;
+        }
+
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => HandleWebMessage(messageJson));
+            return;
+        }
+
+        HandleWebMessage(messageJson);
+    }
+
+    private void HandleWebMessage(string messageJson)
+    {
+        try
+        {
+            var root = JsonNode.Parse(messageJson)?.AsObject();
+
+            if (root is null)
+            {
+                return;
+            }
+
+            switch (root["type"]?.GetValue<string>())
+            {
+                case "ready":
+                    _mapReady = true;
+                    _viewModel?.OnMapReady();
+                    if (_pendingMapJson is not null)
+                    {
+                        _ = FlushPendingMapDataAsync();
+                    }
+                    break;
+
+                case "vehicleSelected":
+                    _viewModel?.SelectVehicleFromMap(root["id"]?.GetValue<string>());
+                    break;
+
+                case "mapViewChanged":
+                    _viewModel?.OnMapViewChangedFromMap(
+                        root["lat"]?.GetValue<double>() ?? double.NaN,
+                        root["lon"]?.GetValue<double>() ?? double.NaN,
+                        root["zoom"]?.GetValue<double>() ?? double.NaN);
+                    break;
+            }
+        }
+        catch
+        {
+            // ignore malformed map messages
+        }
     }
 
 }

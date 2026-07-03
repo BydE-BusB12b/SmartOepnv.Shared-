@@ -60,6 +60,7 @@ public partial class MainViewModel : ObservableObject
         _dataTransferViewModel.NavigateToEmployeeManagementRequested += OnNavigateToEmployeeManagementRequested;
         _fahrerdispoViewModel.NavigateToEmployeeManagementRequested += OnNavigateToEmployeeManagementFromDispoRequested;
         _leitstelleMessagesInboxViewModel.SosAlertRaised += OnLeitstelleSosAlertRaised;
+        _leitstelleMessagesInboxViewModel.OpenVehicleOnMapRequested += OnLeitstelleOpenVehicleOnMapRequested;
         _leitstelleMessagesInboxViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(LeitstelleMessagesInboxViewModel.UnreadMailCount) or
@@ -75,6 +76,8 @@ public partial class MainViewModel : ObservableObject
                 UpdateFahrzeugverwaltungBadge();
             }
         };
+
+        IsLeitstelleApp = profile.IsLeitstelle;
 
         if (!profile.IsLeitstelle)
         {
@@ -119,16 +122,10 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        StatusText = "Lade Planer-Arbeitsstand…";
+        StatusText = "Lade Planer-Arbeitsstand aus Dropbox…";
         PlanerWorkspaceSaveCoordinator.Reset();
         try
         {
-            // Maßgeblich: planer_workspace.json lokal – routes_export.json nur manueller Fallback.
-            if (await TryLoadLocalPlanerWorkspaceAsync().ConfigureAwait(true))
-            {
-                StatusText = BuildLocalStatusText("Planer-Arbeitsstand geladen");
-            }
-
             var syncResult = await SyncDropboxAfterLoginAsync(transferProgress).ConfigureAwait(true);
 
             if (syncResult?.Imported == true)
@@ -158,6 +155,12 @@ public partial class MainViewModel : ObservableObject
                     _dataTransferViewModel.LastActionMessage = forced.Message;
                     return;
                 }
+            }
+
+            if (!AppServices.Routes.HasPackage && await TryLoadLocalPlanerWorkspaceAsync().ConfigureAwait(true))
+            {
+                StatusText = BuildLocalStatusText("Planer-Arbeitsstand lokal geladen");
+                return;
             }
 
             if (!AppServices.Routes.HasPackage)
@@ -214,6 +217,10 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private string appVersion = "0.3.0";
+
+    public bool IsLeitstelleApp { get; }
+
+    public LeitstelleMessagesInboxViewModel LeitstelleMessagesInbox => _leitstelleMessagesInboxViewModel;
 
     partial void OnSelectedNavigationItemChanged(NavigationItem? value)
     {
@@ -521,7 +528,9 @@ public partial class MainViewModel : ObservableObject
         _dataTransferViewModel.IsBusy = true;
         try
         {
-            var result = await PlanerDropboxWorkspaceSync.TryImportIfRemoteNewerAsync(transferProgress)
+            var result = await PlanerDropboxWorkspaceSync.TryImportFromDropboxAsync(
+                    forceOverwrite: true,
+                    transferProgress)
                 .ConfigureAwait(true);
             if (result.Imported)
             {
@@ -893,7 +902,13 @@ public partial class MainViewModel : ObservableObject
         return items;
     }
 
-    private void OnLeitstelleSosAlertRaised(string phoneNormalized)
+    private void OnLeitstelleSosAlertRaised(string phoneNormalized) =>
+        OpenLeitstelleVehicleLiveMap(phoneNormalized);
+
+    private void OnLeitstelleOpenVehicleOnMapRequested(string phoneNormalized) =>
+        OpenLeitstelleVehicleLiveMap(phoneNormalized);
+
+    private void OpenLeitstelleVehicleLiveMap(string? phoneNormalized)
     {
         if (!_profile.IsLeitstelle || string.IsNullOrWhiteSpace(phoneNormalized))
         {
@@ -906,12 +921,18 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        if (SelectedNavigationItem != fahrzeugeNav)
+        Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            return;
-        }
+            if (SelectedNavigationItem != fahrzeugeNav)
+            {
+                SelectedNavigationItem = fahrzeugeNav;
+            }
 
-        _vehicleTrackingViewModel.ShowVehicleDetailForPhone(phoneNormalized);
+            Application.Current?.Dispatcher.BeginInvoke(() =>
+            {
+                _vehicleTrackingViewModel.ShowVehicleDetailForPhone(phoneNormalized);
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
+        }, System.Windows.Threading.DispatcherPriority.Normal);
     }
 
     private void UpdateLeitstelleMessagesBadge()
@@ -921,8 +942,8 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        _leitstelleMessagesNavItem.BadgeText =
-            _leitstelleMessagesInboxViewModel.HasUnreadMail ? "1" : string.Empty;
+        var count = _leitstelleMessagesInboxViewModel.UnreadMailCount;
+        _leitstelleMessagesNavItem.BadgeText = count > 0 ? $"+{count}" : string.Empty;
     }
 
     private void UpdateFahrzeugverwaltungBadge()

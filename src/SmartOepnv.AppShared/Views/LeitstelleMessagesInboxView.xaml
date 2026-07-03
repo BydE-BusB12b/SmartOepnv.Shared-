@@ -30,14 +30,18 @@
         </materialDesign:Card>
 
         <ListBox Grid.Row="1"
+                 x:Name="MessageList"
                  ItemsSource="{Binding Items}"
                  BorderThickness="0"
                  Background="Transparent"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 PreviewMouseLeftButtonDown="MessageList_PreviewMouseLeftButtonDown">
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
                     <Setter Property="Padding" Value="0" />
                     <Setter Property="Margin" Value="0,0,0,6" />
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="ToolTip" Value="Klicken: Live-Karte mit Fahrzeug-Info öffnen" />
                 </Style>
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
@@ -81,6 +85,7 @@
                                         Padding="4,0"
                                         Margin="0,0,0,4"
                                         HorizontalAlignment="Right"
+                                        Cursor="Hand"
                                         ToolTip="Nachricht aus der Liste entfernen" />
                                 <TextBlock Text="{Binding TimestampLabel}" FontSize="11" Opacity="0.72" HorizontalAlignment="Right" />
                                 <TextBlock Text="{Binding Type}" FontSize="11" HorizontalAlignment="Right" Margin="0,2,0,0">

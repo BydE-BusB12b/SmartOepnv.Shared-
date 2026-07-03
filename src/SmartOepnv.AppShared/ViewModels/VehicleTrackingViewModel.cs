@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -6,6 +8,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Geo;
 using SmartOepnv.Core.RoutePath;
 using SmartOepnv.Core.VehicleTracking;
 
@@ -13,28 +16,35 @@ namespace SmartOepnv.AppShared.ViewModels;
 
 public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(8);
+    private static readonly NominatimReverseGeocoder ReverseGeocoder = new();
     private readonly VehicleTrackingService _tracking = AppServices.VehicleTracking;
     private readonly VehicleTrackingMapViewStore _mapViewStore = new(AppServices.SettingsSubfolder);
     private CancellationTokenSource? _pollCts;
+    private CancellationTokenSource? _geocodeCts;
     private IReadOnlyList<VehicleLiveState> _vehicles = [];
+    private string? _pendingDetailPhone;
 
     public event Action<string>? PushVehiclesToMapRequested;
     public event Action<string>? FocusVehicleOnMapRequested;
+    public event Action<string?>? HighlightRouteOnMapRequested;
     public event Action<VehicleListItemViewModel>? ShowVehicleDetailRequested;
 
     public ObservableCollection<VehicleListItemViewModel> Vehicles { get; } = [];
 
-    [ObservableProperty] private string statusMessage = "Dropbox-Verbindung erforderlich – Fahrzeuge werden alle 15 s aktualisiert.";
+    [ObservableProperty] private string statusMessage = "Dropbox-Verbindung erforderlich – Fahrzeuge werden alle 8 s aktualisiert.";
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private VehicleListItemViewModel? selectedVehicle;
 
     partial void OnSelectedVehicleChanged(VehicleListItemViewModel? value)
     {
-        if (value is not null)
+        if (value is null)
         {
-            FocusVehicleOnMap(value.Id);
+            return;
         }
+
+        HighlightRouteOnMapRequested?.Invoke(ResolveHighlightRouteKey(value));
+        FocusVehicleOnMapRequested?.Invoke(value.Id);
     }
 
     public void OnViewActivated()
@@ -80,11 +90,14 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
                 _vehicles = vehicles;
                 RebuildList();
                 PushVehiclesToMap();
+                FlushPendingDetailPhoneIfNeeded();
                 var online = _vehicles.Count(v => v.Status == VehicleOnlineStatus.Online);
                 StatusMessage = _vehicles.Count == 0
                     ? "Keine Fahrzeug-Standorte in Dropbox gefunden (location_chat_*.json)."
                     : $"{_vehicles.Count} Fahrzeuge – {online} online (grün), veraltet rot, offline lila.";
             });
+
+            StartStreetResolution();
         }
         catch (Exception ex)
         {
@@ -98,8 +111,15 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
     public void SelectVehicleFromMap(string? id)
     {
-        if (string.IsNullOrWhiteSpace(id)) return;
-        SelectedVehicle = Vehicles.FirstOrDefault(v => v.Id == id);
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return;
+        }
+
+        _ = RunOnUiAsync(() =>
+        {
+            SelectedVehicle = Vehicles.FirstOrDefault(v => v.Id == id);
+        });
     }
 
     public VehicleTrackingMapView? GetSavedMapView() => _mapViewStore.Load();
@@ -134,14 +154,19 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         }
 
         SelectedVehicle = target;
-        FocusVehicleOnMap(target.Id);
         return true;
     }
 
     public bool ShowVehicleDetailForPhone(string? normalizedPhone)
     {
+        if (string.IsNullOrWhiteSpace(normalizedPhone))
+        {
+            return false;
+        }
+
         if (!FocusVehicleByPhone(normalizedPhone))
         {
+            _pendingDetailPhone = normalizedPhone;
             return false;
         }
 
@@ -149,17 +174,37 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
             string.Equals(v.PhoneNormalized, normalizedPhone, StringComparison.Ordinal));
         if (target is null)
         {
+            _pendingDetailPhone = normalizedPhone;
             return false;
         }
 
+        _pendingDetailPhone = null;
         ShowVehicleDetailRequested?.Invoke(target);
         return true;
     }
 
-    private void FocusVehicleOnMap(string id)
+    private void FlushPendingDetailPhoneIfNeeded()
     {
-        PushVehiclesToMap();
-        FocusVehicleOnMapRequested?.Invoke(id);
+        var phone = _pendingDetailPhone;
+        if (string.IsNullOrWhiteSpace(phone))
+        {
+            return;
+        }
+
+        ShowVehicleDetailForPhone(phone);
+    }
+
+    private string? ResolveHighlightRouteKey(VehicleListItemViewModel vehicle)
+    {
+        if (string.IsNullOrWhiteSpace(vehicle.RouteName))
+        {
+            return null;
+        }
+
+        var root = AppServices.Routes.Editor?.PackageRoot;
+        return root is null
+            ? null
+            : LeitstelleRoutePathOverview.ResolveRouteKey(root, vehicle.RouteName);
     }
 
     private static Task RunOnUiAsync(Action action)
@@ -176,12 +221,90 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
     private void RebuildList()
     {
+        var previous = Vehicles.ToDictionary(v => v.Id, v => v);
         Vehicles.Clear();
         foreach (var v in _vehicles)
         {
-            Vehicles.Add(VehicleListItemViewModel.From(v));
+            var item = VehicleListItemViewModel.From(v);
+            if (previous.TryGetValue(item.Id, out var old)
+                && CoordinatesMatch(old.Latitude, old.Longitude, item.Latitude, item.Longitude)
+                && !string.IsNullOrWhiteSpace(old.StreetAddress))
+            {
+                item.StreetAddress = old.StreetAddress;
+            }
+
+            Vehicles.Add(item);
         }
     }
+
+    private void StartStreetResolution()
+    {
+        _geocodeCts?.Cancel();
+        _geocodeCts?.Dispose();
+        _geocodeCts = new CancellationTokenSource();
+        var token = _geocodeCts.Token;
+        _ = ResolveStreetsAsync(token);
+    }
+
+    private async Task ResolveStreetsAsync(CancellationToken ct)
+    {
+        List<(string Id, double Lat, double Lon)> pending = [];
+        await RunOnUiAsync(() =>
+        {
+            pending = Vehicles
+                .Where(v => HasResolvableCoordinates(v) && string.IsNullOrWhiteSpace(v.StreetAddress))
+                .Select(v => (v.Id, v.Latitude, v.Longitude))
+                .ToList();
+        });
+
+        foreach (var (id, lat, lon) in pending)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                return;
+            }
+
+            string? street;
+            try
+            {
+                street = await ReverseGeocoder.TryResolveStreetAsync(lat, lon, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(street))
+            {
+                continue;
+            }
+
+            await RunOnUiAsync(() =>
+            {
+                var current = Vehicles.FirstOrDefault(v => v.Id == id);
+                if (current is null || !CoordinatesMatch(current.Latitude, current.Longitude, lat, lon))
+                {
+                    return;
+                }
+
+                current.StreetAddress = street;
+            });
+        }
+    }
+
+    private static bool HasResolvableCoordinates(VehicleListItemViewModel vehicle) =>
+        double.IsFinite(vehicle.Latitude)
+        && double.IsFinite(vehicle.Longitude)
+        && Math.Abs(vehicle.Latitude) <= 90
+        && Math.Abs(vehicle.Longitude) <= 180
+        && !(vehicle.Latitude == 0 && vehicle.Longitude == 0);
+
+    private static bool CoordinatesMatch(double aLat, double aLon, double bLat, double bLon) =>
+        Math.Abs(aLat - bLat) < 0.00001 && Math.Abs(aLon - bLon) < 0.00001;
 
     private void PushVehiclesToMap()
     {
@@ -312,11 +435,20 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         _pollCts = null;
     }
 
-    public void Dispose() => StopPolling();
+    public void Dispose()
+    {
+        StopPolling();
+        _geocodeCts?.Cancel();
+        _geocodeCts?.Dispose();
+        _geocodeCts = null;
+    }
 }
 
-public sealed class VehicleListItemViewModel
+public sealed class VehicleListItemViewModel : INotifyPropertyChanged
 {
+    private string? _streetAddress;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
     public required string Id { get; init; }
     public required string DisplayName { get; init; }
     public string? PhoneNormalized { get; init; }
@@ -449,6 +581,24 @@ public sealed class VehicleListItemViewModel
 
     public string BatteryDisplay => BatteryLevel is >= 0 and <= 100 ? $"{BatteryLevel} %" : "–";
 
+    public string? StreetAddress
+    {
+        get => _streetAddress;
+        set
+        {
+            if (string.Equals(_streetAddress, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _streetAddress = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(StreetDisplay));
+        }
+    }
+
+    public string StreetDisplay => string.IsNullOrWhiteSpace(StreetAddress) ? "–" : StreetAddress;
+
     public string PositionDisplay => $"{Latitude:F5}°, {Longitude:F5}°";
 
     public string AccuracyDisplay =>
@@ -472,4 +622,7 @@ public sealed class VehicleListItemViewModel
             return string.IsNullOrWhiteSpace(PhoneNormalized) ? "–" : PhoneNormalized;
         }
     }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }

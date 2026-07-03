@@ -43,8 +43,13 @@ public static class LocationChatParser
                 ? pu.GetString()?.Trim()
                 : userName;
 
+            var driverName = ReadOptionalString(loc, "driverName");
             var id = payloadPhone ?? phoneFromFile ?? ExtractDeviceIdFromFileName(fileName) ?? fileName;
-            var displayName = ResolveDisplayName(id, payloadPhone ?? phoneFromFile, payloadUser ?? userName, roster);
+            var displayName = ResolveDisplayName(
+                id,
+                payloadPhone ?? phoneFromFile,
+                payloadUser ?? userName,
+                roster);
 
             var timestamp = loc.TryGetProperty("timestamp", out var locTs)
                 ? locTs.GetInt64()
@@ -68,7 +73,7 @@ public static class LocationChatParser
                 RouteName = ReadOptionalString(loc, "route"),
                 StopName = ReadOptionalString(loc, "stop"),
                 Destination = ReadOptionalString(loc, "destination"),
-                DriverName = ReadOptionalString(loc, "driverName"),
+                DriverName = driverName,
                 DriverPersonnelNumber = ReadOptionalString(loc, "driverPersonnelNumber"),
                 BatteryLevel = loc.TryGetProperty("batteryLevel", out var bat) && bat.TryGetInt32(out var b) && b >= 0 ? b : null,
                 DelaySeconds = loc.TryGetProperty("delaySeconds", out var delay) && delay.TryGetInt32(out var d) ? d : null,
@@ -83,32 +88,40 @@ public static class LocationChatParser
         }
     }
 
+    /// <summary>
+    /// Karten-/Listenlabel: Fahrzeug (z. B. KOM2602), nicht der angemeldete Fahrer.
+    /// Fahrer steht in <see cref="VehicleLiveState.DriverName"/> / Detail „Angemeldeter Fahrer“.
+    /// </summary>
     private static string ResolveDisplayName(
         string id,
         string? phone,
         string? userName,
         IReadOnlyList<RegisteredVehicleInfo> roster)
     {
-        if (!string.IsNullOrWhiteSpace(userName) && userName != "Unbekannt")
-        {
-            var byName = roster.FirstOrDefault(v =>
-                string.Equals(v.Name, userName, StringComparison.OrdinalIgnoreCase));
-            if (byName is not null)
-            {
-                return byName.Name;
-            }
-
-            return ShortLabel(userName);
-        }
-
         if (!string.IsNullOrWhiteSpace(phone))
         {
             var byPhone = roster.FirstOrDefault(v =>
                 NormalizePhone(v.PhoneNumber) == phone);
             if (byPhone is not null)
             {
-                return byPhone.Name;
+                var vehicleLabel = ResolveVehicleLabelFromRosterEntry(byPhone);
+                if (!string.IsNullOrWhiteSpace(vehicleLabel))
+                {
+                    return vehicleLabel;
+                }
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(userName) && !string.Equals(userName, "Unbekannt", StringComparison.OrdinalIgnoreCase))
+        {
+            var byName = roster.FirstOrDefault(v =>
+                string.Equals(v.Name, userName, StringComparison.OrdinalIgnoreCase));
+            if (byName is not null && !string.IsNullOrWhiteSpace(byName.Name))
+            {
+                return byName.Name;
+            }
+
+            return ShortLabel(userName);
         }
 
         if (!string.IsNullOrWhiteSpace(userName))
@@ -117,6 +130,27 @@ public static class LocationChatParser
         }
 
         return phone ?? id;
+    }
+
+    /// <summary>Fahrzeugname bevorzugen; nur bei reinem Telefon-Platzhalter Hauptnutzer-Name.</summary>
+    private static string? ResolveVehicleLabelFromRosterEntry(RegisteredVehicleInfo entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.Name))
+        {
+            var name = entry.Name.Trim();
+            var phoneDigits = NormalizePhone(entry.PhoneNumber);
+            if (phoneDigits is null || NormalizePhone(name) != phoneDigits)
+            {
+                return name;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.MainDeviceEmployeeName))
+        {
+            return ShortLabel(entry.MainDeviceEmployeeName);
+        }
+
+        return string.IsNullOrWhiteSpace(entry.Name) ? null : entry.Name;
     }
 
     public static string ShortLabel(string name)

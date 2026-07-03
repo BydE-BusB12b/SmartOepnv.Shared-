@@ -22,6 +22,7 @@ public partial class MainShellWindow : Window
     private bool _closeHandlerRunning;
     private bool _softwareUpdateChecked;
     private PlanerIdleLogoutMonitor? _idleLogoutMonitor;
+    private PlanerSystemLifecycleMonitor? _lifecycleMonitor;
 
     public bool LoginGateActive { get; private set; }
 
@@ -37,7 +38,33 @@ public partial class MainShellWindow : Window
             _idleLogoutMonitor = new PlanerIdleLogoutMonitor();
             _idleLogoutMonitor.IdleTimeoutReached += OnIdleLogoutAsync;
             _idleLogoutMonitor.CountdownChanged += OnIdleCountdownChanged;
+            _lifecycleMonitor = new PlanerSystemLifecycleMonitor();
+            _lifecycleMonitor.Start();
         }
+    }
+
+    /// <summary>
+    /// Ruhezustand / Standby: synchron speichern, Dropbox-Sperre freigeben, Anwendung beenden.
+    /// </summary>
+    internal void RequestAutoCloseFromSystemSuspend()
+    {
+        if (_closeConfirmed || _closeHandlerRunning)
+        {
+            return;
+        }
+
+        _idleLogoutMonitor?.Stop();
+        _lifecycleMonitor?.Stop();
+
+        if (AppServices.IsPlannerApp &&
+            AppServices.PlanerSession?.NeedsExitHandling() == true)
+        {
+            SmartOepnvAppHost.SkipShutdownSave = false;
+            SmartOepnvAppHost.EnsurePlanerShutdownSaveAndRelease();
+        }
+
+        _closeConfirmed = true;
+        Application.Current.Shutdown();
     }
 
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
@@ -111,7 +138,7 @@ public partial class MainShellWindow : Window
             }
         }
 
-        _idleLogoutMonitor?.Stop();
+        _idleLogoutMonitor?.Suspend();
         SetLoginOverlay(true);
 
         if (idleTimeout)
@@ -145,6 +172,7 @@ public partial class MainShellWindow : Window
         catch (Exception ex)
         {
             SetLoginOverlay(false);
+            _idleLogoutMonitor?.Resume();
             SmartConfirmDialog.ShowInfo(
                 this,
                 "Speichern fehlgeschlagen",
@@ -157,6 +185,7 @@ public partial class MainShellWindow : Window
             savingDialog.PrepareToClose();
             savingDialog.Close();
             IsEnabled = true;
+            _idleLogoutMonitor?.Resume();
         }
 
         if (idleTimeout && saveSucceeded)
@@ -231,6 +260,7 @@ public partial class MainShellWindow : Window
         PlanerSyncDialog? syncDialog = null;
         if (AppServices.IsPlannerApp)
         {
+            _idleLogoutMonitor?.Suspend();
             syncDialog = new PlanerSyncDialog
             {
                 Owner = this
@@ -280,6 +310,7 @@ public partial class MainShellWindow : Window
                 syncDialog.PrepareToClose();
                 syncDialog.Close();
                 IsEnabled = true;
+                _idleLogoutMonitor?.Resume();
                 Activate();
                 Focus();
             }
@@ -301,6 +332,7 @@ public partial class MainShellWindow : Window
         }
 
         IsEnabled = true;
+        _idleLogoutMonitor?.Resume();
         SetLoginOverlay(true);
         SmartConfirmDialog.ShowInfo(
             this,
@@ -373,6 +405,7 @@ public partial class MainShellWindow : Window
 
     private async Task ShowSavingDialogAsync(AppExitSavingDialog savingDialog)
     {
+        _idleLogoutMonitor?.Suspend();
         savingDialog.Owner = this;
         WindowTitleBarHelper.ShowWhenContentReady(savingDialog);
         IsEnabled = false;
@@ -385,6 +418,7 @@ public partial class MainShellWindow : Window
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
         _idleLogoutMonitor?.Stop();
+        _lifecycleMonitor?.Stop();
 
         if (_closeConfirmed || !AppServices.IsInitialized)
         {
@@ -428,7 +462,7 @@ public partial class MainShellWindow : Window
             try
             {
                 var progress = new Progress<DropboxTransferProgress>(p => savingDialog.UpdateTransferProgress(p));
-                await SavePlanerWorkspaceAsync("app-exit", bestEffortFlush: true, transferProgress: progress)
+                await SavePlanerWorkspaceAsync("app-exit", bestEffortFlush: false, transferProgress: progress)
                     .ConfigureAwait(true);
 
                 try
@@ -445,6 +479,7 @@ public partial class MainShellWindow : Window
                 savingDialog.PrepareToClose();
                 savingDialog.Close();
                 IsEnabled = true;
+                _idleLogoutMonitor?.Resume();
                 _closeHandlerRunning = false;
                 SmartConfirmDialog.ShowInfo(
                     this,
@@ -467,6 +502,7 @@ public partial class MainShellWindow : Window
                 savingDialog.PrepareToClose();
                 savingDialog.Close();
                 IsEnabled = true;
+                _idleLogoutMonitor?.Resume();
             }
         }
         else

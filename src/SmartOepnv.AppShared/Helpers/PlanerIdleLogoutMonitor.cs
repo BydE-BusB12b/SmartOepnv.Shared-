@@ -19,6 +19,7 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
     private DateTime _idleDeadlineUtc;
     private bool _isActive;
     private bool _logoutInProgress;
+    private int _suspendCount;
 
     public event Func<Task>? IdleTimeoutReached;
     public event Action<TimeSpan?>? CountdownChanged;
@@ -61,12 +62,48 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
     {
         lock (_sync)
         {
-            if (!_isActive || _logoutInProgress)
+            if (!_isActive || _logoutInProgress || _suspendCount > 0)
             {
                 return;
             }
 
             ResetTimerCore();
+        }
+    }
+
+    /// <summary>
+    /// Pausiert Countdown und Auto-Abmeldung während langer Vorgänge (Sync, Speichern).
+    /// Unterstützt verschachtelte Aufrufe.
+    /// </summary>
+    public void Suspend()
+    {
+        lock (_sync)
+        {
+            _suspendCount++;
+        }
+
+        PublishCountdownOnUi(null);
+    }
+
+    public void Resume()
+    {
+        lock (_sync)
+        {
+            if (_suspendCount > 0)
+            {
+                _suspendCount--;
+            }
+
+            if (_suspendCount == 0 && _isActive && !_logoutInProgress)
+            {
+                ResetTimerCore();
+                return;
+            }
+        }
+
+        if (_suspendCount > 0)
+        {
+            PublishCountdownOnUi(null);
         }
     }
 
@@ -92,7 +129,7 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
 
         lock (_sync)
         {
-            if (!_isActive || _logoutInProgress)
+            if (!_isActive || _logoutInProgress || _suspendCount > 0)
             {
                 return;
             }
@@ -169,7 +206,7 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
 
     private void OnPreProcessInput(object sender, PreProcessInputEventArgs e)
     {
-        if (!_isActive || _logoutInProgress)
+        if (!_isActive || _logoutInProgress || _suspendCount > 0)
         {
             return;
         }

@@ -25,7 +25,8 @@ public static class DropboxPlanerFolderValidator
         CancellationToken ct = default,
         bool verifyWorkspaceContent = true)
     {
-        var folderPath = dropbox.Settings.FolderPath.TrimEnd('/');
+        var folderPath = dropbox.Settings.FolderPath;
+        folderPath = DropboxConstants.NormalizeFolderPath(folderPath).TrimEnd('/');
         if (string.IsNullOrWhiteSpace(folderPath))
         {
             return new ValidationResult

@@ -6,6 +6,8 @@ using SmartOepnv.Core;
 
 namespace SmartOepnv.Core.Dropbox;
 
+public readonly record struct DropboxNamedFileMetadata(long? ServerModifiedUtcMs, long SizeBytes);
+
 public sealed class DropboxApiClient
 {
     private readonly DropboxSettingsStore _store;
@@ -22,10 +24,11 @@ public sealed class DropboxApiClient
 
     public DropboxSettings Settings => _store.Load();
 
+    private string ActiveFolderPath => DropboxConstants.NormalizeFolderPath(Settings.FolderPath).TrimEnd('/');
+
     public string GetRouteFilePath(string? fileName = null)
     {
-        var folder = Settings.FolderPath.TrimEnd('/');
-        return $"{folder}/{fileName ?? DropboxConstants.RouteFileName}";
+        return $"{ActiveFolderPath}/{fileName ?? DropboxConstants.RouteFileName}";
     }
 
     public string GetNamedFilePath(string fileName) => GetRouteFilePath(fileName);
@@ -33,7 +36,7 @@ public sealed class DropboxApiClient
     public async Task<bool> FolderExistsAsync(CancellationToken ct = default)
     {
         var token = await GetValidAccessTokenAsync(ct).ConfigureAwait(false);
-        var folder = Settings.FolderPath.TrimEnd('/');
+        var folder = ActiveFolderPath;
         return await GetMetadataAsync(folder, token, ct).ConfigureAwait(false) is not null;
     }
 
@@ -137,7 +140,7 @@ public sealed class DropboxApiClient
 
     public async Task<DropboxConnectionTestResult> TestConnectionAsync(CancellationToken ct = default)
     {
-        var result = new DropboxConnectionTestResult { FolderPath = Settings.FolderPath.TrimEnd('/') };
+        var result = new DropboxConnectionTestResult { FolderPath = ActiveFolderPath };
         try
         {
             var token = await GetValidAccessTokenAsync(ct);
@@ -267,6 +270,27 @@ public sealed class DropboxApiClient
             .ConfigureAwait(false);
     }
 
+    public async Task<DropboxNamedFileMetadata?> TryGetNamedFileMetadataAsync(
+        string fileName,
+        CancellationToken ct = default)
+    {
+        var token = await GetValidAccessTokenAsync(ct).ConfigureAwait(false);
+        var meta = await GetMetadataAsync(GetNamedFilePath(fileName), token, ct).ConfigureAwait(false);
+        if (meta is null)
+        {
+            return null;
+        }
+
+        long? modifiedUtcMs = null;
+        if (meta.Value.ServerModified is { } modified)
+        {
+            modifiedUtcMs = new DateTimeOffset(
+                DateTime.SpecifyKind(modified, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
+        }
+
+        return new DropboxNamedFileMetadata(modifiedUtcMs, meta.Value.Size);
+    }
+
     public async Task<string> DownloadNamedFileAsync(
         string fileName,
         CancellationToken ct = default,
@@ -281,7 +305,7 @@ public sealed class DropboxApiClient
 
     public async Task<IReadOnlyList<string>> ListLocationChatFilesAsync(CancellationToken ct = default)
     {
-        var folder = Settings.FolderPath.TrimEnd('/');
+        var folder = ActiveFolderPath;
         var token = await GetValidAccessTokenAsync(ct);
         var names = await ListFileNamesAsync(folder, token, ct);
         return names
@@ -293,7 +317,7 @@ public sealed class DropboxApiClient
 
     public async Task<IReadOnlyList<string>> ListZblMessageFilesAsync(CancellationToken ct = default)
     {
-        var folder = Settings.FolderPath.TrimEnd('/');
+        var folder = ActiveFolderPath;
         var token = await GetValidAccessTokenAsync(ct);
         var names = await ListFileNamesAsync(folder, token, ct);
         return names
@@ -305,7 +329,7 @@ public sealed class DropboxApiClient
 
     public async Task<IReadOnlyList<string>> ListMailAndSosChatFilesAsync(CancellationToken ct = default)
     {
-        var folder = Settings.FolderPath.TrimEnd('/');
+        var folder = ActiveFolderPath;
         var token = await GetValidAccessTokenAsync(ct);
         var names = await ListFileNamesAsync(folder, token, ct);
         return names
@@ -320,14 +344,14 @@ public sealed class DropboxApiClient
 
     public async Task<IReadOnlyList<string>> ListAllFileNamesAsync(CancellationToken ct = default)
     {
-        var folder = Settings.FolderPath.TrimEnd('/');
+        var folder = ActiveFolderPath;
         var token = await GetValidAccessTokenAsync(ct);
         return await ListFileNamesAsync(folder, token, ct);
     }
 
     public async Task<IReadOnlyList<string>> ListZeitwirtschaftFilesAsync(CancellationToken ct = default)
     {
-        var folder = Settings.FolderPath.TrimEnd('/');
+        var folder = ActiveFolderPath;
         var token = await GetValidAccessTokenAsync(ct);
         var names = await ListFileNamesAsync(folder, token, ct);
         var filtered = names
@@ -350,12 +374,8 @@ public sealed class DropboxApiClient
             .ToList();
     }
 
-    public async Task UploadZblMessageAsync(string phoneRaw, string message, CancellationToken ct = default)
-    {
-        var fileName = ZblMessageService.BuildFileName(phoneRaw);
-        var payload = ZblMessageService.BuildPayloadJson(phoneRaw, message);
-        await UploadNamedFileAsync(fileName, payload, ct).ConfigureAwait(false);
-    }
+    public async Task<long> UploadZblMessageAsync(string phoneRaw, string message, CancellationToken ct = default) =>
+        await ZblMessageService.UploadAsync(this, phoneRaw, message, ct).ConfigureAwait(false);
 
     private async Task<string> DownloadRouteFileInternalAsync(string token, CancellationToken ct)
     {
@@ -379,7 +399,7 @@ public sealed class DropboxApiClient
         CancellationToken ct,
         IProgress<DropboxTransferProgress>? progress = null)
     {
-        var folder = Settings.FolderPath.TrimEnd('/');
+        var folder = ActiveFolderPath;
         var path = $"{folder}/{fileName}";
         using var request = new HttpRequestMessage(HttpMethod.Post, DropboxConstants.DownloadUrl);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -478,12 +498,8 @@ public sealed class DropboxApiClient
         await UploadNamedBinaryInternalAsync(fileName, content, await GetValidAccessTokenAsync(ct), ct);
     }
 
-    public async Task TriggerRemoteManualUpdateAsync(string vehiclePhone, CancellationToken ct = default)
-    {
-        var fileName = RemoteManualUpdateService.BuildCommandFileName(vehiclePhone);
-        var payload = RemoteManualUpdateService.BuildPayloadJson();
-        await UploadNamedFileAsync(fileName, payload, ct);
-    }
+    public async Task<long> TriggerRemoteManualUpdateAsync(string vehiclePhone, CancellationToken ct = default) =>
+        await RemoteManualUpdateService.UploadAsync(this, vehiclePhone, ct).ConfigureAwait(false);
 
     private async Task UploadNamedFileInternalAsync(
         string fileName,
@@ -504,10 +520,7 @@ public sealed class DropboxApiClient
             catch (Exception ex) when (IsRetriableUploadError(ex) && attempt < DropboxConstants.UploadMaxAttempts)
             {
                 lastError = ex;
-                await Task.Delay(
-                        TimeSpan.FromSeconds(DropboxConstants.UploadRetryDelaySeconds * attempt),
-                        ct)
-                    .ConfigureAwait(false);
+                await Task.Delay(GetUploadRetryDelay(ex, attempt), ct).ConfigureAwait(false);
 
                 if (await RefreshAccessTokenAsync(ct).ConfigureAwait(false))
                 {
@@ -556,7 +569,7 @@ public sealed class DropboxApiClient
         CancellationToken ct,
         IProgress<DropboxTransferProgress>? progress = null)
     {
-        var folder = Settings.FolderPath.TrimEnd('/');
+        var folder = ActiveFolderPath;
         var path = $"{folder}/{fileName}";
         var apiArg = JsonSerializer.Serialize(new
         {
@@ -596,7 +609,7 @@ public sealed class DropboxApiClient
         CancellationToken ct,
         IProgress<DropboxTransferProgress>? progress = null)
     {
-        var folder = Settings.FolderPath.TrimEnd('/');
+        var folder = ActiveFolderPath;
         var path = $"{folder}/{fileName}";
         var phase = $"{fileName} wird hochgeladen (große Datei)…";
         var total = (long)content.Length;
@@ -774,6 +787,8 @@ public sealed class DropboxApiClient
     private static bool IsRetriableUploadError(Exception ex) =>
         !IsPermanentUploadError(ex) &&
         (ex is TaskCanceledException or HttpRequestException or IOException
+         || ex.Message.Contains("too_many_write_operations", StringComparison.OrdinalIgnoreCase)
+         || ex.Message.Contains("too_many_requests", StringComparison.OrdinalIgnoreCase)
          || ex.Message.Contains("Timeout", StringComparison.OrdinalIgnoreCase)
          || ex.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase)
          || ex.Message.Contains("canceled", StringComparison.OrdinalIgnoreCase)
@@ -781,6 +796,47 @@ public sealed class DropboxApiClient
 
     private static bool IsPermanentUploadError(Exception ex) =>
         ex.Message.Contains("payload_too_large", StringComparison.OrdinalIgnoreCase);
+
+    private static TimeSpan GetUploadRetryDelay(Exception ex, int attempt)
+    {
+        var retryAfterSeconds = TryParseDropboxRetryAfterSeconds(ex.Message);
+        if (retryAfterSeconds is int seconds)
+        {
+            return TimeSpan.FromSeconds(Math.Max(seconds + 1, 2));
+        }
+
+        return TimeSpan.FromSeconds(DropboxConstants.UploadRetryDelaySeconds * attempt);
+    }
+
+    private static int? TryParseDropboxRetryAfterSeconds(string message)
+    {
+        var jsonStart = message.IndexOf('{');
+        if (jsonStart < 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(message[jsonStart..]);
+            if (!doc.RootElement.TryGetProperty("error", out var error))
+            {
+                return null;
+            }
+
+            if (error.TryGetProperty("retry_after", out var retryAfter) &&
+                retryAfter.TryGetInt32(out var seconds))
+            {
+                return seconds;
+            }
+        }
+        catch (JsonException)
+        {
+            // ignore malformed error payloads
+        }
+
+        return null;
+    }
 
     private async Task UploadNamedBinaryInternalAsync(string fileName, byte[] content, string token, CancellationToken ct)
     {
@@ -795,10 +851,7 @@ public sealed class DropboxApiClient
             catch (Exception ex) when (IsRetriableUploadError(ex) && attempt < DropboxConstants.UploadMaxAttempts)
             {
                 lastError = ex;
-                await Task.Delay(
-                        TimeSpan.FromSeconds(DropboxConstants.UploadRetryDelaySeconds * attempt),
-                        ct)
-                    .ConfigureAwait(false);
+                await Task.Delay(GetUploadRetryDelay(ex, attempt), ct).ConfigureAwait(false);
 
                 if (await RefreshAccessTokenAsync(ct).ConfigureAwait(false))
                 {
@@ -833,7 +886,7 @@ public sealed class DropboxApiClient
         {
             AppKey = Settings.AppKey,
             AppSecret = Settings.AppSecret,
-            FolderPath = Settings.FolderPath
+            FolderPath = ActiveFolderPath
         });
     }
 

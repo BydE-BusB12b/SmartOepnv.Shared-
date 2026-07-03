@@ -4,7 +4,39 @@ public static class DropboxConstants
 {
     public const string DefaultAppKey = "zl4jd0tyuqjwkxp";
     public const string DefaultAppSecret = "lzer62tixqyzpc3";
-    public const string DefaultFolderPath = "/App/Smart ÖPNV";
+    public const string DefaultFolderPath = "/smart öpnv";
+
+    /// <summary>Frühere Standardpfade – werden beim Laden auf <see cref="DefaultFolderPath"/> gemappt.</summary>
+    public static readonly string[] LegacyDefaultFolderPaths =
+    [
+        "/App/Smart ÖPNV",
+        "/Apps/Smart ÖPNV",
+        "/Smart ÖPNV"
+    ];
+
+    public static string NormalizeFolderPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return DefaultFolderPath;
+        }
+
+        var trimmed = path.Trim();
+        if (!trimmed.StartsWith('/'))
+        {
+            trimmed = $"/{trimmed}";
+        }
+
+        foreach (var legacy in LegacyDefaultFolderPaths)
+        {
+            if (string.Equals(trimmed, legacy, StringComparison.OrdinalIgnoreCase))
+            {
+                return DefaultFolderPath;
+            }
+        }
+
+        return trimmed;
+    }
     public const string RouteFileName = "routes_export.json";
     public const string LeitstelleStandFileName = "leitstelle_stand.json";
     public const string MaengelkarteFileName = "maengelkarte.json";

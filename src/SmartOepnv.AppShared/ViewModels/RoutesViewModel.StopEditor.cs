@@ -15,14 +15,43 @@ public partial class RoutesViewModel
     public ObservableCollection<string> Ds003aDestinations { get; } = [];
     public ObservableCollection<string> LineCourseTripRoutes { get; } = [];
 
+    private bool _startStopCheckbox;
+
     public bool HasSelectedStop => SelectedStop is not null;
 
     public bool IsStartStop
     {
-        get => SelectedStop is not null && !SelectedStop.IsAnnouncementEnabled;
+        get => _startStopCheckbox;
         set
         {
             if (SelectedStop is null)
+            {
+                return;
+            }
+
+            _startStopCheckbox = value;
+            if (value)
+            {
+                SelectedStop.IsAnnouncementEnabled = false;
+            }
+            else
+            {
+                SelectedStop.Destination = string.Empty;
+                SelectedStop.Ds003aDestination = string.Empty;
+                SelectedStop.LineNumber = string.Empty;
+            }
+
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public bool IsAnnouncementHidden
+    {
+        get => SelectedStop is not null && !IsStartStop && !SelectedStop.IsAnnouncementEnabled;
+        set
+        {
+            if (SelectedStop is null || IsStartStop)
             {
                 return;
             }
@@ -32,6 +61,8 @@ public partial class RoutesViewModel
             MarkStopDetailDirty();
         }
     }
+
+    public bool ShowAnnouncementHiddenOption => HasSelectedStop && !IsStartStop;
 
     public bool IsEndStop
     {
@@ -325,6 +356,7 @@ public partial class RoutesViewModel
     public void PrepareStopEditDialog(RouteStopItem stop)
     {
         SelectedStop = stop;
+        _startStopCheckbox = RouteStopEditorCatalog.IsStartStop(stop);
         RefreshStopEditorCatalogs();
         EnsureCatalogContainsStopSelections(stop);
         SyncSelectedStopVrrStopIdFromStop();
@@ -394,6 +426,8 @@ public partial class RoutesViewModel
     {
         OnPropertyChanged(nameof(HasSelectedStop));
         OnPropertyChanged(nameof(IsStartStop));
+        OnPropertyChanged(nameof(IsAnnouncementHidden));
+        OnPropertyChanged(nameof(ShowAnnouncementHiddenOption));
         OnPropertyChanged(nameof(IsEndStop));
         OnPropertyChanged(nameof(PlayEndStopAnnouncement));
         OnPropertyChanged(nameof(RouteChangeEnabled));

@@ -4,43 +4,11 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels">
     <UserControl.Resources>
-        <Storyboard x:Key="DropboxExportBlinkStoryboard" RepeatBehavior="Forever">
-            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)"
-                                          Duration="0:0:0.55"
-                                          AutoReverse="True">
-                <LinearColorKeyFrame Value="#66FFB74D" KeyTime="0:0:0" />
-                <LinearColorKeyFrame Value="#B3FF9800" KeyTime="0:0:0.55" />
-            </ColorAnimationUsingKeyFrames>
-            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Control.BorderBrush).(SolidColorBrush.Color)"
-                                          Duration="0:0:0.55"
-                                          AutoReverse="True">
-                <LinearColorKeyFrame Value="#99FFB74D" KeyTime="0:0:0" />
-                <LinearColorKeyFrame Value="#FFFF9800" KeyTime="0:0:0.55" />
-            </ColorAnimationUsingKeyFrames>
-        </Storyboard>
-        <Style x:Key="DropboxExportButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="White" />
-            <Setter Property="Background" Value="Transparent" />
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding DropboxExportButtonState}" Value="{x:Static vm:DropboxExportButtonState.Sending}">
-                    <Setter Property="Foreground" Value="#FFFFCC80" />
-                    <Setter Property="Background" Value="#66FFB74D" />
-                    <Setter Property="BorderBrush" Value="#FFFF9800" />
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard Name="DropboxExportBlink" Storyboard="{StaticResource DropboxExportBlinkStoryboard}" />
-                    </DataTrigger.EnterActions>
-                    <DataTrigger.ExitActions>
-                        <StopStoryboard BeginStoryboardName="DropboxExportBlink" />
-                    </DataTrigger.ExitActions>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding DropboxExportButtonState}" Value="{x:Static vm:DropboxExportButtonState.Sent}">
-                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
-                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="TransferButtonStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </UserControl.Resources>
     <!-- Kein ScrollViewer: soll auf der Übersicht ohne vertikales Scrollen passen -->
     <StackPanel Margin="8,4,8,6" VerticalAlignment="Top">
@@ -209,38 +177,25 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button Content="Von Dropbox laden"
                                 Command="{Binding ImportFromDropboxCommand}"
-                                Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                Style="{StaticResource DropboxImportTransferButtonStyle}"
                                 Margin="0,0,6,0"
                                 Padding="12,4" />
                         <Button Content="Nach Dropbox senden"
                                 Command="{Binding ExportToDropboxCommand}"
-                                Style="{StaticResource DropboxExportButtonStyle}"
+                                Style="{StaticResource DropboxExportTransferButtonStyle}"
                                 Margin="0,0,6,0"
                                 Padding="12,4" />
                         <Button Content="Senden + Fernupdate"
                                 Command="{Binding ExportToDropboxWithRemoteUpdateCommand}"
-                                Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                Style="{StaticResource DropboxRemoteUpdateTransferButtonStyle}"
                                 Margin="0,0,6,0"
                                 Padding="12,4"
                                 ToolTip="Route hochladen und Update auf dem Fahrzeug auslösen (Umleitung während der Fahrt)" />
                         <Button Command="{Binding SaveLeitstelleStandToDropboxCommand}"
-                                Foreground="White"
-                                BorderBrush="White"
+                                Style="{StaticResource LeitstelleStandTransferButtonStyle}"
                                 Padding="12,4"
                                 Margin="0,0,6,0"
-                                ToolTip="Fahrer, Fahrzeuge, Nachrichten-Vorlagen, Außenanzeigen-Ziele und Fahrwege für die Leitstelle (leitstelle_stand.json).">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-                                    <Setter Property="Content" Value="Für Leitstelle speichern" />
-                                    <Setter Property="Visibility" Value="Visible" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding ShowLeitstelleStandExportButton}" Value="False">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
+                                ToolTip="Fahrer, Fahrzeuge, Nachrichten-Vorlagen, Außenanzeigen-Ziele und Fahrwege für die Leitstelle (leitstelle_stand.json)." />
                     </StackPanel>
                 </Grid>
 
@@ -298,15 +253,13 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button Content="Von Dropbox laden"
                                 Command="{Binding ImportPlanerWorkspaceFromDropboxCommand}"
-                                Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                Style="{StaticResource PlanerWorkspaceImportTransferButtonStyle}"
                                 Margin="0,0,6,0"
                                 Padding="12,4"
                                 ToolTip="Lädt planer_workspace.json (Ansagen, Fahrer, Fahrzeuge, Dienstvorlagen, …) von Dropbox" />
                         <Button Content="Nach Dropbox speichern"
                                 Command="{Binding ExportPlanerWorkspaceToDropboxCommand}"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                Foreground="White"
-                                BorderBrush="White"
+                                Style="{StaticResource PlanerWorkspaceExportTransferButtonStyle}"
                                 Padding="12,4"
                                 ToolTip="Speichert den vollständigen Planer-Arbeitsstand nach Dropbox (wie beim Abmelden)" />
                     </StackPanel>

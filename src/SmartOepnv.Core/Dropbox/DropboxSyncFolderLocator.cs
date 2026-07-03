@@ -2,7 +2,7 @@ namespace SmartOepnv.Core.Dropbox;
 
 /// <summary>
 /// Findet den lokal synchronisierten Dropbox-Ordner unter Windows
-/// (z. B. C:\Users\…\Dropbox\App\Smart ÖPNV).
+/// (z. B. C:\Users\…\Dropbox\smart öpnv).
 /// </summary>
 public static class DropboxSyncFolderLocator
 {
@@ -15,6 +15,15 @@ public static class DropboxSyncFolderLocator
         foreach (var dropboxRoot in GetDropboxRoots(home))
         {
             candidates.Add(CombineDropboxRelative(dropboxRoot, relative));
+            foreach (var legacy in DropboxConstants.LegacyDefaultFolderPaths)
+            {
+                var legacyRelative = legacy.Trim('/').Replace('\\', '/');
+                if (!string.Equals(relative, legacyRelative, StringComparison.OrdinalIgnoreCase))
+                {
+                    candidates.Add(CombineDropboxRelative(dropboxRoot, legacyRelative));
+                }
+            }
+
             if (relative.StartsWith("App/", StringComparison.OrdinalIgnoreCase))
             {
                 var appsVariant = "Apps/" + relative["App/".Length..];
@@ -60,10 +69,7 @@ public static class DropboxSyncFolderLocator
 
     private static string NormalizeRelativeFolder(string? configuredApiFolderPath)
     {
-        var path = string.IsNullOrWhiteSpace(configuredApiFolderPath)
-            ? DropboxConstants.DefaultFolderPath
-            : configuredApiFolderPath.Trim();
-        return path.Trim('/').Replace('\\', '/');
+        return DropboxConstants.NormalizeFolderPath(configuredApiFolderPath).Trim('/').Replace('\\', '/');
     }
 
     private static IEnumerable<string> GetDropboxRoots(string home)

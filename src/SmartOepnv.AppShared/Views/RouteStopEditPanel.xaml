@@ -167,6 +167,12 @@
 
         <CheckBox Content="Starthaltestelle" IsChecked="{Binding IsStartStop, Mode=TwoWay}" Margin="0,0,0,8" />
 
+        <CheckBox Content="Ansage ausblenden"
+                  IsChecked="{Binding IsAnnouncementHidden, Mode=TwoWay}"
+                  Visibility="{Binding ShowAnnouncementHiddenOption, Converter={StaticResource BoolToVis}}"
+                  ToolTip="Haltestelle ohne GPS-Ansage – in der App durchgestrichen (wie im Handy)"
+                  Margin="0,0,0,8" />
+
         <StackPanel Visibility="{Binding ShowStartStopFields, Converter={StaticResource BoolToVis}}"
                     Margin="0,0,0,12"
                     HorizontalAlignment="Stretch">
@@ -337,7 +343,7 @@
         </StackPanel>
 
         <TextBlock Opacity="0.75" TextWrapping="Wrap" FontSize="11"
-                   Text="Ziele unter „Anzeigen &amp; Hinweise“ pflegen. Starthaltestelle = keine Ansage, dafür Ziel/Linie." />
+                   Text="Ziele unter „Anzeigen &amp; Hinweise“ pflegen. Starthaltestelle = Ziel/Linie statt Ansage. „Ansage ausblenden“ deaktiviert die Haltestelle (durchgestrichen in der App)." />
         </StackPanel>
     </Grid>
 </UserControl>

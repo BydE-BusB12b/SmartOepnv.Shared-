@@ -60,6 +60,7 @@
                         <ListBox x:Name="VehicleListBox"
                                  ItemsSource="{Binding Vehicles}"
                                  SelectedItem="{Binding SelectedVehicle}"
+                                 SelectionChanged="VehicleListBox_SelectionChanged"
                                  MouseDoubleClick="VehicleList_MouseDoubleClick"
                                  PreviewMouseRightButtonDown="VehicleList_PreviewMouseRightButtonDown"
                                  Background="Transparent" BorderThickness="0">
@@ -70,7 +71,7 @@
                                         <StackPanel>
                                             <TextBlock Text="{Binding DisplayName}" Foreground="White" FontWeight="Bold" />
                                             <TextBlock Foreground="#BBDEFB">
-                                                <Run Text="Linie/Kurs: " />
+                                                <Run Text="Linie/Kurs, Fahrt: " />
                                                 <Run Text="{Binding LineCourse}" FontWeight="SemiBold" />
                                             </TextBlock>
                                             <TextBlock Text="{Binding DetailLine}" Foreground="#E3F2FD" TextWrapping="Wrap" FontSize="12" />

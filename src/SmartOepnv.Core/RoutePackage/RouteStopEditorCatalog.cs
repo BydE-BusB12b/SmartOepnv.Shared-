@@ -6,6 +6,17 @@ public static class RouteStopEditorCatalog
     public const string NoDestinationLabel = "Kein Ziel";
     public const string NoLineCourseTripLabel = "Keine Fahrt ausgewählt";
 
+    /// <summary>Wie GPSAnsagen: Ziel, DS003a-Ziel oder Liniennummer gesetzt.</summary>
+    public static bool IsStartStop(RouteStopItem? stop) =>
+        stop is not null && (
+            !string.IsNullOrWhiteSpace(stop.Destination) ||
+            !string.IsNullOrWhiteSpace(stop.Ds003aDestination) ||
+            !string.IsNullOrWhiteSpace(stop.LineNumber));
+
+    /// <summary>Haltestelle in der Liste durchstreichen (Ansage deaktiviert, keine Starthaltestelle).</summary>
+    public static bool ShouldStrikeThroughDisplay(RouteStopItem? stop) =>
+        stop is not null && !IsStartStop(stop) && !stop.IsAnnouncementEnabled;
+
     public static string ToComboLabel(string? value, string emptyLabel)
     {
         var trimmed = value?.Trim();

@@ -1,0 +1,45 @@
+<Window x:Class="SmartOepnv.AppShared.Kom.KomCommandStatusDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        SizeToContent="Height"
+        Width="440"
+        MinWidth="380"
+        MaxWidth="480"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource SmartBackgroundBrush}"
+        Foreground="White"
+        TextElement.Foreground="White">
+
+    <Border Margin="16"
+            Padding="28,24"
+            CornerRadius="12"
+            Background="{StaticResource SmartSurfaceBrush}"
+            BorderBrush="{StaticResource SmartAccentBrush}"
+            BorderThickness="1">
+        <StackPanel HorizontalAlignment="Center">
+            <TextBlock x:Name="IconText"
+                       FontSize="40"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,12" />
+
+            <TextBlock x:Name="TitleText"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       Foreground="White"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,10" />
+
+            <TextBlock x:Name="MessageText"
+                       FontSize="13"
+                       LineHeight="20"
+                       Foreground="White"
+                       Opacity="0.88"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+    </Border>
+</Window>

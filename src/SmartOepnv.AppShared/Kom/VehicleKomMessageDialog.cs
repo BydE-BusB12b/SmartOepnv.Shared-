@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using SmartOepnv.AppShared.ViewModels;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 
@@ -99,27 +100,26 @@ public sealed class VehicleKomMessageDialog : Window
             var text = messageBox.Text.Trim();
             if (string.IsNullOrEmpty(text))
             {
-                MessageBox.Show(this, "Bitte Nachrichtentext eingeben.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                SmartConfirmDialog.ShowInfo(this, Title, "Bitte Nachrichtentext eingeben.");
                 return;
             }
 
             send.IsEnabled = false;
             cancel.IsEnabled = false;
-            status.Text = "Sende Meldung …";
             try
             {
-                await AppServices.Dropbox.UploadZblMessageAsync(phone, text);
-                MessageBox.Show(this,
-                    $"Meldung an {vehicle.DisplayName} gesendet.",
-                    Title,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                DialogResult = true;
-                Close();
-            }
-            catch (Exception ex)
-            {
-                status.Text = $"Fehler: {ex.Message}";
+                var outcome = await KomCommandSendFlow.ExecuteAsync(
+                    this,
+                    status,
+                    vehicle.DisplayName,
+                    phone,
+                    ZblMessageService.CommandType,
+                    ct => AppServices.Dropbox.UploadZblMessageAsync(phone, text, ct));
+                if (outcome is KomCommandSendOutcome.Success or KomCommandSendOutcome.Timeout)
+                {
+                    DialogResult = true;
+                    Close();
+                }
             }
             finally
             {
