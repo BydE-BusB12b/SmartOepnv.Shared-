@@ -7,6 +7,7 @@ namespace SmartOepnv.AppShared.Views;
 public class RemoteUpdateVehicleDialog : Window
 {
     public string? SelectedPhoneNumber { get; private set; }
+    public string? SelectedVehicleName { get; private set; }
 
     public RemoteUpdateVehicleDialog(IReadOnlyList<RegisteredVehicleInfo> vehicles)
     {
@@ -76,11 +77,14 @@ public class RemoteUpdateVehicleDialog : Window
         {
             if (combo is not null && combo.SelectedIndex >= 0)
             {
-                SelectedPhoneNumber = vehicles[combo.SelectedIndex].PhoneNumber;
+                var vehicle = vehicles[combo.SelectedIndex];
+                SelectedPhoneNumber = vehicle.PhoneNumber;
+                SelectedVehicleName = vehicle.Name;
             }
             else if (phoneBox is not null)
             {
                 SelectedPhoneNumber = phoneBox.Text.Trim();
+                SelectedVehicleName = SelectedPhoneNumber;
             }
 
             if (string.IsNullOrWhiteSpace(SelectedPhoneNumber))

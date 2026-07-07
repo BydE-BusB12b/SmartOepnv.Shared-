@@ -69,15 +69,15 @@
                                     <Border Padding="8" Margin="0,0,0,6" CornerRadius="8"
                                             Background="#22000000" BorderBrush="#44FFFFFF" BorderThickness="1">
                                         <StackPanel>
-                                            <TextBlock Text="{Binding DisplayName}" Foreground="White" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding DisplayName, Mode=OneWay}" Foreground="White" FontWeight="Bold" />
                                             <TextBlock Foreground="#BBDEFB">
                                                 <Run Text="Linie/Kurs, Fahrt: " />
-                                                <Run Text="{Binding LineCourse}" FontWeight="SemiBold" />
+                                                <Run Text="{Binding LineCourse, Mode=OneWay}" FontWeight="SemiBold" />
                                             </TextBlock>
-                                            <TextBlock Text="{Binding DetailLine}" Foreground="#E3F2FD" TextWrapping="Wrap" FontSize="12" />
+                                            <TextBlock Text="{Binding DetailLine, Mode=OneWay}" Foreground="#E3F2FD" TextWrapping="Wrap" FontSize="12" />
                                             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                                <TextBlock Text="{Binding StatusLabel}" Foreground="#C8E6C9" FontSize="11" Margin="0,0,8,0" />
-                                                <TextBlock Text="{Binding LastUpdateLabel}" Foreground="#B0BEC5" FontSize="11" />
+                                                <TextBlock Text="{Binding StatusLabel, Mode=OneWay}" Foreground="#C8E6C9" FontSize="11" Margin="0,0,8,0" />
+                                                <TextBlock Text="{Binding LastUpdateLabel, Mode=OneWay}" Foreground="#B0BEC5" FontSize="11" />
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>

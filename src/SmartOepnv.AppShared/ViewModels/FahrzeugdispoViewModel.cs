@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmartOepnv.AppShared.Views;
@@ -41,6 +42,8 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
     private readonly EditorAreaSyncState _sync = new();
 
     private string? _loadedFingerprint;
+
+    private bool _rebuildScheduled;
 
     public FahrzeugdispoViewModel()
         : base("Kalenderschnur: Fahrzeuge links, Tage rechts – Tag anklicken für Stundenansicht.")
@@ -98,9 +101,9 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
     [ObservableProperty] private bool hasExpandedRow;
 
-    partial void OnViewStartDateChanged(DateTime value) => RebuildGrid();
+    partial void OnViewStartDateChanged(DateTime value) => ScheduleRebuildGrid();
 
-    partial void OnShowOnlyActiveVehiclesChanged(bool value) => RebuildGrid();
+    partial void OnShowOnlyActiveVehiclesChanged(bool value) => ScheduleRebuildGrid();
 
     public void RefreshFromEditorIfNeeded()
     {
@@ -136,7 +139,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             return;
         }
 
-        RebuildGrid();
+        ScheduleRebuildGrid();
         _sync.AfterRefresh();
         _loadedFingerprint = ComputeFingerprint();
     }
@@ -245,7 +248,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
     {
         _expandedPhoneKey = vehiclePhoneKey;
         _expandedDate = date.Date;
-        RebuildGrid();
+        ScheduleRebuildGrid();
         StatusMessage =
             $"Stundenansicht für {date:dd.MM.yyyy} – „Wochenansicht“ oder ◀ zum Schließen.";
     }
@@ -260,7 +263,32 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
         _expandedPhoneKey = null;
         _expandedDate = null;
-        RebuildGrid();
+        ScheduleRebuildGrid();
+    }
+
+    private void ScheduleRebuildGrid()
+    {
+        if (_rebuildScheduled)
+        {
+            return;
+        }
+
+        _rebuildScheduled = true;
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            _rebuildScheduled = false;
+            RebuildGrid();
+            return;
+        }
+
+        dispatcher.BeginInvoke(
+            () =>
+            {
+                _rebuildScheduled = false;
+                RebuildGrid();
+            },
+            DispatcherPriority.Loaded);
     }
 
     private void RebuildGrid()
@@ -367,7 +395,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             EnsureWeekVisible(focusStartEpochMs.Value);
         }
 
-        RebuildGrid();
+        ScheduleRebuildGrid();
         if (PersistAssignments())
         {
             _sync.AfterCommit();

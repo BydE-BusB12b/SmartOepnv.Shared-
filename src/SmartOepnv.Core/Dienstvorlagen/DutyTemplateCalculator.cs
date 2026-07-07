@@ -31,7 +31,7 @@ public static class DutyTemplateCalculator
         var unpaidBreakDeductionPart2 = ResolveUnpaidBreakDeductionMinutes(template, 2);
         var unpaidBreakDeductionPart3 = ResolveUnpaidBreakDeductionMinutes(template, 3);
 
-        if (template.Part3Rows.Count > 0)
+        if (template.Part3Rows.Count > 0 && template.IsDutyDivision)
         {
             return ComputeThreePartSummary(
                 template.Rows,
@@ -42,6 +42,16 @@ public static class DutyTemplateCalculator
                 unpaidBreakDeductionPart1,
                 unpaidBreakDeductionPart2,
                 unpaidBreakDeductionPart3);
+        }
+
+        if (template.IsSplitShift && template.Part2Rows.Count > 0)
+        {
+            return ComputeSplitShiftSummary(
+                template.Rows,
+                template.Part2Rows,
+                preparationMinutes,
+                followUpMinutes,
+                unpaidBreakDeductionPart1);
         }
 
         if (template.Part2Rows.Count > 0)
@@ -156,6 +166,92 @@ public static class DutyTemplateCalculator
             UnpaidBreakDeductedMinutes = unpaidBreakDeductionPart1 + unpaidBreakDeductionPart2,
             WorkPreparationMinutes = preparationMinutes * 2,
             WorkFollowUpMinutes = followUpMinutes * 2
+        };
+    }
+
+    /// <summary>
+    /// FPersV geteilter Dienst: Dienstschicht = Beginn Arbeitsteil 1 (inkl. Vorbereitung) bis Ende Arbeitsteil 2 (inkl. Nachbereitung).
+    /// Arbeitsvorbereitung und -nachbereitung gelten je Arbeitsteil.
+    /// </summary>
+    public static DutyTemplateStats ComputeSplitShiftSummary(
+        IReadOnlyList<DutyTemplateRow> part1Rows,
+        IReadOnlyList<DutyTemplateRow> part2Rows,
+        int preparationMinutes,
+        int followUpMinutes,
+        int unpaidBreakDeductionMinutes)
+    {
+        var prep = preparationMinutes > 0 ? preparationMinutes : 0;
+        var followUp = followUpMinutes > 0 ? followUpMinutes : 0;
+        var part1Work = ComputePart(part1Rows, prep, followUp, 0);
+        var part2Work = ComputePart(part2Rows, prep, followUp, unpaidBreakDeductionMinutes);
+
+        var part1Driving = GetDrivingRows(OrderRows(part1Rows));
+        var part2Driving = GetDrivingRows(OrderRows(part2Rows));
+        if (part1Driving.Count == 0 || part2Driving.Count == 0)
+        {
+            var fallbackDuration = part1Work.ServiceDurationMinutes + part2Work.ServiceDurationMinutes;
+            var fallbackPay = part1Work.PayMinutes + part2Work.PayMinutes;
+            return new DutyTemplateStats
+            {
+                ServiceDurationMinutes = fallbackDuration,
+                PayMinutes = fallbackPay,
+                BreakMinutes = part1Work.BreakMinutes + part2Work.BreakMinutes,
+                DrivingMinutes = part1Work.DrivingMinutes + part2Work.DrivingMinutes,
+                UnpaidBreakDeductedMinutes = unpaidBreakDeductionMinutes,
+                WorkPreparationMinutes = prep * 2,
+                WorkFollowUpMinutes = followUp * 2
+            };
+        }
+
+        var spansMidnight = SpansOperatingDayMidnight(part1Driving.Concat(part2Driving).ToList());
+        var part1StartKey = GetOperatingDayStartKey(part1Driving, spansMidnight);
+        var part1EndKey = GetOperatingDayEndKey(part1Driving, spansMidnight);
+        var part2StartKey = GetOperatingDayStartKey(part2Driving, spansMidnight);
+        var part2EndKey = GetOperatingDayEndKey(part2Driving, spansMidnight);
+        if (part1StartKey is null || part2EndKey is null || part1EndKey is null || part2StartKey is null)
+        {
+            return new DutyTemplateStats
+            {
+                ServiceDurationMinutes = part1Work.ServiceDurationMinutes + part2Work.ServiceDurationMinutes,
+                PayMinutes = part1Work.PayMinutes + part2Work.PayMinutes,
+                BreakMinutes = part1Work.BreakMinutes + part2Work.BreakMinutes,
+                DrivingMinutes = part1Work.DrivingMinutes + part2Work.DrivingMinutes,
+                UnpaidBreakDeductedMinutes = unpaidBreakDeductionMinutes,
+                WorkPreparationMinutes = prep * 2,
+                WorkFollowUpMinutes = followUp * 2
+            };
+        }
+
+        var dutyStartKey = part1StartKey.Value - prep;
+        var dutyEndKey = part2EndKey.Value + followUp;
+        if (dutyEndKey < dutyStartKey)
+        {
+            dutyEndKey += 24 * 60;
+        }
+
+        var serviceDuration = Math.Max(0, dutyEndKey - dutyStartKey);
+        var pay = unpaidBreakDeductionMinutes > 0
+            ? Math.Max(0, serviceDuration - unpaidBreakDeductionMinutes)
+            : serviceDuration;
+
+        var part1SegmentEndKey = part1EndKey.Value + followUp;
+        var part2SegmentStartKey = part2StartKey.Value - prep;
+        if (part2SegmentStartKey < part1SegmentEndKey)
+        {
+            part2SegmentStartKey += 24 * 60;
+        }
+
+        var gapMinutes = Math.Max(0, part2SegmentStartKey - part1SegmentEndKey);
+
+        return new DutyTemplateStats
+        {
+            ServiceDurationMinutes = serviceDuration,
+            PayMinutes = pay,
+            BreakMinutes = part1Work.BreakMinutes + part2Work.BreakMinutes + gapMinutes,
+            DrivingMinutes = part1Work.DrivingMinutes + part2Work.DrivingMinutes,
+            UnpaidBreakDeductedMinutes = unpaidBreakDeductionMinutes,
+            WorkPreparationMinutes = prep * 2,
+            WorkFollowUpMinutes = followUp * 2
         };
     }
 

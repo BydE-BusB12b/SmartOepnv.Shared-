@@ -12,13 +12,28 @@ public static class KomCommandAckService
     public const string StatusSuccess = "success";
     public const string StatusError = "error";
 
-    private static readonly int[] PollDelaysMs = [0, 1_000, 2_000, 5_000, 8_000, 12_000];
+    private static readonly int[] DefaultPollDelaysMs = [0, 1_000, 2_000, 5_000, 8_000, 15_000, 25_000, 40_000, 60_000];
+
+    private static readonly int[] ManualUpdatePollDelaysMs =
+        [0, 1_000, 2_000, 5_000, 8_000, 15_000, 25_000, 40_000, 60_000, 90_000, 120_000, 180_000];
+
+    /// <summary>Nach Zwischenstand „Update gestartet“ häufiger auf Abschluss prüfen (Import kann mehrere Minuten dauern).</summary>
+    private static readonly int[] ManualUpdateFollowUpPollDelaysMs =
+        Enumerable.Repeat(3_000, 200).ToArray();
+
+    /** Intro + Pause + bis zu 3 Min. Aufnahme – länger als Standard-Polling. */
+    private static readonly int[] DurchsagePollDelaysMs =
+        [0, 1_000, 2_000, 5_000, 8_000, 15_000, 25_000, 40_000, 60_000, 90_000];
+
+    private static readonly int[] DurchsageFollowUpPollDelaysMs =
+        Enumerable.Repeat(3_000, 80).ToArray();
 
     public sealed record AckResult(
         long CommandId,
         string OriginalType,
         bool IsSuccess,
-        string Message);
+        string Message,
+        bool IsProgress = false);
 
     public static string BuildAckFileName(string phoneRaw)
     {
@@ -48,18 +63,33 @@ public static class KomCommandAckService
         _ => "Erfolgreich"
     };
 
+    public const string AckPhaseStarted = "started";
+    public const string AckPhaseComplete = "complete";
+
+    public static string DefaultProgressMessage(string commandType) => commandType switch
+    {
+        RemoteManualUpdateService.CommandType => "Routen-Update auf dem Gerät gestartet",
+        KomLeitstelleDurchsageService.CommandType => "Durchsage wird im Fahrgastraum abgespielt",
+        _ => "Befehl auf dem Gerät gestartet"
+    };
+
     public static async Task<AckResult?> WaitForAckAsync(
         DropboxApiClient dropbox,
         string phoneRaw,
         long commandId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action<AckResult>? onProgress = null,
+        string? commandType = null)
     {
         if (commandId <= 0)
         {
             return null;
         }
 
-        foreach (var delayMs in PollDelaysMs)
+        var delays = ResolvePollDelays(commandType);
+
+        var sawProgress = false;
+        foreach (var delayMs in delays)
         {
             ct.ThrowIfCancellationRequested();
             if (delayMs > 0)
@@ -68,13 +98,69 @@ public static class KomCommandAckService
             }
 
             var ack = await TryPollAckAsync(dropbox, phoneRaw, commandId, ct).ConfigureAwait(false);
-            if (ack is not null)
+            if (ack is null)
             {
+                continue;
+            }
+
+            if (ack.IsProgress)
+            {
+                sawProgress = true;
+                onProgress?.Invoke(ack);
+                continue;
+            }
+
+            return ack;
+        }
+
+        if (sawProgress)
+        {
+            foreach (var delayMs in ResolveFollowUpPollDelays(commandType))
+            {
+                ct.ThrowIfCancellationRequested();
+                await Task.Delay(delayMs, ct).ConfigureAwait(false);
+
+                var ack = await TryPollAckAsync(dropbox, phoneRaw, commandId, ct).ConfigureAwait(false);
+                if (ack is null || ack.IsProgress)
+                {
+                    continue;
+                }
+
                 return ack;
             }
         }
 
         return null;
+    }
+
+    private static int[] ResolvePollDelays(string? commandType)
+    {
+        if (string.Equals(commandType, RemoteManualUpdateService.CommandType, StringComparison.Ordinal))
+        {
+            return ManualUpdatePollDelaysMs;
+        }
+
+        if (string.Equals(commandType, KomLeitstelleDurchsageService.CommandType, StringComparison.Ordinal))
+        {
+            return DurchsagePollDelaysMs;
+        }
+
+        return DefaultPollDelaysMs;
+    }
+
+    private static int[] ResolveFollowUpPollDelays(string? commandType)
+    {
+        if (string.Equals(commandType, RemoteManualUpdateService.CommandType, StringComparison.Ordinal))
+        {
+            return ManualUpdateFollowUpPollDelaysMs;
+        }
+
+        if (string.Equals(commandType, KomLeitstelleDurchsageService.CommandType, StringComparison.Ordinal))
+        {
+            return DurchsageFollowUpPollDelaysMs;
+        }
+
+        return [];
     }
 
     public static async Task<AckResult?> TryPollAckAsync(
@@ -136,12 +222,22 @@ public static class KomCommandAckService
                 message = DefaultSuccessMessage(originalType);
             }
 
-            KomCommandAckProcessedStore.MarkProcessed(phone, commandId);
+            var phase = root.TryGetProperty("phase", out var phaseProp)
+                ? phaseProp.GetString() ?? AckPhaseComplete
+                : AckPhaseComplete;
+            var isProgress = string.Equals(phase, AckPhaseStarted, StringComparison.OrdinalIgnoreCase);
+
+            if (!isProgress)
+            {
+                KomCommandAckProcessedStore.MarkProcessed(phone, commandId);
+            }
+
             return new AckResult(
                 ackCommandId,
                 originalType,
                 !string.Equals(status, StatusError, StringComparison.OrdinalIgnoreCase),
-                message);
+                message,
+                isProgress);
         }
         catch
         {

@@ -98,6 +98,11 @@
                                                     <Setter Property="Foreground" Value="#FFCDD2" />
                                                     <Setter Property="FontWeight" Value="Bold" />
                                                 </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsSprechwunsch}" Value="True">
+                                                    <Setter Property="Text" Value="Sprechwunsch" />
+                                                    <Setter Property="Foreground" Value="#A5D6A7" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </TextBlock.Style>

@@ -164,7 +164,7 @@
                                     <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
                                         <Setter Property="materialDesign:HintAssist.Hint" Value="Dienstnummer (z. B. 12803)" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsSplitDuty}" Value="True">
+                                            <DataTrigger Binding="{Binding IsDutyDivision}" Value="True">
                                                 <Setter Property="materialDesign:HintAssist.Hint" Value="Dienstnummer Teil 1 (z. B. 12803)" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -175,7 +175,7 @@
                                      materialDesign:HintAssist.Hint="Dienstnummer Teil 2 (z. B. 12804)"
                                      Text="{Binding DutyNumberPart2, UpdateSourceTrigger=PropertyChanged}"
                                      Margin="0,0,0,6"
-                                     Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                     Visibility="{Binding IsDutyDivision, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                      materialDesign:HintAssist.Hint="Dienstnummer Teil 3 (z. B. 12805)"
                                      Text="{Binding DutyNumberPart3, UpdateSourceTrigger=PropertyChanged}"
@@ -278,15 +278,24 @@
                                        Text="Standard: 10 Min. Vorbereitung, 5 Min. Nachbereitung pro Dienst – werden zur Dienstlänge addiert. „Intelligent Aufteilen“ teilt in 2 oder bei Bedarf 3 Teile (max. 9 h pro Teil). Dienstlänge max. 10 h inkl. Leerfahrten."
                                        Margin="0,0,0,8" />
                             <TextBlock Style="{StaticResource DutyHintStyle}"
-                                       Text="Bei geteiltem Dienst: Kennzahlen und 30-Min.-Pausenabzug je Dienstteil im Fahrten-Bereich."
+                                       Text="Bei Dienstaufteilung oder geteiltem Dienst: Kennzahlen je Arbeitsteil im Fahrten-Bereich."
                                        Margin="0,0,0,8"
                                        Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <TextBox materialDesign:HintAssist.Hint="Zusätzlicher Pausenabzug (Min.)"
                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                      Text="{Binding CustomUnpaidBreakDeductionMinutes, UpdateSourceTrigger=PropertyChanged}"
                                      Margin="0,0,0,8"
-                                     Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            <StackPanel Visibility="{Binding IsSplitDuty, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                     Visibility="{Binding IsDutyDivision, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock Style="{StaticResource DutyHintStyle}"
+                                       Text="{Binding SplitShiftHint}"
+                                       Margin="0,0,0,8"
+                                       Visibility="{Binding IsSplitShift, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock Style="{StaticResource DutyHintStyle}"
+                                       Text="{Binding SplitShiftValidationMessage}"
+                                       Foreground="#FF8A80"
+                                       Margin="0,0,0,8"
+                                       Visibility="{Binding HasSplitShiftValidationMessage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <StackPanel Visibility="{Binding ShowOverallDutyStats, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -561,7 +570,7 @@
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
                             </Grid>
 
-                            <TextBlock Text="Bearbeitbar – Leerfahrten/Leerzeilen einfügen, verschieben oder löschen. „Intelligente Leerfahrten“ öffnet ein Fenster zur Eingabe. „Intelligent Aufteilen“: 2 Teile, bei Bedarf 3 (max. 9 h). Dienstlänge max. 10 h inkl. Leerfahrten. Oder zwei Zeilen markieren und „Dienst trennen“."
+                            <TextBlock Text="Bearbeitbar – Leerfahrten/Leerzeilen einfügen, verschieben oder löschen. „Intelligente Leerfahrten“ öffnet ein Fenster zur Eingabe. „Intelligent Aufteilen“ / „Dienst trennen“: Dienstaufteilung (G1/G2, max. 9 h pro Teil). „Geteilter Dienst“: FPersV mit einer Nummer (Pause mind. 2 h, Dienstschicht max. 13 h) – jeweils zwei Zeilen markieren."
                                        Opacity="0.8"
                                        FontSize="10"
                                        Margin="30,4,0,0" />
@@ -626,6 +635,16 @@
                                         Foreground="White"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
                                         Visibility="{Binding IsSplitDuty, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                <Button Content="Geteilter Dienst"
+                                        Command="{Binding SplitShiftAtSelectionCommand}"
+                                        PreviewMouseDown="SplitShiftButton_PreviewMouseDown"
+                                        Focusable="False"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Foreground="White"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
+                                        ToolTip="Zwei Zeilen in Teil 1 markieren – FPersV, eine Dienstnummer"
+                                        Visibility="{Binding IsSplitDuty, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                 <Button Content="Dienst trennen"
                                         Command="{Binding SplitDutyAtSelectionCommand}"
                                         PreviewMouseDown="SplitDutyButton_PreviewMouseDown"
@@ -634,7 +653,8 @@
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
                                         Foreground="White"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
-                                        ToolTip="Genau zwei Zeilen im gleichen Teil markieren" />
+                                        ToolTip="Dienstaufteilung G1/G2 – zwei Zeilen im gleichen Teil markieren"
+                                        Visibility="{Binding IsSplitShift, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                 <Button Content="→ Teil 2"
                                         Command="{Binding MoveSelectedRowToPart2Command}"
                                         Focusable="False"
@@ -1081,7 +1101,7 @@
 
                     <StackPanel HorizontalAlignment="Right"
                                 Margin="0,0,0,10"
-                                Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                Visibility="{Binding IsDutyDivision, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button Command="{Binding ExportPart2PdfCommand}"
                                 Style="{StaticResource MaterialDesignRaisedButton}"
                                 Background="{StaticResource SmartPrimaryDarkBrush}">

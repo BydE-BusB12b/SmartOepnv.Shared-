@@ -33,12 +33,12 @@ public partial class RoutesViewModel
             if (value)
             {
                 SelectedStop.IsAnnouncementEnabled = false;
+                RouteStopEditorCatalog.EnsureStartStopMarker(SelectedStop);
             }
             else
             {
-                SelectedStop.Destination = string.Empty;
-                SelectedStop.Ds003aDestination = string.Empty;
-                SelectedStop.LineNumber = string.Empty;
+                RouteStopEditorCatalog.ClearStartStopFields(SelectedStop);
+                SelectedStop.IsAnnouncementEnabled = true;
             }
 
             NotifyStopEditorStateChanged();
@@ -142,6 +142,7 @@ public partial class RoutesViewModel
             }
 
             SelectedStop.Destination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            MaintainStartStopMarkerIfNeeded();
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
@@ -158,6 +159,7 @@ public partial class RoutesViewModel
             }
 
             SelectedStop.Ds003aDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            MaintainStartStopMarkerIfNeeded();
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
@@ -357,6 +359,11 @@ public partial class RoutesViewModel
     {
         SelectedStop = stop;
         _startStopCheckbox = RouteStopEditorCatalog.IsStartStop(stop);
+        if (_startStopCheckbox)
+        {
+            RouteStopEditorCatalog.EnsureStartStopMarker(stop);
+        }
+
         RefreshStopEditorCatalogs();
         EnsureCatalogContainsStopSelections(stop);
         SyncSelectedStopVrrStopIdFromStop();
@@ -445,9 +452,22 @@ public partial class RoutesViewModel
     private void MarkStopDetailDirty()
     {
         CancelSaveButtonSuccessFeedback();
+        MaintainStartStopMarkerIfNeeded();
         _sync.MarkDirty();
         StatusMessage = "Haltestellen-Änderungen – bitte „Speichern“.";
     }
+
+    private void MaintainStartStopMarkerIfNeeded()
+    {
+        if (!_startStopCheckbox || SelectedStop is null)
+        {
+            return;
+        }
+
+        RouteStopEditorCatalog.EnsureStartStopMarker(SelectedStop);
+    }
+
+    public void MaintainStartStopMarkerAfterEdit() => MaintainStartStopMarkerIfNeeded();
 
     public void ApplyDestinationComboSelection(string fieldKey, string? comboLabel)
     {

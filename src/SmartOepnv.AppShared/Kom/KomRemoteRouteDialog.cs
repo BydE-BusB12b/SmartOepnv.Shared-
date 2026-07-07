@@ -10,8 +10,11 @@ namespace SmartOepnv.AppShared.Kom;
 
 public sealed class KomRemoteRouteDialog : Window
 {
+    private readonly KomSendDialogGuard _sendGuard;
+
     public KomRemoteRouteDialog(VehicleListItemViewModel vehicle, Window owner)
     {
+        _sendGuard = new KomSendDialogGuard(this);
         Owner = owner;
         Title = "Fernroute auslösen";
         Width = 520;
@@ -97,10 +100,10 @@ public sealed class KomRemoteRouteDialog : Window
             }
 
             send.IsEnabled = false;
-            cancel.IsEnabled = false;
+            _sendGuard.BeginSend();
             try
             {
-                var outcome = await KomCommandSendFlow.ExecuteAsync(
+                if (await KomCommandSendFlow.SendAndReleaseDialogAsync(
                     this,
                     status,
                     vehicle.DisplayName,
@@ -111,17 +114,24 @@ public sealed class KomRemoteRouteDialog : Window
                         phone,
                         route,
                         pasInfo.IsChecked == true,
-                        ct));
-                if (outcome is KomCommandSendOutcome.Success or KomCommandSendOutcome.Timeout)
+                        ct)))
                 {
-                    DialogResult = true;
-                    Close();
+                    _sendGuard.EndSend();
+                    return;
                 }
+            }
+            catch (Exception ex)
+            {
+                SmartConfirmDialog.ShowInfo(this, Title, $"Senden fehlgeschlagen: {ex.Message}");
             }
             finally
             {
-                send.IsEnabled = true;
-                cancel.IsEnabled = true;
+                if (IsLoaded)
+                {
+                    _sendGuard.EndSend();
+                    send.IsEnabled = true;
+                    cancel.IsEnabled = true;
+                }
             }
         };
 

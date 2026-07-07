@@ -163,6 +163,10 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     [ObservableProperty] private string workFollowUpMinutes = DutyTemplateCalculator.DefaultWorkFollowUpMinutes.ToString();
 
+    [ObservableProperty] private bool isSplitShift;
+
+    [ObservableProperty] private string splitShiftValidationMessage = string.Empty;
+
     [ObservableProperty] private DutyTemplate? selectedTemplate;
 
     [ObservableProperty] private DutyTemplateRowItem? selectedRow;
@@ -261,9 +265,20 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     public bool IsSplitDuty => Part2Rows.Count > 0 || Part3Rows.Count > 0;
 
-    public bool IsThreePartDuty => Part3Rows.Count > 0;
+    public bool IsDutyDivision => IsSplitDuty && !IsSplitShift;
 
-    public string ExportPart1ButtonLabel => IsSplitDuty
+    public bool IsThreePartDuty => Part3Rows.Count > 0 && !IsSplitShift;
+
+    public string SplitShiftHint =>
+        $"Geteilter Dienst (eine Nummer): je Arbeitsteil Vorbereitung und Nachbereitung, dienstfreie Pause mind. {SplitShiftRules.MinBreakMinutes / 60} h, " +
+        $"Dienstschicht max. {SplitShiftRules.MaxServiceShiftHours} h. TV-N: jeder Teil mind. {SplitShiftRules.MinPartHours} h, " +
+        $"Teil 2 nicht nach {SplitShiftRules.Part2LatestStartHour}:00.";
+
+    public bool ShowOverallDutyStats => !IsDutyDivision;
+
+    public bool HasSplitShiftValidationMessage => !string.IsNullOrWhiteSpace(SplitShiftValidationMessage);
+
+    public string ExportPart1ButtonLabel => IsDutyDivision
         ? "Dienstvorlage erstellen (Teil 1)"
         : "Dienstvorlage erstellen";
 
@@ -422,12 +437,14 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
         _activeGridSelection = selectedRows.ToList();
         SplitDutyAtSelectionCommand.NotifyCanExecuteChanged();
+        SplitShiftAtSelectionCommand.NotifyCanExecuteChanged();
     }
 
     public void CaptureActiveGridSelection(IReadOnlyList<DutyTemplateRowItem> selectedRows)
     {
         _activeGridSelection = selectedRows.ToList();
         SplitDutyAtSelectionCommand.NotifyCanExecuteChanged();
+        SplitShiftAtSelectionCommand.NotifyCanExecuteChanged();
     }
 
     private void ReloadCompanyLogos()
@@ -484,6 +501,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         CustomUnpaidBreakDeductionMinutes = string.Empty;
         WorkPreparationMinutes = DutyTemplateCalculator.DefaultWorkPreparationMinutes.ToString();
         WorkFollowUpMinutes = DutyTemplateCalculator.DefaultWorkFollowUpMinutes.ToString();
+        IsSplitShift = false;
+        SplitShiftValidationMessage = string.Empty;
         Rows.Clear();
         Part2Rows.Clear();
         Part3Rows.Clear();
@@ -913,6 +932,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             return;
         }
 
+        var wasSplitShift = IsSplitShift;
+
         foreach (var row in Part2Rows.ToList())
         {
             Rows.Add(row);
@@ -929,9 +950,13 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         SelectedPart3Row = null;
         DutyNumberPart2 = string.Empty;
         DutyNumberPart3 = string.Empty;
+        IsSplitShift = false;
+        SplitShiftValidationMessage = string.Empty;
         SortRowsByOperatingDay();
         RefreshStats();
-        StatusMessage = "Geteilter Dienst zusammengeführt.";
+        StatusMessage = wasSplitShift
+            ? "Geteilter Dienst zusammengeführt."
+            : "Dienstaufteilung zusammengeführt.";
     }
 
     [RelayCommand]
@@ -943,6 +968,12 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
     [RelayCommand]
     private void SplitDutyAtSelection()
     {
+        if (IsSplitShift)
+        {
+            StatusMessage = "Geteilter Dienst ist aktiv – zuerst „Zusammenführen“.";
+            return;
+        }
+
         if (_activeGridSelection.Count != 2)
         {
             StatusMessage = "Bitte genau zwei Zeilen im gleichen Dienstteil markieren.";
@@ -979,7 +1010,62 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         MoveRowsToNextPart(source, moveFromIndex);
     }
 
-    private bool CanSplitDutyAtSelection() => _activeGridSelection.Count == 2;
+    [RelayCommand(CanExecute = nameof(CanSplitShiftAtSelection))]
+    private void SplitShiftAtSelection()
+    {
+        if (IsSplitShift)
+        {
+            StatusMessage = "Geteilter Dienst ist bereits markiert – zuerst „Zusammenführen“.";
+            return;
+        }
+
+        if (IsDutyDivision)
+        {
+            StatusMessage = "Dienstaufteilung ist aktiv – zuerst „Zusammenführen“.";
+            return;
+        }
+
+        if (_activeGridSelection.Count != 2)
+        {
+            StatusMessage = "Bitte genau zwei Zeilen im Fahrplan markieren.";
+            return;
+        }
+
+        if (_activeDutyPart != 1 || !TryGetActivePartCollection(out var source) || !ReferenceEquals(source, Rows))
+        {
+            StatusMessage = "Geteilter Dienst: zwei Zeilen in Teil 1 markieren (Strg+Klick).";
+            return;
+        }
+
+        var indices = _activeGridSelection
+            .Select(row => Rows.IndexOf(row))
+            .Where(index => index >= 0)
+            .OrderBy(index => index)
+            .Distinct()
+            .ToList();
+
+        if (indices.Count != 2)
+        {
+            StatusMessage = "Bitte zwei Zeilen in Teil 1 markieren (Strg+Klick).";
+            return;
+        }
+
+        var splitAfterIndex = indices[0];
+        var moveFromIndex = splitAfterIndex + 1;
+        if (moveFromIndex >= Rows.Count)
+        {
+            StatusMessage = "Trennung nicht möglich – nach der ersten markierten Zeile folgt keine weitere Fahrt.";
+            return;
+        }
+
+        MoveRowsToNextPart(Rows, moveFromIndex, asSplitShift: true);
+        StatusMessage = "Geteilter Dienst markiert – eine Dienstnummer, FPersV-Regeln in den Kennzahlen.";
+    }
+
+    private bool CanSplitShiftAtSelection() =>
+        !IsSplitShift && !IsDutyDivision && _activeGridSelection.Count == 2 && _activeDutyPart == 1;
+
+    private bool CanSplitDutyAtSelection() => !IsSplitShift && _activeGridSelection.Count == 2;
 
     private bool TryGetActivePartCollection(out ObservableCollection<DutyTemplateRowItem> collection)
     {
@@ -992,7 +1078,10 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         return collection.Count > 0;
     }
 
-    private void MoveRowsToNextPart(ObservableCollection<DutyTemplateRowItem> source, int fromIndex)
+    private void MoveRowsToNextPart(
+        ObservableCollection<DutyTemplateRowItem> source,
+        int fromIndex,
+        bool asSplitShift = false)
     {
         var toMove = source.Skip(fromIndex).ToList();
         foreach (var row in toMove)
@@ -1007,15 +1096,38 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
                 Part2Rows.Add(row);
             }
 
-            SuggestDutyNumberPart2();
+            if (asSplitShift)
+            {
+                IsSplitShift = true;
+                DutyNumberPart2 = string.Empty;
+                DutyNumberPart3 = string.Empty;
+                Part3Rows.Clear();
+            }
+            else
+            {
+                IsSplitShift = false;
+                SuggestDutyNumberPart2();
+            }
         }
         else if (ReferenceEquals(source, Part2Rows))
         {
+            if (asSplitShift)
+            {
+                StatusMessage = "Geteilter Dienst hat nur zwei Arbeitsteile.";
+                foreach (var row in toMove)
+                {
+                    source.Add(row);
+                }
+
+                return;
+            }
+
             foreach (var row in toMove)
             {
                 Part3Rows.Add(row);
             }
 
+            IsSplitShift = false;
             SuggestDutyNumberPart3();
         }
         else
@@ -1031,17 +1143,23 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
         NotifySplitStateChanged();
         RefreshStats();
-        StatusMessage =
-            $"Dienst getrennt – {toMove.Count} Fahrt(en) in Teil {(ReferenceEquals(source, Rows) ? 2 : 3)} verschoben.";
+        if (!asSplitShift)
+        {
+            StatusMessage =
+                $"Dienst getrennt – {toMove.Count} Fahrt(en) in Teil {(ReferenceEquals(source, Rows) ? 2 : 3)} verschoben.";
+        }
     }
 
     private void NotifySplitStateChanged()
     {
         OnPropertyChanged(nameof(IsSplitDuty));
+        OnPropertyChanged(nameof(IsDutyDivision));
         OnPropertyChanged(nameof(IsThreePartDuty));
         OnPropertyChanged(nameof(ExportPart1ButtonLabel));
+        OnPropertyChanged(nameof(SplitShiftHint));
         IntelligentSplitDutyCommand.NotifyCanExecuteChanged();
         SplitDutyAtSelectionCommand.NotifyCanExecuteChanged();
+        SplitShiftAtSelectionCommand.NotifyCanExecuteChanged();
         ExportPart1PdfCommand.NotifyCanExecuteChanged();
         ExportPart2PdfCommand.NotifyCanExecuteChanged();
         ExportPart3PdfCommand.NotifyCanExecuteChanged();
@@ -1371,9 +1489,15 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     private void IntelligentSplitDutyInternal()
     {
+        if (IsSplitShift)
+        {
+            StatusMessage = "Geteilter Dienst ist aktiv – „Intelligent Aufteilen“ gilt nur für die Dienstaufteilung (G1/G2).";
+            return;
+        }
+
         if (IsSplitDuty)
         {
-            StatusMessage = "Dienst ist bereits geteilt – zuerst „Zusammenführen“ oder manuell trennen.";
+            StatusMessage = "Dienst ist bereits aufgeteilt – zuerst „Zusammenführen“ oder manuell trennen.";
             return;
         }
 
@@ -1456,6 +1580,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         }
 
         SortPart2RowsByOperatingDay();
+        IsSplitShift = false;
         SuggestDutyNumberPart2();
         NotifySplitStateChanged();
         return true;
@@ -1512,6 +1637,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
         SortPart2RowsByOperatingDay();
         SortPart3RowsByOperatingDay();
+        IsSplitShift = false;
         SuggestDutyNumberPart2();
         SuggestDutyNumberPart3();
         NotifySplitStateChanged();
@@ -1676,6 +1802,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             WorkFollowUpMinutes = DutyTemplateCalculator.ParseNonNegativeMinutes(
                 WorkFollowUpMinutes,
                 DutyTemplateCalculator.DefaultWorkFollowUpMinutes),
+            IsSplitShift = IsSplitShift,
             Rows = Rows.Select(r => r.ToModel()).ToList(),
             Part2Rows = Part2Rows.Select(r => r.ToModel()).ToList(),
             Part3Rows = Part3Rows.Select(r => r.ToModel()).ToList()
@@ -1720,6 +1847,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             : string.Empty;
         WorkPreparationMinutes = DutyTemplateCalculator.ResolvePreparationMinutes(template.WorkPreparationMinutes).ToString();
         WorkFollowUpMinutes = DutyTemplateCalculator.ResolveFollowUpMinutes(template.WorkFollowUpMinutes).ToString();
+        IsSplitShift = template.IsSplitShift;
         Rows.Clear();
         Part2Rows.Clear();
         Part3Rows.Clear();
@@ -1880,6 +2008,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         WorkFollowUpMinutes = DutyTemplateCalculator.ParseNonNegativeMinutes(
             WorkFollowUpMinutes,
             DutyTemplateCalculator.DefaultWorkFollowUpMinutes),
+        IsSplitShift = IsSplitShift,
         Rows = Rows.Select(row => row.ToModel()).ToList(),
         Part2Rows = Part2Rows.Select(row => row.ToModel()).ToList(),
         Part3Rows = Part3Rows.Select(row => row.ToModel()).ToList()
@@ -1928,6 +2057,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
                 : string.Empty;
             WorkPreparationMinutes = DutyTemplateCalculator.ResolvePreparationMinutes(session.WorkPreparationMinutes).ToString();
             WorkFollowUpMinutes = DutyTemplateCalculator.ResolveFollowUpMinutes(session.WorkFollowUpMinutes).ToString();
+            IsSplitShift = session.IsSplitShift;
             Rows.Clear();
             Part2Rows.Clear();
             Part3Rows.Clear();
@@ -2118,7 +2248,61 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         var deductionPart2 = DutyTemplateCalculator.ResolveUnpaidBreakDeductionMinutes(template, 2);
         var deductionPart3 = DutyTemplateCalculator.ResolveUnpaidBreakDeductionMinutes(template, 3);
 
-        if (IsSplitDuty)
+        if (IsSplitShift)
+        {
+            var splitStats = DutyTemplateCalculator.ComputeSplitShiftSummary(
+                template.Rows,
+                template.Part2Rows,
+                prep,
+                followUp,
+                deductionPart1);
+            var part1Stats = DutyTemplateCalculator.ComputePart(template.Rows, prep, followUp, 0);
+            var part2Stats = DutyTemplateCalculator.ComputePart(template.Part2Rows, prep, followUp, 0);
+
+            ServiceDurationDisplay = splitStats.ServiceDurationDisplay;
+            ServiceStartDisplay = DutyTemplateCalculator.GetServiceStartDisplay(template.Rows, prep) ?? "–";
+            ServiceEndDisplay = DutyTemplateCalculator.GetServiceEndDisplay(template.Part2Rows, followUp) ?? "–";
+            PayHoursDisplay = splitStats.PayHoursDisplay;
+            BreaksDisplay = splitStats.BreaksDisplay;
+            PureDrivingDisplay = splitStats.PureDrivingDisplay;
+            PureBreakDisplay = splitStats.PureBreakDisplay;
+
+            ApplyPartStats(
+                part1Stats,
+                value => Part1ServiceDurationDisplay = value,
+                value => Part1PayHoursDisplay = value,
+                value => Part1BreaksDisplay = value,
+                value => Part1PureDrivingDisplay = value,
+                value => Part1PureBreakDisplay = value);
+            ApplyPartStats(
+                part2Stats,
+                value => Part2ServiceDurationDisplay = value,
+                value => Part2PayHoursDisplay = value,
+                value => Part2BreaksDisplay = value,
+                value => Part2PureDrivingDisplay = value,
+                value => Part2PureBreakDisplay = value);
+
+            Part3ServiceDurationDisplay = "0:00";
+            Part3PayHoursDisplay = "0:00";
+            Part3BreaksDisplay = "–";
+            Part3PureDrivingDisplay = "0:00";
+            Part3PureBreakDisplay = "–";
+            Part3ExceedsMaxDuration = false;
+            Part3ExceedsHardMax = false;
+
+            var maxSplitShiftMinutes = SplitShiftRules.MaxServiceShiftHours * 60;
+            Part1ExceedsMaxDuration = false;
+            Part2ExceedsMaxDuration = false;
+            Part1ExceedsHardMax = splitStats.ServiceDurationMinutes > maxSplitShiftMinutes;
+            Part2ExceedsHardMax = false;
+
+            SplitShiftValidationMessage = DutyTemplateDispositionMapper.TryValidateSplitShiftStructure(
+                template,
+                out var splitShiftError)
+                ? string.Empty
+                : splitShiftError;
+        }
+        else if (IsDutyDivision)
         {
             var part1Stats = DutyTemplateCalculator.ComputePart(template.Rows, prep, followUp, deductionPart1);
             var part2Stats = DutyTemplateCalculator.ComputePart(template.Part2Rows, prep, followUp, deductionPart2);
@@ -2172,9 +2356,11 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             BreaksDisplay = "–";
             PureDrivingDisplay = "–";
             PureBreakDisplay = "–";
+            SplitShiftValidationMessage = string.Empty;
         }
         else
         {
+            SplitShiftValidationMessage = string.Empty;
             var stats = DutyTemplateCalculator.ComputePart(template.Rows, prep, followUp, deductionPart1);
             ServiceDurationDisplay = stats.ServiceDurationDisplay;
             ServiceStartDisplay = DutyTemplateCalculator.GetServiceStartDisplay(template.Rows, prep) ?? "–";
@@ -2208,13 +2394,18 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         OnPropertyChanged(nameof(MaxDurationViolationMessage));
 
         OnPropertyChanged(nameof(IsSplitDuty));
+        OnPropertyChanged(nameof(IsDutyDivision));
         OnPropertyChanged(nameof(IsThreePartDuty));
         OnPropertyChanged(nameof(ExportPart1ButtonLabel));
+        OnPropertyChanged(nameof(SplitShiftHint));
+        OnPropertyChanged(nameof(SplitShiftValidationMessage));
+        OnPropertyChanged(nameof(HasSplitShiftValidationMessage));
         ExportPart1PdfCommand.NotifyCanExecuteChanged();
         ExportPart2PdfCommand.NotifyCanExecuteChanged();
         ExportPart3PdfCommand.NotifyCanExecuteChanged();
         IntelligentSplitDutyCommand.NotifyCanExecuteChanged();
         SplitDutyAtSelectionCommand.NotifyCanExecuteChanged();
+        SplitShiftAtSelectionCommand.NotifyCanExecuteChanged();
         SaveTemplateCommand.NotifyCanExecuteChanged();
         MoveSelectedRowToPart2Command.NotifyCanExecuteChanged();
         MoveSelectedRowToPart1Command.NotifyCanExecuteChanged();

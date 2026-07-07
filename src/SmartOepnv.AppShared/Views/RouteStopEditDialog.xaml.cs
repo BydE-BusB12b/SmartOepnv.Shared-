@@ -61,6 +61,7 @@ public partial class RouteStopEditDialog : Window
     {
         FlushPendingFieldBindings(EditPanel, includeComboBoxes: false);
         EditPanel.ApplyComboSelectionsToStop(_stop);
+        _viewModel.MaintainStartStopMarkerAfterEdit();
         _viewModel.StopDetailEditedCommand.Execute(null);
         _viewModel.SaveChangesCommand.Execute(null);
         _viewModel.RefreshStopAfterEdit(_stop);

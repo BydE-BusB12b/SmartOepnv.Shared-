@@ -165,7 +165,13 @@
                     Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5" />
         </StackPanel>
 
-        <CheckBox Content="Starthaltestelle" IsChecked="{Binding IsStartStop, Mode=TwoWay}" Margin="0,0,0,8" />
+        <CheckBox Content="Starthaltestelle" IsChecked="{Binding IsStartStop, Mode=TwoWay}" Margin="0,0,0,4" />
+        <TextBlock Text="Ohne Ziel/Linie wird die Haltestelle trotzdem als Starthaltestelle geführt (keine GPS-Ansage, nicht durchgestrichen)."
+                   FontSize="11"
+                   Opacity="0.75"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,8"
+                   Visibility="{Binding ShowStartStopFields, Converter={StaticResource BoolToVis}}" />
 
         <CheckBox Content="Ansage ausblenden"
                   IsChecked="{Binding IsAnnouncementHidden, Mode=TwoWay}"

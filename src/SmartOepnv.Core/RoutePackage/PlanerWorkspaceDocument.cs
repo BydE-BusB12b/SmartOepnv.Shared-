@@ -10,13 +10,16 @@ namespace SmartOepnv.Core.RoutePackage;
 public sealed class PlanerWorkspaceDocument
 {
     public const string Kind = "planer_workspace";
-    public const string FileVersion = "1.0";
+    public const string FileVersion = "1.1";
 
     public string Version { get; set; } = FileVersion;
 
     public string DocumentType { get; set; } = Kind;
 
     public long SavedAtUtcMs { get; set; }
+
+    /// <summary>Routen liegen in Dropbox unter planer_routes.json.</summary>
+    public bool RoutesStoredExternally { get; set; }
 
     /// <summary>Routen-Paket nur für den Planer (nicht routes_export.json in Dropbox).</summary>
     public string? RoutesPackageJson { get; set; }
@@ -34,6 +37,9 @@ public sealed class PlanerWorkspaceDocument
     /// <summary>Gespeicherte Planer-Snapshots (Übersicht → Versionen).</summary>
     public List<PlannerPackageVersionSnapshotData> PackageVersionSnapshots { get; set; } = [];
 
-    /// <summary>Ansagen-Rohdateien (Dateiname → Base64) für Sync zwischen Planern.</summary>
+    /// <summary>
+    /// Ansagen-Rohdateien: Manifest (Dateiname, Größe, SHA-256) – Binärdaten liegen in Dropbox unter planer_ansagen_roh/.
+    /// Legacy-Importe mit Base64 in <see cref="Data"/> werden weiterhin unterstützt.
+    /// </summary>
     public Dictionary<string, PlanerWorkspaceBinaryPayload> AnnouncementRawSounds { get; set; } = [];
 }

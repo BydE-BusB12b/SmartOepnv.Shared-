@@ -97,6 +97,26 @@
                 </StackPanel>
             </materialDesign:Card>
 
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16"
+                                 Visibility="{Binding ShowVoipSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Funk / VoIP" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Smart ÖPNV Funk – Server-Einstellungen und Konfiguration für Tablets (Dropbox)." />
+                    <TextBlock Text="{Binding VoipStatusMessage}" Opacity="0.85" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="VoIP-Einstellungen"
+                                Command="{Binding OpenVoipSettingsCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="VoIP-Config nach Dropbox"
+                                Command="{Binding PublishVoipConfigCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding VoipPublishStatus}" Opacity="0.85" TextWrapping="Wrap" />
+                </StackPanel>
+            </materialDesign:Card>
+
             <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="Dropbox" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />

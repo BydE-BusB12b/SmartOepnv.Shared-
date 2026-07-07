@@ -86,7 +86,7 @@
 
                             Padding="10,4"
 
-                            ToolTip="Workspace-Ordner ansagen_roh – wird mit planer_workspace.json auf andere Planer-PCs synchronisiert" />
+                            ToolTip="Workspace-Ordner ansagen_roh – Binärdateien werden über planer_ansagen_roh/ in Dropbox synchronisiert (nicht routes_export.json)" />
 
                     <Button Content="Aus Rohdateien übernehmen"
 

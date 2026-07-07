@@ -6,12 +6,52 @@ public static class RouteStopEditorCatalog
     public const string NoDestinationLabel = "Kein Ziel";
     public const string NoLineCourseTripLabel = "Keine Fahrt ausgewählt";
 
-    /// <summary>Wie GPSAnsagen: Ziel, DS003a-Ziel oder Liniennummer gesetzt.</summary>
+    /// <summary>Platzhalter-Ziel wie in GPSAnsagen, wenn Starthaltestelle ohne DS021T/Linie gesetzt wird.</summary>
+    public const string StartStopPlaceholderDestination = "Starthaltestelle";
+
+    /// <summary>Wie GPSAnsagen: Ziel (inkl. Platzhalter), DS003a-Ziel oder Liniennummer gesetzt.</summary>
     public static bool IsStartStop(RouteStopItem? stop) =>
         stop is not null && (
             !string.IsNullOrWhiteSpace(stop.Destination) ||
             !string.IsNullOrWhiteSpace(stop.Ds003aDestination) ||
             !string.IsNullOrWhiteSpace(stop.LineNumber));
+
+    public static bool IsStartStopPlaceholder(string? destination) =>
+        string.Equals(destination?.Trim(), StartStopPlaceholderDestination, StringComparison.OrdinalIgnoreCase);
+
+    public static bool HasStartStopDestination(string? destination) =>
+        !string.IsNullOrWhiteSpace(destination) && !IsStartStopPlaceholder(destination);
+
+    /// <summary>
+    /// Starthaltestelle ohne Ziel/Linie: Marker setzen, damit die Haltestelle nicht als „Ansage aus“ gilt.
+    /// Entspricht GPSAnsagen dialog_add_stop.
+    /// </summary>
+    public static void EnsureStartStopMarker(RouteStopItem stop)
+    {
+        if (HasStartStopDestination(stop.Destination) ||
+            !string.IsNullOrWhiteSpace(stop.Ds003aDestination) ||
+            !string.IsNullOrWhiteSpace(stop.LineNumber))
+        {
+            return;
+        }
+
+        stop.Destination = StartStopPlaceholderDestination;
+    }
+
+    public static void ClearStartStopFields(RouteStopItem stop)
+    {
+        if (IsStartStopPlaceholder(stop.Destination))
+        {
+            stop.Destination = string.Empty;
+        }
+        else
+        {
+            stop.Destination = string.Empty;
+        }
+
+        stop.Ds003aDestination = string.Empty;
+        stop.LineNumber = string.Empty;
+    }
 
     /// <summary>Haltestelle in der Liste durchstreichen (Ansage deaktiviert, keine Starthaltestelle).</summary>
     public static bool ShouldStrikeThroughDisplay(RouteStopItem? stop) =>

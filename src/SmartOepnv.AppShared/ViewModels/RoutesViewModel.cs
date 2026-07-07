@@ -25,6 +25,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private string routeOperatingDaysDisplay = string.Empty;
     [ObservableProperty] private string routeInteriorDisplayDestination = string.Empty;
     [ObservableProperty] private bool routeItcsRouteListEnabled = true;
+    [ObservableProperty] private bool routeMainDeviceOnly;
     [ObservableProperty] private bool saveButtonIsSuccess;
     [ObservableProperty] private bool isRouteSettingsExpanded;
 
@@ -34,6 +35,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     private bool _suppressOperatingDaySync;
     private bool _suppressInteriorDestinationSync;
     private bool _suppressItcsRouteListSync;
+    private bool _suppressMainDeviceOnlySync;
 
     private readonly List<string> _allRoutes = [];
     public ObservableCollection<string> FilteredRoutes { get; } = [];
@@ -277,6 +279,16 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         PersistRouteItcsRouteListFromSelection();
     }
 
+    partial void OnRouteMainDeviceOnlyChanged(bool value)
+    {
+        if (_suppressMainDeviceOnlySync)
+        {
+            return;
+        }
+
+        PersistRouteMainDeviceOnlyFromSelection();
+    }
+
     partial void OnSelectedRouteChanged(string? value)
     {
         IsRouteSettingsExpanded = false;
@@ -287,6 +299,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         LoadRouteOperatingDaysForSelection(value);
         LoadRouteInteriorDisplayDestinationForSelection(value);
         LoadRouteItcsRouteListForSelection(value);
+        LoadRouteMainDeviceOnlyForSelection(value);
         if (string.IsNullOrWhiteSpace(value))
         {
             RemoveSelectedStopCommand.NotifyCanExecuteChanged();
@@ -420,7 +433,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 dialog.CopyStopsFromRouteKey,
                 out var displayKey,
                 out var error,
-                dialog.ResultItcsRouteListEnabled))
+                dialog.ResultItcsRouteListEnabled,
+                dialog.ResultMainDeviceOnly))
         {
             StatusMessage = error ?? "Route konnte nicht angelegt werden.";
             return;
@@ -462,6 +476,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 dialog.ResultDefinition,
                 dialog.ResultOperatingDays,
                 dialog.ResultItcsRouteListEnabled,
+                dialog.ResultMainDeviceOnly,
                 out var displayKey,
                 out var error))
         {
@@ -886,7 +901,42 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         _sync.MarkDirty();
         StatusMessage = RouteItcsRouteListEnabled
             ? $"Route „{SelectedRoute}“ erscheint in der ITCS-Routenliste – bitte speichern."
-            : $"Route „{SelectedRoute}“ nur per Linie/Kurs – bitte speichern.";
+            : $"Route „{SelectedRoute}“ nicht in der ITCS-Routenliste – bitte speichern.";
+    }
+
+    private void LoadRouteMainDeviceOnlyForSelection(string? routeKey)
+    {
+        var editor = AppServices.Routes.Editor;
+        _suppressMainDeviceOnlySync = true;
+        try
+        {
+            RouteMainDeviceOnly = !string.IsNullOrWhiteSpace(routeKey) && editor is not null &&
+                                  editor.IsRouteMainDeviceOnly(routeKey);
+        }
+        finally
+        {
+            _suppressMainDeviceOnlySync = false;
+        }
+    }
+
+    private void PersistRouteMainDeviceOnlyFromSelection()
+    {
+        if (_suppressMainDeviceOnlySync || string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.SetRouteMainDeviceOnly(SelectedRoute, RouteMainDeviceOnly);
+        _sync.MarkDirty();
+        StatusMessage = RouteMainDeviceOnly
+            ? $"Route „{SelectedRoute}“ nur für Hauptnutzergeräte – bitte speichern."
+            : $"Route „{SelectedRoute}“ für alle Geräte sichtbar – bitte speichern.";
     }
 
     private void AttachRouteOperatingDayHandler(OperatingDayOptionItem item)

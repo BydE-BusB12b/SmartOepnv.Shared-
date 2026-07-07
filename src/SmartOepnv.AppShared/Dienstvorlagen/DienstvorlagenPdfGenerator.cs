@@ -1,5 +1,4 @@
 using System.IO;
-using System.Text.RegularExpressions;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -22,9 +21,6 @@ public static class DienstvorlagenPdfGenerator
     private const float FooterLogoWidth = 144f;
     private const float FooterLogoHeight = 54f;
 
-    private static readonly Regex BussteigRegex = new(@"Bussteig\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex GleisRegex = new(@"Gl\.\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
     static DienstvorlagenPdfGenerator() =>
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -40,37 +36,66 @@ public static class DienstvorlagenPdfGenerator
     {
         var prep = DutyTemplateCalculator.ResolvePreparationMinutes(template.WorkPreparationMinutes);
         var followUp = DutyTemplateCalculator.ResolveFollowUpMinutes(template.WorkFollowUpMinutes);
-        var orderedRows = DutyTemplateCalculator.OrderRows(rows);
         var deduction = DutyTemplateCalculator.ResolveUnpaidBreakDeductionMinutes(template, part);
-        var stats = DutyTemplateCalculator.ComputePart(orderedRows, prep, followUp, deduction);
-        var remarkLegend = DutyTemplateRemarkHelper.BuildLegend(orderedRows);
+
+        DutyTemplateStats stats;
+        IReadOnlyList<DutyTemplateRemarkEntry> remarkLegend;
+        IReadOnlyList<DutyTripPdfTableRow> tripRows;
+        string serviceStart;
+        string serviceEnd;
+
+        if (template.IsSplitShift && template.Part2Rows.Count > 0)
+        {
+            stats = DutyTemplateCalculator.ComputeSplitShiftSummary(
+                template.Rows,
+                template.Part2Rows,
+                prep,
+                followUp,
+                deduction);
+            remarkLegend = DutyTemplateRemarkHelper.BuildLegend(
+                template.Rows.Concat(template.Part2Rows));
+            tripRows = BuildSplitShiftTripRows(template, prep, followUp);
+            serviceStart = DutyTemplateCalculator.GetServiceStartDisplay(template.Rows, prep) ?? "–";
+            serviceEnd = DutyTemplateCalculator.GetServiceEndDisplay(template.Part2Rows, followUp) ?? "–";
+        }
+        else
+        {
+            var orderedRows = DutyTemplateCalculator.OrderRows(rows);
+            stats = DutyTemplateCalculator.ComputePart(orderedRows, prep, followUp, deduction);
+            remarkLegend = DutyTemplateRemarkHelper.BuildLegend(rows);
+            tripRows = BuildTripRows(rows).Select(DutyTripPdfTableRow.FromTrip).ToList();
+            serviceStart = DutyTemplateCalculator.GetServiceStartDisplay(rows, prep) ?? "–";
+            serviceEnd = DutyTemplateCalculator.GetServiceEndDisplay(rows, followUp) ?? "–";
+        }
 
         Document.Create(document =>
         {
             RenderDutyPage(
                 document,
                 template,
-                orderedRows,
                 dutyNumber,
                 stats,
                 prep,
                 followUp,
-                remarkLegend);
+                remarkLegend,
+                tripRows,
+                serviceStart,
+                serviceEnd);
         }).GeneratePdf(outputPath);
     }
 
     private static void RenderDutyPage(
         IDocumentContainer document,
         DutyTemplate template,
-        IReadOnlyList<DutyTemplateRow> rows,
         string dutyNumber,
         DutyTemplateStats stats,
         int preparationMinutes,
         int followUpMinutes,
-        IReadOnlyList<DutyTemplateRemarkEntry> remarkLegend)
+        IReadOnlyList<DutyTemplateRemarkEntry> remarkLegend,
+        IReadOnlyList<DutyTripPdfTableRow> tripRows,
+        string serviceStart,
+        string serviceEnd)
     {
-        var serviceStart = DutyTemplateCalculator.GetServiceStartDisplay(rows, preparationMinutes) ?? "–";
-        var serviceEnd = DutyTemplateCalculator.GetServiceEndDisplay(rows, followUpMinutes) ?? "–";
         var dutyDisplay = string.IsNullOrWhiteSpace(dutyNumber) ? "–" : dutyNumber.Trim();
         var operatingDay = string.IsNullOrWhiteSpace(template.OperatingDay) ? "–" : template.OperatingDay.Trim();
         var companyLogoPath = ResolveCompanyLogoPath(template.CompanyLogoId);
@@ -138,7 +163,7 @@ public static class DienstvorlagenPdfGenerator
                     .SemiBold()
                     .FontColor(PrimaryBlue);
 
-                var tripRows = BuildTripRows(rows).ToList();
+                var tripRowList = tripRows.ToList();
 
                 content.Item().PaddingTop(6).Table(table =>
                 {
@@ -162,19 +187,12 @@ public static class DienstvorlagenPdfGenerator
                         header.Cell().Element(TableHeaderCellRight).Text("Bemerkung");
                     });
 
-                    for (var i = 0; i < tripRows.Count; i++)
+                    for (var i = 0; i < tripRowList.Count; i++)
                     {
-                        var trip = tripRows[i];
-                        var even = i % 2 == 0;
-                        table.Cell().Element(c => TableBodyCell(c, even)).Text(trip.TripNumber);
-                        table.Cell().Element(c => TableBodyCell(c, even)).Text(trip.LineCourse);
-                        table.Cell().Element(c => TableBodyCell(c, even)).Text(trip.FromTime);
-                        table.Cell().Element(c => TableBodyCell(c, even)).Text(trip.Direction);
-                        table.Cell().Element(c => TableBodyCellRight(c, even)).Text(trip.ToTime);
-                        table.Cell().Element(c => TableBodyCellRight(c, even)).Text(trip.RemarkCode);
+                        RenderTripTableRow(table, tripRowList[i], i % 2 == 0);
                     }
 
-                    if (tripRows.Count == 0)
+                    if (tripRowList.Count == 0)
                     {
                         table.Cell().ColumnSpan(6).Element(c => TableBodyCell(c, true))
                             .Text("Keine Fahrten erfasst.");
@@ -313,25 +331,98 @@ public static class DienstvorlagenPdfGenerator
     private static IContainer TableBodyCellRight(IContainer container, bool even) =>
         TableBodyCell(container, even).AlignRight();
 
+    private static void RenderTripTableRow(TableDescriptor table, DutyTripPdfTableRow row, bool even)
+    {
+        switch (row.Kind)
+        {
+            case DutyTripPdfRowKind.Empty:
+                table.Cell().Element(c => TableBodyCell(c, even)).Text(string.Empty);
+                table.Cell().Element(c => TableBodyCell(c, even)).Text(string.Empty);
+                table.Cell().Element(c => TableBodyCell(c, even)).Text(string.Empty);
+                table.Cell().Element(c => TableBodyCell(c, even)).Text(string.Empty);
+                table.Cell().Element(c => TableBodyCellRight(c, even)).Text(string.Empty);
+                table.Cell().Element(c => TableBodyCellRight(c, even)).Text(string.Empty);
+                break;
+
+            case DutyTripPdfRowKind.Dienstfrei:
+                table.Cell().ColumnSpan(6).Element(c => TableBodyCell(c, even).AlignCenter())
+                    .Text(row.Direction)
+                    .SemiBold()
+                    .FontColor(PrimaryBlue)
+                    .FontSize(9);
+                break;
+
+            case DutyTripPdfRowKind.PartHeader:
+                table.Cell().ColumnSpan(6).Element(c => TableBodyCell(c, even))
+                    .Text(row.Direction)
+                    .SemiBold()
+                    .FontColor(PrimaryBlue)
+                    .FontSize(9);
+                break;
+
+            default:
+                table.Cell().Element(c => TableBodyCell(c, even)).Text(row.TripNumber);
+                table.Cell().Element(c => TableBodyCell(c, even)).Text(row.LineCourse);
+                table.Cell().Element(c => TableBodyCell(c, even)).Text(row.FromTime);
+                table.Cell().Element(c => TableBodyCell(c, even)).Text(row.Direction);
+                table.Cell().Element(c => TableBodyCellRight(c, even)).Text(row.ToTime);
+                table.Cell().Element(c => TableBodyCellRight(c, even)).Text(row.RemarkCode);
+                break;
+        }
+    }
+
+    private static List<DutyTripPdfTableRow> BuildSplitShiftTripRows(
+        DutyTemplate template,
+        int preparationMinutes,
+        int followUpMinutes)
+    {
+        var rows = new List<DutyTripPdfTableRow>();
+        foreach (var row in template.Rows)
+        {
+            rows.Add(DutyTripPdfTableRow.FromTrip(MapTripRow(row)));
+        }
+
+        rows.Add(DutyTripPdfTableRow.Empty());
+
+        var freeFrom = DutyTemplateCalculator.GetServiceEndDisplay(template.Rows, followUpMinutes) ?? "–";
+        var freeTo = DutyTemplateCalculator.GetServiceStartDisplay(template.Part2Rows, preparationMinutes) ?? "–";
+        rows.Add(DutyTripPdfTableRow.Dienstfrei(
+            $"Ab {freeFrom} – DIENSTFREI bis {freeTo}"));
+
+        rows.Add(DutyTripPdfTableRow.Empty());
+        rows.Add(DutyTripPdfTableRow.PartHeader("2. Dienstteil"));
+
+        foreach (var row in template.Part2Rows)
+        {
+            rows.Add(DutyTripPdfTableRow.FromTrip(MapTripRow(row)));
+        }
+
+        return rows;
+    }
+
     private static IEnumerable<DutyTripPdfRow> BuildTripRows(IReadOnlyList<DutyTemplateRow> rows)
     {
-        var ordered = DutyTemplateCalculator.OrderRows(rows);
-        foreach (var row in ordered)
+        foreach (var row in rows)
         {
-            var fromStop = FormatDirectionStop(row.FromStop);
-            var toStop = FormatDirectionStop(row.ToStop);
-            var direction = string.IsNullOrWhiteSpace(fromStop) && string.IsNullOrWhiteSpace(toStop)
-                ? string.Empty
-                : $"{fromStop} > {toStop}".Trim(' ', '>').Trim();
-
-            yield return new DutyTripPdfRow(
-                row.TripNumber,
-                row.LineCourse,
-                FormatTimeDisplay(row.FromTime),
-                direction,
-                FormatTimeDisplay(row.ToTime),
-                DutyTemplateRemarkHelper.GetDisplayCode(row.Remark));
+            yield return MapTripRow(row);
         }
+    }
+
+    private static DutyTripPdfRow MapTripRow(DutyTemplateRow row)
+    {
+        var fromStop = FormatDirectionStop(row.FromStop);
+        var toStop = FormatDirectionStop(row.ToStop);
+        var direction = string.IsNullOrWhiteSpace(fromStop) && string.IsNullOrWhiteSpace(toStop)
+            ? string.Empty
+            : $"{fromStop} > {toStop}".Trim(' ', '>').Trim();
+
+        return new DutyTripPdfRow(
+            row.TripNumber,
+            row.LineCourse,
+            FormatTimeDisplay(row.FromTime),
+            direction,
+            FormatTimeDisplay(row.ToTime),
+            DutyTemplateRemarkHelper.GetDisplayCode(row.Remark));
     }
 
     private static string FormatTimeDisplay(string? time)
@@ -359,52 +450,7 @@ public static class DienstvorlagenPdfGenerator
             return string.Empty;
         }
 
-        var text = DutyTemplateStopNameHelper.StripHaltestelleMarker(stop);
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return string.Empty;
-        }
-
-        var name = text;
-        var platform = string.Empty;
-
-        var busMatch = BussteigRegex.Match(text);
-        if (busMatch.Success)
-        {
-            platform = $" Bstg.{busMatch.Groups[1].Value}";
-        }
-        else
-        {
-            var gleisMatch = GleisRegex.Match(text);
-            if (gleisMatch.Success)
-            {
-                platform = $" Gl.{gleisMatch.Groups[1].Value}";
-            }
-        }
-
-        name = text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? text;
-
-        name = AbbreviateCompoundStopName(name);
-
-        return $"{name}{platform}".Trim();
-    }
-
-    private static string AbbreviateCompoundStopName(string name)
-    {
-        var dashIndex = name.IndexOf('-', StringComparison.Ordinal);
-        if (dashIndex <= 0 || dashIndex >= name.Length - 1)
-        {
-            return name.Trim();
-        }
-
-        var prefix = name[..dashIndex].Trim();
-        var suffix = name[(dashIndex + 1)..].Trim();
-        if (prefix.Length == 0)
-        {
-            return name.Trim();
-        }
-
-        return $"{prefix[0]}.-{suffix}";
+        return DutyTemplateStopNameHelper.StripHaltestelleMarker(stop).Trim();
     }
 
     private sealed record DutyTripPdfRow(
@@ -414,4 +460,34 @@ public static class DienstvorlagenPdfGenerator
         string Direction,
         string ToTime,
         string RemarkCode);
+
+    private enum DutyTripPdfRowKind
+    {
+        Trip,
+        Empty,
+        Dienstfrei,
+        PartHeader
+    }
+
+    private sealed record DutyTripPdfTableRow(
+        DutyTripPdfRowKind Kind,
+        string TripNumber,
+        string LineCourse,
+        string FromTime,
+        string Direction,
+        string ToTime,
+        string RemarkCode)
+    {
+        public static DutyTripPdfTableRow FromTrip(DutyTripPdfRow trip) =>
+            new(DutyTripPdfRowKind.Trip, trip.TripNumber, trip.LineCourse, trip.FromTime, trip.Direction, trip.ToTime, trip.RemarkCode);
+
+        public static DutyTripPdfTableRow Empty() =>
+            new(DutyTripPdfRowKind.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+
+        public static DutyTripPdfTableRow Dienstfrei(string text) =>
+            new(DutyTripPdfRowKind.Dienstfrei, string.Empty, string.Empty, string.Empty, text, string.Empty, string.Empty);
+
+        public static DutyTripPdfTableRow PartHeader(string text) =>
+            new(DutyTripPdfRowKind.PartHeader, string.Empty, string.Empty, string.Empty, text, string.Empty, string.Empty);
+    }
 }

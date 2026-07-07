@@ -11,6 +11,7 @@ using SmartOepnv.Core;
 using SmartOepnv.Core.Geo;
 using SmartOepnv.Core.RoutePath;
 using SmartOepnv.Core.VehicleTracking;
+using SmartOepnv.Core.Voip;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
@@ -155,6 +156,17 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
         SelectedVehicle = target;
         return true;
+    }
+
+    public VehicleListItemViewModel? TryGetVehicleByPhone(string? normalizedPhone)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedPhone))
+        {
+            return null;
+        }
+
+        return Vehicles.FirstOrDefault(v =>
+            VoipPhone.Match(v.PhoneNormalized, normalizedPhone));
     }
 
     public bool ShowVehicleDetailForPhone(string? normalizedPhone)
@@ -593,6 +605,16 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
         item.ApplyLiveState(v);
         return item;
     }
+
+    public static VehicleListItemViewModel ForVoip(string phoneNormalized, string displayName) =>
+        From(new VehicleLiveState
+        {
+            Id = phoneNormalized,
+            DisplayName = displayName,
+            PhoneNumber = phoneNormalized,
+            Status = VehicleOnlineStatus.Online,
+            TimestampEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        });
 
     /// <summary>Marker für gebündelte Live-Updates (Detail-Panel).</summary>
     public bool LiveState => true;

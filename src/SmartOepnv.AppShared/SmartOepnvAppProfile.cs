@@ -29,6 +29,6 @@ public sealed class SmartOepnvAppProfile
         PrimaryDarkColorHex = "#003300",
         AccentColorHex = "#66BB6A",
         IsLeitstelle = true,
-        AutoLoadDropboxOnStartup = false
+        AutoLoadDropboxOnStartup = true
     };
 }

@@ -87,6 +87,7 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
 
     public void Resume()
     {
+        var shouldHide = false;
         lock (_sync)
         {
             if (_suspendCount > 0)
@@ -99,9 +100,11 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
                 ResetTimerCore();
                 return;
             }
+
+            shouldHide = _suspendCount > 0;
         }
 
-        if (_suspendCount > 0)
+        if (shouldHide)
         {
             PublishCountdownOnUi(null);
         }

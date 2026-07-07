@@ -44,6 +44,8 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
     private string? _loadedFingerprint;
 
+    private bool _rebuildScheduled;
+
     public event Action<string?, string?>? NavigateToEmployeeManagementRequested;
 
     public FahrerdispoViewModel()
@@ -125,7 +127,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
     [ObservableProperty] private bool hasExpandedRow;
 
-    partial void OnViewStartDateChanged(DateTime value) => RebuildGrid();
+    partial void OnViewStartDateChanged(DateTime value) => ScheduleRebuildGrid();
 
     public void RefreshFromEditorIfNeeded()
     {
@@ -315,7 +317,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
     {
         _expandedDriverKey = driverKey;
         _expandedDate = date.Date;
-        RebuildGrid();
+        ScheduleRebuildGrid();
         StatusMessage =
             $"Stundenansicht für {date:dd.MM.yyyy} – „Wochenansicht“ oder ◀ zum Schließen.";
     }
@@ -330,7 +332,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
         _expandedDriverKey = null;
         _expandedDate = null;
-        RebuildGrid();
+        ScheduleRebuildGrid();
     }
 
     private void RebuildGrid()
@@ -450,14 +452,27 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
     private void ScheduleRebuildGrid()
     {
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess())
+        if (_rebuildScheduled)
         {
+            return;
+        }
+
+        _rebuildScheduled = true;
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            _rebuildScheduled = false;
             RebuildGrid();
             return;
         }
 
-        dispatcher.BeginInvoke(RebuildGrid, DispatcherPriority.Background);
+        dispatcher.BeginInvoke(
+            () =>
+            {
+                _rebuildScheduled = false;
+                RebuildGrid();
+            },
+            DispatcherPriority.Loaded);
     }
 
     private bool TryShowShiftDialog(
@@ -545,6 +560,12 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
             var startMs = new DateTimeOffset(part.StartLocal).ToUnixTimeMilliseconds();
             var endMs = new DateTimeOffset(part.EndLocal).ToUnixTimeMilliseconds();
+            var part1EndMs = part.IsSplitShift && part.Part1EndLocal.HasValue
+                ? new DateTimeOffset(part.Part1EndLocal.Value).ToUnixTimeMilliseconds()
+                : 0L;
+            var part2StartMs = part.IsSplitShift && part.Part2StartLocal.HasValue
+                ? new DateTimeOffset(part.Part2StartLocal.Value).ToUnixTimeMilliseconds()
+                : 0L;
             var partStats = DutyTemplateDispositionMapper.TryGetPartStats(template, part.PartIndex);
             var knownDrivingMinutes = partStats?.DrivingMinutes ?? 0;
             var knownServiceDurationMinutes = partStats?.ServiceDurationMinutes ?? 0;
@@ -563,6 +584,8 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                     out var appliedReducedWeeklyRest,
                     out var appliedExtendedDailyShift,
                     out var complianceError,
+                    part1EndEpochMs: part1EndMs,
+                    part2StartEpochMs: part2StartMs,
                     knownDrivingMinutes: knownDrivingMinutes,
                     knownServiceDurationMinutes: knownServiceDurationMinutes))
             {
@@ -575,6 +598,8 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                 DriverKey = result.DriverKey,
                 StartEpochMs = startMs,
                 EndEpochMs = endMs,
+                Part1EndEpochMs = part1EndMs,
+                Part2StartEpochMs = part2StartMs,
                 Label = part.DutyNumber,
                 DutyNumber = part.DutyNumber,
                 DutyTemplateId = result.DutyTemplateId,

@@ -10,8 +10,11 @@ namespace SmartOepnv.AppShared.Kom;
 
 public sealed class KomRemoteDestinationDialog : Window
 {
+    private readonly KomSendDialogGuard _sendGuard;
+
     public KomRemoteDestinationDialog(VehicleListItemViewModel vehicle, Window owner)
     {
+        _sendGuard = new KomSendDialogGuard(this);
         Owner = owner;
         Title = "Fernsteuerung Ziel";
         Width = 520;
@@ -84,10 +87,10 @@ public sealed class KomRemoteDestinationDialog : Window
             }
 
             send.IsEnabled = false;
-            cancel.IsEnabled = false;
+            _sendGuard.BeginSend();
             try
             {
-                var outcome = await KomCommandSendFlow.ExecuteAsync(
+                if (await KomCommandSendFlow.SendAndReleaseDialogAsync(
                     this,
                     status,
                     vehicle.DisplayName,
@@ -97,17 +100,24 @@ public sealed class KomRemoteDestinationDialog : Window
                         AppServices.Dropbox,
                         phone,
                         destination,
-                        ct));
-                if (outcome is KomCommandSendOutcome.Success or KomCommandSendOutcome.Timeout)
+                        ct)))
                 {
-                    DialogResult = true;
-                    Close();
+                    _sendGuard.EndSend();
+                    return;
                 }
+            }
+            catch (Exception ex)
+            {
+                SmartConfirmDialog.ShowInfo(this, Title, $"Senden fehlgeschlagen: {ex.Message}");
             }
             finally
             {
-                send.IsEnabled = true;
-                cancel.IsEnabled = true;
+                if (IsLoaded)
+                {
+                    _sendGuard.EndSend();
+                    send.IsEnabled = true;
+                    cancel.IsEnabled = true;
+                }
             }
         };
 

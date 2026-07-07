@@ -42,6 +42,9 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
     /// <summary>Meldung angeklickt: Live-Karte mit Fahrzeug-Detail öffnen.</summary>
     public event Action<string>? OpenVehicleOnMapRequested;
 
+    /// <summary>Sprechwunsch angeklickt: zusätzlich Funk-Anruf starten.</summary>
+    public event Action<string, string>? SprechwunschAnswerRequested;
+
     public void RefreshFromEditor()
     {
         _vehicleByPhone.Clear();
@@ -202,6 +205,10 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         }
 
         OpenVehicleOnMapRequested?.Invoke(item.PhoneNormalized);
+        if (item.IsSprechwunsch)
+        {
+            SprechwunschAnswerRequested?.Invoke(item.PhoneNormalized, item.VehicleName);
+        }
     }
 
     [RelayCommand]
@@ -264,6 +271,11 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
             return null;
         }
 
+        var mailchatKind = ReadString(root, "mailchatKind");
+        var isSprechwunsch = !isSos && (
+            string.Equals(mailchatKind, "sprechwunsch", StringComparison.OrdinalIgnoreCase) ||
+            message.Trim().Equals("Sprechwunsch", StringComparison.OrdinalIgnoreCase));
+
         var senderName = ReadString(root, "senderName");
         var time = root.TryGetProperty("timestamp", out var t) && t.TryGetInt64(out var ts)
             ? ts
@@ -281,8 +293,9 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         {
             DedupeKey = dedupeKey,
             FileName = fileName,
-            Type = fallbackType,
+            Type = isSprechwunsch ? "sprechwunsch" : fallbackType,
             IsSos = isSos,
+            IsSprechwunsch = isSprechwunsch,
             IsUnread = !isSos,
             TimestampEpochMs = time,
             TimestampLabel = DateTimeOffset.FromUnixTimeMilliseconds(time).ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss"),
@@ -298,6 +311,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         FileName = item.FileName,
         Type = item.Type,
         IsSos = item.IsSos,
+        IsSprechwunsch = item.IsSprechwunsch,
         IsUnread = item.IsUnread,
         TimestampEpochMs = item.TimestampEpochMs,
         PhoneNormalized = item.PhoneNormalized,
@@ -311,6 +325,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         FileName = rec.FileName,
         Type = rec.Type,
         IsSos = rec.IsSos,
+        IsSprechwunsch = rec.IsSprechwunsch,
         IsUnread = rec.IsUnread,
         TimestampEpochMs = rec.TimestampEpochMs,
         TimestampLabel = DateTimeOffset.FromUnixTimeMilliseconds(rec.TimestampEpochMs)
@@ -401,13 +416,15 @@ public sealed partial class LeitstelleInboxItemViewModel : ObservableObject
 
     public required bool IsSos { get; init; }
 
+    public required bool IsSprechwunsch { get; init; }
+
     [ObservableProperty] private bool isUnread;
 
     public string HeaderDisplayText
     {
         get
         {
-            var kind = IsSos ? "Unfallruf" : "MailChat";
+            var kind = IsSos ? "Unfallruf" : (IsSprechwunsch ? "Sprechwunsch" : "MailChat");
             var text = $"{kind} · {VehicleName}: {Message.Trim()}";
             return text.Length <= 120 ? text : text[..117] + "…";
         }

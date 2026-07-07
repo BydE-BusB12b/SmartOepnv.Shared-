@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Voip;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -84,6 +85,7 @@ public sealed class DeviceRegistrationDropboxService
                 });
                 _processed.Add(key);
                 added.Add($"{name} ({phone})");
+                await TryPublishVoipConfigAsync(name, phone, ct).ConfigureAwait(false);
             }
             catch
             {
@@ -136,6 +138,23 @@ public sealed class DeviceRegistrationDropboxService
         name = parts[0].Trim();
         phone = parts[1].Trim();
         return name.Length > 0 && phone.Length > 0;
+    }
+
+    private static async Task TryPublishVoipConfigAsync(string name, string phone, CancellationToken ct)
+    {
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            return;
+        }
+
+        var publisher = new VoipConfigPublisher();
+        var dispatch = await publisher.TryDownloadDispatchAsync(AppServices.Dropbox, ct).ConfigureAwait(false);
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.SignalingUrl))
+        {
+            return;
+        }
+
+        await publisher.PublishVehicleAsync(AppServices.Dropbox, dispatch, name, phone, ct).ConfigureAwait(false);
     }
 
     private void LoadProcessed()

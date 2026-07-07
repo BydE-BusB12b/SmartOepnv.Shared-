@@ -116,10 +116,35 @@
                                  Text="{Binding RouteInteriorDisplayDestination, UpdateSourceTrigger=PropertyChanged}"
                                  MaxLength="16"
                                  Margin="0,0,0,10" />
-                        <CheckBox Content="In ITCS-Routenliste (Route wählen)"
-                                  IsChecked="{Binding RouteItcsRouteListEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                  Margin="0,0,0,4" />
-                        <TextBlock Text="Linie/Kurs-Suche in der App zeigt alle Fahrten unabhängig davon."
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Liste" VerticalAlignment="Center" Margin="0,0,8,10" />
+                            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                                <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                              IsChecked="{Binding RouteItcsRouteListEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              VerticalAlignment="Center" />
+                                <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Opacity="0.75" FontSize="11"
+                                           Text="In ITCS-Routenliste (Route wählen)" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Hauptnutzer" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                                <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                              IsChecked="{Binding RouteMainDeviceOnly, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              VerticalAlignment="Center" />
+                                <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Opacity="0.75" FontSize="11"
+                                           Text="Route nur für Hauptnutzergeräte (Liste &amp; Linie/Kurs)" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="Markierte Hauptnutzer-Routen sind auf Mitarbeitergeräten weder in der ITCS-Routenliste noch in der Linie/Kurs-Suche sichtbar."
                                    Opacity="0.7"
                                    FontSize="10"
                                    TextWrapping="Wrap" />

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.17763</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -18,8 +18,11 @@
     <PackageReference Include="MaterialDesignThemes" Version="5.2.1" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="SIPSorcery" Version="8.0.14" />
+    <PackageReference Include="SIPSorceryMedia.Windows" Version="8.0.14" />
     <PackageReference Include="QuestPDF" Version="2024.12.3" />
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
+    <PackageReference Include="System.Speech" Version="10.0.9" />
   </ItemGroup>
 
   <ItemGroup>

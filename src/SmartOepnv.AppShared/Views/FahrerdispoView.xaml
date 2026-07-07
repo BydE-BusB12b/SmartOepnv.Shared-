@@ -127,12 +127,13 @@
         <materialDesign:Card Padding="0"
                              UniformCornerRadius="12"
                              Background="{StaticResource SmartSurfaceBrush}">
-            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Auto"
-                          Padding="0">
-                <StackPanel>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
                     <!-- Kopfzeile Tage -->
-                    <Grid Margin="0,0,0,0">
+                    <Grid Grid.Row="0" Margin="0,0,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="200" />
                             <ColumnDefinition Width="Auto" />
@@ -182,9 +183,35 @@
                         </ItemsControl>
                     </Grid>
 
-                    <!-- Fahrzeugzeilen -->
-                    <ItemsControl ItemsSource="{Binding DriverRows}">
-                        <ItemsControl.ItemTemplate>
+                    <!-- Fahrerzeilen -->
+                    <ListBox Grid.Row="1"
+                             ItemsSource="{Binding DriverRows}"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Padding="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.CanContentScroll="False"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Focusable" Value="False" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Margin" Value="0" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="0" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter />
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -587,10 +614,9 @@
                                     </Grid>
                                 </Grid>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </ScrollViewer>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+            </Grid>
         </materialDesign:Card>
     </DockPanel>
 </UserControl>

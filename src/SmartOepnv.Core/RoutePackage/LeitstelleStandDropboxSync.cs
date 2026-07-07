@@ -63,6 +63,13 @@ public static class LeitstelleStandDropboxSync
                 return new ImportResult(false, $"Keine {DropboxConstants.LeitstelleStandFileName} in Dropbox.");
             }
 
+            if (!RoutePackageRosterPreserve.JsonContainsRosterData(stand))
+            {
+                return new ImportResult(
+                    false,
+                    $"{DropboxConstants.LeitstelleStandFileName} ohne Personal/Fahrzeuge – bestehender Stand unverändert.");
+            }
+
             AppServices.Routes.TryMergeLeitstelleStandJson(stand);
             return new ImportResult(
                 true,

@@ -493,6 +493,156 @@ public sealed class DropboxApiClient
             progress).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Lädt eine bereits serialisierte JSON-Datei hoch (speicherschonend – kein zusätzlicher JSON-String im RAM).
+    /// </summary>
+    public async Task UploadNamedFileFromPathAsync(
+        string fileName,
+        string filePath,
+        CancellationToken ct = default,
+        IProgress<DropboxTransferProgress>? progress = null)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException("Upload-Datei nicht gefunden.", filePath);
+        }
+
+        var token = await GetValidAccessTokenAsync(ct).ConfigureAwait(false);
+        var length = new FileInfo(filePath).Length;
+        if (length == 0)
+        {
+            throw new InvalidOperationException($"Upload fehlgeschlagen ({fileName}): Datei ist leer.");
+        }
+
+        if (length <= DropboxConstants.SimpleUploadMaxBytes)
+        {
+            var bytes = await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false);
+            await UploadBytesOnceAsync(fileName, bytes, token, ct, progress).ConfigureAwait(false);
+            return;
+        }
+
+        await UploadFileSessionFromPathOnceAsync(fileName, filePath, token, ct, progress).ConfigureAwait(false);
+    }
+
+    public string CombineDropboxPath(string relativePath)
+    {
+        var relative = relativePath.Trim().TrimStart('/');
+        return $"{ActiveFolderPath}/{relative}";
+    }
+
+    public async Task UploadRelativeFileFromPathAsync(
+        string relativePath,
+        string localFilePath,
+        CancellationToken ct = default,
+        IProgress<DropboxTransferProgress>? progress = null)
+    {
+        if (!File.Exists(localFilePath))
+        {
+            throw new FileNotFoundException("Upload-Datei nicht gefunden.", localFilePath);
+        }
+
+        var token = await GetValidAccessTokenAsync(ct).ConfigureAwait(false);
+        var dropboxPath = CombineDropboxPath(relativePath);
+        var displayName = Path.GetFileName(relativePath);
+        var length = new FileInfo(localFilePath).Length;
+        if (length == 0)
+        {
+            throw new InvalidOperationException($"Upload fehlgeschlagen ({displayName}): Datei ist leer.");
+        }
+
+        if (length <= DropboxConstants.SimpleUploadMaxBytes)
+        {
+            var bytes = await File.ReadAllBytesAsync(localFilePath, ct).ConfigureAwait(false);
+            await UploadBytesAtPathOnceAsync(dropboxPath, displayName, bytes, token, ct, progress)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await UploadFileSessionAtPathFromPathOnceAsync(
+                dropboxPath,
+                displayName,
+                localFilePath,
+                token,
+                ct,
+                progress)
+            .ConfigureAwait(false);
+    }
+
+    public async Task DownloadRelativeFileToPathAsync(
+        string relativePath,
+        string localDestinationPath,
+        CancellationToken ct = default,
+        IProgress<DropboxTransferProgress>? progress = null)
+    {
+        var token = await GetValidAccessTokenAsync(ct).ConfigureAwait(false);
+        var dropboxPath = CombineDropboxPath(relativePath);
+        var displayName = Path.GetFileName(relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(localDestinationPath)!);
+        var tempPath = localDestinationPath + ".tmp";
+
+        try
+        {
+            await DownloadFileAtPathToPathOnceAsync(dropboxPath, displayName, tempPath, token, ct, progress)
+                .ConfigureAwait(false);
+            File.Move(tempPath, localDestinationPath, overwrite: true);
+        }
+        catch
+        {
+            if (File.Exists(tempPath))
+            {
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyDictionary<string, long>> ListRelativeFolderFileSizesAsync(
+        string relativeFolderPath,
+        CancellationToken ct = default)
+    {
+        var token = await GetValidAccessTokenAsync(ct).ConfigureAwait(false);
+        var folderPath = CombineDropboxPath(relativeFolderPath);
+        try
+        {
+            return await ListFolderFileSizesInternalAsync(folderPath, token, ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("not_found", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("path/not_found", StringComparison.OrdinalIgnoreCase))
+        {
+            return new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    public async Task<DropboxNamedFileMetadata?> TryGetRelativeFileMetadataAsync(
+        string relativePath,
+        CancellationToken ct = default)
+    {
+        var token = await GetValidAccessTokenAsync(ct).ConfigureAwait(false);
+        var meta = await GetMetadataAsync(CombineDropboxPath(relativePath), token, ct).ConfigureAwait(false);
+        if (meta is null)
+        {
+            return null;
+        }
+
+        long? modifiedUtcMs = null;
+        if (meta.Value.ServerModified is { } modified)
+        {
+            modifiedUtcMs = new DateTimeOffset(
+                DateTime.SpecifyKind(modified, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
+        }
+
+        return new DropboxNamedFileMetadata(modifiedUtcMs, meta.Value.Size);
+    }
+
     public async Task UploadNamedBinaryFileAsync(string fileName, byte[] content, CancellationToken ct = default)
     {
         await UploadNamedBinaryInternalAsync(fileName, content, await GetValidAccessTokenAsync(ct), ct);
@@ -648,6 +798,333 @@ public sealed class DropboxApiClient
         {
             throw new InvalidOperationException($"Upload fehlgeschlagen ({fileName}): Datei ist leer.");
         }
+    }
+
+    private async Task UploadFileSessionFromPathOnceAsync(
+        string fileName,
+        string filePath,
+        string token,
+        CancellationToken ct,
+        IProgress<DropboxTransferProgress>? progress = null)
+    {
+        var folder = ActiveFolderPath;
+        var path = $"{folder}/{fileName}";
+        var phase = $"{fileName} wird hochgeladen (große Datei)…";
+        var total = new FileInfo(filePath).Length;
+        var chunkSize = DropboxConstants.UploadSessionChunkBytes;
+        var etaEstimator = new TransferEtaEstimator();
+        string? sessionId = null;
+        long offset = 0;
+
+        ReportUploadProgress(progress, phase, offset, total, etaEstimator);
+
+        await using var stream = File.OpenRead(filePath);
+        var buffer = new byte[chunkSize];
+
+        while (offset < total)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(0, chunkSize), ct).ConfigureAwait(false);
+            if (read <= 0)
+            {
+                break;
+            }
+
+            var chunk = buffer.AsMemory(0, read);
+            var isFirst = offset == 0;
+            var isLast = offset + read >= total;
+
+            if (isFirst)
+            {
+                sessionId = await UploadSessionStartAsync(chunk, token, ct).ConfigureAwait(false);
+            }
+            else if (!isLast)
+            {
+                await UploadSessionAppendAsync(sessionId!, offset, chunk, token, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await UploadSessionFinishAsync(sessionId!, offset, chunk, path, token, ct).ConfigureAwait(false);
+            }
+
+            offset += read;
+            ReportUploadProgress(progress, phase, offset, total, etaEstimator);
+        }
+
+        if (offset != total)
+        {
+            throw new InvalidOperationException($"Upload fehlgeschlagen ({fileName}): unvollständig gelesen ({offset}/{total} Bytes).");
+        }
+    }
+
+    private async Task UploadBytesAtPathOnceAsync(
+        string dropboxPath,
+        string displayName,
+        byte[] content,
+        string token,
+        CancellationToken ct,
+        IProgress<DropboxTransferProgress>? progress = null)
+    {
+        if (content.Length > DropboxConstants.SimpleUploadMaxBytes)
+        {
+            await UploadBytesSessionAtPathOnceAsync(dropboxPath, displayName, content, token, ct, progress)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var apiArg = JsonSerializer.Serialize(new
+        {
+            path = dropboxPath,
+            mode = "overwrite",
+            autorename = false
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, DropboxConstants.UploadUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add("Dropbox-API-Arg", apiArg);
+        request.Content = new ProgressReportingHttpContent(
+            content,
+            $"{displayName} wird hochgeladen…",
+            progress);
+
+        using var response = await _uploadHttp.SendAsync(request, ct).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
+            await RefreshAccessTokenAsync(ct).ConfigureAwait(false))
+        {
+            await UploadBytesAtPathOnceAsync(dropboxPath, displayName, content, Settings.AccessToken!, ct, progress)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new InvalidOperationException($"Upload fehlgeschlagen ({displayName}): {err}");
+        }
+    }
+
+    private async Task UploadBytesSessionAtPathOnceAsync(
+        string dropboxPath,
+        string displayName,
+        byte[] content,
+        string token,
+        CancellationToken ct,
+        IProgress<DropboxTransferProgress>? progress = null)
+    {
+        var phase = $"{displayName} wird hochgeladen (große Datei)…";
+        var total = (long)content.Length;
+        var chunkSize = DropboxConstants.UploadSessionChunkBytes;
+        var etaEstimator = new TransferEtaEstimator();
+        string? sessionId = null;
+        long offset = 0;
+
+        ReportUploadProgress(progress, phase, offset, total, etaEstimator);
+
+        while (offset < total)
+        {
+            var size = (int)Math.Min(chunkSize, total - offset);
+            var chunk = content.AsMemory((int)offset, size);
+            var isFirst = offset == 0;
+            var isLast = offset + size >= total;
+
+            if (isFirst)
+            {
+                sessionId = await UploadSessionStartAsync(chunk, token, ct).ConfigureAwait(false);
+            }
+            else if (!isLast)
+            {
+                await UploadSessionAppendAsync(sessionId!, offset, chunk, token, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await UploadSessionFinishAsync(sessionId!, offset, chunk, dropboxPath, token, ct).ConfigureAwait(false);
+            }
+
+            offset += size;
+            ReportUploadProgress(progress, phase, offset, total, etaEstimator);
+        }
+    }
+
+    private async Task UploadFileSessionAtPathFromPathOnceAsync(
+        string dropboxPath,
+        string displayName,
+        string filePath,
+        string token,
+        CancellationToken ct,
+        IProgress<DropboxTransferProgress>? progress = null)
+    {
+        var phase = $"{displayName} wird hochgeladen (große Datei)…";
+        var total = new FileInfo(filePath).Length;
+        var chunkSize = DropboxConstants.UploadSessionChunkBytes;
+        var etaEstimator = new TransferEtaEstimator();
+        string? sessionId = null;
+        long offset = 0;
+
+        ReportUploadProgress(progress, phase, offset, total, etaEstimator);
+
+        await using var stream = File.OpenRead(filePath);
+        var buffer = new byte[chunkSize];
+
+        while (offset < total)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(0, chunkSize), ct).ConfigureAwait(false);
+            if (read <= 0)
+            {
+                break;
+            }
+
+            var chunk = buffer.AsMemory(0, read);
+            var isFirst = offset == 0;
+            var isLast = offset + read >= total;
+
+            if (isFirst)
+            {
+                sessionId = await UploadSessionStartAsync(chunk, token, ct).ConfigureAwait(false);
+            }
+            else if (!isLast)
+            {
+                await UploadSessionAppendAsync(sessionId!, offset, chunk, token, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await UploadSessionFinishAsync(sessionId!, offset, chunk, dropboxPath, token, ct).ConfigureAwait(false);
+            }
+
+            offset += read;
+            ReportUploadProgress(progress, phase, offset, total, etaEstimator);
+        }
+
+        if (offset != total)
+        {
+            throw new InvalidOperationException(
+                $"Upload fehlgeschlagen ({displayName}): unvollständig gelesen ({offset}/{total} Bytes).");
+        }
+    }
+
+    private async Task DownloadFileAtPathToPathOnceAsync(
+        string dropboxPath,
+        string displayName,
+        string localDestinationPath,
+        string token,
+        CancellationToken ct,
+        IProgress<DropboxTransferProgress>? progress = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, DropboxConstants.DownloadUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add("Dropbox-API-Arg", JsonSerializer.Serialize(new { path = dropboxPath }));
+        request.Content = new ByteArrayContent(Array.Empty<byte>());
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
+            await RefreshAccessTokenAsync(ct).ConfigureAwait(false))
+        {
+            await DownloadFileAtPathToPathOnceAsync(
+                    dropboxPath,
+                    displayName,
+                    localDestinationPath,
+                    Settings.AccessToken!,
+                    ct,
+                    progress)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new InvalidOperationException($"Download fehlgeschlagen ({displayName}): {err}");
+        }
+
+        var phase = $"{displayName} wird geladen…";
+        var totalBytes = response.Content.Headers.ContentLength ?? 0;
+        var etaEstimator = new TransferEtaEstimator();
+        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using var output = File.Create(localDestinationPath);
+        var chunk = new byte[81_920];
+        long transferred = 0;
+
+        ReportDownloadProgress(progress, phase, transferred, totalBytes, etaEstimator);
+
+        while (true)
+        {
+            var read = await stream.ReadAsync(chunk, ct).ConfigureAwait(false);
+            if (read == 0)
+            {
+                break;
+            }
+
+            await output.WriteAsync(chunk.AsMemory(0, read), ct).ConfigureAwait(false);
+            transferred += read;
+            if (totalBytes <= 0)
+            {
+                totalBytes = transferred;
+            }
+
+            ReportDownloadProgress(progress, phase, transferred, totalBytes, etaEstimator);
+        }
+
+        if (totalBytes > 0 && transferred < totalBytes)
+        {
+            ReportDownloadProgress(progress, phase, totalBytes, totalBytes, etaEstimator);
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<string, long>> ListFolderFileSizesInternalAsync(
+        string folderPath,
+        string token,
+        CancellationToken ct)
+    {
+        var sizes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        string? cursor = null;
+
+        do
+        {
+            using var request = cursor is null
+                ? CreateJsonPost(
+                    DropboxConstants.ListFolderUrl,
+                    JsonSerializer.Serialize(new { path = folderPath }),
+                    token)
+                : CreateJsonPost(
+                    DropboxConstants.ListFolderContinueUrl,
+                    JsonSerializer.Serialize(new { cursor }),
+                    token);
+
+            using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                throw new InvalidOperationException("Dropbox-Zugriff abgelaufen – Token erneuern.");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                throw new InvalidOperationException($"Ordnerliste fehlgeschlagen ({folderPath}): {err}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("entries", out var entries))
+            {
+                foreach (var entry in entries.EnumerateArray())
+                {
+                    if (entry.TryGetProperty(".tag", out var tag) && tag.GetString() == "file" &&
+                        entry.TryGetProperty("name", out var nameEl) &&
+                        entry.TryGetProperty("size", out var sizeEl))
+                    {
+                        sizes[nameEl.GetString() ?? string.Empty] = sizeEl.GetInt64();
+                    }
+                }
+            }
+
+            cursor = doc.RootElement.TryGetProperty("has_more", out var hasMore) &&
+                     hasMore.GetBoolean() &&
+                     doc.RootElement.TryGetProperty("cursor", out var cursorEl)
+                ? cursorEl.GetString()
+                : null;
+        } while (!string.IsNullOrEmpty(cursor));
+
+        return sizes;
     }
 
     private async Task<string> UploadSessionStartAsync(

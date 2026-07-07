@@ -1,11 +1,15 @@
 using System.Collections.ObjectModel;
 using System.Reflection;
+using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
+using SmartOepnv.AppShared.Kom;
 using SmartOepnv.AppShared.Models;
 using SmartOepnv.AppShared.Views;
+using SmartOepnv.AppShared.Voip;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
@@ -17,29 +21,51 @@ public partial class MainViewModel : ObservableObject
     private readonly SmartOepnvAppProfile _profile;
     private readonly DataTransferViewModel _dataTransferViewModel;
     private readonly SettingsViewModel _settingsViewModel = new();
-    private readonly RoutesViewModel _routesViewModel = new();
-    private readonly RoutePathEditorViewModel _routePathEditorViewModel = new();
+    private RoutesViewModel? _routesViewModel;
+    private RoutePathEditorViewModel? _routePathEditorViewModel;
     private readonly EmployeesViewModel _employeesViewModel = new();
-    private readonly StopsLibraryViewModel _stopsLibraryViewModel = new();
-    private readonly AnnouncementsLibraryViewModel _announcementsLibraryViewModel = new();
+    private StopsLibraryViewModel? _stopsLibraryViewModel;
+    private AnnouncementsLibraryViewModel? _announcementsLibraryViewModel;
     private readonly VehicleManagementViewModel _vehicleManagementViewModel = new();
-    private readonly MessagesViewModel _messagesViewModel = new();
+    private MessagesViewModel? _messagesViewModel;
     private readonly MessageSendViewModel _messageSendViewModel = new();
     private readonly LeitstelleMessagesInboxViewModel _leitstelleMessagesInboxViewModel = new();
-    private readonly DisplaysOperationsViewModel _displaysOperationsViewModel = new();
+    private DisplaysOperationsViewModel? _displaysOperationsViewModel;
     private readonly VehicleTrackingViewModel _vehicleTrackingViewModel = new();
-    private readonly ZeitwirtschaftPlannerViewModel _zeitwirtschaftPlannerViewModel = new();
-    private readonly SevSignEditorViewModel _sevSignEditorViewModel = new();
-    private readonly FahrerdispoViewModel _fahrerdispoViewModel = new();
-    private readonly FahrzeugdispoViewModel _fahrzeugdispoViewModel = new();
-    private readonly DienstvorlagenViewModel _dienstvorlagenViewModel = new();
-    private readonly DienstvorlagenLibraryViewModel _dienstvorlagenLibraryViewModel = new();
+    private ZeitwirtschaftPlannerViewModel? _zeitwirtschaftPlannerViewModel;
+    private SevSignEditorViewModel? _sevSignEditorViewModel;
+    private FahrerdispoViewModel? _fahrerdispoViewModel;
+    private FahrzeugdispoViewModel? _fahrzeugdispoViewModel;
+    private DienstvorlagenViewModel? _dienstvorlagenViewModel;
+    private DienstvorlagenLibraryViewModel? _dienstvorlagenLibraryViewModel;
+
+    private RoutesViewModel RoutesViewModel => _routesViewModel ??= new();
+    private RoutePathEditorViewModel RoutePathEditorViewModel => _routePathEditorViewModel ??= new();
+    private StopsLibraryViewModel StopsLibraryViewModel => _stopsLibraryViewModel ??= new();
+    private AnnouncementsLibraryViewModel AnnouncementsLibraryViewModel => _announcementsLibraryViewModel ??= new();
+    private MessagesViewModel MessagesViewModel => _messagesViewModel ??= new();
+    private DisplaysOperationsViewModel DisplaysOperationsViewModel => _displaysOperationsViewModel ??= new();
+    private ZeitwirtschaftPlannerViewModel ZeitwirtschaftPlannerViewModel => _zeitwirtschaftPlannerViewModel ??= new();
+    private SevSignEditorViewModel SevSignEditorViewModel => _sevSignEditorViewModel ??= new();
+    private FahrerdispoViewModel FahrerdispoViewModel => _fahrerdispoViewModel ??= new();
+    private FahrzeugdispoViewModel FahrzeugdispoViewModel => _fahrzeugdispoViewModel ??= new();
+    private DienstvorlagenViewModel DienstvorlagenViewModel => _dienstvorlagenViewModel ??= new();
+    private DienstvorlagenLibraryViewModel DienstvorlagenLibraryViewModel => _dienstvorlagenLibraryViewModel ??= new();
 
     private NavigationItem? _previousNavigationItem;
     private bool _suppressNavigationCommit;
     private NavigationItem? _leitstelleMessagesNavItem;
     private NavigationItem? _fahrzeugverwaltungNavItem;
     private NavigationItem? _personalverwaltungNavItem;
+
+    private static readonly TimeSpan LeitstelleDropboxSyncInterval = TimeSpan.FromMinutes(15);
+    private DispatcherTimer? _leitstelleDropboxSyncTimer;
+    private int _leitstelleDropboxSyncRunning;
+    private bool _voipPortAutoFixAttempted;
+
+    public VoipLeitstelleHost VoipHost { get; } = new();
+
+    public VehicleTrackingViewModel VehicleTracking => _vehicleTrackingViewModel;
 
     public MainViewModel(SmartOepnvAppProfile profile)
     {
@@ -52,15 +78,22 @@ public partial class MainViewModel : ObservableObject
 
         NavigationItems = new ObservableCollection<NavigationItem>(CreateNavigationItems());
         SelectedNavigationItem = NavigationItems[0];
-        CurrentPage = SelectedNavigationItem.Content;
         _previousNavigationItem = SelectedNavigationItem;
+        if (!profile.IsLeitstelle)
+        {
+            CurrentPage = SelectedNavigationItem.Content;
+        }
 
         _dataTransferViewModel.RoutePackageImported += OnRoutePackageLoaded;
         _dataTransferViewModel.NavigateToVehicleManagementRequested += OnNavigateToVehicleManagementRequested;
         _dataTransferViewModel.NavigateToEmployeeManagementRequested += OnNavigateToEmployeeManagementRequested;
-        _fahrerdispoViewModel.NavigateToEmployeeManagementRequested += OnNavigateToEmployeeManagementFromDispoRequested;
+        if (!profile.IsLeitstelle)
+        {
+            FahrerdispoViewModel.NavigateToEmployeeManagementRequested += OnNavigateToEmployeeManagementFromDispoRequested;
+        }
         _leitstelleMessagesInboxViewModel.SosAlertRaised += OnLeitstelleSosAlertRaised;
         _leitstelleMessagesInboxViewModel.OpenVehicleOnMapRequested += OnLeitstelleOpenVehicleOnMapRequested;
+        _leitstelleMessagesInboxViewModel.SprechwunschAnswerRequested += OnLeitstelleSprechwunschAnswerRequested;
         _leitstelleMessagesInboxViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(LeitstelleMessagesInboxViewModel.UnreadMailCount) or
@@ -86,31 +119,61 @@ public partial class MainViewModel : ObservableObject
 
         if (profile.IsLeitstelle)
         {
-            var localLoaded = LoadLocalWorkspaceOnStartup();
-            if (localLoaded)
+            StatusText = "Starte…";
+            VoipHost.CallStatusChanged += OnVoipCallStatusChanged;
+            _settingsViewModel.VoipHost = VoipHost;
+            _settingsViewModel.DropboxConnectionEstablished += (_, _) =>
+            {
+                _ = SyncLeitstelleFromDropboxAsync(isBackground: true);
+                _ = StartVoipHostSafeAsync();
+            };
+        }
+        else
+        {
+            StatusText = "Bereit.";
+        }
+    }
+
+    /// <summary>Leitstelle: schwere Initialisierung nach Fensteranzeige (schnellerer Programmstart).</summary>
+    public async Task InitializeLeitstelleAfterShowAsync()
+    {
+        if (!_profile.IsLeitstelle)
+        {
+            return;
+        }
+
+        try
+        {
+            var localJson = await Task.Run(AppServices.Workspace.TryLoadPackageJson).ConfigureAwait(true);
+            var localLoaded = !string.IsNullOrWhiteSpace(localJson) && LoadLocalWorkspaceOnStartup(localJson);
+
+            CurrentPage = SelectedNavigationItem?.Content;
+
+            if (_profile.AutoLoadDropboxOnStartup && AppServices.Dropbox.Settings.IsConnected)
+            {
+                StatusText = localLoaded
+                    ? BuildLocalStatusText("Lokal – synchronisiere Dropbox…")
+                    : "Lade Daten von Dropbox…";
+                _ = SyncLeitstelleFromDropboxAsync(isBackground: true);
+            }
+            else if (localLoaded)
             {
                 StatusText = BuildLocalStatusText("Lokal wiederhergestellt");
-            }
-            else if (profile.AutoLoadDropboxOnStartup && AppServices.Dropbox.Settings.IsConnected)
-            {
-                StatusText = "Lade Route-Paket von Dropbox…";
             }
             else
             {
                 StatusText = "Bereit – Änderungen werden automatisch lokal gespeichert.";
             }
 
-            if (profile.AutoLoadDropboxOnStartup && AppServices.Dropbox.Settings.IsConnected)
-            {
-                _ = SyncDropboxOnStartupAsync();
-            }
-
+            StartLeitstelleDropboxPeriodicSync();
             _leitstelleMessagesInboxViewModel.StartMonitoring();
             UpdateLeitstelleMessagesBadge();
+            _ = StartVoipHostSafeAsync();
         }
-        else
+        catch (Exception ex)
         {
-            StatusText = "Bereit.";
+            StatusText = $"Start fehlgeschlagen: {ex.Message}";
+            CurrentPage ??= SelectedNavigationItem?.Content;
         }
     }
 
@@ -146,9 +209,9 @@ public partial class MainViewModel : ObservableObject
                 if (forced.Imported)
                 {
                     OnRoutePackageLoaded();
-                    _fahrerdispoViewModel.RefreshFromEditor();
-                    _dienstvorlagenViewModel.RefreshFromEditor();
-                    _dienstvorlagenLibraryViewModel.RefreshFromEditor();
+                    FahrerdispoViewModel.RefreshFromEditor();
+                    DienstvorlagenViewModel.RefreshFromEditor();
+                    DienstvorlagenLibraryViewModel.RefreshFromEditor();
                     StatusText = AppServices.Routes.HasPackage
                         ? BuildLocalStatusText("Dropbox übernommen (mehr Inhalt)")
                         : "Planer-Arbeitsstand aus Dropbox übernommen.";
@@ -264,11 +327,11 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Routen")
         {
-            _routesViewModel.RefreshFromEditorIfNeeded();
+            RoutesViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Navidaten")
         {
-            _routePathEditorViewModel.RefreshRoutes();
+            RoutePathEditorViewModel.RefreshRoutes();
         }
         else if (value.Title == "Personalverwaltung")
         {
@@ -277,19 +340,19 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Fahrerdisposition")
         {
-            _fahrerdispoViewModel.RefreshFromEditorIfNeeded();
+            ScheduleDispositionRefresh(FahrerdispoViewModel.RefreshFromEditorIfNeeded);
         }
         else if (value.Title == "Fahrzeugdisposition")
         {
-            _fahrzeugdispoViewModel.RefreshFromEditorIfNeeded();
+            ScheduleDispositionRefresh(FahrzeugdispoViewModel.RefreshFromEditorIfNeeded);
         }
         else if (value.Title == "Haltestellen")
         {
-            _stopsLibraryViewModel.RefreshFromEditorIfNeeded();
+            StopsLibraryViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Ansagen")
         {
-            _announcementsLibraryViewModel.RefreshFromEditorIfNeeded();
+            AnnouncementsLibraryViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Fahrzeugverwaltung")
         {
@@ -307,7 +370,7 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                _messagesViewModel.RefreshFromEditorIfNeeded();
+                MessagesViewModel.RefreshFromEditorIfNeeded();
             }
         }
         else if (value.Title == "Nachricht senden")
@@ -316,7 +379,7 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Anzeigen & Hinweise")
         {
-            _displaysOperationsViewModel.RefreshFromEditorIfNeeded();
+            DisplaysOperationsViewModel.RefreshFromEditorIfNeeded();
         }
         else if (value.Title == "Fahrzeuge")
         {
@@ -324,25 +387,37 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Zeitwirtschaft")
         {
-            _zeitwirtschaftPlannerViewModel.RefreshFromEditor();
-            _zeitwirtschaftPlannerViewModel.RefreshHint();
+            ZeitwirtschaftPlannerViewModel.RefreshFromEditor();
+            ZeitwirtschaftPlannerViewModel.RefreshHint();
         }
         else if (value.Title == "SEV-Schilder")
         {
-            _sevSignEditorViewModel.RefreshFromEditor();
+            SevSignEditorViewModel.RefreshFromEditor();
         }
         else if (value.Title == "Dienstvorlagen")
         {
-            _dienstvorlagenViewModel.RefreshFromEditor();
+            DienstvorlagenViewModel.RefreshFromEditor();
         }
         else if (value.Title == "Vorlagen-Bibliothek")
         {
-            _dienstvorlagenLibraryViewModel.RefreshFromEditor();
+            DienstvorlagenLibraryViewModel.RefreshFromEditor();
         }
         else
         {
             _vehicleTrackingViewModel.OnViewDeactivated();
         }
+    }
+
+    private static void ScheduleDispositionRefresh(Action refresh)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            refresh();
+            return;
+        }
+
+        dispatcher.BeginInvoke(refresh, DispatcherPriority.Loaded);
     }
 
     [RelayCommand]
@@ -359,18 +434,18 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        _routesViewModel.CommitChangesIfDirty();
-        _routePathEditorViewModel.CommitDraftIfDirty();
+        RoutesViewModel.CommitChangesIfDirty();
+        RoutePathEditorViewModel.CommitDraftIfDirty();
         _employeesViewModel.CommitChangesIfDirty();
-        _stopsLibraryViewModel.CommitChangesIfDirty();
-        _announcementsLibraryViewModel.CommitChangesIfDirty();
+        StopsLibraryViewModel.CommitChangesIfDirty();
+        AnnouncementsLibraryViewModel.CommitChangesIfDirty();
         _vehicleManagementViewModel.CommitChangesIfDirty();
-        _messagesViewModel.CommitChangesIfDirty();
-        _displaysOperationsViewModel.CommitChangesIfDirty();
-        _fahrzeugdispoViewModel.CommitChangesIfDirty();
-        _fahrerdispoViewModel.CommitChangesIfDirty();
-        _dienstvorlagenViewModel.FlushBeforeExport();
-        _sevSignEditorViewModel.FlushBeforeExport();
+        MessagesViewModel.CommitChangesIfDirty();
+        DisplaysOperationsViewModel.CommitChangesIfDirty();
+        FahrzeugdispoViewModel.CommitChangesIfDirty();
+        FahrerdispoViewModel.CommitChangesIfDirty();
+        DienstvorlagenViewModel.FlushBeforeExport();
+        SevSignEditorViewModel.FlushBeforeExport();
         _settingsViewModel.PersistFolderPath();
         _settingsViewModel.PersistBriefingPasswords();
     }
@@ -397,29 +472,29 @@ public partial class MainViewModel : ObservableObject
 
     private bool HasPendingChangesForArea(string? title) => title switch
     {
-        "Routen" => _routesViewModel.HasPendingChanges,
+        "Routen" => RoutesViewModel.HasPendingChanges,
         "Personalverwaltung" => _employeesViewModel.HasPendingChanges,
-        "Haltestellen" => _stopsLibraryViewModel.HasPendingChanges,
-        "Ansagen" => _announcementsLibraryViewModel.HasPendingChanges,
+        "Haltestellen" => StopsLibraryViewModel.HasPendingChanges,
+        "Ansagen" => AnnouncementsLibraryViewModel.HasPendingChanges,
         "Fahrzeugverwaltung" => _vehicleManagementViewModel.HasPendingChanges,
-        "Nachrichten" when !_profile.IsLeitstelle => _messagesViewModel.HasPendingChanges,
-        "Anzeigen & Hinweise" => _displaysOperationsViewModel.HasPendingChanges,
-        "Fahrzeugdisposition" => _fahrzeugdispoViewModel.HasPendingChanges,
-        "Fahrerdisposition" => _fahrerdispoViewModel.HasPendingChanges,
+        "Nachrichten" when !_profile.IsLeitstelle => MessagesViewModel.HasPendingChanges,
+        "Anzeigen & Hinweise" => DisplaysOperationsViewModel.HasPendingChanges,
+        "Fahrzeugdisposition" => FahrzeugdispoViewModel.HasPendingChanges,
+        "Fahrerdisposition" => FahrerdispoViewModel.HasPendingChanges,
         _ => false
     };
 
     private string? GetAreaStatusMessage(string? title) => title switch
     {
-        "Routen" => _routesViewModel.StatusMessage,
+        "Routen" => RoutesViewModel.StatusMessage,
         "Personalverwaltung" => _employeesViewModel.StatusMessage,
-        "Haltestellen" => _stopsLibraryViewModel.StatusMessage,
-        "Ansagen" => _announcementsLibraryViewModel.StatusMessage,
+        "Haltestellen" => StopsLibraryViewModel.StatusMessage,
+        "Ansagen" => AnnouncementsLibraryViewModel.StatusMessage,
         "Fahrzeugverwaltung" => _vehicleManagementViewModel.StatusMessage,
-        "Nachrichten" when !_profile.IsLeitstelle => _messagesViewModel.StatusMessage,
-        "Anzeigen & Hinweise" => _displaysOperationsViewModel.StatusMessage,
-        "Fahrzeugdisposition" => _fahrzeugdispoViewModel.StatusMessage,
-        "Fahrerdisposition" => _fahrerdispoViewModel.StatusMessage,
+        "Nachrichten" when !_profile.IsLeitstelle => MessagesViewModel.StatusMessage,
+        "Anzeigen & Hinweise" => DisplaysOperationsViewModel.StatusMessage,
+        "Fahrzeugdisposition" => FahrzeugdispoViewModel.StatusMessage,
+        "Fahrerdisposition" => FahrerdispoViewModel.StatusMessage,
         _ => null
     };
 
@@ -433,10 +508,10 @@ public partial class MainViewModel : ObservableObject
         switch (leaving.Title)
         {
             case "Routen":
-                _routesViewModel.CommitChangesIfDirty();
+                RoutesViewModel.CommitChangesIfDirty();
                 break;
             case "Navidaten":
-                _routePathEditorViewModel.CommitDraftIfDirty();
+                RoutePathEditorViewModel.CommitDraftIfDirty();
                 break;
             case "Personalverwaltung":
                 _employeesViewModel.CommitChangesIfDirty();
@@ -445,10 +520,10 @@ public partial class MainViewModel : ObservableObject
                 UpdatePersonalverwaltungBadge();
                 break;
             case "Haltestellen":
-                _stopsLibraryViewModel.CommitChangesIfDirty();
+                StopsLibraryViewModel.CommitChangesIfDirty();
                 break;
             case "Ansagen":
-                _announcementsLibraryViewModel.CommitChangesIfDirty();
+                AnnouncementsLibraryViewModel.CommitChangesIfDirty();
                 break;
             case "Fahrzeugverwaltung":
                 _vehicleManagementViewModel.CommitChangesIfDirty();
@@ -457,24 +532,24 @@ public partial class MainViewModel : ObservableObject
             case "Nachrichten":
                 if (!_profile.IsLeitstelle)
                 {
-                    _messagesViewModel.CommitChangesIfDirty();
+                    MessagesViewModel.CommitChangesIfDirty();
                 }
                 break;
             case "Anzeigen & Hinweise":
-                _displaysOperationsViewModel.CommitChangesIfDirty();
+                DisplaysOperationsViewModel.CommitChangesIfDirty();
                 break;
             case "Einstellungen":
                 _settingsViewModel.PersistFolderPath();
                 _settingsViewModel.PersistBriefingPasswords();
                 break;
             case "Fahrzeugdisposition":
-                _fahrzeugdispoViewModel.CommitChangesIfDirty();
+                FahrzeugdispoViewModel.CommitChangesIfDirty();
                 break;
             case "Fahrerdisposition":
-                _fahrerdispoViewModel.CommitChangesIfDirty();
+                FahrerdispoViewModel.CommitChangesIfDirty();
                 break;
             case "Dienstvorlagen":
-                _dienstvorlagenViewModel.FlushBeforeExport();
+                DienstvorlagenViewModel.FlushBeforeExport();
                 break;
         }
     }
@@ -535,9 +610,9 @@ public partial class MainViewModel : ObservableObject
             if (result.Imported)
             {
                 OnRoutePackageLoaded();
-                _fahrerdispoViewModel.RefreshFromEditor();
-                _dienstvorlagenViewModel.RefreshFromEditor();
-                _dienstvorlagenLibraryViewModel.RefreshFromEditor();
+                FahrerdispoViewModel.RefreshFromEditor();
+                DienstvorlagenViewModel.RefreshFromEditor();
+                DienstvorlagenLibraryViewModel.RefreshFromEditor();
                 StatusText = AppServices.Routes.HasPackage
                     ? BuildLocalStatusText("Dropbox synchronisiert")
                     : "Planer-Arbeitsstand aus Dropbox übernommen.";
@@ -561,33 +636,59 @@ public partial class MainViewModel : ObservableObject
             _dataTransferViewModel.IsBusy = false;
             _dataTransferViewModel.RefreshStats();
             _dataTransferViewModel.RefreshPackageVersions();
-            _sevSignEditorViewModel.RefreshFromEditor();
+            SevSignEditorViewModel.RefreshFromEditor();
             await TryProcessDeviceRegistrationsFromDropboxAsync().ConfigureAwait(true);
         }
     }
 
-    private async Task SyncDropboxOnStartupAsync()
+    private void StartLeitstelleDropboxPeriodicSync()
     {
-        if (!_profile.AutoLoadDropboxOnStartup)
+        _leitstelleDropboxSyncTimer = new DispatcherTimer
+        {
+            Interval = LeitstelleDropboxSyncInterval
+        };
+        _leitstelleDropboxSyncTimer.Tick += OnLeitstelleDropboxPeriodicSyncTick;
+        _leitstelleDropboxSyncTimer.Start();
+    }
+
+    private async void OnLeitstelleDropboxPeriodicSyncTick(object? sender, EventArgs e)
+    {
+        await SyncLeitstelleFromDropboxAsync(isBackground: true).ConfigureAwait(true);
+    }
+
+    private async Task SyncLeitstelleFromDropboxAsync(bool isBackground)
+    {
+        if (!_profile.IsLeitstelle)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _leitstelleDropboxSyncRunning, 1, 0) != 0)
         {
             return;
         }
 
         if (!AppServices.Dropbox.Settings.IsConnected)
         {
-            if (!AppServices.Routes.HasPackage)
+            if (!isBackground && !AppServices.Routes.HasPackage)
             {
                 StatusText = "Bereit – Dropbox unter Einstellungen verbinden oder lokal importieren.";
             }
 
+            Interlocked.Exchange(ref _leitstelleDropboxSyncRunning, 0);
             return;
         }
 
-        _dataTransferViewModel.IsBusy = true;
+        if (!isBackground)
+        {
+            _dataTransferViewModel.IsBusy = true;
+        }
+
         try
         {
             var localTimestamp = AppServices.Routes.Stats.Timestamp ?? 0;
             var hadLocal = AppServices.Routes.HasPackage;
+            var importedRoutePackage = false;
 
             var remoteJson = await AppServices.Dropbox.DownloadRouteFileAsync().ConfigureAwait(true);
             var remoteTimestamp = LocalWorkspaceStore.ExtractPackageTimestamp(remoteJson);
@@ -596,19 +697,64 @@ public partial class MainViewModel : ObservableObject
             {
                 AppServices.Routes.LoadFromJson(remoteJson, persistLocally: true, source: "dropbox-startup");
                 OnRoutePackageLoaded();
-                StatusText = BuildLocalStatusText("Dropbox synchronisiert");
-                _dataTransferViewModel.LastActionMessage =
-                    $"Dropbox-Stand übernommen ({AppServices.Dropbox.GetRouteFilePath()}).";
+                importedRoutePackage = true;
+
+                if (isBackground)
+                {
+                    _dataTransferViewModel.LastActionMessage =
+                        $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm}): Route-Paket übernommen.";
+                }
+                else
+                {
+                    StatusText = BuildLocalStatusText("Dropbox synchronisiert");
+                    _dataTransferViewModel.LastActionMessage =
+                        $"Dropbox-Stand übernommen ({AppServices.Dropbox.GetRouteFilePath()}).";
+                }
             }
-            else
+            else if (!isBackground)
             {
                 StatusText = BuildLocalStatusText("Lokal (aktueller als Dropbox)");
                 _dataTransferViewModel.LastActionMessage = "Lokaler Arbeitsstand ist neuer – Dropbox unverändert.";
             }
+
+            await TryProcessDeviceRegistrationsFromDropboxAsync().ConfigureAwait(true);
+
+            if (AppServices.Routes.HasPackage)
+            {
+                var standResult = await LeitstelleStandDropboxSync.TryMergeFromDropboxAsync().ConfigureAwait(true);
+                if (standResult.Imported)
+                {
+                    OnRoutePackageLoaded();
+                    importedRoutePackage = true;
+                    var prefix = isBackground ? $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm})" : "Dropbox-Stand";
+                    _dataTransferViewModel.LastActionMessage = string.IsNullOrWhiteSpace(_dataTransferViewModel.LastActionMessage)
+                        ? $"{prefix}: {standResult.Message}"
+                        : $"{_dataTransferViewModel.LastActionMessage} {standResult.Message}";
+                }
+            }
+
+            if (isBackground && importedRoutePackage)
+            {
+                StatusText = BuildLocalStatusText("Dropbox synchronisiert");
+            }
+
+            if (isBackground)
+            {
+                _ = _leitstelleMessagesInboxViewModel.RefreshAsync();
+            }
+
+            if (AppServices.Dropbox.Settings.IsConnected)
+            {
+                await VoipHost.PublishConfigsAsync().ConfigureAwait(true);
+            }
         }
         catch (Exception ex)
         {
-            if (AppServices.Routes.HasPackage)
+            if (isBackground)
+            {
+                _dataTransferViewModel.LastActionMessage = $"Dropbox-Hintergrundsync fehlgeschlagen: {ex.Message}";
+            }
+            else if (AppServices.Routes.HasPackage)
             {
                 StatusText = BuildLocalStatusText("Lokal (Dropbox-Sync fehlgeschlagen)");
                 _dataTransferViewModel.LastActionMessage = $"Dropbox-Sync: {ex.Message}";
@@ -621,21 +767,13 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
-            _dataTransferViewModel.IsBusy = false;
-            _dataTransferViewModel.RefreshStats();
-            await TryProcessDeviceRegistrationsFromDropboxAsync().ConfigureAwait(true);
-
-            if (_profile.IsLeitstelle && AppServices.Routes.HasPackage)
+            if (!isBackground)
             {
-                var standResult = await LeitstelleStandDropboxSync.TryMergeFromDropboxAsync().ConfigureAwait(true);
-                if (standResult.Imported)
-                {
-                    OnRoutePackageLoaded();
-                    _dataTransferViewModel.LastActionMessage = string.IsNullOrWhiteSpace(_dataTransferViewModel.LastActionMessage)
-                        ? standResult.Message
-                        : $"{_dataTransferViewModel.LastActionMessage} {standResult.Message}";
-                }
+                _dataTransferViewModel.IsBusy = false;
             }
+
+            _dataTransferViewModel.RefreshStats();
+            Interlocked.Exchange(ref _leitstelleDropboxSyncRunning, 0);
         }
     }
 
@@ -684,21 +822,24 @@ public partial class MainViewModel : ObservableObject
     {
         _ = TryProcessDeviceRegistrationsFromDropboxAsync();
         _dataTransferViewModel.RefreshStats();
-        _dataTransferViewModel.RefreshPackageVersions();
-        _routesViewModel.RefreshFromEditor();
-        _routePathEditorViewModel.RefreshRoutes();
         _employeesViewModel.RefreshFromEditor();
-        _stopsLibraryViewModel.RefreshFromEditor();
-        _announcementsLibraryViewModel.RefreshFromEditor();
         _vehicleManagementViewModel.RefreshFromEditor();
-        _messagesViewModel.RefreshFromEditor();
-        _displaysOperationsViewModel.RefreshFromEditor();
-        _sevSignEditorViewModel.RefreshFromEditor();
-        _dienstvorlagenViewModel.RefreshFromEditor();
-        _dienstvorlagenLibraryViewModel.RefreshFromEditor();
-        _fahrzeugdispoViewModel.RefreshFromEditor();
-        _fahrerdispoViewModel.RefreshFromEditor();
-        if (_profile.IsLeitstelle)
+        if (!_profile.IsLeitstelle)
+        {
+            _dataTransferViewModel.RefreshPackageVersions();
+            RoutesViewModel.RefreshFromEditor();
+            RoutePathEditorViewModel.RefreshRoutes();
+            StopsLibraryViewModel.RefreshFromEditor();
+            AnnouncementsLibraryViewModel.RefreshFromEditor();
+            MessagesViewModel.RefreshFromEditor();
+            DisplaysOperationsViewModel.RefreshFromEditor();
+            SevSignEditorViewModel.RefreshFromEditor();
+            DienstvorlagenViewModel.RefreshFromEditor();
+            DienstvorlagenLibraryViewModel.RefreshFromEditor();
+            FahrzeugdispoViewModel.RefreshFromEditor();
+            FahrerdispoViewModel.RefreshFromEditor();
+        }
+        else
         {
             _messageSendViewModel.RefreshFromEditor();
             _leitstelleMessagesInboxViewModel.RefreshFromEditor();
@@ -769,7 +910,7 @@ public partial class MainViewModel : ObservableObject
                     : "KOM- und Mail-Vorlagen (messageTemplates / mailTemplates)",
                 CreateContent = () => _profile.IsLeitstelle
                     ? new MessageSendView { DataContext = _messageSendViewModel }
-                    : new MessagesView { DataContext = _messagesViewModel }
+                    : new MessagesView { DataContext = MessagesViewModel }
             },
             new()
             {
@@ -797,14 +938,14 @@ public partial class MainViewModel : ObservableObject
                     Title = "Fahrerdisposition",
                     Icon = PackIconKind.CalendarAccount,
                     Description = "Fahrer den Linien und Fahrten zuordnen",
-                    CreateContent = () => new FahrerdispoView { DataContext = _fahrerdispoViewModel }
+                    CreateContent = () => new FahrerdispoView { DataContext = FahrerdispoViewModel }
                 });
                 items.Insert(personalIdx + 2, new NavigationItem
                 {
                     Title = "Fahrzeugdisposition",
                     Icon = PackIconKind.BusMultiple,
                     Description = "Fahrzeuge den Linien und Fahrten zuordnen",
-                    CreateContent = () => new FahrzeugdispoView { DataContext = _fahrzeugdispoViewModel }
+                    CreateContent = () => new FahrzeugdispoView { DataContext = FahrzeugdispoViewModel }
                 });
                 items.Insert(personalIdx + 3, _fahrzeugverwaltungNavItem);
                 items.Insert(personalIdx + 4, new NavigationItem
@@ -812,14 +953,14 @@ public partial class MainViewModel : ObservableObject
                     Title = "Dienstvorlagen",
                     Icon = PackIconKind.CalendarClock,
                     Description = "Dienstschablonen erstellen, aus Fahrplan importieren und als PDF exportieren",
-                    CreateContent = () => new DienstvorlagenView { DataContext = _dienstvorlagenViewModel }
+                    CreateContent = () => new DienstvorlagenView { DataContext = DienstvorlagenViewModel }
                 });
                 items.Insert(personalIdx + 5, new NavigationItem
                 {
                     Title = "Vorlagen-Bibliothek",
                     Icon = PackIconKind.BookOpenPageVariant,
                     Description = "Gespeicherte Dienstvorlagen anzeigen und als PDF exportieren (301, 302, …)",
-                    CreateContent = () => new DienstvorlagenLibraryView { DataContext = _dienstvorlagenLibraryViewModel }
+                    CreateContent = () => new DienstvorlagenLibraryView { DataContext = DienstvorlagenLibraryViewModel }
                 });
             }
 
@@ -828,49 +969,49 @@ public partial class MainViewModel : ObservableObject
                 Title = "Routen",
                 Icon = PackIconKind.SignDirection,
                 Description = "Routen und Haltestellen bearbeiten",
-                CreateContent = () => new RoutesView { DataContext = _routesViewModel }
+                CreateContent = () => new RoutesView { DataContext = RoutesViewModel }
             });
             items.Insert(2, new NavigationItem
             {
                 Title = "Haltestellen",
                 Icon = PackIconKind.BusMarker,
                 Description = "Haltestellenbibliothek und Vorlagen (managedStopTemplates)",
-                CreateContent = () => new StopsLibraryView { DataContext = _stopsLibraryViewModel }
+                CreateContent = () => new StopsLibraryView { DataContext = StopsLibraryViewModel }
             });
             items.Insert(3, new NavigationItem
             {
                 Title = "Ansagen",
                 Icon = PackIconKind.VolumeHigh,
                 Description = "Nur Ansagen: 4-stellige ID, Ton, ★ Sonder mit „S“",
-                CreateContent = () => new AnnouncementsLibraryView { DataContext = _announcementsLibraryViewModel }
+                CreateContent = () => new AnnouncementsLibraryView { DataContext = AnnouncementsLibraryViewModel }
             });
             items.Insert(4, new NavigationItem
             {
                 Title = "Navidaten",
                 Icon = PackIconKind.MapMarkerPath,
                 Description = "Fahrweg auf Karte planen (Handy-kompatibel)",
-                CreateContent = () => new RoutePathEditorView { DataContext = _routePathEditorViewModel }
+                CreateContent = () => new RoutePathEditorView { DataContext = RoutePathEditorViewModel }
             });
             items.Insert(items.Count - 2, new NavigationItem
             {
                 Title = "Anzeigen & Hinweise",
                 Icon = PackIconKind.Billboard,
                 Description = "Zielliste und datumgesteuerte Hinweise",
-                CreateContent = () => new DisplaysOperationsView { DataContext = _displaysOperationsViewModel }
+                CreateContent = () => new DisplaysOperationsView { DataContext = DisplaysOperationsViewModel }
             });
             items.Insert(items.Count - 2, new NavigationItem
             {
                 Title = "SEV-Schilder",
                 Icon = PackIconKind.FilePdfBox,
                 Description = "NRW-SEV-Schild A3 quer als PDF (Linie, Ziel, Haltestellen, Betreiber)",
-                CreateContent = () => new SevSignEditorView { DataContext = _sevSignEditorViewModel }
+                CreateContent = () => new SevSignEditorView { DataContext = SevSignEditorViewModel }
             });
             items.Insert(items.Count - 2, new NavigationItem
             {
                 Title = "Zeitwirtschaft",
                 Icon = PackIconKind.ClockOutline,
                 Description = "Zeitstempel aus Tablets zusammenführen (Dropbox JSON)",
-                CreateContent = () => new ZeitwirtschaftPlannerView { DataContext = _zeitwirtschaftPlannerViewModel }
+                CreateContent = () => new ZeitwirtschaftPlannerView { DataContext = ZeitwirtschaftPlannerViewModel }
             });
         }
 
@@ -907,6 +1048,59 @@ public partial class MainViewModel : ObservableObject
 
     private void OnLeitstelleOpenVehicleOnMapRequested(string phoneNormalized) =>
         OpenLeitstelleVehicleLiveMap(phoneNormalized);
+
+    private void OnLeitstelleSprechwunschAnswerRequested(string phoneNormalized, string displayName) =>
+        _ = StartSprechwunschFunkCallSafeAsync(phoneNormalized, displayName);
+
+    private void OnVoipCallStatusChanged()
+    {
+        var callStatus = VoipHost.CallStatus;
+        if (string.IsNullOrWhiteSpace(callStatus.StatusText))
+        {
+            return;
+        }
+
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            StatusText = callStatus.StatusText;
+        });
+    }
+
+    private async Task StartSprechwunschFunkCallSafeAsync(string phoneNormalized, string displayName)
+    {
+        if (!_profile.IsLeitstelle || string.IsNullOrWhiteSpace(phoneNormalized))
+        {
+            return;
+        }
+
+        try
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+                OpenVoipFunkDialog(phoneNormalized, displayName));
+            await VoipHost.CallVehicleAsync(phoneNormalized, displayName).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Funk (Sprechwunsch) fehlgeschlagen: {ex.Message}";
+        }
+    }
+
+    private void OpenVoipFunkDialog(string phoneNormalized, string displayName)
+    {
+        var vehicle = _vehicleTrackingViewModel.TryGetVehicleByPhone(phoneNormalized)
+            ?? VehicleListItemViewModel.ForVoip(phoneNormalized, displayName);
+        var owner = Application.Current?.MainWindow;
+        if (owner is null)
+        {
+            return;
+        }
+
+        new VoipFunkDialog(
+            vehicle,
+            VoipHost,
+            owner,
+            phone => _vehicleTrackingViewModel.TryGetVehicleByPhone(phone)?.DisplayName).Show();
+    }
 
     private void OpenLeitstelleVehicleLiveMap(string? phoneNormalized)
     {
@@ -983,5 +1177,62 @@ public partial class MainViewModel : ObservableObject
 
         var version = assembly.GetName().Version;
         return version is null ? "0.3.0" : version.ToString(3);
+    }
+
+    private async Task StartVoipHostSafeAsync()
+    {
+        if (!_profile.IsLeitstelle)
+        {
+            return;
+        }
+
+        try
+        {
+            await EnsureVoipPortAndStartAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            VoipHost.Signaling.Stop();
+            System.Diagnostics.Debug.WriteLine($"VoIP-Start: {ex}");
+        }
+    }
+
+    private async Task EnsureVoipPortAndStartAsync()
+    {
+        await VoipHost.EnsurePortAndStartAsync().ConfigureAwait(true);
+        if (VoipHost.Signaling.IsRunning)
+        {
+            VoipWindowsPortSetup.MarkSetupCompleted(VoipHost.Settings);
+            return;
+        }
+
+        if (VoipWindowsPortSetup.LooksLikeAccessDenied(VoipHost.StatusMessage) ||
+            VoipWindowsPortSetup.IsPortReservationMissing(VoipHost.Settings))
+        {
+            if (_voipPortAutoFixAttempted)
+            {
+                return;
+            }
+
+            _voipPortAutoFixAttempted = true;
+            StatusText = "VoIP: Port wird automatisch freigegeben – bitte Windows-Administrator mit „Ja“ bestätigen…";
+            var progress = new Progress<string>(msg => StatusText = msg);
+            await VoipWindowsPortSetup.TryEnsurePortReadyAsync(VoipHost.Settings, progress).ConfigureAwait(true);
+            await VoipHost.EnsurePortAndStartAsync().ConfigureAwait(true);
+            if (VoipHost.Signaling.IsRunning)
+            {
+                VoipWindowsPortSetup.MarkSetupCompleted(VoipHost.Settings);
+            }
+        }
+    }
+
+    public void ShutdownVoip()
+    {
+        if (!_profile.IsLeitstelle)
+        {
+            return;
+        }
+
+        VoipHost.Dispose();
     }
 }

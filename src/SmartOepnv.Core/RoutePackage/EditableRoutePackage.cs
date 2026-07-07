@@ -32,6 +32,9 @@ public sealed class EditableRoutePackage
     public HashSet<string> RoutesExcludedFromItcsRouteList { get; } =
         new(StringComparer.Ordinal);
 
+    public HashSet<string> RoutesMainDeviceOnly { get; } =
+        new(StringComparer.Ordinal);
+
     public IDictionary<string, string> AutoScheduleSourceByRoute { get; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -86,6 +89,7 @@ public sealed class EditableRoutePackage
         RouteOperatingDaysByRoute.Clear();
         RouteInteriorDisplayDestinationsByRoute.Clear();
         RoutesExcludedFromItcsRouteList.Clear();
+        RoutesMainDeviceOnly.Clear();
         AutoScheduleSourceByRoute.Clear();
 
         if (_root["routes"] is JsonArray routes)
@@ -215,6 +219,11 @@ public sealed class EditableRoutePackage
             RoutesExcludedFromItcsRouteList.Add(key);
         }
 
+        foreach (var key in RouteMainDeviceOnlyEditor.LoadFromRoot(_root))
+        {
+            RoutesMainDeviceOnly.Add(key);
+        }
+
         foreach (var (key, source) in AutoScheduleSourceRouteEditor.LoadFromRoot(_root))
         {
             AutoScheduleSourceByRoute[key] = source;
@@ -222,8 +231,23 @@ public sealed class EditableRoutePackage
 
         ConsolidateDuplicateRouteKeys();
         NormalizeRouteDisplayNamesForOperatingDays();
+        EnsureRouteNamesForStopBuckets();
         RecoverOrphanedStopsAfterTripNumberChange();
         PruneOrphanStopBuckets();
+    }
+
+    /// <summary>Routenliste ergänzen, wenn Haltestellen unter einem abweichenden Schlüssel liegen.</summary>
+    private void EnsureRouteNamesForStopBuckets()
+    {
+        foreach (var pair in StopsByRoute.Where(entry => entry.Value.Count > 0).ToList())
+        {
+            if (RouteNames.Any(name => RouteDisplayHelper.RouteKeysMatch(name, pair.Key)))
+            {
+                continue;
+            }
+
+            AddRouteNameIfMissing(pair.Key);
+        }
     }
 
     /// <summary>
@@ -253,11 +277,20 @@ public sealed class EditableRoutePackage
                 .Where(pair =>
                 {
                     var orphanDef = RouteDisplayHelper.Parse(pair.Key);
-                    return string.Equals(orphanDef.Name, routeDef.Name, StringComparison.OrdinalIgnoreCase) &&
-                           string.Equals(
-                               RouteDisplayHelper.NormalizeLineCourse(orphanDef.LineCourse),
-                               RouteDisplayHelper.NormalizeLineCourse(routeDef.LineCourse),
-                               StringComparison.OrdinalIgnoreCase);
+                    if (!string.Equals(orphanDef.Name, routeDef.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(routeDef.LineCourse))
+                    {
+                        return true;
+                    }
+
+                    return string.Equals(
+                        RouteDisplayHelper.NormalizeLineCourse(orphanDef.LineCourse),
+                        RouteDisplayHelper.NormalizeLineCourse(routeDef.LineCourse),
+                        StringComparison.OrdinalIgnoreCase);
                 })
                 .ToList();
 
@@ -361,7 +394,8 @@ public sealed class EditableRoutePackage
         string? copyStopsFromRouteKey,
         out string displayKey,
         out string? error,
-        bool inItcsRouteList = false)
+        bool inItcsRouteList = false,
+        bool mainDeviceOnly = false)
     {
         var days = operatingDays is null
             ? RouteOperatingDaysEditor.AllDays.ToList()
@@ -400,6 +434,7 @@ public sealed class EditableRoutePackage
         AddRoute(displayKey);
         SetRouteOperatingDays(displayKey, days);
         SetRouteInItcsRouteList(displayKey, inItcsRouteList);
+        SetRouteMainDeviceOnly(displayKey, mainDeviceOnly);
         if (!string.IsNullOrWhiteSpace(copyStopsFromRouteKey))
         {
             var sourceKey = copyStopsFromRouteKey.Trim();
@@ -429,6 +464,7 @@ public sealed class EditableRoutePackage
         RouteDefinition definition,
         IReadOnlyCollection<DutyOperatingDay> operatingDays,
         bool inItcsRouteList,
+        bool mainDeviceOnly,
         out string displayKey,
         out string? error)
     {
@@ -487,6 +523,7 @@ public sealed class EditableRoutePackage
 
         SetRouteOperatingDays(displayKey, days);
         SetRouteInItcsRouteList(displayKey, inItcsRouteList);
+        SetRouteMainDeviceOnly(displayKey, mainDeviceOnly);
         error = null;
         return true;
     }
@@ -541,6 +578,7 @@ public sealed class EditableRoutePackage
             RouteOperatingDaysEditor.RemoveRoute(RouteOperatingDaysByRoute, key);
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, key);
             RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, key);
+            RouteMainDeviceOnlyEditor.RemoveRoute(RoutesMainDeviceOnly, key);
             AutoScheduleSourceRouteEditor.RemoveRoute(AutoScheduleSourceByRoute, key);
         }
 
@@ -649,6 +687,12 @@ public sealed class EditableRoutePackage
         {
             RouteItcsRouteListEditor.SetInItcsRouteList(RoutesExcludedFromItcsRouteList, newKey, false);
             RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, oldKey);
+        }
+
+        if (RouteMainDeviceOnlyEditor.IsMainDeviceOnly(RoutesMainDeviceOnly, oldKey))
+        {
+            RouteMainDeviceOnlyEditor.SetMainDeviceOnly(RoutesMainDeviceOnly, newKey, true);
+            RouteMainDeviceOnlyEditor.RemoveRoute(RoutesMainDeviceOnly, oldKey);
         }
 
         AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, oldKey, newKey);
@@ -828,6 +872,12 @@ public sealed class EditableRoutePackage
 
     public void SetRouteInItcsRouteList(string routeDisplayKey, bool inList) =>
         RouteItcsRouteListEditor.SetInItcsRouteList(RoutesExcludedFromItcsRouteList, routeDisplayKey, inList);
+
+    public bool IsRouteMainDeviceOnly(string routeDisplayKey) =>
+        RouteMainDeviceOnlyEditor.IsMainDeviceOnly(RoutesMainDeviceOnly, routeDisplayKey);
+
+    public void SetRouteMainDeviceOnly(string routeDisplayKey, bool mainDeviceOnly) =>
+        RouteMainDeviceOnlyEditor.SetMainDeviceOnly(RoutesMainDeviceOnly, routeDisplayKey, mainDeviceOnly);
 
     public string GetAutoScheduleSourceRoute(string routeDisplayKey) =>
         AutoScheduleSourceRouteEditor.GetSourceRoute(AutoScheduleSourceByRoute, routeDisplayKey);

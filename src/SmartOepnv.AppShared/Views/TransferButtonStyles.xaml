@@ -91,6 +91,9 @@
                 <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
                 <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
                 <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                <DataTrigger.EnterActions>
+                    <StopStoryboard BeginStoryboardName="DropboxRemoteUpdateBlink" />
+                </DataTrigger.EnterActions>
             </DataTrigger>
         </Style.Triggers>
     </Style>

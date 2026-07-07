@@ -39,10 +39,18 @@ public sealed class RoutePackageService
             json = AppServices.PlannerLocal.StripDeletedFromPackageJson(json);
         }
 
+        var rosterSnapshot = RoutePackageRosterPreserve.CaptureFromEditor(Editor);
+        var incomingHasRoster = RoutePackageRosterPreserve.JsonContainsRosterData(json);
+
         _currentJson = json;
         Editor = EditableRoutePackage.FromJson(json);
         Stats = ParseStats(json);
         EditorDataRevision++;
+
+        if (!incomingHasRoster)
+        {
+            RoutePackageRosterPreserve.RestoreIfIncomingEmpty(Editor!, rosterSnapshot);
+        }
 
         if (AppServices.IsPlannerApp && AppServices.PlannerLocal is not null && Editor is not null)
         {

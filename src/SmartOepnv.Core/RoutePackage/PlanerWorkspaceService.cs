@@ -83,7 +83,9 @@ public sealed class PlanerWorkspaceService
             DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
             PackageVersionSnapshots = CapturePackageVersionSnapshots(request?.ReuseSnapshotPackageJsonFrom),
             AnnouncementRawSounds = AppServices.IsInitialized
-                ? PlanerAnnouncementRawSoundsWorkspace.CaptureForSync(AppServices.Workspace)
+                ? PlanerAnnouncementRawSoundsWorkspace.CaptureForSync(
+                    AppServices.Workspace,
+                    request?.ReuseAnnouncementRawSoundsFrom)
                 : []
         };
     }
@@ -184,6 +186,34 @@ public sealed class PlanerWorkspaceService
 
     private void ApplyPlannerOverlayReplace(PlannerLocalOverlayData incoming)
     {
+        var local = _overlayStore.LoadOrEmpty();
+        if (!incoming.HasContent && local.HasContent)
+        {
+            return;
+        }
+
+        if (!local.HasContent)
+        {
+            _overlayStore.Save(incoming);
+            return;
+        }
+
+        // Autoritativer Import – aber leere Fahrzeug-/Personal-Listen dürfen lokale Einträge nicht löschen.
+        incoming.Employees = EmployeePlannerCredentialMerge.MergeLists(incoming.Employees, local.Employees);
+        incoming.Vehicles = PlannerLocalOverlayService.MergeVehiclesPreferLocal(incoming.Vehicles, local.Vehicles);
+        incoming.PhoneRedirects = PlannerLocalOverlayService.MergePhoneRedirectsPreferLocal(
+            incoming.PhoneRedirects,
+            local.PhoneRedirects);
+        incoming.DeletedEmployeePersonnel = MergeUnique(
+            incoming.DeletedEmployeePersonnel,
+            local.DeletedEmployeePersonnel);
+        incoming.DeletedEmployeePhones = MergeUnique(
+            incoming.DeletedEmployeePhones,
+            local.DeletedEmployeePhones);
+        incoming.DeletedVehiclePhoneKeys = MergeUnique(
+            incoming.DeletedVehiclePhoneKeys,
+            local.DeletedVehiclePhoneKeys);
+        incoming.DeletedRouteKeys = MergeUnique(incoming.DeletedRouteKeys, local.DeletedRouteKeys);
         _overlayStore.Save(incoming);
     }
 
@@ -299,7 +329,9 @@ public sealed class PlanerWorkspaceService
             DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
             PackageVersionSnapshots = CapturePackageVersionSnapshots(document.PackageVersionSnapshots),
             AnnouncementRawSounds = AppServices.IsInitialized
-                ? PlanerAnnouncementRawSoundsWorkspace.CaptureForSync(AppServices.Workspace)
+                ? PlanerAnnouncementRawSoundsWorkspace.CaptureForSync(
+                    AppServices.Workspace,
+                    document.AnnouncementRawSounds)
                 : document.AnnouncementRawSounds
         };
         return refreshed;
@@ -307,7 +339,91 @@ public sealed class PlanerWorkspaceService
 
     public void WriteLocalCopy(PlanerWorkspaceDocument document)
     {
-        SafeDataFileStore.WriteAllText(_localPath, Serialize(document), archivePrevious: false);
+        var tempPath = _localPath + ".tmp";
+        try
+        {
+            using (var stream = File.Create(tempPath))
+            {
+                JsonSerializer.Serialize(stream, document, CompactJsonOptions);
+            }
+
+            File.Move(tempPath, _localPath, overwrite: true);
+        }
+        catch
+        {
+            if (File.Exists(tempPath))
+            {
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Dropbox-Upload ohne Routen-Paket und ohne Snapshot-JSON (liegen in separaten Dateien).
+    /// </summary>
+    public static PlanerWorkspaceDocument ToDropboxSlimDocument(PlanerWorkspaceDocument full) =>
+        new()
+        {
+            Version = PlanerWorkspaceDocument.FileVersion,
+            DocumentType = PlanerWorkspaceDocument.Kind,
+            SavedAtUtcMs = full.SavedAtUtcMs,
+            RoutesStoredExternally = !string.IsNullOrWhiteSpace(full.RoutesPackageJson),
+            RoutesPackageJson = null,
+            PlannerOverlay = full.PlannerOverlay,
+            VehicleDispositionAssignments = full.VehicleDispositionAssignments,
+            DriverDispositionAssignments = full.DriverDispositionAssignments,
+            SevSignDrafts = full.SevSignDrafts,
+            DutyTemplates = full.DutyTemplates,
+            PackageVersionSnapshots = full.PackageVersionSnapshots
+                .Select(snapshot => new PlannerPackageVersionSnapshotData
+                {
+                    Id = snapshot.Id,
+                    Label = snapshot.Label,
+                    SavedAtUtc = snapshot.SavedAtUtc,
+                    ByteSize = snapshot.ByteSize,
+                    RouteCount = snapshot.RouteCount,
+                    PackageTimestampMs = snapshot.PackageTimestampMs,
+                    PackageJson = string.Empty
+                })
+                .ToList(),
+            AnnouncementRawSounds = full.AnnouncementRawSounds
+        };
+
+    public string WriteDropboxSlimCopyToTemp(PlanerWorkspaceDocument full)
+    {
+        var slim = ToDropboxSlimDocument(full);
+        var tempPath = _localPath + ".dropbox-upload.tmp";
+        using (var stream = File.Create(tempPath))
+        {
+            JsonSerializer.Serialize(stream, slim, CompactJsonOptions);
+        }
+
+        return tempPath;
+    }
+
+    public static async Task EnrichFromDropboxSidecarsAsync(
+        PlanerWorkspaceDocument document,
+        IProgress<DropboxTransferProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        if (document.RoutesStoredExternally && string.IsNullOrWhiteSpace(document.RoutesPackageJson))
+        {
+            document.RoutesPackageJson = await PlanerRoutesDropboxSync.TryDownloadRoutesJsonAsync(ct)
+                .ConfigureAwait(false);
+        }
+
+        await PlanerVersionSnapshotsDropboxSync
+            .ImportMissingFilesAsync(document.PackageVersionSnapshots, progress, ct)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

@@ -68,6 +68,7 @@ public partial class RouteStopEditPanel : UserControl
 
         if (DataContext is RoutesViewModel viewModel)
         {
+            viewModel.MaintainStartStopMarkerAfterEdit();
             viewModel.NotifyStopEditorStateChanged();
         }
     }
@@ -258,6 +259,7 @@ public partial class RouteStopEditPanel : UserControl
         if (DataContext is RoutesViewModel vm && vm.SelectedStop is not null)
         {
             ApplyDestinationToStop(vm.SelectedStop, fieldKey, ResolveComboSelection(combo));
+            vm.MaintainStartStopMarkerAfterEdit();
             vm.NotifyStopEditorStateChanged();
             vm.StopDetailEditedCommand.Execute(null);
         }
@@ -275,6 +277,7 @@ public partial class RouteStopEditPanel : UserControl
         if (DataContext is RoutesViewModel vm && vm.SelectedStop is not null)
         {
             ApplyDestinationToStop(vm.SelectedStop, fieldKey, ResolveComboSelection(combo));
+            vm.MaintainStartStopMarkerAfterEdit();
             vm.NotifyStopEditorStateChanged();
             vm.StopDetailEditedCommand.Execute(null);
         }

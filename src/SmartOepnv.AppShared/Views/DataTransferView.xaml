@@ -271,7 +271,7 @@
                            FontSize="11"
                            LineHeight="15"
                            TextWrapping="Wrap"
-                           Text="Vollständiger Arbeitsstand für alle Planer-Bereiche (planer_workspace.json). Beim Laden wird nur übernommen, wenn Dropbox neuer ist – sonst Bestätigung." />
+                           Text="Vollständiger Arbeitsstand: planer_workspace.json (klein), planer_routes.json, planer_version_snapshots/, planer_ansagen_roh/. routes_export.json bleibt separat für die Apps." />
                 <StackPanel Grid.Row="2" Margin="0,10,0,0">
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">

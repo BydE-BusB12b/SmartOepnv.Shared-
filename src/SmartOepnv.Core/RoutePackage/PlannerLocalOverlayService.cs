@@ -30,10 +30,13 @@ public sealed class PlannerLocalOverlayService
     public void ApplyAfterPackageLoad(EditableRoutePackage editor)
     {
         var overlay = _store.LoadOrEmpty();
-        if (!overlay.HasContent && !_store.Exists)
+        if (!_store.Exists)
         {
-            overlay = CaptureFromEditor(editor);
-            _store.Save(overlay);
+            if (editor.Employees.Count > 0 || editor.RegisteredVehicles.Count > 0)
+            {
+                _store.Save(CaptureFromEditor(editor));
+            }
+
             return;
         }
 
@@ -42,7 +45,12 @@ public sealed class PlannerLocalOverlayService
         {
             var packageEmployees = editor.Employees.Select(CloneEmployee).ToList();
             overlay.Employees = EmployeePlannerCredentialMerge.MergeLists(overlay.Employees, packageEmployees);
+            overlay.Vehicles = MergeVehiclesPreferLocal(overlay.Vehicles, editor.RegisteredVehicles);
+            overlay.PhoneRedirects = MergePhoneRedirectsPreferLocal(
+                overlay.PhoneRedirects,
+                editor.RegisteredVehiclePhoneRedirects);
             ApplyToEditor(editor, overlay);
+            _store.Save(overlay);
         }
     }
 

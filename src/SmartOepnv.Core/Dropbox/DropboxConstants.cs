@@ -43,6 +43,18 @@ public static class DropboxConstants
     public const string PlanerSessionFileName = "planer_session.json";
     /// <summary>Vollständiger Planer-Arbeitsstand (nicht routes_export.json – die lesen die Apps).</summary>
     public const string PlanerWorkspaceFileName = "planer_workspace.json";
+
+    /// <summary>Routen-Paket für Planer-Sync (getrennt von planer_workspace.json – schneller bei Dienst-/Dispo-Änderungen).</summary>
+    public const string PlanerRoutesFileName = "planer_routes.json";
+
+    /// <summary>Gespeicherte Planer-Snapshots (JSON pro Version, nicht in planer_workspace.json).</summary>
+    public const string PlanerVersionSnapshotsFolderName = "planer_version_snapshots";
+
+    /// <summary>
+    /// Ansagen-Rohdateien für Planer-Sync (Binärdateien, nicht in planer_workspace.json).
+    /// Unabhängig von routes_export.json / embeddedSounds für die Android-Apps.
+    /// </summary>
+    public const string PlanerAnnouncementRawSoundsFolderName = "planer_ansagen_roh";
     /// <summary>Verfügbare Planer-/Leitstelle-Versionen (nur Hinweis beim Start, kein Auto-Install).</summary>
     public const string SoftwareVersionsFileName = "software_versions.json";
     public const string PlanerSetupFileName = "Setup-Smart-OEPNV-Planer-x64.exe";

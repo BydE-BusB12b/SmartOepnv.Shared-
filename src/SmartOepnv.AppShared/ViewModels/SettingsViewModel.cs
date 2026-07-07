@@ -7,6 +7,8 @@ using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.AppShared.Views;
+using SmartOepnv.AppShared.Voip;
+using SmartOepnv.Core.Voip;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
@@ -44,6 +46,12 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string devicePassword = string.Empty;
     [ObservableProperty] private string unlockPassword = string.Empty;
     [ObservableProperty] private string briefingPasswordsStatus = string.Empty;
+    [ObservableProperty] private string voipStatusMessage = "—";
+    [ObservableProperty] private string voipPublishStatus = string.Empty;
+
+    public VoipLeitstelleHost? VoipHost { get; set; }
+
+    public bool ShowVoipSection => VoipHost is not null;
 
     public ObservableCollection<CompanyLogoListItem> CompanyLogos { get; } = [];
 
@@ -52,6 +60,9 @@ public partial class SettingsViewModel : ObservableObject
     public bool ShowPlanerFolderSection => AppServices.IsPlannerApp;
 
     public bool HasCompanyLogos => CompanyLogos.Count > 0;
+
+    /// <summary>Dropbox-OAuth erfolgreich abgeschlossen (Leitstelle: Daten nachladen).</summary>
+    public event EventHandler? DropboxConnectionEstablished;
 
     public SettingsViewModel()
     {
@@ -69,6 +80,69 @@ public partial class SettingsViewModel : ObservableObject
         ConnectionStatus = s.IsConnected ? "Verbunden" : "Nicht verbunden";
         ReloadBranding();
         ReloadBriefingPasswords();
+        RefreshVoipStatus();
+    }
+
+    public void RefreshVoipStatus()
+    {
+        if (VoipHost is null)
+        {
+            VoipStatusMessage = "—";
+            return;
+        }
+
+        VoipStatusMessage = VoipHost.StatusMessage ?? "—";
+    }
+
+    [RelayCommand]
+    private void OpenVoipSettings()
+    {
+        if (VoipHost is null)
+        {
+            return;
+        }
+
+        var owner = Application.Current.MainWindow;
+        if (owner is null)
+        {
+            return;
+        }
+
+        var dlg = new VoipSettingsDialog(owner, VoipHost.Settings);
+        if (dlg.ShowDialog() != true)
+        {
+            return;
+        }
+
+        VoipHost.SaveSettings(dlg.Settings);
+        VoipPublishStatus = "VoIP-Einstellungen gespeichert.";
+        RefreshVoipStatus();
+        _ = VoipHost.EnsurePortAndStartAsync();
+    }
+
+    [RelayCommand]
+    private async Task PublishVoipConfigAsync()
+    {
+        if (VoipHost is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await VoipHost.PublishConfigsAsync().ConfigureAwait(true);
+            VoipPublishStatus = result.Summary;
+            RefreshVoipStatus();
+        }
+        catch (Exception ex)
+        {
+            VoipPublishStatus = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private void ReloadBriefingPasswords()
@@ -227,6 +301,7 @@ public partial class SettingsViewModel : ObservableObject
             ReloadFromStore();
             ConnectionStatus = "Dropbox verbunden";
             await TestConnectionAsync();
+            DropboxConnectionEstablished?.Invoke(this, EventArgs.Empty);
         }
     }
 

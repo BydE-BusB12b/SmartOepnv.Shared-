@@ -153,6 +153,8 @@ public sealed class LeitstelleInboxHistoryRecord
 
     public bool IsSos { get; set; }
 
+    public bool IsSprechwunsch { get; set; }
+
     public bool IsUnread { get; set; }
 
     public long TimestampEpochMs { get; set; }

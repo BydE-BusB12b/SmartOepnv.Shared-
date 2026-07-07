@@ -7,7 +7,11 @@ namespace SmartOepnv.AppShared.Kom;
 public static class KomCommandAckFeedback
 {
     public static void ShowSent(Window owner, string vehicleName, string detail) =>
-        KomCommandStatusDialog.Show(owner, "Gesendet", $"{vehicleName}\n{detail}", success: true);
+        KomCommandStatusDialog.Show(
+            KomFeedbackOwner.Resolve(owner),
+            "Gesendet",
+            $"{vehicleName}\n{detail}",
+            success: true);
 
     public static void ShowAckResult(
         Window owner,
@@ -20,6 +24,6 @@ public static class KomCommandAckFeedback
         var body = success && commandType == KomLeitstelleDurchsageService.CommandType
             ? $"{vehicleName} Durchsage erfolgreich abgespielt"
             : $"{vehicleName}\n{message}";
-        KomCommandStatusDialog.Show(owner, title, body, success);
+        KomCommandStatusDialog.Show(KomFeedbackOwner.Resolve(owner), title, body, success);
     }
 }

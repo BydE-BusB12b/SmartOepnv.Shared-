@@ -85,6 +85,11 @@ public partial class MainShellWindow : Window
             _softwareUpdateChecked = true;
             _ = SmartOepnvAppHost.CheckForSoftwareUpdateAsync(this);
         }
+
+        if (AppServices.IsInitialized && !AppServices.IsPlannerApp && DataContext is MainViewModel leitstelleVm)
+        {
+            _ = leitstelleVm.InitializeLeitstelleAfterShowAsync();
+        }
     }
 
     public void SetLoginOverlay(bool active)
@@ -227,7 +232,7 @@ public partial class MainShellWindow : Window
 
         var minutes = totalSeconds / 60;
         var seconds = totalSeconds % 60;
-        IdleLogoutCountdown.Text = $"{minutes:D2}:{seconds:D2}";
+        IdleLogoutCountdown.Text = $"Abmeldung in {minutes:D2}:{seconds:D2}";
         IdleLogoutCountdown.Visibility = Visibility.Visible;
         IdleLogoutCountdown.Foreground = totalSeconds switch
         {
@@ -258,9 +263,11 @@ public partial class MainShellWindow : Window
         }
 
         PlanerSyncDialog? syncDialog = null;
+        var idleMonitorSuspended = false;
         if (AppServices.IsPlannerApp)
         {
             _idleLogoutMonitor?.Suspend();
+            idleMonitorSuspended = true;
             syncDialog = new PlanerSyncDialog
             {
                 Owner = this
@@ -305,12 +312,20 @@ public partial class MainShellWindow : Window
         }
         finally
         {
+            if (idleMonitorSuspended)
+            {
+                _idleLogoutMonitor?.Resume();
+                if (AppServices.PlanerSession?.IsLoggedIn == true && !LoginGateActive)
+                {
+                    StartIdleLogoutMonitor();
+                }
+            }
+
             if (syncDialog is not null)
             {
                 syncDialog.PrepareToClose();
                 syncDialog.Close();
                 IsEnabled = true;
-                _idleLogoutMonitor?.Resume();
                 Activate();
                 Focus();
             }
@@ -318,7 +333,7 @@ public partial class MainShellWindow : Window
             if (!_softwareUpdateChecked)
             {
                 _softwareUpdateChecked = true;
-                await SmartOepnvAppHost.CheckForSoftwareUpdateAsync(this).ConfigureAwait(true);
+                _ = SmartOepnvAppHost.CheckForSoftwareUpdateAsync(this);
             }
         }
     }
@@ -332,7 +347,6 @@ public partial class MainShellWindow : Window
         }
 
         IsEnabled = true;
-        _idleLogoutMonitor?.Resume();
         SetLoginOverlay(true);
         SmartConfirmDialog.ShowInfo(
             this,
@@ -420,7 +434,18 @@ public partial class MainShellWindow : Window
         _idleLogoutMonitor?.Stop();
         _lifecycleMonitor?.Stop();
 
+        if (DataContext is MainViewModel vm && !AppServices.IsPlannerApp)
+        {
+            vm.ShutdownVoip();
+        }
+
         if (_closeConfirmed || !AppServices.IsInitialized)
+        {
+            return;
+        }
+
+        // Leitstelle: kein Planer-Speicher-Dialog – direkt schließen.
+        if (!AppServices.IsPlannerApp)
         {
             return;
         }
@@ -429,7 +454,7 @@ public partial class MainShellWindow : Window
                               AppServices.PlanerSession?.NeedsExitHandling() == true;
 
         // Planer: nur speichern/freigeben nach erfolgreicher Anmeldung – nicht bei „Abbrechen“ im Login.
-        if (AppServices.IsPlannerApp && !planerNeedsExit)
+        if (!planerNeedsExit)
         {
             return;
         }
@@ -519,7 +544,13 @@ public partial class MainShellWindow : Window
         }
 
         _closeHandlerRunning = false;
+        ConfirmAndClose();
+    }
+
+    /// <summary>Schließen außerhalb des Closing-Events auslösen (sonst zweites X nötig).</summary>
+    private void ConfirmAndClose()
+    {
         _closeConfirmed = true;
-        Close();
+        Dispatcher.BeginInvoke(Close);
     }
 }

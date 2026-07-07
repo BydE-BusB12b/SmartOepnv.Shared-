@@ -1,12 +1,17 @@
 using System.Windows;
 using System.Windows.Controls;
 using SmartOepnv.AppShared.ViewModels;
+using SmartOepnv.AppShared.Voip;
 
 namespace SmartOepnv.AppShared.Kom;
 
 public sealed class VehicleRemoteActionsDialog : Window
 {
-    public VehicleRemoteActionsDialog(VehicleListItemViewModel vehicle, Window owner)
+    public VehicleRemoteActionsDialog(
+        VehicleListItemViewModel vehicle,
+        Window owner,
+        VoipLeitstelleHost? voipHost = null,
+        Func<string, string?>? resolveVehicleName = null)
     {
         Owner = owner;
         Title = $"Fernsteuerung – {vehicle.DisplayName}";
@@ -39,6 +44,14 @@ public sealed class VehicleRemoteActionsDialog : Window
         {
             new KomLeitstelleDurchsageDialog(vehicle, this).ShowDialog();
         }));
+        if (voipHost is not null)
+        {
+            root.Children.Add(VehicleKomUi.MakeActionButton("Funk (VoIP)", () =>
+            {
+                Close();
+                new VoipFunkDialog(vehicle, voipHost, owner, resolveVehicleName).Show();
+            }));
+        }
         root.Children.Add(VehicleKomUi.MakeActionButton("Meldungen", () =>
         {
             new VehicleKomMessageDialog(vehicle, this).ShowDialog();

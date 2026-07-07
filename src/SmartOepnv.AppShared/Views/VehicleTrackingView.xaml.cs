@@ -130,7 +130,15 @@ public partial class VehicleTrackingView : UserControl
 
         {
 
-            new VehicleRemoteActionsDialog(vehicle, owner).ShowDialog();
+            Voip.VoipLeitstelleHost? voipHost = null;
+            Func<string, string?>? resolveVehicleName = null;
+            if (owner.DataContext is MainViewModel mainVm)
+            {
+                voipHost = mainVm.VoipHost;
+                resolveVehicleName = phone => mainVm.VehicleTracking.TryGetVehicleByPhone(phone)?.DisplayName;
+            }
+
+            new VehicleRemoteActionsDialog(vehicle, owner, voipHost, resolveVehicleName).ShowDialog();
 
         }
 
@@ -316,6 +324,7 @@ public partial class VehicleTrackingView : UserControl
 
     private void OnUnloaded(object sender, System.Windows.RoutedEventArgs e)
     {
+        Voip.VoipFunkMapAnchor.Unregister(MapHost);
         CloseVehicleDetail();
         _viewModel?.OnViewDeactivated();
     }
@@ -341,6 +350,7 @@ public partial class VehicleTrackingView : UserControl
     private void OnMapHostSizeChanged(object sender, System.Windows.SizeChangedEventArgs e)
 
     {
+        Voip.VoipFunkMapAnchor.NotifyBoundsChanged();
 
         if (_mapReady && e.NewSize.Height > 0 && !double.IsPositiveInfinity(e.NewSize.Height))
 
@@ -385,6 +395,7 @@ public partial class VehicleTrackingView : UserControl
     private async void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
 
     {
+        Voip.VoipFunkMapAnchor.Register(MapHost);
 
         if (MapWebView.CoreWebView2 is not null)
 

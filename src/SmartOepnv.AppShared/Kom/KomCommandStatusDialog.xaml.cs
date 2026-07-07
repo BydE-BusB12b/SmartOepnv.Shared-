@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
 using SmartOepnv.AppShared.Helpers;
+using SmartOepnv.AppShared.Views;
 
 namespace SmartOepnv.AppShared.Kom;
 
@@ -24,36 +25,57 @@ public partial class KomCommandStatusDialog : Window
         _current?.Close();
         _current = null;
 
-        var dialog = new KomCommandStatusDialog(title, message, success)
+        var feedbackOwner = KomFeedbackOwner.Resolve(owner);
+        try
         {
-            Owner = owner,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner
-        };
-        _current = dialog;
-        dialog.Show();
+            var dialog = new KomCommandStatusDialog(title, message, success)
+            {
+                Owner = feedbackOwner,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+            _current = dialog;
+            dialog.Show();
 
-        _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(VisibleMs) };
-        _hideTimer.Tick += (_, _) =>
+            _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(VisibleMs) };
+            _hideTimer.Tick += (_, _) =>
+            {
+                _hideTimer?.Stop();
+                try
+                {
+                    if (dialog.IsVisible)
+                    {
+                        dialog.Close();
+                    }
+                }
+                catch
+                {
+                    // bereits geschlossen
+                }
+
+                if (_current == dialog)
+                {
+                    _current = null;
+                }
+            };
+            _hideTimer.Start();
+        }
+        catch (Exception ex)
         {
-            _hideTimer?.Stop();
+            System.Diagnostics.Trace.WriteLine($"KomCommandStatusDialog: {ex}");
             try
             {
-                if (dialog.IsVisible)
-                {
-                    dialog.Close();
-                }
+                SmartConfirmDialog.ShowInfo(feedbackOwner, title, message);
             }
             catch
             {
-                // bereits geschlossen
+                MessageBox.Show(
+                    feedbackOwner,
+                    message,
+                    title,
+                    MessageBoxButton.OK,
+                    success ? MessageBoxImage.Information : MessageBoxImage.Warning);
             }
-
-            if (_current == dialog)
-            {
-                _current = null;
-            }
-        };
-        _hideTimer.Start();
+        }
     }
 
     private KomCommandStatusDialog(string title, string message, bool success)

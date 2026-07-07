@@ -173,6 +173,16 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var templateOptions = new List<TemplateOption> { new(string.Empty, string.Empty, 0, "(keine Vorlage)") };
         foreach (var template in _templates)
         {
+            if (template.IsSplitShift && template.Part2Rows.Count > 0)
+            {
+                templateOptions.Add(new TemplateOption(
+                    $"{template.Id}:1",
+                    template.Id,
+                    1,
+                    FormatTemplatePartLabel(template, 1)));
+                continue;
+            }
+
             foreach (var partIndex in DutyTemplateDispositionMapper.EnumeratePartIndexes(template))
             {
                 templateOptions.Add(new TemplateOption(
@@ -873,6 +883,30 @@ public sealed class FahrerdispoNewShiftDialog : Window
         }
 
         var dutyDateSingle = _dateFromField.SelectedDate?.Date ?? DateTime.Today;
+
+        if (template.IsSplitShift && template.Part2Rows.Count > 0)
+        {
+            var mappedSplit = DutyTemplateDispositionMapper.TryMapSplitShift(template, dutyDateSingle);
+            if (mappedSplit is null)
+            {
+                ShowError("Die Vorlage enthält keine gültigen Zeiten für den geteilten Dienst.");
+                return;
+            }
+
+            _errorPanel.Visibility = Visibility.Collapsed;
+            _shiftNameBox.Text = mappedSplit.DutyNumber;
+            SelectedDutyNumber = mappedSplit.DutyNumber;
+            _splitShiftCheck.IsChecked = true;
+            ToggleSplitMode(true);
+            _splitDateField.SetDate(mappedSplit.StartLocal.Date);
+            _part1FromBox.Text = mappedSplit.StartLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
+            _part1ToBox.Text = mappedSplit.Part1EndLocal!.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
+            _part2FromBox.Text = mappedSplit.Part2StartLocal!.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
+            _part2ToBox.Text = mappedSplit.EndLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
+            UpdateComplianceHints(autoFillTime: false);
+            return;
+        }
+
         var mapped = DutyTemplateDispositionMapper.TryMapPart(template, dutyDateSingle, option.PartIndex);
         if (mapped is null)
         {
@@ -1571,8 +1605,16 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
     private static string FormatTemplatePartLabel(DutyTemplate template, int partIndex)
     {
-        var dutyNumber = DutyTemplateDispositionMapper.ResolveDutyNumberForPart(template, partIndex);
-        var label = dutyNumber.Length > 0 ? dutyNumber : $"Teil {partIndex}";
+        if (template.IsSplitShift && partIndex == 1)
+        {
+            var splitDutyNumber = template.DutyNumber.Trim();
+            var splitLabel = splitDutyNumber.Length > 0 ? $"{splitDutyNumber} (geteilter Dienst)" : "Geteilter Dienst";
+            var templateName = template.Name.Trim();
+            return templateName.Length > 0 ? $"{splitLabel} – {templateName}" : splitLabel;
+        }
+
+        var dutyNumberPart = DutyTemplateDispositionMapper.ResolveDutyNumberForPart(template, partIndex);
+        var label = dutyNumberPart.Length > 0 ? dutyNumberPart : $"Teil {partIndex}";
         var name = template.Name.Trim();
         return name.Length > 0 ? $"{label} – {name}" : label;
     }

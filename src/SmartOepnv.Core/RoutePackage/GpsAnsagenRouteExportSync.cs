@@ -17,7 +17,12 @@ public static class GpsAnsagenRouteExportSync
             allStops);
 
         var packageRoutes = RoutePackageRouteKeyHelper
-            .DistinctCanonicalKeys(collectedRoutes.Union(package.RouteNames))
+            .DistinctCanonicalKeys(
+                collectedRoutes
+                    .Union(package.RouteNames)
+                    .Union(package.StopsByRoute.Keys.Where(k => package.StopsByRoute[k].Count > 0))
+                    .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routePathDrafts"))
+                    .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routeOfflineGuidance")))
             .ToList();
 
         SyncRoutesAndLineCourse(packageRoutes, root, package.RouteInteriorDisplayDestinationsByRoute);
@@ -53,6 +58,7 @@ public static class GpsAnsagenRouteExportSync
             packageRoutes,
             package.RouteInteriorDisplayDestinationsByRoute);
         RouteItcsRouteListEditor.SaveToRoot(root, packageRoutes, package.RoutesExcludedFromItcsRouteList);
+        RouteMainDeviceOnlyEditor.SaveToRoot(root, packageRoutes, package.RoutesMainDeviceOnly);
         AutoScheduleSourceRouteEditor.SaveToRoot(root, packageRoutes, package.AutoScheduleSourceByRoute);
     }
 
@@ -202,9 +208,26 @@ public static class GpsAnsagenRouteExportSync
         }
     }
 
-    private static void SyncRouteStops(EditableRoutePackage package, IEnumerable<string> routesToExport, JsonObject root)
+    private static void SyncRouteStops(
+        EditableRoutePackage package,
+        IEnumerable<string> routesToExport,
+        JsonObject root,
+        bool replaceAll = true)
     {
-        var routeStopsObject = new JsonObject();
+        var routeStopsObject = replaceAll
+            ? new JsonObject()
+            : root["routeStops"] as JsonObject ?? new JsonObject();
+
+        if (!replaceAll)
+        {
+            foreach (var canonical in routesToExport
+                         .Select(RouteDisplayHelper.ToCanonicalRouteKey)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                routeStopsObject.Remove(RouteDisplayHelper.ToDistributionDisplayString(canonical));
+            }
+        }
+
         foreach (var canonical in routesToExport
                      .Select(RouteDisplayHelper.ToCanonicalRouteKey)
                      .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -212,7 +235,7 @@ public static class GpsAnsagenRouteExportSync
         {
             var distributionKey = RouteDisplayHelper.ToDistributionDisplayString(canonical);
             var stopsArray = new JsonArray();
-            foreach (var stop in package.GetStops(canonical))
+            foreach (var stop in ResolveStopsForExport(package, canonical))
             {
                 stopsArray.Add(GpsAnsagenStopJson.Write(stop, distributionKey));
             }
@@ -221,6 +244,25 @@ public static class GpsAnsagenRouteExportSync
         }
 
         root["routeStops"] = routeStopsObject;
+    }
+
+    private static IEnumerable<RouteStopItem> ResolveStopsForExport(EditableRoutePackage package, string canonical)
+    {
+        var stops = package.GetStops(canonical);
+        if (stops.Count > 0)
+        {
+            return stops;
+        }
+
+        var storageKey = RoutePackageRouteKeyHelper.ResolveRouteKeyWithStops(canonical, package.StopsByRoute);
+        if (!string.IsNullOrEmpty(storageKey) &&
+            package.StopsByRoute.TryGetValue(storageKey, out var bucket) &&
+            bucket.Count > 0)
+        {
+            return bucket;
+        }
+
+        return stops;
     }
 
     private static void SyncEmbeddedSounds(
@@ -255,7 +297,7 @@ public static class GpsAnsagenRouteExportSync
         var root = JsonNode.Parse(package.ToJson()) as JsonObject
             ?? throw new InvalidOperationException("Route-Paket konnte nicht gelesen werden.");
 
-        ApplyRouteSubsetToRoot(package, root, routesToExport, workspace);
+        ApplyRouteSubsetToRoot(package, root, routesToExport, workspace, pruneOthersOnDevice);
 
         if (pruneOthersOnDevice)
         {
@@ -278,13 +320,25 @@ public static class GpsAnsagenRouteExportSync
         EditableRoutePackage package,
         JsonObject root,
         HashSet<string> routesToExport,
-        LocalWorkspaceStore? workspace)
+        LocalWorkspaceStore? workspace,
+        bool pruneOthersOnDevice)
     {
-        SyncRoutesAndLineCourse(routesToExport, root, package.RouteInteriorDisplayDestinationsByRoute);
-        SyncRouteStops(package, routesToExport, root);
+        if (pruneOthersOnDevice)
+        {
+            SyncRoutesAndLineCourse(
+                routesToExport,
+                root,
+                package.RouteInteriorDisplayDestinationsByRoute);
+            SyncRouteStops(package, routesToExport, root, replaceAll: true);
+            RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", routesToExport);
+            RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", routesToExport);
+        }
+        else
+        {
+            SyncRouteStops(package, routesToExport, root, replaceAll: false);
+        }
+
         root.Remove("routeDirections");
-        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", routesToExport);
-        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", routesToExport);
         SyncEmbeddedSoundsForRoutes(package, root, routesToExport, workspace);
     }
 
@@ -295,7 +349,7 @@ public static class GpsAnsagenRouteExportSync
         LocalWorkspaceStore? workspace)
     {
         var exportedStops = package.StopsByRoute
-            .Where(kv => routesToExport.Contains(kv.Key))
+            .Where(kv => RoutePackageRouteKeyHelper.IsRouteKeyAllowed(kv.Key, routesToExport))
             .SelectMany(kv => kv.Value)
             .ToList();
 

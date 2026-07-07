@@ -9,8 +9,11 @@ namespace SmartOepnv.AppShared.Kom;
 
 public sealed class VehicleKomMessageDialog : Window
 {
+    private readonly KomSendDialogGuard _sendGuard;
+
     public VehicleKomMessageDialog(VehicleListItemViewModel vehicle, Window owner)
     {
+        _sendGuard = new KomSendDialogGuard(this);
         Owner = owner;
         Title = "Meldung senden";
         Width = 520;
@@ -105,26 +108,33 @@ public sealed class VehicleKomMessageDialog : Window
             }
 
             send.IsEnabled = false;
-            cancel.IsEnabled = false;
+            _sendGuard.BeginSend();
             try
             {
-                var outcome = await KomCommandSendFlow.ExecuteAsync(
+                if (await KomCommandSendFlow.SendAndReleaseDialogAsync(
                     this,
                     status,
                     vehicle.DisplayName,
                     phone,
                     ZblMessageService.CommandType,
-                    ct => AppServices.Dropbox.UploadZblMessageAsync(phone, text, ct));
-                if (outcome is KomCommandSendOutcome.Success or KomCommandSendOutcome.Timeout)
+                    ct => AppServices.Dropbox.UploadZblMessageAsync(phone, text, ct)))
                 {
-                    DialogResult = true;
-                    Close();
+                    _sendGuard.EndSend();
+                    return;
                 }
+            }
+            catch (Exception ex)
+            {
+                SmartConfirmDialog.ShowInfo(this, Title, $"Senden fehlgeschlagen: {ex.Message}");
             }
             finally
             {
-                send.IsEnabled = true;
-                cancel.IsEnabled = true;
+                if (IsLoaded)
+                {
+                    _sendGuard.EndSend();
+                    send.IsEnabled = true;
+                    cancel.IsEnabled = true;
+                }
             }
         };
 

@@ -162,7 +162,7 @@ public static class SmartOepnvAppHost
             for (var attempt = 1; attempt <= maxExportAttempts; attempt++)
             {
                 exportResult = await PlanerDropboxWorkspaceSync.TryExportAsync(
-                        flushBeforeCapture: true,
+                        flushBeforeCapture: false,
                         progress: transferProgress)
                     .ConfigureAwait(false);
                 if (exportResult is { Exported: true })

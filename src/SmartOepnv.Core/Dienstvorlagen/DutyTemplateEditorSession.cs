@@ -3,7 +3,7 @@ namespace SmartOepnv.Core.Dienstvorlagen;
 /// <summary>Aktueller Bearbeitungsstand der Dienstvorlagen-Maske (Entwurf).</summary>
 public sealed class DutyTemplateEditorSession
 {
-    public const int FileVersion = 7;
+    public const int FileVersion = 8;
 
     public long SavedAtUtcMs { get; set; }
 
@@ -50,6 +50,8 @@ public sealed class DutyTemplateEditorSession
     public List<DutyTemplateRow> Part2Rows { get; set; } = [];
 
     public List<DutyTemplateRow> Part3Rows { get; set; } = [];
+
+    public bool IsSplitShift { get; set; }
 
     public bool HasContent() =>
         SubtractUnpaidBreak30Minutes ||

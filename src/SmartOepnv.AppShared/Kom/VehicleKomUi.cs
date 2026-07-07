@@ -34,6 +34,62 @@ internal static class VehicleKomUi
         };
     }
 
+    /// <summary>MessageBox ohne Absturz, wenn das Owner-Fenster gerade geschlossen wird.</summary>
+    public static void SafeShowMessage(
+        Window? owner,
+        string message,
+        string title,
+        MessageBoxImage icon = MessageBoxImage.Information,
+        MessageBoxButton buttons = MessageBoxButton.OK)
+    {
+        if (TryShowOwnedMessage(owner, message, title, icon, buttons))
+        {
+            return;
+        }
+
+        MessageBox.Show(message, title, buttons, icon);
+    }
+
+    public static MessageBoxResult SafeShowQuestion(Window? owner, string message, string title)
+    {
+        if (owner is { IsLoaded: true, IsVisible: true })
+        {
+            try
+            {
+                return MessageBox.Show(owner, message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+            }
+            catch (InvalidOperationException)
+            {
+                // Owner wird gerade geschlossen
+            }
+        }
+
+        return MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+    }
+
+    private static bool TryShowOwnedMessage(
+        Window? owner,
+        string message,
+        string title,
+        MessageBoxImage icon,
+        MessageBoxButton buttons)
+    {
+        if (owner is not { IsLoaded: true, IsVisible: true })
+        {
+            return false;
+        }
+
+        try
+        {
+            MessageBox.Show(owner, message, title, buttons, icon);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     public static bool EnsureDropboxConnected(Window owner)
     {
         if (AppServices.Dropbox.Settings.IsConnected)
