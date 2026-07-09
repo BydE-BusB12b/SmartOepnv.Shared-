@@ -374,6 +374,9 @@ public sealed class VoipLeitstelleHost : IDisposable
     public void SetMicrophoneTransmitEnabled(bool enabled) =>
         _webrtc?.SetMicrophoneTransmitEnabled(enabled);
 
+    public void SendDispatchPtt(bool transmitting) =>
+        _webrtc?.SendDispatchPtt(transmitting);
+
     private void RaiseCallStatusChangedOnUiThread()
     {
         var dispatcher = Application.Current?.Dispatcher;

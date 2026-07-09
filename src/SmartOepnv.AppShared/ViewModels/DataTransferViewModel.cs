@@ -184,19 +184,25 @@ public partial class DataTransferViewModel : ObservableObject
     {
         TransferSelectedRoutesUpdateCommand.NotifyCanExecuteChanged();
         TransferSelectedRoutesSendCommand.NotifyCanExecuteChanged();
+        ExportLiteVehicleUpdateToDropboxCommand.NotifyCanExecuteChanged();
     }
 
-    private bool CanTransferSingleRouteUpdate() =>
+    private bool CanTransferRouteUpdate() =>
         !IsBusy &&
         HasLoadedPackage &&
         IsDropboxConnected &&
-        GetSelectedRouteNames().Count == 1;
+        GetSelectedRouteNames().Count >= 1;
 
     private bool CanTransferMultipleRoutesSend() =>
         !IsBusy &&
         HasLoadedPackage &&
         IsDropboxConnected &&
         GetSelectedRouteNames().Count > 0;
+
+    private bool CanExportLiteVehicleUpdate() =>
+        !IsBusy &&
+        HasLoadedPackage &&
+        IsDropboxConnected;
 
     [RelayCommand]
     private void SelectAllRoutesForTransfer()
@@ -216,13 +222,13 @@ public partial class DataTransferViewModel : ObservableObject
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanTransferSingleRouteUpdate))]
+    [RelayCommand(CanExecute = nameof(CanTransferRouteUpdate))]
     private async Task TransferSelectedRoutesUpdateAsync()
     {
         var selected = GetSelectedRouteNames();
-        if (selected.Count != 1)
+        if (selected.Count == 0)
         {
-            LastActionMessage = "Update: bitte genau eine Route auswählen.";
+            LastActionMessage = "Update: bitte mindestens eine Route auswählen.";
             return;
         }
 
@@ -240,6 +246,43 @@ public partial class DataTransferViewModel : ObservableObject
         }
 
         await UploadVehicleTransferAsync(selected, pruneOthersOnDevice: true, "Senden");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExportLiteVehicleUpdate))]
+    private async Task ExportLiteVehicleUpdateToDropboxAsync()
+    {
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            LastActionMessage = "Dropbox nicht verbunden – bitte Einstellungen öffnen.";
+            return;
+        }
+
+        if (!AppServices.Routes.HasPackage)
+        {
+            LastActionMessage = "Kein Paket geladen – zuerst importieren.";
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var json = AppServices.Routes.PrepareFullLiteVehicleUpdateJson();
+            await AppServices.Dropbox.UploadNamedFileAsync(DropboxConstants.RouteUpdateFileName, json);
+            LastActionMessage =
+                $"Kleines Fahrzeugupdate hochgeladen ({DropboxConstants.RouteUpdateFileName}) – " +
+                "Routen/Haltestellen ohne Tondateien; bestehende Ansagen auf dem Gerät bleiben.";
+            DropboxExportButtonState = TransferButtonVisualState.Done;
+        }
+        catch (Exception ex)
+        {
+            LastActionMessage = $"Kleines Fahrzeugupdate fehlgeschlagen: {ex.Message}";
+            DropboxExportButtonState = TransferButtonVisualState.Idle;
+        }
+        finally
+        {
+            IsBusy = false;
+            NotifyRouteTransferCommandsCanExecute();
+        }
     }
 
     private async Task UploadVehicleTransferAsync(
@@ -262,16 +305,19 @@ public partial class DataTransferViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var json = AppServices.Routes.PrepareVehicleTransferJson(selectedRoutes, pruneOthersOnDevice);
-            await AppServices.Dropbox.UploadRouteFileAsync(json);
+            var json = AppServices.Routes.PrepareVehicleTransferJson(
+                selectedRoutes,
+                pruneOthersOnDevice,
+                liteVehicleUpdate: true);
+            await AppServices.Dropbox.UploadNamedFileAsync(DropboxConstants.RouteUpdateFileName, json);
 
             var routeLabel = selectedRoutes.Count == 1
                 ? $"„{selectedRoutes[0]}“"
                 : $"{selectedRoutes.Count} Routen";
 
             LastActionMessage = pruneOthersOnDevice
-                ? $"{actionLabel}: {routeLabel} nach Dropbox gesendet – Fahrzeuge gleichen ab, andere Routen werden entfernt."
-                : $"{actionLabel}: {routeLabel} nach Dropbox gesendet – Fahrzeuge ergänzen/aktualisieren nur diese Route(n).";
+                ? $"{actionLabel}: {routeLabel} → {DropboxConstants.RouteUpdateFileName} (ohne Audio). Nicht enthaltene Routen werden auf dem Gerät entfernt."
+                : $"{actionLabel}: {routeLabel} → {DropboxConstants.RouteUpdateFileName} (ohne Audio). Bestehende Tondateien bleiben erhalten.";
 
             DropboxExportButtonState = TransferButtonVisualState.Done;
         }
@@ -603,13 +649,18 @@ public partial class DataTransferViewModel : ObservableObject
 
         var vehicleName = picker.SelectedVehicleName;
         var vehiclePhone = picker.SelectedPhoneNumber;
+        var transferMode = picker.SelectedTransferMode;
         var owner = Application.Current.MainWindow;
 
-        _ = RunRemoteUpdateFlowAsync(owner!, vehicleName, vehiclePhone);
+        _ = RunRemoteUpdateFlowAsync(owner!, vehicleName, vehiclePhone, transferMode);
         return Task.CompletedTask;
     }
 
-    private async Task RunRemoteUpdateFlowAsync(Window owner, string vehicleName, string vehiclePhone)
+    private async Task RunRemoteUpdateFlowAsync(
+        Window owner,
+        string vehicleName,
+        string vehiclePhone,
+        RemoteRouteTransferMode transferMode)
     {
         _remoteUpdateFlowRunning = true;
         ExportToDropboxWithRemoteUpdateCommand.NotifyCanExecuteChanged();
@@ -618,12 +669,24 @@ public partial class DataTransferViewModel : ObservableObject
 
         try
         {
-            var exportJson = AppServices.Routes.PrepareExportJson();
-            await AppServices.Dropbox.UploadRouteFileAsync(exportJson).ConfigureAwait(true);
-            KomCommandAckFeedback.ShowSent(
-                owner,
-                vehicleName,
-                $"routes_export.json nach Dropbox hochgeladen ({AppServices.Dropbox.GetRouteFilePath()})");
+            string uploadLabel;
+            if (transferMode == RemoteRouteTransferMode.LiteUpdate)
+            {
+                var json = AppServices.Routes.PrepareFullLiteVehicleUpdateJson();
+                await AppServices.Dropbox.UploadNamedFileAsync(DropboxConstants.RouteUpdateFileName, json)
+                    .ConfigureAwait(true);
+                uploadLabel =
+                    $"{DropboxConstants.RouteUpdateFileName} nach Dropbox hochgeladen ({AppServices.Dropbox.GetNamedFilePath(DropboxConstants.RouteUpdateFileName)})";
+            }
+            else
+            {
+                var exportJson = AppServices.Routes.PrepareExportJson();
+                await AppServices.Dropbox.UploadRouteFileAsync(exportJson).ConfigureAwait(true);
+                uploadLabel =
+                    $"{DropboxConstants.RouteFileName} nach Dropbox hochgeladen ({AppServices.Dropbox.GetRouteFilePath()})";
+            }
+
+            KomCommandAckFeedback.ShowSent(owner, vehicleName, uploadLabel);
 
             var outcome = await KomCommandSendFlow.ExecuteAsync(
                 owner,
@@ -648,13 +711,21 @@ public partial class DataTransferViewModel : ObservableObject
             LastActionMessage = outcome switch
             {
                 KomCommandSendOutcome.Success =>
-                    $"Route gesendet + Fernupdate abgeschlossen für {vehicleName}.",
+                    transferMode == RemoteRouteTransferMode.LiteUpdate
+                        ? $"Update ({DropboxConstants.RouteUpdateFileName}) gesendet + Fernupdate abgeschlossen für {vehicleName}."
+                        : $"Route gesendet + Fernupdate abgeschlossen für {vehicleName}.",
                 KomCommandSendOutcome.ProgressOnly =>
-                    $"Route hochgeladen, {vehicleName} lädt das Update (Abschluss ausstehend).",
+                    transferMode == RemoteRouteTransferMode.LiteUpdate
+                        ? $"Update hochgeladen, {vehicleName} lädt routes_update.json (Abschluss ausstehend)."
+                        : $"Route hochgeladen, {vehicleName} lädt das Update (Abschluss ausstehend).",
                 KomCommandSendOutcome.Timeout =>
-                    $"Route hochgeladen, Fernupdate gesendet – keine Rückmeldung von {vehicleName}.",
+                    transferMode == RemoteRouteTransferMode.LiteUpdate
+                        ? $"Update hochgeladen, Fernupdate gesendet – keine Rückmeldung von {vehicleName}."
+                        : $"Route hochgeladen, Fernupdate gesendet – keine Rückmeldung von {vehicleName}.",
                 KomCommandSendOutcome.AckError =>
-                    $"Route hochgeladen – Fehler beim Fernupdate ({vehicleName}).",
+                    transferMode == RemoteRouteTransferMode.LiteUpdate
+                        ? $"Update hochgeladen – Fehler beim Fernupdate ({vehicleName})."
+                        : $"Route hochgeladen – Fehler beim Fernupdate ({vehicleName}).",
                 _ => $"Fernupdate fehlgeschlagen für {vehicleName}."
             };
 

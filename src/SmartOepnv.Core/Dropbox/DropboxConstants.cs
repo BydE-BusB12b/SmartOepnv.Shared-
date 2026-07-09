@@ -38,6 +38,11 @@ public static class DropboxConstants
         return trimmed;
     }
     public const string RouteFileName = "routes_export.json";
+
+    /// <summary>
+    /// Leichtes Fahrzeugupdate ohne Audio (Merge auf dem Gerät, routes_export.json bleibt Vollbackup).
+    /// </summary>
+    public const string RouteUpdateFileName = "routes_update.json";
     public const string LeitstelleStandFileName = "leitstelle_stand.json";
     public const string MaengelkarteFileName = "maengelkarte.json";
     public const string PlanerSessionFileName = "planer_session.json";

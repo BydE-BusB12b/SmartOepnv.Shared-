@@ -5,17 +5,21 @@ using SIPSorceryMedia.Windows;
 namespace SmartOepnv.AppShared.Voip;
 
 /// <summary>
-/// WindowsAudioEndPoint hat keine Echo-Unterdrückung – Wiedergabe-Lautstärke dämpfen reduziert Mikrofon-Rückkopplung.
+/// Steuert Wiedergabe-Lautstärke und leert den NAudio-Puffer (verhindert verzögertes Nachspielen).
 /// </summary>
 internal static class VoipLeitstelleAudioHelper
 {
-    private const float PlaybackVolumeFraction = 0.4f;
+    private const float PlaybackVolumeFraction = 1.0f;
 
     private static readonly FieldInfo? WaveOutField = typeof(WindowsAudioEndPoint).GetField(
         "_waveOutEvent",
         BindingFlags.Instance | BindingFlags.NonPublic);
 
-    public static void ApplyEchoMitigation(WindowsAudioEndPoint endPoint)
+    private static readonly FieldInfo? WaveProviderField = typeof(WindowsAudioEndPoint).GetField(
+        "_waveProvider",
+        BindingFlags.Instance | BindingFlags.NonPublic);
+
+    public static void ApplyPlaybackVolume(WindowsAudioEndPoint endPoint)
     {
         try
         {
@@ -26,7 +30,23 @@ internal static class VoipLeitstelleAudioHelper
         }
         catch
         {
-            // Kein Abbruch bei fehlendem Zugriff auf NAudio-internes Feld.
+            // ignore
+        }
+    }
+
+    /// <summary>Verwirft gepufferte Tablet-Audiodaten (kein 6-Sekunden-Nachlauf).</summary>
+    public static void FlushPlaybackBuffer(WindowsAudioEndPoint endPoint)
+    {
+        try
+        {
+            if (WaveProviderField?.GetValue(endPoint) is BufferedWaveProvider provider)
+            {
+                provider.ClearBuffer();
+            }
+        }
+        catch
+        {
+            // ignore
         }
     }
 }

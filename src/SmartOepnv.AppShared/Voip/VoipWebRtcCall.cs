@@ -23,7 +23,9 @@ public sealed class VoipWebRtcCall : IDisposable
     private bool _remoteDescriptionSet;
     private bool _audioStarted;
     private bool _micTransmitEnabled;
-    private bool _sinkPausedForTransmit;
+    private volatile bool _suppressRemotePlayback;
+    private CancellationTokenSource? _receiveGuardCts;
+    private const int ReceiveGuardAfterTransmitMs = 600;
     private readonly List<(string Candidate, string? SdpMid, int SdpMLineIndex)> _pendingIceCandidates = [];
 
     public VoipWebRtcCall(
@@ -87,7 +89,7 @@ public sealed class VoipWebRtcCall : IDisposable
 
         _peerConnection.OnRtpPacketReceived += (remoteEndPoint, media, rtpPacket) =>
         {
-            if (media != SDPMediaTypesEnum.audio)
+            if (media != SDPMediaTypesEnum.audio || _suppressRemotePlayback)
             {
                 return;
             }
@@ -157,7 +159,7 @@ public sealed class VoipWebRtcCall : IDisposable
             {
                 await _audioEndPoint.Start().ConfigureAwait(false);
                 _audioStarted = true;
-                VoipLeitstelleAudioHelper.ApplyEchoMitigation(_audioEndPoint);
+                VoipLeitstelleAudioHelper.ApplyPlaybackVolume(_audioEndPoint);
                 // Funk-PTT: Mikro erst bei Leertaste (Standard: stumm).
                 _micTransmitEnabled = false;
                 await _audioEndPoint.PauseAudio().ConfigureAwait(false);
@@ -192,19 +194,38 @@ public sealed class VoipWebRtcCall : IDisposable
 
             if (_micTransmitEnabled)
             {
-                // Während Senden keine Wiedergabe → kein Echo über PC-Lautsprecher ins Mikro.
-                await _audioEndPoint.PauseAudioSink().ConfigureAwait(false);
-                _sinkPausedForTransmit = true;
+                _receiveGuardCts?.Cancel();
+                _receiveGuardCts?.Dispose();
+                _receiveGuardCts = null;
+                _suppressRemotePlayback = true;
+                VoipLeitstelleAudioHelper.FlushPlaybackBuffer(_audioEndPoint);
                 await _audioEndPoint.ResumeAudio().ConfigureAwait(false);
             }
             else
             {
                 await _audioEndPoint.PauseAudio().ConfigureAwait(false);
-                if (_sinkPausedForTransmit)
+                _suppressRemotePlayback = true;
+                VoipLeitstelleAudioHelper.FlushPlaybackBuffer(_audioEndPoint);
+
+                _receiveGuardCts?.Cancel();
+                _receiveGuardCts?.Dispose();
+                _receiveGuardCts = new CancellationTokenSource();
+                var token = _receiveGuardCts.Token;
+                try
                 {
-                    await _audioEndPoint.ResumeAudioSink().ConfigureAwait(false);
-                    _sinkPausedForTransmit = false;
+                    await Task.Delay(ReceiveGuardAfterTransmitMs, token).ConfigureAwait(false);
                 }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                if (_disposed || _micTransmitEnabled || _audioEndPoint is null)
+                {
+                    return;
+                }
+
+                _suppressRemotePlayback = false;
             }
         }
         catch
@@ -298,7 +319,7 @@ public sealed class VoipWebRtcCall : IDisposable
         var offerSdp = ForceBidirectionalAudioInSdp(offer.sdp?.ToString() ?? string.Empty);
         offer = new RTCSessionDescriptionInit { type = offer.type, sdp = offerSdp };
         await _peerConnection.setLocalDescription(offer).ConfigureAwait(false);
-        await WaitForIceGatheringCompleteAsync(_peerConnection).ConfigureAwait(false);
+        await WaitForIceGatheringBeforeSdpSendAsync(_peerConnection).ConfigureAwait(false);
         var sdp = ForceBidirectionalAudioInSdp(GetLocalSdp(_peerConnection, offerSdp));
         _sendSignal(new VoipSignalMessage
         {
@@ -321,7 +342,7 @@ public sealed class VoipWebRtcCall : IDisposable
         var answerSdp = ForceBidirectionalAudioInSdp(answer.sdp?.ToString() ?? string.Empty);
         answer = new RTCSessionDescriptionInit { type = answer.type, sdp = answerSdp };
         await _peerConnection.setLocalDescription(answer).ConfigureAwait(false);
-        await WaitForIceGatheringCompleteAsync(_peerConnection).ConfigureAwait(false);
+        await WaitForIceGatheringBeforeSdpSendAsync(_peerConnection).ConfigureAwait(false);
         var sdp = ForceBidirectionalAudioInSdp(GetLocalSdp(_peerConnection, answerSdp));
         _sendSignal(new VoipSignalMessage
         {
@@ -380,7 +401,20 @@ public sealed class VoipWebRtcCall : IDisposable
         return servers;
     }
 
-    private static async Task WaitForIceGatheringCompleteAsync(RTCPeerConnection pc, int timeoutMs = 8000)
+    private int GetIceGatheringWaitMs()
+    {
+        if (VoipTurnHelper.IsTurnConfigured(_settings) && _settings.UsesCloudSignaling())
+        {
+            return 400;
+        }
+
+        return 2_000;
+    }
+
+    private Task WaitForIceGatheringBeforeSdpSendAsync(RTCPeerConnection pc) =>
+        WaitForIceGatheringCompleteAsync(pc, GetIceGatheringWaitMs());
+
+    private static async Task WaitForIceGatheringCompleteAsync(RTCPeerConnection pc, int timeoutMs = 2_000)
     {
         if (pc.iceGatheringState == RTCIceGatheringState.complete)
         {
@@ -444,6 +478,9 @@ public sealed class VoipWebRtcCall : IDisposable
         }
 
         _disposed = true;
+        _receiveGuardCts?.Cancel();
+        _receiveGuardCts?.Dispose();
+        _receiveGuardCts = null;
         if (_audioEndPoint is not null)
         {
             _ = _audioEndPoint.Close();

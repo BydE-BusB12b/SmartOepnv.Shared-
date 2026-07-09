@@ -134,7 +134,7 @@ public static class LeitstelleRoutePathOverview
             return null;
         }
 
-        var keys = CollectRouteKeys(packageRoot);
+        var keys = CollectRouteKeys(packageRoot).ToList();
         if (keys.Count == 0)
         {
             return null;
@@ -146,26 +146,70 @@ public static class LeitstelleRoutePathOverview
             return exact;
         }
 
-        var contains = keys
-            .Where(k => trimmed.Contains(k, StringComparison.OrdinalIgnoreCase) ||
-                        k.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(k => k.Length)
-            .FirstOrDefault();
-        if (contains is not null)
+        var canonicalMatches = keys
+            .Where(k => RouteDisplayHelper.RouteKeysMatch(k, trimmed))
+            .ToList();
+        if (canonicalMatches.Count == 1)
         {
-            return contains;
+            return canonicalMatches[0];
         }
 
-        var linePrefix = trimmed.Split('/', 2)[0].Trim();
-        if (!string.IsNullOrEmpty(linePrefix))
+        if (canonicalMatches.Count > 1)
         {
-            return keys
-                .Where(k => k.StartsWith(linePrefix, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(k => k.Length)
-                .FirstOrDefault();
+            return canonicalMatches
+                .OrderBy(k => k.Length)
+                .ThenBy(k => k, StringComparer.OrdinalIgnoreCase)
+                .First();
         }
 
+        var parsed = RouteDisplayHelper.Parse(trimmed);
+        var definitionMatches = keys
+            .Where(k => RouteDefinitionMatchesTelemetry(k, parsed))
+            .ToList();
+        if (definitionMatches.Count == 1)
+        {
+            return definitionMatches[0];
+        }
+
+        if (definitionMatches.Count > 1)
+        {
+            return definitionMatches
+                .OrderBy(k => k.Length)
+                .ThenBy(k => k, StringComparer.OrdinalIgnoreCase)
+                .First();
+        }
+
+        // Kein Raten per Substring („über CAS“ darf nicht „Hommelsbach“ ersetzen).
         return null;
+    }
+
+    private static bool RouteDefinitionMatchesTelemetry(string packageRouteKey, RouteDefinition telemetry)
+    {
+        var def = RouteDisplayHelper.Parse(packageRouteKey);
+        if (!string.Equals(def.Name, telemetry.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(telemetry.LineCourse) &&
+            !string.Equals(
+                RouteDisplayHelper.NormalizeLineCourse(def.LineCourse),
+                RouteDisplayHelper.NormalizeLineCourse(telemetry.LineCourse),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(telemetry.TripNumber) &&
+            !string.Equals(
+                RouteDisplayHelper.NormalizeTripNumber(def.TripNumber),
+                RouteDisplayHelper.NormalizeTripNumber(telemetry.TripNumber),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static HashSet<string> CollectRouteKeys(JsonObject packageRoot)

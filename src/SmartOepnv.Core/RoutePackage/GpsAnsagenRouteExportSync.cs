@@ -9,6 +9,30 @@ namespace SmartOepnv.Core.RoutePackage;
 /// </summary>
 public static class GpsAnsagenRouteExportSync
 {
+    public const string LiteExportProfile = "lite";
+
+    private static readonly string[] LiteVehicleUpdateStripKeys =
+    [
+        "embeddedSounds",
+        "specialAnnouncements",
+        "allowedRoutes",
+        "managedAnnouncementTemplates",
+        "managedStopTemplates",
+        "employeeRoster",
+        "employeeRosterMeta",
+        "registeredVehicles",
+        "registeredVehiclesMeta",
+        "registeredVehiclesPlannerMeta",
+        "messageTemplates",
+        "mailTemplates",
+        "driverDutyDispatches",
+        "driverDutyDispatchesMeta",
+        "outsideDisplays",
+        "destinationList",
+        "dateBasedHints",
+        EndStopAnnouncementResolver.RootJsonFieldName
+    ];
+
     public static void ApplyToPackage(EditableRoutePackage package, JsonObject root, LocalWorkspaceStore? workspace = null)
     {
         var allStops = package.StopsByRoute.Values.SelectMany(s => s).ToList();
@@ -282,7 +306,8 @@ public static class GpsAnsagenRouteExportSync
         EditableRoutePackage package,
         IReadOnlyList<string> selectedRouteNames,
         bool pruneOthersOnDevice,
-        LocalWorkspaceStore? workspace)
+        LocalWorkspaceStore? workspace,
+        bool liteVehicleUpdate = false)
     {
         if (selectedRouteNames.Count == 0)
         {
@@ -297,7 +322,13 @@ public static class GpsAnsagenRouteExportSync
         var root = JsonNode.Parse(package.ToJson()) as JsonObject
             ?? throw new InvalidOperationException("Route-Paket konnte nicht gelesen werden.");
 
-        ApplyRouteSubsetToRoot(package, root, routesToExport, workspace, pruneOthersOnDevice);
+        ApplyRouteSubsetToRoot(
+            package,
+            root,
+            routesToExport,
+            workspace,
+            pruneOthersOnDevice,
+            includeEmbeddedSounds: !liteVehicleUpdate);
 
         if (pruneOthersOnDevice)
         {
@@ -311,9 +342,76 @@ public static class GpsAnsagenRouteExportSync
             root.Remove("allowedRoutes");
         }
 
+        if (liteVehicleUpdate)
+        {
+            ApplyLiteVehicleUpdateMetadata(root);
+        }
+
         root["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         root["autoImport"] = true;
         return root.ToJsonString();
+    }
+
+    /// <summary>
+    /// Vollständiges Routenpaket ohne Audio/Sonderansagen – für <see cref="DropboxConstants.RouteUpdateFileName"/>.
+    /// Bestehende Tondateien auf dem Gerät bleiben erhalten (Merge-Import).
+    /// </summary>
+    public static string BuildFullLiteVehicleUpdateJson(
+        EditableRoutePackage package,
+        LocalWorkspaceStore? workspace)
+    {
+        var root = JsonNode.Parse(package.ToJson()) as JsonObject
+            ?? throw new InvalidOperationException("Route-Paket konnte nicht gelesen werden.");
+
+        ApplyLiteRouteDataToRoot(package, root, workspace);
+        ApplyLiteVehicleUpdateMetadata(root);
+        root["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        root["autoImport"] = true;
+        return root.ToJsonString();
+    }
+
+    private static void ApplyLiteRouteDataToRoot(
+        EditableRoutePackage package,
+        JsonObject root,
+        LocalWorkspaceStore? workspace)
+    {
+        var allStops = package.StopsByRoute.Values.SelectMany(s => s).ToList();
+        var packageRoutes = RoutePackageRouteKeyHelper
+            .DistinctCanonicalKeys(
+                package.RouteNames
+                    .Union(package.StopsByRoute.Keys.Where(k => package.StopsByRoute[k].Count > 0))
+                    .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routePathDrafts"))
+                    .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routeOfflineGuidance")))
+            .ToList();
+
+        SyncRoutesAndLineCourse(packageRoutes, root, package.RouteInteriorDisplayDestinationsByRoute);
+        SyncRouteStops(package, packageRoutes, root);
+        root.Remove("routeDirections");
+        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", packageRoutes);
+        RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", packageRoutes);
+        RouteOperatingDaysEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDaysByRoute);
+        RouteInteriorDisplayDestinationEditor.SaveToRoot(
+            root,
+            packageRoutes,
+            package.RouteInteriorDisplayDestinationsByRoute);
+        RouteItcsRouteListEditor.SaveToRoot(root, packageRoutes, package.RoutesExcludedFromItcsRouteList);
+        RouteMainDeviceOnlyEditor.SaveToRoot(root, packageRoutes, package.RoutesMainDeviceOnly);
+        AutoScheduleSourceRouteEditor.SaveToRoot(root, packageRoutes, package.AutoScheduleSourceByRoute);
+    }
+
+    private static void ApplyLiteVehicleUpdateMetadata(JsonObject root)
+    {
+        StripLiteVehicleUpdateFields(root);
+        root["exportProfile"] = LiteExportProfile;
+        root["skipEmbeddedSounds"] = true;
+    }
+
+    private static void StripLiteVehicleUpdateFields(JsonObject root)
+    {
+        foreach (var key in LiteVehicleUpdateStripKeys)
+        {
+            root.Remove(key);
+        }
     }
 
     private static void ApplyRouteSubsetToRoot(
@@ -321,7 +419,8 @@ public static class GpsAnsagenRouteExportSync
         JsonObject root,
         HashSet<string> routesToExport,
         LocalWorkspaceStore? workspace,
-        bool pruneOthersOnDevice)
+        bool pruneOthersOnDevice,
+        bool includeEmbeddedSounds = true)
     {
         if (pruneOthersOnDevice)
         {
@@ -336,10 +435,17 @@ public static class GpsAnsagenRouteExportSync
         else
         {
             SyncRouteStops(package, routesToExport, root, replaceAll: false);
+            SyncRoutesAndLineCourse(
+                routesToExport,
+                root,
+                package.RouteInteriorDisplayDestinationsByRoute);
         }
 
         root.Remove("routeDirections");
-        SyncEmbeddedSoundsForRoutes(package, root, routesToExport, workspace);
+        if (includeEmbeddedSounds)
+        {
+            SyncEmbeddedSoundsForRoutes(package, root, routesToExport, workspace);
+        }
     }
 
     private static void SyncEmbeddedSoundsForRoutes(

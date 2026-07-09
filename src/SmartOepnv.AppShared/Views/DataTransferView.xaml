@@ -88,7 +88,7 @@
                            FontWeight="SemiBold"
                            FontSize="15"
                            Margin="0,0,0,4" />
-                <TextBlock Text="Routen auswählen und per Dropbox übertragen. Update = nur ergänzen/aktualisieren. Senden = Abgleich, nicht ausgewählte Routen werden auf dem Gerät gelöscht."
+                <TextBlock Text="Routen auswählen und per Dropbox übertragen. Update = nur ergänzen/aktualisieren (routes_update.json, ohne Audio). Senden = Abgleich mit Löschen nicht ausgewählter Routen. Kleines Fahrzeugupdate = alle Routen ohne Tondateien."
                            Opacity="0.75"
                            FontSize="11"
                            LineHeight="15"
@@ -145,7 +145,7 @@
                             Style="{StaticResource MaterialDesignRaisedButton}"
                             Padding="12,4"
                             Margin="0,0,6,0"
-                            ToolTip="Genau eine Route: nur hinzufügen/aktualisieren (ohne Löschen auf dem Gerät)" />
+                            ToolTip="Ausgewählte Routen nach routes_update.json (ohne Audio, Merge auf dem Gerät)" />
                     <Button Content="Senden"
                             Command="{Binding TransferSelectedRoutesSendCommand}"
                             Style="{StaticResource MaterialDesignRaisedButton}"
@@ -184,13 +184,20 @@
                                 Command="{Binding ExportToDropboxCommand}"
                                 Style="{StaticResource DropboxExportTransferButtonStyle}"
                                 Margin="0,0,6,0"
-                                Padding="12,4" />
+                                Padding="12,4"
+                                ToolTip="Vollständiges routes_export.json inkl. aller Tondateien" />
+                        <Button Content="Kleines Fahrzeugupdate"
+                                Command="{Binding ExportLiteVehicleUpdateToDropboxCommand}"
+                                Style="{StaticResource DropboxExportTransferButtonStyle}"
+                                Margin="0,0,6,0"
+                                Padding="12,4"
+                                ToolTip="routes_update.json – alle Routen/Haltestellen ohne embeddedSounds (bestehende Ansagen bleiben)" />
                         <Button Content="Senden + Fernupdate"
                                 Command="{Binding ExportToDropboxWithRemoteUpdateCommand}"
                                 Style="{StaticResource DropboxRemoteUpdateTransferButtonStyle}"
                                 Margin="0,0,6,0"
                                 Padding="12,4"
-                                ToolTip="Route hochladen und Update auf dem Fahrzeug auslösen (Umleitung während der Fahrt)" />
+                                ToolTip="Route hochladen (routes_export oder routes_update) und Update auf dem Fahrzeug auslösen" />
                         <Button Command="{Binding SaveLeitstelleStandToDropboxCommand}"
                                 Style="{StaticResource LeitstelleStandTransferButtonStyle}"
                                 Padding="12,4"
@@ -206,7 +213,7 @@
                            FontSize="11"
                            LineHeight="15"
                            TextWrapping="Wrap"
-                           Text="Gleiche Datei wie in GPSAnsagen (routes_export.json). Fernupdate: Fahrzeug lädt die Route nach (Pas.Info bleibt aktiv)." />
+                           Text="routes_export.json = Vollbackup mit Audio. routes_update.json = leichtes Update ohne Tondateien. Senden + Fernupdate: Auswahl im Dialog. Fernupdate: Fahrzeug prüft beide Dateien (Pas.Info bleibt aktiv)." />
 
                 <TextBlock Grid.Row="2"
                            Text="{Binding LastActionMessage}"

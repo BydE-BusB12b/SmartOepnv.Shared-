@@ -30,6 +30,8 @@ internal static class EmployeeBriefingManualContent
             • „Route suchen…“ filtert die Liste; „Sortieren“ ändert die Reihenfolge.
             • Die Anzahl gefundener Routen wird unter dem Suchfeld angezeigt.
             • Tippen Sie die richtige Fahrt an – die Haltestellenliste und Zielanzeige werden geladen.
+            • Oben in der Statuszeile werden Linie/Kurs, Routenname und Ziel: angezeigt.
+            • Ist an der Starthaltestelle kein Ziel hinterlegt, steht dort „Ziel: Kein Ziel“ (niederländisch: „Doel: Geen doel“).
             • „ABBRECHEN“ schließt den Dialog ohne Auswahl; bei unbekannter Linie/Kurs erscheint „Keine Route verfügbar“.
             • Wählen Sie vor jeder Fahrt die korrekte Linie/Kurs-Kombination und Fahrt aus. Standardmäßig erfolgt der Routenwechsel bei geplanten Fahrten automatisch.
             """,
@@ -40,6 +42,7 @@ internal static class EmployeeBriefingManualContent
             "3. ITCS – Fahren und Linienbetrieb",
             """
             • Die ITCS-Seite ist Ihre Hauptansicht im Linienbetrieb: Haltestellenfolge, Linie/Kurs und Statushinweise (siehe Abbildungen unten).
+            • In der Kopfzeile sehen Sie Linie/Kurs, Routenname und Ziel: – ohne hinterlegtes Starthaltestellenziel erscheint „Ziel: Kein Ziel“.
             • Pas.-Info: rot „off“ = Fahrgastinformation und Ansagen aktiv, grün „on“ = deaktiviert – vor Fahrtantritt einschalten, wenn vorgesehen.
             • IBIS-USB in der Statuszeile: rot = nicht verbunden, grün = verbunden, blau blinkend = sendet gerade IBIS-Daten.
             • Die aktuelle Haltestelle ist gelb umrandet; ausfallende Haltestellen erscheinen rot mit X.

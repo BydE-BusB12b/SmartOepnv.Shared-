@@ -39,6 +39,11 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedVehicleChanged(VehicleListItemViewModel? value)
     {
+        if (_vehicles.Count > 0)
+        {
+            PushVehiclesToMap();
+        }
+
         if (value is null)
         {
             return;
@@ -379,6 +384,12 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
             return keys;
         }
 
+        if (SelectedVehicle is not null && !string.IsNullOrWhiteSpace(SelectedVehicle.RouteName))
+        {
+            AddResolvedRouteKey(keys, root, SelectedVehicle.RouteName);
+            return keys;
+        }
+
         foreach (var vehicle in _vehicles.Where(v =>
                      v.Status is VehicleOnlineStatus.Online or VehicleOnlineStatus.Stale))
         {
@@ -387,14 +398,19 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
                 continue;
             }
 
-            var key = LeitstelleRoutePathOverview.ResolveRouteKey(root, vehicle.RouteName);
-            if (key is not null)
-            {
-                keys.Add(key);
-            }
+            AddResolvedRouteKey(keys, root, vehicle.RouteName);
         }
 
         return keys;
+    }
+
+    private static void AddResolvedRouteKey(HashSet<string> keys, JsonObject root, string routeName)
+    {
+        var key = LeitstelleRoutePathOverview.ResolveRouteKey(root, routeName);
+        if (key is not null)
+        {
+            keys.Add(key);
+        }
     }
 
     internal VehicleTrackingMapView? LoadSavedMapViewForMap() => GetSavedMapView();

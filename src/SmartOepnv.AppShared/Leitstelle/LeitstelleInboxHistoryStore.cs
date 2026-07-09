@@ -83,6 +83,13 @@ public sealed class LeitstelleInboxHistoryStore
         Save();
     }
 
+    /// <summary>Leert die sichtbare Liste beim Programmneustart (Dropbox-Baseline wird beim ersten Poll gesetzt).</summary>
+    public void ClearRecordsForSessionRestart()
+    {
+        _data.Records.Clear();
+        Save();
+    }
+
     private void TrimIfNeeded()
     {
         const int maxRecords = 500;

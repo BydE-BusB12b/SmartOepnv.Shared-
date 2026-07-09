@@ -343,6 +343,8 @@ public sealed class VoipSignalingServer : IDisposable
             case VoipSignalTypes.SdpOffer:
             case VoipSignalTypes.SdpAnswer:
             case VoipSignalTypes.IceCandidate:
+            case VoipSignalTypes.PttDown:
+            case VoipSignalTypes.PttUp:
                 await ForwardToPeerAsync(msg, ct).ConfigureAwait(false);
                 if (msg.Type == VoipSignalTypes.Accept)
                 {

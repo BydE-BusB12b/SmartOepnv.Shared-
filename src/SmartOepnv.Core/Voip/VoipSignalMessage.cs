@@ -20,6 +20,8 @@ public static class VoipSignalTypes
     public const string SdpOffer = "sdp-offer";
     public const string SdpAnswer = "sdp-answer";
     public const string IceCandidate = "ice-candidate";
+    public const string PttDown = "ptt-down";
+    public const string PttUp = "ptt-up";
 }
 
 public sealed class VoipSignalMessage

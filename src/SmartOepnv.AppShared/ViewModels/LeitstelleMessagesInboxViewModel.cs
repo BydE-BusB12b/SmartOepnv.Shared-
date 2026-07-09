@@ -21,6 +21,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
     private readonly LeitstelleInboxHistoryStore _history = new();
     private readonly Dictionary<string, RegisteredVehicleInfo> _vehicleByPhone = new(StringComparer.Ordinal);
     private bool _hasInitialSync;
+    private bool _seedDropboxBaselineOnNextRefresh;
 
     public ObservableCollection<LeitstelleInboxItemViewModel> Items { get; } = [];
 
@@ -65,6 +66,14 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
     public void StartMonitoring()
     {
         RefreshFromEditor();
+        _history.ClearRecordsForSessionRestart();
+        Items.Clear();
+        UnreadMailCount = 0;
+        OnPropertyChanged(nameof(HasUnreadMail));
+        UpdateHeaderAlerts();
+        StatusMessage = "Warte auf MailChat/SOS aus Dropbox…";
+        _hasInitialSync = false;
+        _seedDropboxBaselineOnNextRefresh = true;
         _ = RefreshAsync();
         StopMonitoring();
         _pollCts = new CancellationTokenSource();
@@ -128,6 +137,12 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
                         continue;
                     }
 
+                    if (_seedDropboxBaselineOnNextRefresh)
+                    {
+                        _history.Dismiss(item.DedupeKey);
+                        continue;
+                    }
+
                     if (!_history.Contains(item.DedupeKey))
                     {
                         item.IsUnread = _hasInitialSync && !item.IsSos;
@@ -159,6 +174,13 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
             }
 
             await RunOnUiAsync(() => RebindItemsFromHistory()).ConfigureAwait(false);
+
+            if (_seedDropboxBaselineOnNextRefresh)
+            {
+                _seedDropboxBaselineOnNextRefresh = false;
+                _hasInitialSync = true;
+                return;
+            }
 
             _hasInitialSync = true;
 

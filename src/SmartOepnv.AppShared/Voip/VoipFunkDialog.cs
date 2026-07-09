@@ -314,6 +314,7 @@ public sealed class VoipFunkDialog : Window
         }
 
         _spaceTransmitActive = true;
+        _host.SendDispatchPtt(true);
         _host.SetMicrophoneTransmitEnabled(true);
         UpdateConnectedStatusText();
     }
@@ -368,6 +369,7 @@ public sealed class VoipFunkDialog : Window
         }
 
         _spaceTransmitActive = false;
+        _host.SendDispatchPtt(false);
         _host.SetMicrophoneTransmitEnabled(false);
         if (_host.CallStatus.State == VoipCallConnectionState.Connected)
         {

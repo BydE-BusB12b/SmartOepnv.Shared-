@@ -275,6 +275,29 @@ public sealed class VoipWebRtcCoordinator : IDisposable
     public void SetMicrophoneTransmitEnabled(bool enabled) =>
         _activeCall?.SetMicrophoneTransmitEnabled(enabled);
 
+    public void SendDispatchPtt(bool transmitting)
+    {
+        lock (_callGate)
+        {
+            if (string.IsNullOrEmpty(_activeCallId) || string.IsNullOrEmpty(_activeRemotePeerId))
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"VoIP PTT {(transmitting ? "ptt-down" : "ptt-up")} verworfen – kein aktiver Anruf");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine(
+                $"VoIP PTT sende {(transmitting ? "ptt-down" : "ptt-up")} an {_activeRemotePeerId}");
+            _sendSignal(new VoipSignalMessage
+            {
+                Type = transmitting ? VoipSignalTypes.PttDown : VoipSignalTypes.PttUp,
+                CallId = _activeCallId,
+                From = VoipConstants.RoleDispatch,
+                To = _activeRemotePeerId
+            });
+        }
+    }
+
     private void SetCallStatus(
         VoipCallConnectionState state,
         string? remotePeerId,

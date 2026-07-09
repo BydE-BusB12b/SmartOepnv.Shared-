@@ -1,34 +1,63 @@
 using System.Windows;
 using System.Windows.Controls;
+using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.Views;
+
+public enum RemoteRouteTransferMode
+{
+    /// <summary>Vollständiges routes_export.json inkl. Audio (alte Regel).</summary>
+    FullExport,
+
+    /// <summary>Leichtes routes_update.json ohne Audio (neue Regel, Merge auf dem Gerät).</summary>
+    LiteUpdate
+}
 
 public class RemoteUpdateVehicleDialog : Window
 {
     public string? SelectedPhoneNumber { get; private set; }
     public string? SelectedVehicleName { get; private set; }
+    public RemoteRouteTransferMode SelectedTransferMode { get; private set; } = RemoteRouteTransferMode.FullExport;
 
     public RemoteUpdateVehicleDialog(IReadOnlyList<RegisteredVehicleInfo> vehicles)
     {
         Title = "Fernupdate auslösen";
-        Width = 500;
-        Height = vehicles.Count > 0 ? 280 : 300;
+        Width = 560;
+        Height = vehicles.Count > 0 ? 420 : 440;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         var root = new Grid { Margin = new Thickness(24) };
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < 7; i++)
         {
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         }
 
         var row = 0;
-        root.Children.Add(MakeTextBlock("Fahrzeug für Fernupdate auswählen", 18, FontWeights.SemiBold, ref row));
+        root.Children.Add(MakeTextBlock("Fahrzeug und Update-Art wählen", 18, FontWeights.SemiBold, ref row));
         root.Children.Add(MakeTextBlock(
-            "Route wird nach Dropbox gesendet, danach lädt das Fahrzeug automatisch. Bei aktivem Pas.Info bleibt die Position in der Route erhalten.",
+            "Die gewählte Datei wird nach Dropbox gesendet, danach lädt das Fahrzeug automatisch. Bei aktivem Pas.Info bleibt die Position in der Route erhalten.",
             14,
             FontWeights.Normal,
             ref row));
+
+        var modePanel = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+        var fullExportRadio = new RadioButton
+        {
+            Content = $"Gesamtes {DropboxConstants.RouteFileName} (Vollbackup mit Audio)",
+            IsChecked = true,
+            Margin = new Thickness(0, 0, 0, 6),
+            GroupName = "RemoteRouteTransferMode"
+        };
+        var liteUpdateRadio = new RadioButton
+        {
+            Content = $"Update {DropboxConstants.RouteUpdateFileName} (ohne Audio, bestehende Ansagen bleiben)",
+            GroupName = "RemoteRouteTransferMode"
+        };
+        modePanel.Children.Add(fullExportRadio);
+        modePanel.Children.Add(liteUpdateRadio);
+        Grid.SetRow(modePanel, row++);
+        root.Children.Add(modePanel);
 
         ComboBox? combo = null;
         TextBox? phoneBox = null;
@@ -93,6 +122,10 @@ public class RemoteUpdateVehicleDialog : Window
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
+
+            SelectedTransferMode = liteUpdateRadio.IsChecked == true
+                ? RemoteRouteTransferMode.LiteUpdate
+                : RemoteRouteTransferMode.FullExport;
 
             DialogResult = true;
             Close();

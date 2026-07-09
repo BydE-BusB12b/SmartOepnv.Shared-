@@ -173,7 +173,8 @@ public sealed class RoutePackageService
     /// <summary>Teil-Export für Fahrzeuge (ausgewählte Routen per Update oder Senden).</summary>
     public string PrepareVehicleTransferJson(
         IReadOnlyList<string> selectedRouteNames,
-        bool pruneOthersOnDevice)
+        bool pruneOthersOnDevice,
+        bool liteVehicleUpdate = false)
     {
         if (AppServices.IsInitialized)
         {
@@ -195,7 +196,32 @@ public sealed class RoutePackageService
             Editor,
             selectedRouteNames,
             pruneOthersOnDevice,
-            workspace);
+            workspace,
+            liteVehicleUpdate);
+
+        if (AppServices.IsPlannerApp)
+        {
+            json = StripPlannerSecretsFromExportJson(json);
+        }
+
+        return json;
+    }
+
+    /// <summary>Alle Routen ohne Audio – für routes_update.json (Merge auf dem Gerät).</summary>
+    public string PrepareFullLiteVehicleUpdateJson()
+    {
+        if (AppServices.IsInitialized)
+        {
+            AppServices.FlushAllPendingEdits();
+        }
+
+        if (Editor is null)
+        {
+            throw new InvalidOperationException("Kein Route-Paket geladen.");
+        }
+
+        var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
+        var json = GpsAnsagenRouteExportSync.BuildFullLiteVehicleUpdateJson(Editor, workspace);
 
         if (AppServices.IsPlannerApp)
         {
