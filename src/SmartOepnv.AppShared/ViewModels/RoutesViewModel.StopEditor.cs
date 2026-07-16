@@ -12,6 +12,8 @@ namespace SmartOepnv.AppShared.ViewModels;
 public partial class RoutesViewModel
 {
     public ObservableCollection<string> Ds021tDestinations { get; } = [];
+    public ObservableCollection<string> Ds021NeuDestinations { get; } = [];
+    public ObservableCollection<string> FmaS1Destinations { get; } = [];
     public ObservableCollection<string> Ds003aDestinations { get; } = [];
     public ObservableCollection<string> LineCourseTripRoutes { get; } = [];
 
@@ -148,6 +150,40 @@ public partial class RoutesViewModel
         }
     }
 
+    public string? SelectedDestinationDs021Neu
+    {
+        get => ToComboLabel(SelectedStop?.Ds021NeuDestination, RouteStopEditorCatalog.NoDestinationLabel);
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.Ds021NeuDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            MaintainStartStopMarkerIfNeeded();
+            OnPropertyChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public string? SelectedDestinationFmaS1
+    {
+        get => ToComboLabel(SelectedStop?.FmaS1Destination, RouteStopEditorCatalog.NoDestinationLabel);
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.FmaS1Destination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            MaintainStartStopMarkerIfNeeded();
+            OnPropertyChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
     public string? SelectedDestinationDs003a
     {
         get => ToComboLabel(SelectedStop?.Ds003aDestination, RouteStopEditorCatalog.NoDestinationLabel);
@@ -176,6 +212,38 @@ public partial class RoutesViewModel
             }
 
             SelectedStop.EndDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            OnPropertyChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public string? SelectedEndDestinationDs021Neu
+    {
+        get => ToComboLabel(SelectedStop?.Ds021NeuEndDestination, RouteStopEditorCatalog.NoDestinationLabel);
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.Ds021NeuEndDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            OnPropertyChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public string? SelectedEndDestinationFmaS1
+    {
+        get => ToComboLabel(SelectedStop?.FmaS1EndDestination, RouteStopEditorCatalog.NoDestinationLabel);
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.FmaS1EndDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
@@ -379,8 +447,12 @@ public partial class RoutesViewModel
     private void EnsureCatalogContainsStopSelections(RouteStopItem stop)
     {
         EnsureComboValue(Ds021tDestinations, ToComboLabel(stop.Destination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(Ds021NeuDestinations, ToComboLabel(stop.Ds021NeuDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(FmaS1Destinations, ToComboLabel(stop.FmaS1Destination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds003aDestinations, ToComboLabel(stop.Ds003aDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds021tDestinations, ToComboLabel(stop.EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(Ds021NeuDestinations, ToComboLabel(stop.Ds021NeuEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(FmaS1Destinations, ToComboLabel(stop.FmaS1EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds003aDestinations, ToComboLabel(stop.Ds003aEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(
             LineCourseTripRoutes,
@@ -400,10 +472,14 @@ public partial class RoutesViewModel
     public void RefreshStopEditorCatalogs()
     {
         Ds021tDestinations.Clear();
+        Ds021NeuDestinations.Clear();
+        FmaS1Destinations.Clear();
         Ds003aDestinations.Clear();
         LineCourseTripRoutes.Clear();
 
         Ds021tDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
+        Ds021NeuDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
+        FmaS1Destinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         Ds003aDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         LineCourseTripRoutes.Add(RouteStopEditorCatalog.NoLineCourseTripLabel);
 
@@ -416,6 +492,16 @@ public partial class RoutesViewModel
         foreach (var name in RouteStopEditorCatalog.LoadDs021tNames(editor))
         {
             Ds021tDestinations.Add(name);
+        }
+
+        foreach (var name in RouteStopEditorCatalog.LoadDs021NeuNames(editor))
+        {
+            Ds021NeuDestinations.Add(name);
+        }
+
+        foreach (var name in RouteStopEditorCatalog.LoadFmaS1Names(editor))
+        {
+            FmaS1Destinations.Add(name);
         }
 
         foreach (var name in RouteStopEditorCatalog.LoadDs003aNames(editor))
@@ -442,8 +528,12 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(ShowEndStopFields));
         OnPropertyChanged(nameof(ShowRouteChangeFields));
         OnPropertyChanged(nameof(SelectedDestinationDs021t));
+        OnPropertyChanged(nameof(SelectedDestinationDs021Neu));
+        OnPropertyChanged(nameof(SelectedDestinationFmaS1));
         OnPropertyChanged(nameof(SelectedDestinationDs003a));
         OnPropertyChanged(nameof(SelectedEndDestinationDs021t));
+        OnPropertyChanged(nameof(SelectedEndDestinationDs021Neu));
+        OnPropertyChanged(nameof(SelectedEndDestinationFmaS1));
         OnPropertyChanged(nameof(SelectedEndDestinationDs003a));
         OnPropertyChanged(nameof(SelectedLineCourseTrip));
         ApplyLineCourseTripByNumberCommand.NotifyCanExecuteChanged();
@@ -481,11 +571,23 @@ public partial class RoutesViewModel
             case "startDs021t":
                 SelectedDestinationDs021t = comboLabel;
                 break;
+            case "startDs021Neu":
+                SelectedDestinationDs021Neu = comboLabel;
+                break;
+            case "startFmaS1":
+                SelectedDestinationFmaS1 = comboLabel;
+                break;
             case "startDs003a":
                 SelectedDestinationDs003a = comboLabel;
                 break;
             case "endDs021t":
                 SelectedEndDestinationDs021t = comboLabel;
+                break;
+            case "endDs021Neu":
+                SelectedEndDestinationDs021Neu = comboLabel;
+                break;
+            case "endFmaS1":
+                SelectedEndDestinationFmaS1 = comboLabel;
                 break;
             case "endDs003a":
                 SelectedEndDestinationDs003a = comboLabel;

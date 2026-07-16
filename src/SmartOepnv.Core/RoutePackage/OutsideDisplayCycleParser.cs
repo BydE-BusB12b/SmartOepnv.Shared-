@@ -108,7 +108,18 @@ public static class OutsideDisplayCycleParser
             return null;
         }
 
-        var header = Encoding.ASCII.GetString(bytes, 0, Math.Min(5, length));
+        var ascii = Encoding.ASCII.GetString(bytes, 0, length);
+        if (Ds021NeuProgramBuilder.IsDs021NeuPayloadAscii(ascii))
+        {
+            return null;
+        }
+
+        if (FmaS1ProgramBuilder.IsFmaS1PayloadAscii(ascii))
+        {
+            return null;
+        }
+
+        var header = ascii.Length >= 5 ? ascii[..5] : ascii;
         if (header.Length < 5 || !header.StartsWith("aA1", StringComparison.Ordinal))
         {
             return null;

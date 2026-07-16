@@ -117,6 +117,34 @@
                 </StackPanel>
             </materialDesign:Card>
 
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16"
+                                 Visibility="{Binding ShowPlannerManualExport, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Unterweisungsanleitung Planer" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Vollständige PDF-Anleitung für alle Planer-Bereiche (Routen, Disposition, Versand, …). Screenshots unter Assets/briefing/planner/ – siehe PLANER_LEITSTELLE_SCREENSHOT_GUIDE.md." />
+                    <Button Content="Planer-Anleitung als PDF erstellen"
+                            Command="{Binding ExportPlannerOperatorManualPdfCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                    <TextBlock Text="{Binding OperatorManualExportStatus}" Opacity="0.85" Margin="0,12,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16"
+                                 Visibility="{Binding ShowLeitstelleManualExport, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Unterweisungsanleitung Leitstelle" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Vollständige PDF-Anleitung für Live-Karte, Fernsteuerung, Funk, Nachrichten und Versand. Screenshots unter Assets/briefing/leitstelle/." />
+                    <Button Content="Leitstelle-Anleitung als PDF erstellen"
+                            Command="{Binding ExportLeitstelleOperatorManualPdfCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                    <TextBlock Text="{Binding OperatorManualExportStatus}" Opacity="0.85" Margin="0,12,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </materialDesign:Card>
+
             <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="Dropbox" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />

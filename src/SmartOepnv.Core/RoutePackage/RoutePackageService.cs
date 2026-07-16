@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Dropbox;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -385,5 +386,64 @@ public sealed class RoutePackageService
 
         LeitstelleStandPackage.ApplyToEditor(Editor, node);
         ApplyEditorChanges("leitstelle-stand-merge");
+    }
+
+    /// <summary>
+    /// Übernimmt <c>routes_update.json</c> (Lite) in den Editor – neue/geänderte Routen für Fernroute &amp; Karte.
+    /// </summary>
+    public bool TryMergeLiteRouteUpdateJson(string json, out string message)
+    {
+        message = string.Empty;
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            message = "Lite-Update ist leer.";
+            return false;
+        }
+
+        if (!LiteRouteUpdateMerge.IsLiteVehicleUpdate(json))
+        {
+            message = "Datei ist kein Lite-Fahrzeugupdate (routes_update.json).";
+            return false;
+        }
+
+        var updateTimestamp = LocalWorkspaceStore.ExtractPackageTimestamp(json);
+        if (AppServices.IsInitialized)
+        {
+            var lastMerged = AppServices.Workspace.GetLastMergedRouteUpdateTimestamp();
+            if (updateTimestamp > 0 &&
+                updateTimestamp <= lastMerged &&
+                !LiteRouteUpdateMerge.ContainsRoutesMissingFromEditor(json, Editor))
+            {
+                message = $"{DropboxConstants.RouteUpdateFileName} bereits übernommen.";
+                return false;
+            }
+        }
+
+        try
+        {
+            if (!HasPackage || Editor is null || string.IsNullOrWhiteSpace(_currentJson))
+            {
+                LoadFromJson(json, persistLocally: true, source: "routes-update-merge");
+            }
+            else
+            {
+                var merged = LiteRouteUpdateMerge.MergeIntoPackageJson(_currentJson, json);
+                LoadFromJson(merged, persistLocally: true, source: "routes-update-merge");
+            }
+
+            if (AppServices.IsInitialized && updateTimestamp > 0)
+            {
+                AppServices.Workspace.SaveLastMergedRouteUpdateTimestamp(updateTimestamp);
+            }
+
+            message =
+                $"Lite-Update übernommen ({Stats.RouteCount} Routen, {Stats.StopCount} Haltestellen).";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            message = $"Lite-Update fehlgeschlagen: {ex.Message}";
+            return false;
+        }
     }
 }

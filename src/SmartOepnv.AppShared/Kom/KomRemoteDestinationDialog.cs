@@ -27,7 +27,7 @@ public sealed class KomRemoteDestinationDialog : Window
             Loaded += (_, _) => { DialogResult = false; Close(); };
         }
 
-        var destinations = KomOutsideDestinationCatalog.LoadListEnabledNames(AppServices.Routes.Editor);
+        var destinations = KomOutsideDestinationCatalog.LoadListEnabledItems(AppServices.Routes.Editor);
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -49,6 +49,7 @@ public sealed class KomRemoteDestinationDialog : Window
         var list = new ListBox
         {
             ItemsSource = destinations,
+            ItemTemplate = VehicleKomUi.MakeNameProtocolListItemTemplate(),
             Margin = new Thickness(0, 8, 0, 0),
             IsEnabled = destinations.Count > 0
         };
@@ -80,7 +81,7 @@ public sealed class KomRemoteDestinationDialog : Window
                 return;
             }
 
-            if (list.SelectedItem is not string destination)
+            if (list.SelectedItem is not KomOutsideDestinationCatalog.ListItem destination)
             {
                 SmartConfirmDialog.ShowInfo(this, Title, "Bitte ein Ziel wählen.");
                 return;
@@ -99,7 +100,7 @@ public sealed class KomRemoteDestinationDialog : Window
                     ct => KomRemoteDestinationService.UploadAsync(
                         AppServices.Dropbox,
                         phone,
-                        destination,
+                        destination.Name,
                         ct)))
                 {
                     _sendGuard.EndSend();

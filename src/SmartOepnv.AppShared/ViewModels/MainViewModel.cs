@@ -379,7 +379,7 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Anzeigen & Hinweise")
         {
-            DisplaysOperationsViewModel.RefreshFromEditorIfNeeded();
+            ScheduleDispositionRefresh(DisplaysOperationsViewModel.RefreshFromEditorIfNeeded);
         }
         else if (value.Title == "Fahrzeuge")
         {
@@ -733,6 +733,17 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
+            var liteResult = await LiteRouteUpdateDropboxSync.TryMergeFromDropboxAsync().ConfigureAwait(true);
+            if (liteResult.Imported)
+            {
+                OnRoutePackageLoaded();
+                importedRoutePackage = true;
+                var prefix = isBackground ? $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm})" : "Dropbox-Stand";
+                _dataTransferViewModel.LastActionMessage = string.IsNullOrWhiteSpace(_dataTransferViewModel.LastActionMessage)
+                    ? $"{prefix}: {liteResult.Message}"
+                    : $"{_dataTransferViewModel.LastActionMessage} {liteResult.Message}";
+            }
+
             if (isBackground && importedRoutePackage)
             {
                 StatusText = BuildLocalStatusText("Dropbox synchronisiert");
@@ -820,6 +831,13 @@ public partial class MainViewModel : ObservableObject
 
     private void OnRoutePackageLoaded()
     {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+        {
+            dispatcher.Invoke(OnRoutePackageLoaded);
+            return;
+        }
+
         _ = TryProcessDeviceRegistrationsFromDropboxAsync();
         _dataTransferViewModel.RefreshStats();
         _employeesViewModel.RefreshFromEditor();

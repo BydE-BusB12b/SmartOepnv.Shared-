@@ -188,7 +188,7 @@
                                 ToolTip="Vollständiges routes_export.json inkl. aller Tondateien" />
                         <Button Content="Kleines Fahrzeugupdate"
                                 Command="{Binding ExportLiteVehicleUpdateToDropboxCommand}"
-                                Style="{StaticResource DropboxExportTransferButtonStyle}"
+                                Style="{StaticResource DropboxLiteUpdateTransferButtonStyle}"
                                 Margin="0,0,6,0"
                                 Padding="12,4"
                                 ToolTip="routes_update.json – alle Routen/Haltestellen ohne embeddedSounds (bestehende Ansagen bleiben)" />
@@ -213,7 +213,7 @@
                            FontSize="11"
                            LineHeight="15"
                            TextWrapping="Wrap"
-                           Text="routes_export.json = Vollbackup mit Audio. routes_update.json = leichtes Update ohne Tondateien. Senden + Fernupdate: Auswahl im Dialog. Fernupdate: Fahrzeug prüft beide Dateien (Pas.Info bleibt aktiv)." />
+                           Text="routes_export.json = Vollbackup mit Audio. routes_update.json = leichtes Update ohne Tondateien. Jedes Kommando lädt nur die gewählte Datei hoch. Das Fahrzeug importiert nur geänderte Dateien (nicht automatisch beide)." />
 
                 <TextBlock Grid.Row="2"
                            Text="{Binding LastActionMessage}"

@@ -8,6 +8,7 @@ using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.AppShared.Voip;
+using SmartOepnv.AppShared.Employees;
 using SmartOepnv.Core.Voip;
 
 namespace SmartOepnv.AppShared.ViewModels;
@@ -48,6 +49,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string briefingPasswordsStatus = string.Empty;
     [ObservableProperty] private string voipStatusMessage = "—";
     [ObservableProperty] private string voipPublishStatus = string.Empty;
+    [ObservableProperty] private string operatorManualExportStatus = string.Empty;
 
     public VoipLeitstelleHost? VoipHost { get; set; }
 
@@ -58,6 +60,10 @@ public partial class SettingsViewModel : ObservableObject
     public bool ShowBrandingSection => AppServices.IsPlannerApp;
 
     public bool ShowPlanerFolderSection => AppServices.IsPlannerApp;
+
+    public bool ShowPlannerManualExport => AppServices.IsPlannerApp;
+
+    public bool ShowLeitstelleManualExport => !AppServices.IsPlannerApp;
 
     public bool HasCompanyLogos => CompanyLogos.Count > 0;
 
@@ -475,6 +481,40 @@ public partial class SettingsViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private void ExportPlannerOperatorManualPdf() =>
+        ExportOperatorManualPdf(PlannerOperatorManualContent.Document, PlannerOperatorManualContent.AssetSubfolder, "planer_unterweisung");
+
+    [RelayCommand]
+    private void ExportLeitstelleOperatorManualPdf() =>
+        ExportOperatorManualPdf(LeitstelleOperatorManualContent.Document, LeitstelleOperatorManualContent.AssetSubfolder, "leitstelle_unterweisung");
+
+    private void ExportOperatorManualPdf(OperatorManualDocument document, string assetSubfolder, string filePrefix)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Filter = "PDF (*.pdf)|*.pdf",
+            FileName = OperatorManualPdfGenerator.BuildDefaultFileName(filePrefix),
+            DefaultExt = ".pdf",
+            Title = "Unterweisungsanleitung speichern"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            OperatorManualPdfGenerator.Generate(dialog.FileName, document, assetSubfolder);
+            OperatorManualExportStatus = $"PDF erstellt: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            OperatorManualExportStatus = $"PDF-Erstellung fehlgeschlagen: {ex.Message}";
         }
     }
 }

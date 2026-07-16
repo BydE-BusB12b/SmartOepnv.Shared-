@@ -127,14 +127,119 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         set => SetProperty(ref _isStartTarget, value);
     }
 
-    public bool IsKrefeld { get; set; }
+    private OutsideDisplayProtocolKind _protocol = OutsideDisplayProtocolKind.Ds021T;
 
-    public string DisplayLabel =>
-        IsKrefeld ? $"{Name} (DS003a Krefeld)" : $"{Name} (DS021T)";
+    public OutsideDisplayProtocolKind Protocol
+    {
+        get => _protocol;
+        set => SetProtocol(value);
+    }
 
-    public string ProtocolLabel => IsKrefeld ? "DS003a Krefeld" : "DS021T";
+    public bool IsKrefeld
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Ds003aKrefeld;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Ds003aKrefeld : OutsideDisplayProtocolKind.Ds021T);
+    }
 
-    /// <summary>DS021T vor DS003a, innerhalb der Gruppe Startziel zuerst, dann Name.</summary>
+    public bool IsDs021Neu
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Ds021Neu;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Ds021Neu : OutsideDisplayProtocolKind.Ds021T);
+    }
+
+    public bool IsFmaS1
+    {
+        get => Protocol == OutsideDisplayProtocolKind.FmaS1;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.FmaS1 : OutsideDisplayProtocolKind.Ds021T);
+    }
+
+    public bool IsDs021T => Protocol == OutsideDisplayProtocolKind.Ds021T;
+
+    /// <summary>DS021T und FMA-S1: bis zu 4 Wechseltexte; DS021neu/Krefeld: ein Ziel.</summary>
+    public bool UsesCycleEditor =>
+        Protocol is OutsideDisplayProtocolKind.Ds021T or OutsideDisplayProtocolKind.FmaS1;
+
+    private void SetProtocol(OutsideDisplayProtocolKind value)
+    {
+        if (_protocol == value)
+        {
+            return;
+        }
+
+        _protocol = value;
+        OnPropertyChanged(nameof(Protocol));
+        OnPropertyChanged(nameof(IsKrefeld));
+        OnPropertyChanged(nameof(IsDs021Neu));
+        OnPropertyChanged(nameof(IsFmaS1));
+        OnPropertyChanged(nameof(IsDs021T));
+        OnPropertyChanged(nameof(UsesCycleEditor));
+        OnPropertyChanged(nameof(ProtocolLabel));
+        OnPropertyChanged(nameof(DisplayLabel));
+    }
+
+    public Ds021NeuFontControl FontControl { get; set; } = Ds021NeuFontControl.Default;
+
+    public string FontLine1Weight
+    {
+        get => FontControl.Line1Weight == Ds021NeuFontControl.Weight.Bold ? "Fett" : "Normal";
+        set
+        {
+            FontControl.Line1Weight = string.Equals(value, "Fett", StringComparison.OrdinalIgnoreCase)
+                ? Ds021NeuFontControl.Weight.Bold
+                : Ds021NeuFontControl.Weight.Normal;
+            OnPropertyChanged();
+        }
+    }
+
+    public int FontLine1Height
+    {
+        get => FontControl.Line1Height;
+        set
+        {
+            FontControl.Line1Height = Math.Clamp(value, 0, 9);
+            OnPropertyChanged();
+        }
+    }
+
+    public string FontLine2Weight
+    {
+        get => FontControl.Line2Weight == Ds021NeuFontControl.Weight.Bold ? "Fett" : "Normal";
+        set
+        {
+            FontControl.Line2Weight = string.Equals(value, "Fett", StringComparison.OrdinalIgnoreCase)
+                ? Ds021NeuFontControl.Weight.Bold
+                : Ds021NeuFontControl.Weight.Normal;
+            OnPropertyChanged();
+        }
+    }
+
+    public int FontLine2Height
+    {
+        get => FontControl.Line2Height;
+        set
+        {
+            FontControl.Line2Height = Math.Clamp(value, 0, 9);
+            OnPropertyChanged();
+        }
+    }
+
+    public string DisplayLabel => Protocol switch
+    {
+        OutsideDisplayProtocolKind.Ds003aKrefeld => $"{Name} (DS003a Krefeld)",
+        OutsideDisplayProtocolKind.Ds021Neu => $"{Name} (DS021neu)",
+        OutsideDisplayProtocolKind.FmaS1 => $"{Name} (FMA-S1)",
+        _ => $"{Name} (DS021T)"
+    };
+
+    public string ProtocolLabel => Protocol switch
+    {
+        OutsideDisplayProtocolKind.Ds003aKrefeld => "DS003a Krefeld",
+        OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
+        OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
+        _ => "DS021T"
+    };
+
+    /// <summary>DS021T → DS021neu → DS003a, innerhalb der Gruppe Startziel zuerst, dann Name.</summary>
     public static int CompareForZielliste(OutsideDisplayProgram? left, OutsideDisplayProgram? right)
     {
         if (ReferenceEquals(left, right))
@@ -152,7 +257,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             return -1;
         }
 
-        var protocolOrder = left.IsKrefeld.CompareTo(right.IsKrefeld);
+        var protocolOrder = left.Protocol.CompareTo(right.Protocol);
         if (protocolOrder != 0)
         {
             return protocolOrder;
@@ -213,7 +318,29 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             Ds001Value = "001",
             Ds001Spec = "E00",
             IntervalSeconds = 3,
-            IsKrefeld = false
+            Protocol = OutsideDisplayProtocolKind.Ds021T
+        };
+
+    public static OutsideDisplayProgram CreateDs021Neu(string? name = null) =>
+        new()
+        {
+            Name = name ?? "Neues Ziel",
+            FrontLine1 = string.Empty,
+            Ds001Type = "line",
+            Ds001Value = "001",
+            Ds001Spec = "E00",
+            Protocol = OutsideDisplayProtocolKind.Ds021Neu
+        };
+
+    public static OutsideDisplayProgram CreateFmaS1(string? name = null) =>
+        new()
+        {
+            Name = name ?? "Neues Ziel",
+            FrontLine1 = string.Empty,
+            Ds001Type = "line",
+            Ds001Value = "001",
+            Ds001Spec = "E00",
+            Protocol = OutsideDisplayProtocolKind.FmaS1
         };
 
     public static OutsideDisplayProgram CreateKrefeld(string? name = null) =>
@@ -224,7 +351,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             Ds001Value = "001",
             Ds001Spec = "E00",
             UseZa4 = true,
-            IsKrefeld = true
+            Protocol = OutsideDisplayProtocolKind.Ds003aKrefeld
         };
 
     public static OutsideDisplayProgram? TryParse(string entry)
@@ -319,7 +446,18 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             }
         }
 
-        program.IsKrefeld = InferIsKrefeld(frontBytes, sideBytes, parts);
+        program.Protocol = InferProtocol(frontBytes, sideBytes, parts);
+        if (program.Protocol == OutsideDisplayProtocolKind.FmaS1)
+        {
+            FmaS1CycleLog.ApplyToCycles(program.FrontCycles, frontLog);
+            FmaS1CycleLog.ApplyToCycles(program.SideCycles, sideLog);
+            program.SyncLegacyLinesFromCycles();
+        }
+
+        if (parts.Length >= 12)
+        {
+            program.FontControl = Ds021NeuFontControl.ParseStored(DecodeUtf8(parts[11]));
+        }
 
         if (string.Equals(program.Name, "Startziel", StringComparison.Ordinal))
         {
@@ -345,26 +483,58 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     {
         ApplyStartTargetName();
 
-        var (frontBytes, sideBytes) = IsKrefeld
-            ? OutsideDisplayTelegramFactory.BuildKrefeldTelegrams(this)
-            : OutsideDisplayTelegramFactory.BuildDs021tTelegrams(this);
+        var (frontBytes, sideBytes) = Protocol switch
+        {
+            OutsideDisplayProtocolKind.Ds003aKrefeld => OutsideDisplayTelegramFactory.BuildKrefeldTelegrams(this),
+            OutsideDisplayProtocolKind.Ds021Neu => OutsideDisplayTelegramFactory.BuildDs021NeuTelegrams(this),
+            OutsideDisplayProtocolKind.FmaS1 => OutsideDisplayTelegramFactory.BuildFmaS1Telegrams(this),
+            _ => OutsideDisplayTelegramFactory.BuildDs021tTelegrams(this)
+        };
 
         return BuildEntry(frontBytes, sideBytes);
     }
 
     private string BuildEntry(byte[] frontBytes, byte[] sideBytes)
     {
-        var frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(FrontCycles);
-        if (frontGoals.Count == 0)
+        IReadOnlyList<(string Line1, string Line2)> frontGoals;
+        IReadOnlyList<(string Line1, string Line2)> sideGoals;
+        if (Protocol == OutsideDisplayProtocolKind.Ds021Neu)
         {
             frontGoals = [(FrontLine1, FrontLine2)];
+            sideGoals = string.IsNullOrWhiteSpace(SideLine1) && string.IsNullOrWhiteSpace(SideLine2)
+                ? frontGoals
+                : [(SideLine1, SideLine2)];
+        }
+        else if (Protocol == OutsideDisplayProtocolKind.FmaS1)
+        {
+            frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(FrontCycles);
+            if (frontGoals.Count == 0)
+            {
+                frontGoals = [(FrontLine1, FrontLine2)];
+            }
+
+            sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
+        }
+        else
+        {
+            frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(FrontCycles);
+            if (frontGoals.Count == 0)
+            {
+                frontGoals = [(FrontLine1, FrontLine2)];
+            }
+
+            sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
         }
 
-        var sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
-        var frontLog = OutsideDisplayCycleParser.BuildLogString(frontGoals);
-        var sideLog = OutsideDisplayCycleParser.BuildLogString(sideGoals);
+        var frontLog = Protocol == OutsideDisplayProtocolKind.FmaS1
+            ? FmaS1CycleLog.Encode(frontGoals)
+            : OutsideDisplayCycleParser.BuildLogString(frontGoals);
+        var sideLog = Protocol == OutsideDisplayProtocolKind.FmaS1
+            ? FmaS1CycleLog.Encode(sideGoals)
+            : OutsideDisplayCycleParser.BuildLogString(sideGoals);
 
-        return string.Join('|',
+        var parts = new List<string>
+        {
             Name,
             EncodeBytes(frontBytes),
             EncodeBytes(sideBytes),
@@ -373,22 +543,55 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             EncodeUtf8("line"),
             EncodeUtf8(NormalizeKrefeldLine(Ds001Value)),
             IsListEnabled.ToString().ToLowerInvariant(),
-            EncodeUtf8(NormalizeKrefeldSpec(Ds001Spec)));
+            EncodeUtf8(NormalizeKrefeldSpec(Ds001Spec))
+        };
+
+        while (parts.Count < 12)
+        {
+            parts.Add(string.Empty);
+        }
+
+        var fontStored = Ds021NeuFontControl.EncodeStored(FontControl);
+        if (!string.IsNullOrEmpty(fontStored))
+        {
+            parts[11] = EncodeUtf8(fontStored);
+        }
+
+        parts.Add(EncodeUtf8(ProtocolStorageTag(Protocol)));
+        return string.Join('|', parts);
     }
 
-    private static bool InferIsKrefeld(byte[]? frontBytes, byte[]? sideBytes, string[] parts)
+    public static string ProtocolStorageTag(OutsideDisplayProtocolKind protocol) => protocol switch
+    {
+        OutsideDisplayProtocolKind.Ds003aKrefeld => "DS003a_Krefeld",
+        OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
+        OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
+        _ => "DS021T"
+    };
+
+    private static OutsideDisplayProtocolKind InferProtocol(byte[]? frontBytes, byte[]? sideBytes, string[] parts)
     {
         var tag = DecodeUtf8(parts.ElementAtOrDefault(12));
         if (string.Equals(tag, "DS003a_Krefeld", StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            return OutsideDisplayProtocolKind.Ds003aKrefeld;
+        }
+
+        if (string.Equals(tag, "DS021neu", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.Ds021Neu;
+        }
+
+        if (string.Equals(tag, "FMA-S1", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.FmaS1;
         }
 
         if (string.Equals(tag, "DS021T", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(tag, "DS021", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(tag, "DS003a_UESTRA", StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            return OutsideDisplayProtocolKind.Ds021T;
         }
 
         foreach (var bytes in new[] { frontBytes, sideBytes })
@@ -402,16 +605,26 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             if (ascii.Contains("zA4", StringComparison.Ordinal) ||
                 ascii.Contains("zA5", StringComparison.Ordinal))
             {
-                return true;
+                return OutsideDisplayProtocolKind.Ds003aKrefeld;
+            }
+
+            if (Ds021NeuProgramBuilder.IsDs021NeuPayloadAscii(ascii))
+            {
+                return OutsideDisplayProtocolKind.Ds021Neu;
+            }
+
+            if (FmaS1ProgramBuilder.IsFmaS1PayloadAscii(ascii))
+            {
+                return OutsideDisplayProtocolKind.FmaS1;
             }
 
             if (ascii.Contains("aA", StringComparison.Ordinal))
             {
-                return false;
+                return OutsideDisplayProtocolKind.Ds021T;
             }
         }
 
-        return false;
+        return OutsideDisplayProtocolKind.Ds021T;
     }
 
     private static string NormalizeKrefeldLine(string value)
@@ -503,6 +716,12 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(WechseltextPreview));
         OnPropertyChanged(nameof(WechseltextCount));
         OnPropertyChanged(nameof(ProtocolLabel));
+        OnPropertyChanged(nameof(Protocol));
+        OnPropertyChanged(nameof(IsDs021Neu));
+        OnPropertyChanged(nameof(IsFmaS1));
+        OnPropertyChanged(nameof(IsDs021T));
+        OnPropertyChanged(nameof(UsesCycleEditor));
+        OnPropertyChanged(nameof(IsKrefeld));
         OnPropertyChanged(nameof(IsListEnabled));
     }
 }

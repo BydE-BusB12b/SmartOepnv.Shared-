@@ -13,6 +13,8 @@ public static class RouteStopEditorCatalog
     public static bool IsStartStop(RouteStopItem? stop) =>
         stop is not null && (
             !string.IsNullOrWhiteSpace(stop.Destination) ||
+            !string.IsNullOrWhiteSpace(stop.Ds021NeuDestination) ||
+            !string.IsNullOrWhiteSpace(stop.FmaS1Destination) ||
             !string.IsNullOrWhiteSpace(stop.Ds003aDestination) ||
             !string.IsNullOrWhiteSpace(stop.LineNumber));
 
@@ -29,6 +31,8 @@ public static class RouteStopEditorCatalog
     public static void EnsureStartStopMarker(RouteStopItem stop)
     {
         if (HasStartStopDestination(stop.Destination) ||
+            HasStartStopDestination(stop.Ds021NeuDestination) ||
+            HasStartStopDestination(stop.FmaS1Destination) ||
             !string.IsNullOrWhiteSpace(stop.Ds003aDestination) ||
             !string.IsNullOrWhiteSpace(stop.LineNumber))
         {
@@ -49,6 +53,9 @@ public static class RouteStopEditorCatalog
             stop.Destination = string.Empty;
         }
 
+        stop.Destination = string.Empty;
+        stop.Ds021NeuDestination = string.Empty;
+        stop.FmaS1Destination = string.Empty;
         stop.Ds003aDestination = string.Empty;
         stop.LineNumber = string.Empty;
     }
@@ -73,10 +80,16 @@ public static class RouteStopEditorCatalog
         string.Equals(value?.Trim(), emptyLabel, StringComparison.Ordinal) ? string.Empty : value?.Trim() ?? string.Empty;
 
     public static IReadOnlyList<string> LoadDs021tNames(EditableRoutePackage? editor) =>
-        LoadProtocolNames(editor, isKrefeld: false);
+        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Ds021T);
+
+    public static IReadOnlyList<string> LoadDs021NeuNames(EditableRoutePackage? editor) =>
+        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Ds021Neu);
+
+    public static IReadOnlyList<string> LoadFmaS1Names(EditableRoutePackage? editor) =>
+        LoadProtocolNames(editor, OutsideDisplayProtocolKind.FmaS1);
 
     public static IReadOnlyList<string> LoadDs003aNames(EditableRoutePackage? editor) =>
-        LoadProtocolNames(editor, isKrefeld: true);
+        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Ds003aKrefeld);
 
     public static IReadOnlyList<string> LoadLineCourseTripRoutes(EditableRoutePackage? editor)
     {
@@ -169,7 +182,9 @@ public static class RouteStopEditorCatalog
         return false;
     }
 
-    private static IReadOnlyList<string> LoadProtocolNames(EditableRoutePackage? editor, bool isKrefeld)
+    private static IReadOnlyList<string> LoadProtocolNames(
+        EditableRoutePackage? editor,
+        OutsideDisplayProtocolKind protocol)
     {
         if (editor is null)
         {
@@ -178,7 +193,7 @@ public static class RouteStopEditorCatalog
 
         return editor.OutsideDisplays
             .Select(OutsideDisplayProgram.TryParse)
-            .Where(p => p is not null && p.IsListEnabled && !string.IsNullOrWhiteSpace(p.Name) && p.IsKrefeld == isKrefeld)
+            .Where(p => p is not null && p.IsListEnabled && !string.IsNullOrWhiteSpace(p.Name) && p.Protocol == protocol)
             .Select(p => p!.Name.Trim())
             .Distinct(StringComparer.Ordinal)
             .OrderBy(n => n, StringComparer.Ordinal)

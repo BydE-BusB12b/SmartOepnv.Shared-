@@ -172,6 +172,32 @@ public static class OutsideDisplayTelegramFactory
         return (front, side);
     }
 
+    public static (byte[] Front, byte[] Side) BuildDs021NeuTelegrams(OutsideDisplayProgram program)
+    {
+        var (front, side) = Ds021NeuProgramBuilder.CreateDestinationTelegrams(
+            program.FrontLine1,
+            program.FrontLine2,
+            program.SideLine1,
+            program.SideLine2,
+            program.FontControl);
+        return (front, side);
+    }
+
+    public static (byte[] Front, byte[] Side) BuildFmaS1Telegrams(OutsideDisplayProgram program)
+    {
+        var frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(program.FrontCycles);
+        if (frontGoals.Count == 0)
+        {
+            frontGoals = [(program.FrontLine1, program.FrontLine2)];
+        }
+
+        var sideGoals = OutsideDisplayCycleParser.CollectSideGoals(program.SideCycles, frontGoals);
+        var lineNumber = FmaS1ProgramBuilder.ResolveYLineNumber(program.Ds001Value, program.Ds001Spec);
+        var frontCycles = frontGoals.Select(g => new FmaS1ProgramBuilder.TextCycle(g.Line1, g.Line2)).ToList();
+        var sideCycles = sideGoals.Select(g => new FmaS1ProgramBuilder.TextCycle(g.Line1, g.Line2)).ToList();
+        return FmaS1ProgramBuilder.CreateDestinationTelegrams(frontCycles, sideCycles, lineNumber);
+    }
+
     private static string? ResolveDs001Special(string? raw)
     {
         var spec = raw?.Trim().ToUpperInvariant();

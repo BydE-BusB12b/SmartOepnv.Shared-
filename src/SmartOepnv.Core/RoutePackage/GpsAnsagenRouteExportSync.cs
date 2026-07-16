@@ -27,9 +27,6 @@ public static class GpsAnsagenRouteExportSync
         "mailTemplates",
         "driverDutyDispatches",
         "driverDutyDispatchesMeta",
-        "outsideDisplays",
-        "destinationList",
-        "dateBasedHints",
         EndStopAnnouncementResolver.RootJsonFieldName
     ];
 
@@ -77,6 +74,7 @@ public static class GpsAnsagenRouteExportSync
         SyncEndStopAnnouncementMetadata(package, root, workspace);
         SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
         RouteOperatingDaysEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDaysByRoute);
+        RouteDateRangeEditor.SaveToRoot(root, packageRoutes, package.RouteDateRangesByRoute);
         RouteInteriorDisplayDestinationEditor.SaveToRoot(
             root,
             packageRoutes,
@@ -344,6 +342,7 @@ public static class GpsAnsagenRouteExportSync
 
         if (liteVehicleUpdate)
         {
+            SyncLiteVehiclePhoneMetadata(package, root);
             ApplyLiteVehicleUpdateMetadata(root);
         }
 
@@ -390,6 +389,7 @@ public static class GpsAnsagenRouteExportSync
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", packageRoutes);
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", packageRoutes);
         RouteOperatingDaysEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDaysByRoute);
+        RouteDateRangeEditor.SaveToRoot(root, packageRoutes, package.RouteDateRangesByRoute);
         RouteInteriorDisplayDestinationEditor.SaveToRoot(
             root,
             packageRoutes,
@@ -397,6 +397,13 @@ public static class GpsAnsagenRouteExportSync
         RouteItcsRouteListEditor.SaveToRoot(root, packageRoutes, package.RoutesExcludedFromItcsRouteList);
         RouteMainDeviceOnlyEditor.SaveToRoot(root, packageRoutes, package.RoutesMainDeviceOnly);
         AutoScheduleSourceRouteEditor.SaveToRoot(root, packageRoutes, package.AutoScheduleSourceByRoute);
+        SyncLiteVehiclePhoneMetadata(package, root);
+    }
+
+    private static void SyncLiteVehiclePhoneMetadata(EditableRoutePackage package, JsonObject root)
+    {
+        DateBasedHintsEditor.SaveToRoot(root, package.DateBasedHints);
+        RoutePackagePhoneMetadata.SaveOutsideDisplays(root, package.OutsideDisplays);
     }
 
     private static void ApplyLiteVehicleUpdateMetadata(JsonObject root)

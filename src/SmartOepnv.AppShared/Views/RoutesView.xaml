@@ -60,127 +60,6 @@
                              VerticalAlignment="Stretch"
                              Background="{StaticResource SmartSurfaceBrush}">
             <DockPanel LastChildFill="True">
-                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                    <TextBlock Text="{Binding SelectedRoute, TargetNullValue='— Keine Route ausgewählt —'}"
-                               TextWrapping="Wrap"
-                               FontWeight="SemiBold"
-                               FontSize="14"
-                               Margin="0,0,0,8"
-                               Foreground="{StaticResource SmartPrimaryBrush}" />
-                    <Button Content="{Binding RouteSettingsButtonLabel}"
-                            Command="{Binding ToggleRouteSettingsCommand}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            Margin="0,0,0,10"
-                            HorizontalAlignment="Left" />
-                    <StackPanel Margin="0,0,0,10"
-                                Visibility="{Binding IsRouteSettingsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <TextBlock Text="Verkehrstage"
-                                   FontWeight="SemiBold"
-                                   FontSize="12"
-                                   Margin="0,0,0,4" />
-                        <TextBlock Text="Betriebstag je Tag: 00:01 bis 03:59 Uhr am Folgetag (Überschneidungen möglich) · alle Tage = täglich in der App"
-                                   Opacity="0.7"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,0,0,6" />
-                        <ItemsControl ItemsSource="{Binding RouteOperatingDaySelections}"
-                                      Margin="0,0,0,4">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <CheckBox Content="{Binding Label}"
-                                              IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              Margin="0,0,12,4" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Text="{Binding RouteOperatingDaysDisplay}"
-                                   Opacity="0.75"
-                                   FontSize="11"
-                                   Margin="0,0,0,10"
-                                   Visibility="{Binding HasRouteOperatingDaysDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <TextBlock Text="Haltestellenanzeige Zieltext"
-                                   FontWeight="SemiBold"
-                                   FontSize="12"
-                                   Margin="0,0,0,4" />
-                        <TextBlock Text="DS009-Wechselanzeige Linie/Ziel (z. B. W-Vohwinkel) – wechselt mit Datum/Uhrzeit, wenn die Haltestelle erreicht ist."
-                                   Opacity="0.7"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,0,0,6" />
-                        <TextBox materialDesign:HintAssist.Hint="Zieltext (z. B. W-Vohwinkel)"
-                                 Text="{Binding RouteInteriorDisplayDestination, UpdateSourceTrigger=PropertyChanged}"
-                                 MaxLength="16"
-                                 Margin="0,0,0,10" />
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Liste" VerticalAlignment="Center" Margin="0,0,8,10" />
-                            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
-                                <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                                              IsChecked="{Binding RouteItcsRouteListEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              VerticalAlignment="Center" />
-                                <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Opacity="0.75" FontSize="11"
-                                           Text="In ITCS-Routenliste (Route wählen)" />
-                            </StackPanel>
-
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Hauptnutzer" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
-                                <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                                              IsChecked="{Binding RouteMainDeviceOnly, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              VerticalAlignment="Center" />
-                                <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Opacity="0.75" FontSize="11"
-                                           Text="Route nur für Hauptnutzergeräte (Liste &amp; Linie/Kurs)" />
-                            </StackPanel>
-                        </Grid>
-                        <TextBlock Text="Markierte Hauptnutzer-Routen sind auf Mitarbeitergeräten weder in der ITCS-Routenliste noch in der Linie/Kurs-Suche sichtbar."
-                                   Opacity="0.7"
-                                   FontSize="10"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                    <TextBlock Text="Haltestellen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
-                    <TextBlock Text="Haltestelle anklicken zum Bearbeiten · ▲▼ Reihenfolge · ✕ löschen"
-                               Opacity="0.75" FontSize="11" Margin="0,0,0,8" />
-                    <WrapPanel Margin="0,0,0,4">
-                        <Button Content="Aus Kartei" Command="{Binding AddStopFromLibraryCommand}" Margin="0,0,8,8"
-                                Style="{StaticResource MaterialDesignRaisedButton}"
-                                ToolTip="Haltestelle aus der Haltestellenbibliothek einfügen" />
-                        <Button Content="+" Command="{Binding AddStopCommand}" Margin="0,0,8,8" Width="36"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                ToolTip="Leere Haltestelle" />
-                        <Button Content="Zeile löschen" Command="{Binding RemoveSelectedStopCommand}" Margin="0,0,8,8"
-                                Style="{StaticResource MaterialDesignOutlinedButton}" />
-                        <Button Content="▲" Command="{Binding MoveSelectedStopUpCommand}" Margin="0,0,4,8" Width="36"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                ToolTip="Nach oben" />
-                        <Button Content="▼" Command="{Binding MoveSelectedStopDownCommand}" Margin="0,0,8,8" Width="36"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                ToolTip="Nach unten" />
-                        <Button Content="Fahrplan" Command="{Binding ShowAutoScheduleCommand}" Margin="0,0,8,8"
-                                Style="{StaticResource MaterialDesignRaisedButton}"
-                                ToolTip="Automatische Fahrplanerstellung (wie in der App)" />
-                        <Button Content="Navidaten kopieren" Command="{Binding CopyNavigationDataCommand}" Margin="0,0,8,8"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                ToolTip="Fahrweg von der Fahrplan-Vorlagen-Route übernehmen (nur Fahrplan-Fahrten)" />
-                        <Button Content="📄 Fahrplan" Command="{Binding ExportScheduleHtmlCommand}" Margin="0,0,8,8"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                ToolTip="HTML-Fahrplan der ausgewählten Route öffnen" />
-                        <Button Content="Routenschnur" Command="{Binding ShowRouteChainCommand}" Margin="0,0,8,8"
-                                Style="{StaticResource MaterialDesignRaisedButton}"
-                                ToolTip="Linie/Kurs-Fahrten und verbundene Routenschnur mit Fahrplan prüfen" />
-                    </WrapPanel>
-                </StackPanel>
                 <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
                     <Button DockPanel.Dock="Right"
                             Content="Speichern"
@@ -193,7 +72,176 @@
                                Opacity="0.8"
                                TextWrapping="Wrap" />
                 </DockPanel>
-                <Grid Grid.IsSharedSizeScope="True">
+
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock Text="{Binding SelectedRoute, TargetNullValue='— Keine Route ausgewählt —'}"
+                               TextWrapping="Wrap"
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               Margin="0,0,0,8"
+                               Foreground="{StaticResource SmartPrimaryBrush}" />
+                    <Button Content="{Binding RouteSettingsButtonLabel}"
+                            Command="{Binding ToggleRouteSettingsCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Margin="0,0,0,10"
+                            HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="120" />
+                    </Grid.RowDefinitions>
+
+                    <ScrollViewer Grid.Row="0"
+                                  MaxHeight="280"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Visibility="{Binding IsRouteSettingsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="Verkehrstage"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"
+                                       Margin="0,0,0,4" />
+                            <TextBlock Text="Betriebstag je Tag: 00:01 bis 03:59 Uhr am Folgetag (Überschneidungen möglich) · alle Tage = täglich in der App"
+                                       Opacity="0.7"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,6" />
+                            <ItemsControl ItemsSource="{Binding RouteOperatingDaySelections}"
+                                          Margin="0,0,0,4">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding Label}"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  Margin="0,0,12,4" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding RouteOperatingDaysDisplay}"
+                                       Opacity="0.75"
+                                       FontSize="11"
+                                       Margin="0,0,0,10"
+                                       Visibility="{Binding HasRouteOperatingDaysDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock Text="Gültigkeit (optional)"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"
+                                       Margin="0,0,0,4" />
+                            <TextBlock Text="Kalenderdatum von/bis (TT.MM.JJJJ) – Route erscheint nur in diesem Zeitraum in der App (neue Tablets). Leer = unbegrenzt."
+                                       Opacity="0.7"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,6" />
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     materialDesign:HintAssist.Hint="Datum von (TT.MM.JJJJ)"
+                                     Text="{Binding RouteDateFrom, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="2"
+                                     materialDesign:HintAssist.Hint="Datum bis (TT.MM.JJJJ)"
+                                     Text="{Binding RouteDateTo, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+                            <TextBlock Text="{Binding RouteDateRangeDisplay}"
+                                       Opacity="0.75"
+                                       FontSize="11"
+                                       Margin="0,0,0,10"
+                                       Visibility="{Binding HasRouteDateRangeDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock Text="Haltestellenanzeige Zieltext"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"
+                                       Margin="0,0,0,4" />
+                            <TextBlock Text="DS009-Wechselanzeige Linie/Ziel (z. B. W-Vohwinkel) – wechselt mit Datum/Uhrzeit, wenn die Haltestelle erreicht ist."
+                                       Opacity="0.7"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,6" />
+                            <TextBox materialDesign:HintAssist.Hint="Zieltext (z. B. W-Vohwinkel)"
+                                     Text="{Binding RouteInteriorDisplayDestination, UpdateSourceTrigger=PropertyChanged}"
+                                     MaxLength="16"
+                                     Margin="0,0,0,10" />
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Liste" VerticalAlignment="Center" Margin="0,0,8,10" />
+                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                                    <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                  IsChecked="{Binding RouteItcsRouteListEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  VerticalAlignment="Center" />
+                                    <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Opacity="0.75" FontSize="11"
+                                               Text="In ITCS-Routenliste (Route wählen)" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Hauptnutzer" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                                    <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                  IsChecked="{Binding RouteMainDeviceOnly, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  VerticalAlignment="Center" />
+                                    <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Opacity="0.75" FontSize="11"
+                                               Text="Route nur für Hauptnutzergeräte (Liste &amp; Linie/Kurs)" />
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Text="Markierte Hauptnutzer-Routen sind auf Mitarbeitergeräten weder in der ITCS-Routenliste noch in der Linie/Kurs-Suche sichtbar."
+                                       Opacity="0.7"
+                                       FontSize="10"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="1" Margin="0,0,0,8">
+                        <TextBlock Text="Haltestellen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
+                        <TextBlock Text="Haltestelle anklicken zum Bearbeiten · ▲▼ Reihenfolge · ✕ löschen"
+                                   Opacity="0.75" FontSize="11" Margin="0,0,0,8" />
+                        <WrapPanel Margin="0,0,0,4">
+                            <Button Content="Aus Kartei" Command="{Binding AddStopFromLibraryCommand}" Margin="0,0,8,8"
+                                    Style="{StaticResource MaterialDesignRaisedButton}"
+                                    ToolTip="Haltestelle aus der Haltestellenbibliothek einfügen" />
+                            <Button Content="Nav übernehmen" Command="{Binding OfferNavReuseCommand}" Margin="0,0,8,8"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    ToolTip="Gesnappte Navidaten aus ähnlichen Routen übernehmen (auch Teilabschnitte)" />
+                            <Button Content="+" Command="{Binding AddStopCommand}" Margin="0,0,8,8" Width="36"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    ToolTip="Leere Haltestelle" />
+                            <Button Content="Zeile löschen" Command="{Binding RemoveSelectedStopCommand}" Margin="0,0,8,8"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}" />
+                            <Button Content="▲" Command="{Binding MoveSelectedStopUpCommand}" Margin="0,0,4,8" Width="36"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    ToolTip="Nach oben" />
+                            <Button Content="▼" Command="{Binding MoveSelectedStopDownCommand}" Margin="0,0,8,8" Width="36"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    ToolTip="Nach unten" />
+                            <Button Content="Fahrplan" Command="{Binding ShowAutoScheduleCommand}" Margin="0,0,8,8"
+                                    Style="{StaticResource MaterialDesignRaisedButton}"
+                                    ToolTip="Automatische Fahrplanerstellung (wie in der App)" />
+                            <Button Content="Navidaten kopieren" Command="{Binding CopyNavigationDataCommand}" Margin="0,0,8,8"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    ToolTip="Fahrweg von der Fahrplan-Vorlagen-Route übernehmen (nur Fahrplan-Fahrten)" />
+                            <Button Content="📄 Fahrplan" Command="{Binding ExportScheduleHtmlCommand}" Margin="0,0,8,8"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    ToolTip="HTML-Fahrplan der ausgewählten Route öffnen" />
+                            <Button Content="Routenschnur" Command="{Binding ShowRouteChainCommand}" Margin="0,0,8,8"
+                                    Style="{StaticResource MaterialDesignRaisedButton}"
+                                    ToolTip="Linie/Kurs-Fahrten und verbundene Routenschnur mit Fahrplan prüfen" />
+                        </WrapPanel>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2" Grid.IsSharedSizeScope="True">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
@@ -277,6 +325,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    </Grid>
                 </Grid>
             </DockPanel>
         </materialDesign:Card>

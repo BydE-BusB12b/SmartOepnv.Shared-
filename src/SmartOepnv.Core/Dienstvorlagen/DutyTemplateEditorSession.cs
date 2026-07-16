@@ -3,7 +3,7 @@ namespace SmartOepnv.Core.Dienstvorlagen;
 /// <summary>Aktueller Bearbeitungsstand der Dienstvorlagen-Maske (Entwurf).</summary>
 public sealed class DutyTemplateEditorSession
 {
-    public const int FileVersion = 8;
+    public const int FileVersion = 9;
 
     public long SavedAtUtcMs { get; set; }
 
@@ -22,6 +22,10 @@ public sealed class DutyTemplateEditorSession
     public string Contractor { get; set; } = string.Empty;
 
     public string OperatingDay { get; set; } = string.Empty;
+
+    public string ValidFrom { get; set; } = string.Empty;
+
+    public string ValidTo { get; set; } = string.Empty;
 
     public string VehicleNumber { get; set; } = string.Empty;
 
@@ -65,6 +69,8 @@ public sealed class DutyTemplateEditorSession
         !string.IsNullOrWhiteSpace(DutyNumberPart3) ||
         !string.IsNullOrWhiteSpace(Contractor) ||
         !string.IsNullOrWhiteSpace(OperatingDay) ||
+        !string.IsNullOrWhiteSpace(ValidFrom) ||
+        !string.IsNullOrWhiteSpace(ValidTo) ||
         !string.IsNullOrWhiteSpace(VehicleNumber) ||
         !string.IsNullOrWhiteSpace(DefaultLineCourse) ||
         !string.IsNullOrWhiteSpace(ImportedLine) ||

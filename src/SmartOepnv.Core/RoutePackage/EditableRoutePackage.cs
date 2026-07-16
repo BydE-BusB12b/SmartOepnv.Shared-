@@ -26,6 +26,9 @@ public sealed class EditableRoutePackage
     public IDictionary<string, HashSet<DutyOperatingDay>> RouteOperatingDaysByRoute { get; } =
         new Dictionary<string, HashSet<DutyOperatingDay>>(StringComparer.Ordinal);
 
+    public IDictionary<string, RouteDateRange> RouteDateRangesByRoute { get; } =
+        new Dictionary<string, RouteDateRange>(StringComparer.Ordinal);
+
     public IDictionary<string, string> RouteInteriorDisplayDestinationsByRoute { get; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -87,6 +90,7 @@ public sealed class EditableRoutePackage
         DateBasedHints.Clear();
         OutsideDisplays.Clear();
         RouteOperatingDaysByRoute.Clear();
+        RouteDateRangesByRoute.Clear();
         RouteInteriorDisplayDestinationsByRoute.Clear();
         RoutesExcludedFromItcsRouteList.Clear();
         RoutesMainDeviceOnly.Clear();
@@ -212,6 +216,11 @@ public sealed class EditableRoutePackage
         foreach (var (key, days) in RouteOperatingDaysEditor.LoadFromRoot(_root))
         {
             RouteOperatingDaysByRoute[key] = days;
+        }
+
+        foreach (var (key, range) in RouteDateRangeEditor.LoadFromRoot(_root))
+        {
+            RouteDateRangesByRoute[key] = range;
         }
 
         foreach (var key in RouteItcsRouteListEditor.LoadFromRoot(_root))
@@ -395,7 +404,8 @@ public sealed class EditableRoutePackage
         out string displayKey,
         out string? error,
         bool inItcsRouteList = false,
-        bool mainDeviceOnly = false)
+        bool mainDeviceOnly = false,
+        RouteDateRange? dateRange = null)
     {
         var days = operatingDays is null
             ? RouteOperatingDaysEditor.AllDays.ToList()
@@ -425,14 +435,21 @@ public sealed class EditableRoutePackage
             return false;
         }
 
-        if (RouteDisplayHelper.HasOperatingDayConflict(RouteNames, RouteOperatingDaysByRoute, definition, days))
+        if (RouteDisplayHelper.HasRouteScheduleConflict(
+                RouteNames,
+                RouteOperatingDaysByRoute,
+                RouteDateRangesByRoute,
+                definition,
+                days,
+                dateRange))
         {
-            error = "Route schon vorhanden (Linie/Kurs, Fahrt und Verkehrstag überschneiden sich).";
+            error = "Route schon vorhanden (Linie/Kurs, Fahrt, Verkehrstag und/oder Datumsbereich überschneiden sich).";
             return false;
         }
 
         AddRoute(displayKey);
         SetRouteOperatingDays(displayKey, days);
+        SetRouteDateRange(displayKey, dateRange);
         SetRouteInItcsRouteList(displayKey, inItcsRouteList);
         SetRouteMainDeviceOnly(displayKey, mainDeviceOnly);
         if (!string.IsNullOrWhiteSpace(copyStopsFromRouteKey))
@@ -466,7 +483,8 @@ public sealed class EditableRoutePackage
         bool inItcsRouteList,
         bool mainDeviceOnly,
         out string displayKey,
-        out string? error)
+        out string? error,
+        RouteDateRange? dateRange = null)
     {
         var oldKey = ResolveExistingRouteKey(existingRouteKey);
         if (!RouteNames.Contains(oldKey) && !StopsByRoute.ContainsKey(RouteDisplayHelper.ToCanonicalRouteKey(oldKey)))
@@ -505,13 +523,15 @@ public sealed class EditableRoutePackage
             return false;
         }
 
-        if (RouteDisplayHelper.HasOperatingDayConflict(
+        if (RouteDisplayHelper.HasRouteScheduleConflict(
                 otherRoutes,
                 RouteOperatingDaysByRoute,
+                RouteDateRangesByRoute,
                 definition,
-                days))
+                days,
+                dateRange))
         {
-            error = "Route schon vorhanden (Linie/Kurs, Fahrt und Verkehrstag überschneiden sich).";
+            error = "Route schon vorhanden (Linie/Kurs, Fahrt, Verkehrstag und/oder Datumsbereich überschneiden sich).";
             return false;
         }
 
@@ -519,9 +539,11 @@ public sealed class EditableRoutePackage
         {
             RenameRouteKey(oldKey, displayKey);
             RouteOperatingDaysEditor.RemoveRoute(RouteOperatingDaysByRoute, oldKey);
+            RouteDateRangeEditor.RemoveRoute(RouteDateRangesByRoute, oldKey);
         }
 
         SetRouteOperatingDays(displayKey, days);
+        SetRouteDateRange(displayKey, dateRange);
         SetRouteInItcsRouteList(displayKey, inItcsRouteList);
         SetRouteMainDeviceOnly(displayKey, mainDeviceOnly);
         error = null;
@@ -545,9 +567,13 @@ public sealed class EditableRoutePackage
             IsAnnouncementEnabled = source.IsAnnouncementEnabled,
             EmbeddedSoundFileName = source.EmbeddedSoundFileName,
             Destination = source.Destination,
+            Ds021NeuDestination = source.Ds021NeuDestination,
+            FmaS1Destination = source.FmaS1Destination,
             Ds003aDestination = source.Ds003aDestination,
             LineNumber = source.LineNumber,
             EndDestination = source.EndDestination,
+            Ds021NeuEndDestination = source.Ds021NeuEndDestination,
+            FmaS1EndDestination = source.FmaS1EndDestination,
             Ds003aEndDestination = source.Ds003aEndDestination,
             IsEndStop = source.IsEndStop,
             PlayEndStopAnnouncement = source.PlayEndStopAnnouncement,
@@ -576,6 +602,7 @@ public sealed class EditableRoutePackage
         {
             RouteNames.Remove(key);
             RouteOperatingDaysEditor.RemoveRoute(RouteOperatingDaysByRoute, key);
+            RouteDateRangeEditor.RemoveRoute(RouteDateRangesByRoute, key);
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, key);
             RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, key);
             RouteMainDeviceOnlyEditor.RemoveRoute(RoutesMainDeviceOnly, key);
@@ -696,6 +723,7 @@ public sealed class EditableRoutePackage
         }
 
         AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, oldKey, newKey);
+        RouteDateRangeEditor.RenameRouteKey(RouteDateRangesByRoute, oldKey, newKey);
 
         RouteNavigationMetadataCopy.CopyForRoute(_root, oldKey, newKey);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, oldKey);
@@ -860,6 +888,12 @@ public sealed class EditableRoutePackage
 
     public void SetRouteOperatingDays(string routeDisplayKey, IEnumerable<DutyOperatingDay> days) =>
         RouteOperatingDaysEditor.SetDaysForRoute(RouteOperatingDaysByRoute, routeDisplayKey, days);
+
+    public RouteDateRange GetRouteDateRange(string routeDisplayKey) =>
+        RouteDateRangeEditor.GetRangeForRoute(RouteDateRangesByRoute, routeDisplayKey);
+
+    public void SetRouteDateRange(string routeDisplayKey, RouteDateRange? range) =>
+        RouteDateRangeEditor.SetRangeForRoute(RouteDateRangesByRoute, routeDisplayKey, range);
 
     public string GetRouteInteriorDisplayDestination(string routeDisplayKey) =>
         RouteInteriorDisplayDestinationEditor.GetForRoute(RouteInteriorDisplayDestinationsByRoute, routeDisplayKey);

@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmartOepnv.AppShared.RoutePath;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dienstvorlagen;
@@ -23,6 +24,9 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private string searchQuery = string.Empty;
     [ObservableProperty] private string routeOperatingDaysDisplay = string.Empty;
+    [ObservableProperty] private string routeDateFrom = string.Empty;
+    [ObservableProperty] private string routeDateTo = string.Empty;
+    [ObservableProperty] private string routeDateRangeDisplay = string.Empty;
     [ObservableProperty] private string routeInteriorDisplayDestination = string.Empty;
     [ObservableProperty] private bool routeItcsRouteListEnabled = true;
     [ObservableProperty] private bool routeMainDeviceOnly;
@@ -30,9 +34,10 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private bool isRouteSettingsExpanded;
 
     public string RouteSettingsButtonLabel =>
-        IsRouteSettingsExpanded ? "Verkehrstage & Zieltext ausblenden" : "Verkehrstage & Zieltext";
+        IsRouteSettingsExpanded ? "Verkehrstage & Gültigkeit ausblenden" : "Verkehrstage & Gültigkeit";
 
     private bool _suppressOperatingDaySync;
+    private bool _suppressDateRangeSync;
     private bool _suppressInteriorDestinationSync;
     private bool _suppressItcsRouteListSync;
     private bool _suppressMainDeviceOnlySync;
@@ -43,6 +48,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     public ObservableCollection<OperatingDayOptionItem> RouteOperatingDaySelections { get; } = [];
 
     public bool HasRouteOperatingDaysDisplay => !string.IsNullOrWhiteSpace(RouteOperatingDaysDisplay);
+    public bool HasRouteDateRangeDisplay => !string.IsNullOrWhiteSpace(RouteDateRangeDisplay);
 
     public RoutesViewModel()
     {
@@ -253,6 +259,31 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         OnPropertyChanged(nameof(HasRouteOperatingDaysDisplay));
     }
 
+    partial void OnRouteDateRangeDisplayChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasRouteDateRangeDisplay));
+    }
+
+    partial void OnRouteDateFromChanged(string value)
+    {
+        if (_suppressDateRangeSync)
+        {
+            return;
+        }
+
+        PersistRouteDateRangeFromSelection();
+    }
+
+    partial void OnRouteDateToChanged(string value)
+    {
+        if (_suppressDateRangeSync)
+        {
+            return;
+        }
+
+        PersistRouteDateRangeFromSelection();
+    }
+
     partial void OnIsRouteSettingsExpandedChanged(bool value) =>
         OnPropertyChanged(nameof(RouteSettingsButtonLabel));
 
@@ -297,6 +328,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         Stops.Clear();
         SelectedStop = null;
         LoadRouteOperatingDaysForSelection(value);
+        LoadRouteDateRangeForSelection(value);
         LoadRouteInteriorDisplayDestinationForSelection(value);
         LoadRouteItcsRouteListForSelection(value);
         LoadRouteMainDeviceOnlyForSelection(value);
@@ -354,6 +386,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
         AppServices.Routes.Editor.ConsolidateRouteKeys();
 
+        PersistRouteDateRangeFromSelection();
         var routeKey = SyncSelectedRouteOperatingDaysToEditor();
         if (!string.IsNullOrWhiteSpace(routeKey))
         {
@@ -434,7 +467,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 out var displayKey,
                 out var error,
                 dialog.ResultItcsRouteListEnabled,
-                dialog.ResultMainDeviceOnly))
+                dialog.ResultMainDeviceOnly,
+                dialog.ResultDateRange))
         {
             StatusMessage = error ?? "Route konnte nicht angelegt werden.";
             return;
@@ -478,7 +512,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 dialog.ResultItcsRouteListEnabled,
                 dialog.ResultMainDeviceOnly,
                 out var displayKey,
-                out var error))
+                out var error,
+                dialog.ResultDateRange))
         {
             StatusMessage = error ?? "Route konnte nicht gespeichert werden.";
             return;
@@ -558,6 +593,57 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         _sync.MarkDirty();
         CommitChanges();
         StatusMessage = $"„{dialog.SelectedTemplate.StopNameItcs}“ aus Kartei eingefügt.";
+        TryPromptNavReuse();
+    }
+
+    [RelayCommand]
+    private void OfferNavReuse()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            StatusMessage = "Bitte zuerst eine Route auswählen.";
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            StatusMessage = "Kein Route-Paket geladen.";
+            return;
+        }
+
+        var owner = Application.Current?.MainWindow;
+        if (RoutePathNavReusePrompt.TryOffer(owner, editor, SelectedRoute, out var edges))
+        {
+            _sync.MarkDirty();
+            CommitChanges();
+            StatusMessage = $"Navidaten übernommen ({edges} Verbindungen).";
+            return;
+        }
+
+        StatusMessage = "Keine passenden Navidaten in anderen Routen gefunden.";
+    }
+
+    private void TryPromptNavReuse()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return;
+        }
+
+        var owner = Application.Current?.MainWindow;
+        if (RoutePathNavReusePrompt.TryOffer(owner, editor, SelectedRoute, out var edges))
+        {
+            _sync.MarkDirty();
+            CommitChanges();
+            StatusMessage = $"Navidaten übernommen ({edges} Verbindungen) – kein erneutes Snappen nötig.";
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanRemoveSelectedStop))]
@@ -833,6 +919,58 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             : configured;
         ApplyRouteOperatingDayToSelection(selected);
         RouteOperatingDaysDisplay = DutyOperatingDayHelper.FormatDisplay(selected);
+    }
+
+    private void LoadRouteDateRangeForSelection(string? routeKey)
+    {
+        var editor = AppServices.Routes.Editor;
+        _suppressDateRangeSync = true;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(routeKey) || editor is null)
+            {
+                RouteDateFrom = string.Empty;
+                RouteDateTo = string.Empty;
+                RouteDateRangeDisplay = string.Empty;
+                return;
+            }
+
+            var range = editor.GetRouteDateRange(routeKey);
+            RouteDateFrom = range.From is { } from ? RouteDateRange.FormatDate(from) : string.Empty;
+            RouteDateTo = range.To is { } to ? RouteDateRange.FormatDate(to) : string.Empty;
+            RouteDateRangeDisplay = RouteDateRange.FormatDisplay(range);
+        }
+        finally
+        {
+            _suppressDateRangeSync = false;
+        }
+    }
+
+    private void PersistRouteDateRangeFromSelection()
+    {
+        if (_suppressDateRangeSync || string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return;
+        }
+
+        if (!RouteDateRange.TryParse(RouteDateFrom, RouteDateTo, out var range))
+        {
+            StatusMessage = "Ungültiges Datum – bitte TT.MM.JJJJ verwenden (von ≤ bis).";
+            return;
+        }
+
+        editor.SetRouteDateRange(SelectedRoute, range.IsRestricted ? range : null);
+        RouteDateRangeDisplay = RouteDateRange.FormatDisplay(range);
+        _sync.MarkDirty();
+        StatusMessage = range.IsRestricted
+            ? $"Gültigkeit für „{SelectedRoute}“ gesetzt – bitte speichern."
+            : $"Gültigkeit für „{SelectedRoute}“ entfernt – bitte speichern.";
     }
 
     private void LoadRouteInteriorDisplayDestinationForSelection(string? routeKey)

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.ViewModels;
@@ -192,6 +193,7 @@ internal static class VehicleKomUi
         style.Setters.Add(new Setter(Control.ForegroundProperty, ForegroundBrush));
         style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 6, 8, 6)));
+        style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
 
         var selected = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
         selected.Setters.Add(new Setter(Control.BackgroundProperty, AccentBackground));
@@ -202,6 +204,40 @@ internal static class VehicleKomUi
         style.Triggers.Add(hover);
 
         list.ItemContainerStyle = style;
+    }
+
+    public static DataTemplate MakeNameProtocolListItemTemplate()
+    {
+        var template = new DataTemplate();
+        var grid = new FrameworkElementFactory(typeof(Grid));
+        grid.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+
+        var nameColumn = new FrameworkElementFactory(typeof(ColumnDefinition));
+        nameColumn.SetValue(ColumnDefinition.WidthProperty, new GridLength(1, GridUnitType.Star));
+        grid.AppendChild(nameColumn);
+
+        var protocolColumn = new FrameworkElementFactory(typeof(ColumnDefinition));
+        protocolColumn.SetValue(ColumnDefinition.WidthProperty, GridLength.Auto);
+        grid.AppendChild(protocolColumn);
+
+        var name = new FrameworkElementFactory(typeof(TextBlock));
+        name.SetBinding(TextBlock.TextProperty, new Binding("Name"));
+        name.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        name.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+        name.SetValue(Grid.ColumnProperty, 0);
+        grid.AppendChild(name);
+
+        var protocol = new FrameworkElementFactory(typeof(TextBlock));
+        protocol.SetBinding(TextBlock.TextProperty, new Binding("ProtocolLabel"));
+        protocol.SetValue(TextBlock.HorizontalAlignmentProperty, HorizontalAlignment.Right);
+        protocol.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        protocol.SetValue(TextBlock.ForegroundProperty, MutedForeground);
+        protocol.SetValue(FrameworkElement.MarginProperty, new Thickness(12, 0, 0, 0));
+        protocol.SetValue(Grid.ColumnProperty, 1);
+        grid.AppendChild(protocol);
+
+        template.VisualTree = grid;
+        return template;
     }
 
     public static void StyleComboBox(ComboBox comboBox)

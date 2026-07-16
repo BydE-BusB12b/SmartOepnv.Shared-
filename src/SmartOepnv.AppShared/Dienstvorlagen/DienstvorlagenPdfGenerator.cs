@@ -98,6 +98,7 @@ public static class DienstvorlagenPdfGenerator
     {
         var dutyDisplay = string.IsNullOrWhiteSpace(dutyNumber) ? "–" : dutyNumber.Trim();
         var operatingDay = string.IsNullOrWhiteSpace(template.OperatingDay) ? "–" : template.OperatingDay.Trim();
+        var validityDisplay = ResolveValidityDisplay(template);
         var companyLogoPath = ResolveCompanyLogoPath(template.CompanyLogoId);
 
         document.Page(page =>
@@ -115,6 +116,8 @@ public static class DienstvorlagenPdfGenerator
                         row.RelativeItem().Element(c => HeaderField(c, "Dienst", dutyDisplay));
                         row.ConstantItem(12);
                         row.RelativeItem().Element(c => HeaderField(c, "Betriebstag", operatingDay));
+                        row.ConstantItem(12);
+                        row.RelativeItem().Element(c => HeaderField(c, "Gültigkeit", validityDisplay));
                     });
                 });
 
@@ -184,7 +187,7 @@ public static class DienstvorlagenPdfGenerator
                         header.Cell().Element(TableHeaderCell).Text("Ab:");
                         header.Cell().Element(TableHeaderCell).Text("Richtung");
                         header.Cell().Element(TableHeaderCellRight).Text("An:");
-                        header.Cell().Element(TableHeaderCellRight).Text("Bemerkung");
+                        header.Cell().Element(TableHeaderCellRight).Text("Bemerk.");
                     });
 
                     for (var i = 0; i < tripRowList.Count; i++)
@@ -451,6 +454,16 @@ public static class DienstvorlagenPdfGenerator
         }
 
         return DutyTemplateStopNameHelper.StripHaltestelleMarker(stop).Trim();
+    }
+
+    private static string ResolveValidityDisplay(DutyTemplate template)
+    {
+        if (!RouteDateRange.TryParse(template.ValidFrom, template.ValidTo, out var range) || !range.IsRestricted)
+        {
+            return "–";
+        }
+
+        return RouteDateRange.FormatDisplay(range);
     }
 
     private sealed record DutyTripPdfRow(

@@ -145,9 +145,9 @@ internal static class EmployeeBriefingManualContent
     ];
 }
 
-internal sealed record BriefingImage(string Caption, string AssetFileName);
+public sealed record BriefingImage(string Caption, string AssetFileName);
 
-internal sealed record BriefingSection(
+public sealed record BriefingSection(
     string Title,
     string Body,
     IReadOnlyList<BriefingImage>? Images = null);

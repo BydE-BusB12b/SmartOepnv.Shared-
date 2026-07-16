@@ -38,12 +38,24 @@ public sealed class RouteStopItem
 
     public string Destination { get; set; } = string.Empty;
 
+    /// <summary>Starthaltestellen-Ziel DS021neu (eigenes Feld, unabhängig von DS021T).</summary>
+    public string Ds021NeuDestination { get; set; } = string.Empty;
+
+    /// <summary>Starthaltestellen-Ziel FMA-S1 (eigenes Feld, unabhängig von DS021T).</summary>
+    public string FmaS1Destination { get; set; } = string.Empty;
+
     /// <summary>Starthaltestellen-Ziel DS003a Krefeld (nur Handy/Planer, optional in JSON).</summary>
     public string Ds003aDestination { get; set; } = string.Empty;
 
     public string LineNumber { get; set; } = string.Empty;
 
     public string EndDestination { get; set; } = string.Empty;
+
+    /// <summary>Endhaltestellen-Ziel DS021neu.</summary>
+    public string Ds021NeuEndDestination { get; set; } = string.Empty;
+
+    /// <summary>Endhaltestellen-Ziel FMA-S1.</summary>
+    public string FmaS1EndDestination { get; set; } = string.Empty;
 
     /// <summary>Endhaltestellen-Ziel DS003a Krefeld.</summary>
     public string Ds003aEndDestination { get; set; } = string.Empty;
@@ -93,9 +105,13 @@ public sealed class RouteStopItem
         IsAnnouncementEnabled = IsAnnouncementEnabled,
         EmbeddedSoundFileName = EmbeddedSoundFileName,
         Destination = Destination,
+        Ds021NeuDestination = Ds021NeuDestination,
+        FmaS1Destination = FmaS1Destination,
         Ds003aDestination = Ds003aDestination,
         LineNumber = LineNumber,
         EndDestination = EndDestination,
+        Ds021NeuEndDestination = Ds021NeuEndDestination,
+        FmaS1EndDestination = FmaS1EndDestination,
         Ds003aEndDestination = Ds003aEndDestination,
         IsEndStop = IsEndStop,
         PlayEndStopAnnouncement = PlayEndStopAnnouncement,
@@ -129,9 +145,13 @@ public sealed class RouteStopItem
         IsAnnouncementEnabled = other.IsAnnouncementEnabled;
         EmbeddedSoundFileName = other.EmbeddedSoundFileName;
         Destination = other.Destination;
+        Ds021NeuDestination = other.Ds021NeuDestination;
+        FmaS1Destination = other.FmaS1Destination;
         Ds003aDestination = other.Ds003aDestination;
         LineNumber = other.LineNumber;
         EndDestination = other.EndDestination;
+        Ds021NeuEndDestination = other.Ds021NeuEndDestination;
+        FmaS1EndDestination = other.FmaS1EndDestination;
         Ds003aEndDestination = other.Ds003aEndDestination;
         IsEndStop = other.IsEndStop;
         PlayEndStopAnnouncement = other.PlayEndStopAnnouncement;

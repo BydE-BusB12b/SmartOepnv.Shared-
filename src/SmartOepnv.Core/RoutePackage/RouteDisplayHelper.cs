@@ -221,14 +221,23 @@ public static class RouteDisplayHelper
     }
 
     public static bool HasDuplicateTripInLineCourse(IEnumerable<string> routeKeys, RouteDefinition candidate) =>
-        HasOperatingDayConflict(routeKeys, null, candidate, RouteOperatingDaysEditor.AllDays);
+        HasRouteScheduleConflict(routeKeys, null, null, candidate, RouteOperatingDaysEditor.AllDays, null);
 
-    /// <summary>Gleiche Linie/Kurs + Fahrt nur verboten bei überschneidenden Verkehrstagen.</summary>
+    /// <summary>Gleiche Linie/Kurs + Fahrt nur verboten bei überschneidenden Verkehrstagen und Datumsbereich.</summary>
     public static bool HasOperatingDayConflict(
         IEnumerable<string> routeKeys,
         IDictionary<string, HashSet<DutyOperatingDay>>? operatingDaysByRoute,
         RouteDefinition candidate,
-        IReadOnlyCollection<DutyOperatingDay> candidateDays)
+        IReadOnlyCollection<DutyOperatingDay> candidateDays) =>
+        HasRouteScheduleConflict(routeKeys, operatingDaysByRoute, null, candidate, candidateDays, null);
+
+    public static bool HasRouteScheduleConflict(
+        IEnumerable<string> routeKeys,
+        IDictionary<string, HashSet<DutyOperatingDay>>? operatingDaysByRoute,
+        IDictionary<string, RouteDateRange>? dateRangesByRoute,
+        RouteDefinition candidate,
+        IReadOnlyCollection<DutyOperatingDay> candidateDays,
+        RouteDateRange? candidateDateRange)
     {
         var lineCourse = NormalizeLineCourse(candidate.LineCourse);
         var trip = NormalizeTripNumber(candidate.TripNumber);
@@ -237,7 +246,7 @@ public static class RouteDisplayHelper
             return false;
         }
 
-        var candidateSet = RouteOperatingDaysEditor.EffectiveDaySet(candidateDays);
+        var candidateDaySet = RouteOperatingDaysEditor.EffectiveDaySet(candidateDays);
         foreach (var key in routeKeys)
         {
             var existing = Parse(key);
@@ -247,14 +256,24 @@ public static class RouteDisplayHelper
                 continue;
             }
 
-            var existingSet = RouteOperatingDaysEditor.EffectiveDaySet(
+            var existingDaySet = RouteOperatingDaysEditor.EffectiveDaySet(
                 operatingDaysByRoute is null
                     ? []
                     : RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, key));
-            if (RouteOperatingDaysEditor.DaysOverlap(existingSet, candidateSet))
+            if (!RouteOperatingDaysEditor.DaysOverlap(existingDaySet, candidateDaySet))
             {
-                return true;
+                continue;
             }
+
+            var existingRange = dateRangesByRoute is null
+                ? RouteDateRange.Unrestricted
+                : RouteDateRangeEditor.GetRangeForRoute(dateRangesByRoute, key);
+            if (!RouteDateRange.RangesOverlap(existingRange, candidateDateRange))
+            {
+                continue;
+            }
+
+            return true;
         }
 
         return false;

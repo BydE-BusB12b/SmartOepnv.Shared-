@@ -100,6 +100,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
     private string? _loadedTemplateId;
     private bool _suppressSessionSave;
     private bool _suppressOperatingDaySync;
+    private bool _suppressValidDateSync;
     private DispatcherTimer? _sessionSaveTimer;
     private int _activeDutyPart = 1;
     private DutyTemplateRowItem? _lastPart1Row;
@@ -142,6 +143,12 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
     [ObservableProperty] private string contractor = string.Empty;
 
     [ObservableProperty] private string operatingDay = string.Empty;
+
+    [ObservableProperty] private string validFrom = string.Empty;
+
+    [ObservableProperty] private string validTo = string.Empty;
+
+    [ObservableProperty] private string validDateRangeDisplay = string.Empty;
 
     [ObservableProperty] private string vehicleNumber = string.Empty;
 
@@ -288,6 +295,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     public bool HasOperatingDayDisplay => !string.IsNullOrWhiteSpace(OperatingDay);
 
+    public bool HasValidDateRangeDisplay => !string.IsNullOrWhiteSpace(ValidDateRangeDisplay);
+
     public bool HasSavedTemplates => SavedTemplates.Count > 0;
 
     public bool HasImportRows => ImportRows.Count > 0;
@@ -369,6 +378,31 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         OnPropertyChanged(nameof(HasOperatingDayDisplay));
         ScheduleEditorSessionSave();
     }
+
+    partial void OnValidFromChanged(string value)
+    {
+        if (_suppressValidDateSync)
+        {
+            return;
+        }
+
+        SyncValidDateRangeDisplay();
+        ScheduleEditorSessionSave();
+    }
+
+    partial void OnValidToChanged(string value)
+    {
+        if (_suppressValidDateSync)
+        {
+            return;
+        }
+
+        SyncValidDateRangeDisplay();
+        ScheduleEditorSessionSave();
+    }
+
+    partial void OnValidDateRangeDisplayChanged(string value) =>
+        OnPropertyChanged(nameof(HasValidDateRangeDisplay));
 
     partial void OnVehicleNumberChanged(string value) => ScheduleEditorSessionSave();
 
@@ -491,6 +525,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         Contractor = string.Empty;
         ApplyOperatingDayToSelection(string.Empty);
         OperatingDay = string.Empty;
+        LoadValidDateRangeFromStrings(null, null);
         VehicleNumber = string.Empty;
         DefaultLineCourse = string.Empty;
         ImportedLine = string.Empty;
@@ -1776,6 +1811,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     private DutyTemplate BuildCurrentTemplate()
     {
+        var (validFrom, validTo) = ResolveValidDatesForSave();
         var template = new DutyTemplate
         {
             Id = _loadedTemplateId ?? Guid.NewGuid().ToString("N"),
@@ -1786,6 +1822,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             DutyNumberPart3 = DutyNumberPart3.Trim(),
             Contractor = Contractor.Trim(),
             OperatingDay = OperatingDay.Trim(),
+            ValidFrom = validFrom,
+            ValidTo = validTo,
             VehicleNumber = VehicleNumber.Trim(),
             DefaultLineCourse = DefaultLineCourse.Trim(),
             ImportedLine = ImportedLine.Trim(),
@@ -1822,6 +1860,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         ApplyOperatingDayToSelection(template.OperatingDay);
         OperatingDay = DutyOperatingDayHelper.FormatDisplay(
             OperatingDaySelections.Where(option => option.IsSelected).Select(option => option.Day));
+        LoadValidDateRangeFromStrings(template.ValidFrom, template.ValidTo);
         VehicleNumber = template.VehicleNumber;
         _suppressLineCourseApply = true;
         try
@@ -1981,8 +2020,11 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     private void ClearEditorSession() => TryGetSessionStore()?.Clear();
 
-    private DutyTemplateEditorSession BuildEditorSession() => new()
+    private DutyTemplateEditorSession BuildEditorSession()
     {
+        var (validFrom, validTo) = ResolveValidDatesForSave();
+        return new DutyTemplateEditorSession
+        {
         LoadedTemplateId = _loadedTemplateId,
         TemplateName = TemplateName.Trim(),
         CompanyLogoId = SelectedCompanyLogoId.Trim(),
@@ -1991,6 +2033,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         DutyNumberPart3 = DutyNumberPart3.Trim(),
         Contractor = Contractor.Trim(),
         OperatingDay = OperatingDay.Trim(),
+        ValidFrom = validFrom,
+        ValidTo = validTo,
         VehicleNumber = VehicleNumber.Trim(),
         DefaultLineCourse = DefaultLineCourse.Trim(),
         ImportedLine = ImportedLine.Trim(),
@@ -2012,7 +2056,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         Rows = Rows.Select(row => row.ToModel()).ToList(),
         Part2Rows = Part2Rows.Select(row => row.ToModel()).ToList(),
         Part3Rows = Part3Rows.Select(row => row.ToModel()).ToList()
-    };
+        };
+    }
 
     private bool TryRestoreEditorSession()
     {
@@ -2044,6 +2089,7 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             ApplyOperatingDayToSelection(session.OperatingDay);
             OperatingDay = DutyOperatingDayHelper.FormatDisplay(
                 OperatingDaySelections.Where(option => option.IsSelected).Select(option => option.Day));
+            LoadValidDateRangeFromStrings(session.ValidFrom, session.ValidTo);
             VehicleNumber = session.VehicleNumber;
             DefaultLineCourse = session.DefaultLineCourse;
             ImportedLine = session.ImportedLine;
@@ -2173,6 +2219,56 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         }
 
         OnPropertyChanged(nameof(HasOperatingDayDisplay));
+    }
+
+    private void LoadValidDateRangeFromStrings(string? from, string? to)
+    {
+        _suppressValidDateSync = true;
+        try
+        {
+            if (!RouteDateRange.TryParse(from, to, out var range))
+            {
+                ValidFrom = from?.Trim() ?? string.Empty;
+                ValidTo = to?.Trim() ?? string.Empty;
+                ValidDateRangeDisplay = string.Empty;
+                return;
+            }
+
+            ValidFrom = range.From is { } parsedFrom ? RouteDateRange.FormatDate(parsedFrom) : string.Empty;
+            ValidTo = range.To is { } parsedTo ? RouteDateRange.FormatDate(parsedTo) : string.Empty;
+            ValidDateRangeDisplay = RouteDateRange.FormatDisplay(range);
+        }
+        finally
+        {
+            _suppressValidDateSync = false;
+        }
+
+        OnPropertyChanged(nameof(HasValidDateRangeDisplay));
+    }
+
+    private void SyncValidDateRangeDisplay()
+    {
+        if (!RouteDateRange.TryParse(ValidFrom, ValidTo, out var range))
+        {
+            ValidDateRangeDisplay = string.Empty;
+            OnPropertyChanged(nameof(HasValidDateRangeDisplay));
+            return;
+        }
+
+        ValidDateRangeDisplay = RouteDateRange.FormatDisplay(range);
+        OnPropertyChanged(nameof(HasValidDateRangeDisplay));
+    }
+
+    private (string From, string To) ResolveValidDatesForSave()
+    {
+        if (!RouteDateRange.TryParse(ValidFrom, ValidTo, out var range) || !range.IsRestricted)
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        return (
+            range.From is { } from ? RouteDateRange.FormatDate(from) : string.Empty,
+            range.To is { } to ? RouteDateRange.FormatDate(to) : string.Empty);
     }
 
     private void AttachRowHandler(DutyTemplateRowItem row)

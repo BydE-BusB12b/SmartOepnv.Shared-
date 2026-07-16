@@ -50,11 +50,19 @@ public static class GpsAnsagenStopJson
 
             Destination = JsonNodeReading.GetString(obj["destination"]),
 
+            Ds021NeuDestination = ReadProtocolDestination(obj, "ds021NeuDestination", "destination"),
+
+            FmaS1Destination = ReadProtocolDestination(obj, "fmaS1Destination", "destination"),
+
             Ds003aDestination = JsonNodeReading.GetString(obj["ds003aDestination"]),
 
             LineNumber = JsonNodeReading.GetString(obj["lineNumber"]),
 
             EndDestination = JsonNodeReading.GetString(obj["endDestination"]),
+
+            Ds021NeuEndDestination = ReadProtocolDestination(obj, "ds021NeuEndDestination", "endDestination"),
+
+            FmaS1EndDestination = ReadProtocolDestination(obj, "fmaS1EndDestination", "endDestination"),
 
             Ds003aEndDestination = JsonNodeReading.GetString(obj["ds003aEndDestination"]),
 
@@ -146,11 +154,19 @@ public static class GpsAnsagenStopJson
 
             ["destination"] = stop.Destination,
 
+            ["ds021NeuDestination"] = stop.Ds021NeuDestination,
+
+            ["fmaS1Destination"] = stop.FmaS1Destination,
+
             ["ds003aDestination"] = stop.Ds003aDestination,
 
             ["lineNumber"] = stop.LineNumber,
 
             ["endDestination"] = stop.EndDestination,
+
+            ["ds021NeuEndDestination"] = stop.Ds021NeuEndDestination,
+
+            ["fmaS1EndDestination"] = stop.FmaS1EndDestination,
 
             ["ds003aEndDestination"] = stop.Ds003aEndDestination,
 
@@ -180,6 +196,17 @@ public static class GpsAnsagenStopJson
 
         return obj;
 
+    }
+
+    /// <summary>Protokoll-Ziel aus JSON; fehlender Schlüssel fällt auf das Legacy-Feld zurück.</summary>
+    private static string ReadProtocolDestination(JsonObject obj, string key, string legacyKey)
+    {
+        if (obj[key] is null)
+        {
+            return JsonNodeReading.GetString(obj[legacyKey]);
+        }
+
+        return JsonNodeReading.GetString(obj[key]);
     }
 
 }

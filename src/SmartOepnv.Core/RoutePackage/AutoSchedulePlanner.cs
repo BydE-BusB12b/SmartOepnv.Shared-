@@ -260,11 +260,13 @@ public static class AutoSchedulePlanner
             }
 
             var definition = new RouteDefinition(routeName, lineCourse, normalized);
-            if (RouteDisplayHelper.HasOperatingDayConflict(
+            if (RouteDisplayHelper.HasRouteScheduleConflict(
                     editor.RouteNames,
                     editor.RouteOperatingDaysByRoute,
+                    editor.RouteDateRangesByRoute,
                     definition,
-                    templateOperatingDays))
+                    templateOperatingDays,
+                    null))
             {
                 error = $"Fahrtnummer {normalized} existiert in dieser Linie/Kurs bereits.";
                 return false;

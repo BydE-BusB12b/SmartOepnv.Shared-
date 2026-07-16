@@ -20,10 +20,14 @@ public sealed class AddRouteDialog : Window
     private readonly CheckBox _itcsRouteListCheck;
     private readonly CheckBox _mainDeviceOnlyCheck;
     private readonly List<CheckBox> _operatingDayChecks = [];
+    private readonly TextBox _dateFromBox;
+    private readonly TextBox _dateToBox;
+    private readonly IDictionary<string, RouteDateRange> _dateRangesByRoute;
     private bool _formattingLineCourse;
 
     public RouteDefinition? ResultDefinition { get; private set; }
     public IReadOnlyList<DutyOperatingDay> ResultOperatingDays { get; private set; } = [];
+    public RouteDateRange? ResultDateRange { get; private set; }
     public string? CopyStopsFromRouteKey { get; private set; }
     public string? EditingRouteKey { get; }
     public bool ResultItcsRouteListEnabled { get; private set; }
@@ -33,6 +37,7 @@ public sealed class AddRouteDialog : Window
         : this(
             package.RouteNames.ToList(),
             package.RouteOperatingDaysByRoute,
+            package.RouteDateRangesByRoute,
             initial,
             copyFromRouteKey,
             editingRouteKey,
@@ -44,21 +49,26 @@ public sealed class AddRouteDialog : Window
     public AddRouteDialog(
         IReadOnlyList<string> existingRoutes,
         IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute,
+        IDictionary<string, RouteDateRange> dateRangesByRoute,
         RouteDefinition? initial = null,
         string? copyFromRouteKey = null,
         string? editingRouteKey = null,
         bool initialItcsRouteListEnabled = false,
         bool initialMainDeviceOnly = false)
     {
+        _dateRangesByRoute = dateRangesByRoute;
         EditingRouteKey = string.IsNullOrWhiteSpace(editingRouteKey) ? null : editingRouteKey.Trim();
         var isEdit = EditingRouteKey is not null;
 
         Title = isEdit ? "Route bearbeiten" : "Neue Route hinzufügen";
         Width = 460;
         MinWidth = 420;
-        SizeToContent = SizeToContent.Height;
+        MinHeight = 480;
+        MaxHeight = SystemParameters.WorkArea.Height * 0.88;
+        Height = Math.Min(700, MaxHeight);
+        SizeToContent = SizeToContent.Manual;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
+        ResizeMode = ResizeMode.CanResize;
         Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
 
         initial ??= isEdit && EditingRouteKey is not null
@@ -66,8 +76,8 @@ public sealed class AddRouteDialog : Window
             : new RouteDefinition(string.Empty);
         CopyStopsFromRouteKey = copyFromRouteKey;
 
-        var root = new StackPanel { Margin = new Thickness(24) };
-        root.Children.Add(new TextBlock
+        var shell = new DockPanel { Margin = new Thickness(24) };
+        shell.Children.Add(new TextBlock
         {
             Text = isEdit ? "Route bearbeiten" : "Neue Route hinzufügen",
             FontSize = 18,
@@ -75,15 +85,42 @@ public sealed class AddRouteDialog : Window
             Foreground = LabelForeground,
             Margin = new Thickness(0, 0, 0, 16)
         });
+        DockPanel.SetDock(shell.Children[^1], Dock.Top);
 
-        root.Children.Add(MakeLabel("Routenname"));
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        var cancel = new Button { Content = "Abbrechen", MinWidth = 100, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
+        var add = new Button { Content = isEdit ? "Speichern" : "Hinzufügen", MinWidth = 110, IsDefault = true };
+        cancel.Click += (_, _) => { DialogResult = false; Close(); };
+        add.Click += (_, _) => ConfirmSave(existingRoutes, operatingDaysByRoute);
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(add);
+        shell.Children.Add(buttons);
+        DockPanel.SetDock(buttons, Dock.Bottom);
+
+        _errorText = new TextBlock
+        {
+            Foreground = Brushes.IndianRed,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8),
+            Visibility = Visibility.Collapsed
+        };
+        shell.Children.Add(_errorText);
+        DockPanel.SetDock(_errorText, Dock.Bottom);
+
+        var form = new StackPanel();
+        form.Children.Add(MakeLabel("Routenname"));
         _routeNameBox = MakeInput("Routenname (z.B. Hamburg/Berlin)", initial.Name);
-        root.Children.Add(_routeNameBox);
+        form.Children.Add(_routeNameBox);
 
-        root.Children.Add(MakeLabel("Linie/Kurs"));
+        form.Children.Add(MakeLabel("Linie/Kurs"));
         _lineCourseBox = MakeInput(string.Empty, initial.LineCourse);
         _lineCourseBox.TextChanged += (_, _) => FormatLineCourseField();
-        root.Children.Add(_lineCourseBox);
+        form.Children.Add(_lineCourseBox);
 
         var split = new Grid { Margin = new Thickness(0, 0, 0, 8) };
         split.ColumnDefinitions.Add(new ColumnDefinition());
@@ -103,10 +140,10 @@ public sealed class AddRouteDialog : Window
         right.Children.Add(_passengerLineBox);
         Grid.SetColumn(right, 2);
         split.Children.Add(right);
-        root.Children.Add(split);
+        form.Children.Add(split);
 
-        root.Children.Add(MakeLabel("Verkehrstage"));
-        root.Children.Add(new TextBlock
+        form.Children.Add(MakeLabel("Verkehrstage"));
+        form.Children.Add(new TextBlock
         {
             Text = "Gleiche Linie/Kurs + Fahrt nur einmal pro Tag · Betriebstag 00:01–03:59 Folgetag",
             TextWrapping = TextWrapping.Wrap,
@@ -128,11 +165,37 @@ public sealed class AddRouteDialog : Window
             _operatingDayChecks.Add(check);
             dayWrap.Children.Add(check);
         }
-        root.Children.Add(dayWrap);
+        form.Children.Add(dayWrap);
         if (isEdit)
         {
             ApplyOperatingDaysToChecks(
                 RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, EditingRouteKey!));
+        }
+
+        form.Children.Add(MakeLabel("Gültigkeit (optional)"));
+        form.Children.Add(new TextBlock
+        {
+            Text = "Kalenderdatum von/bis – leer = unbegrenzt (TT.MM.JJJJ)",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        var dateGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        _dateFromBox = MakeInput("Datum von (TT.MM.JJJJ)", string.Empty);
+        _dateToBox = MakeInput("Datum bis (TT.MM.JJJJ)", string.Empty);
+        Grid.SetColumn(_dateFromBox, 0);
+        Grid.SetColumn(_dateToBox, 2);
+        dateGrid.Children.Add(_dateFromBox);
+        dateGrid.Children.Add(_dateToBox);
+        form.Children.Add(dateGrid);
+        if (isEdit)
+        {
+            ApplyDateRangeToFields(
+                RouteDateRangeEditor.GetRangeForRoute(_dateRangesByRoute, EditingRouteKey!));
         }
 
         _itcsRouteListCheck = new CheckBox
@@ -142,7 +205,7 @@ public sealed class AddRouteDialog : Window
             Foreground = LabelForeground,
             Margin = new Thickness(0, 4, 0, 4)
         };
-        root.Children.Add(_itcsRouteListCheck);
+        form.Children.Add(_itcsRouteListCheck);
         _mainDeviceOnlyCheck = new CheckBox
         {
             Content = "Route nur für Hauptnutzergeräte",
@@ -150,8 +213,8 @@ public sealed class AddRouteDialog : Window
             Foreground = LabelForeground,
             Margin = new Thickness(0, 0, 0, 4)
         };
-        root.Children.Add(_mainDeviceOnlyCheck);
-        root.Children.Add(new TextBlock
+        form.Children.Add(_mainDeviceOnlyCheck);
+        form.Children.Add(new TextBlock
         {
             Text = "Hauptnutzer-Routen sind auf Mitarbeitergeräten weder in der ITCS-Routenliste noch in der Linie/Kurs-Suche sichtbar.",
             TextWrapping = TextWrapping.Wrap,
@@ -169,32 +232,17 @@ public sealed class AddRouteDialog : Window
             Visibility = isEdit ? Visibility.Collapsed : Visibility.Visible
         };
         copyButton.Click += (_, _) => PickRouteToCopy(existingRoutes, operatingDaysByRoute);
-        root.Children.Add(copyButton);
+        form.Children.Add(copyButton);
 
-        _errorText = new TextBlock
+        var scroll = new ScrollViewer
         {
-            Foreground = Brushes.IndianRed,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 8),
-            Visibility = Visibility.Collapsed
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = form
         };
-        root.Children.Add(_errorText);
+        shell.Children.Add(scroll);
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 8, 0, 0)
-        };
-        var cancel = new Button { Content = "Abbrechen", MinWidth = 100, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
-        var add = new Button { Content = isEdit ? "Speichern" : "Hinzufügen", MinWidth = 110, IsDefault = true };
-        cancel.Click += (_, _) => { DialogResult = false; Close(); };
-        add.Click += (_, _) => ConfirmSave(existingRoutes, operatingDaysByRoute);
-        buttons.Children.Add(cancel);
-        buttons.Children.Add(add);
-        root.Children.Add(buttons);
-
-        Content = root;
+        Content = shell;
         Loaded += (_, _) => _routeNameBox.Focus();
     }
 
@@ -272,7 +320,8 @@ public sealed class AddRouteDialog : Window
         _passengerLineBox.Text = parsed.PassengerDisplayLine;
         ApplyOperatingDaysToChecks(
             RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, selected));
-        ShowError($"Haltestellen werden von „{selected}“ kopiert – bitte neue Fahrtnummer und Verkehrstage setzen.");
+        ApplyDateRangeToFields(RouteDateRangeEditor.GetRangeForRoute(_dateRangesByRoute, selected));
+        ShowError($"Haltestellen werden von „{selected}“ kopiert – bitte neue Fahrtnummer, Verkehrstage und Gültigkeit setzen.");
     }
 
     private void ConfirmSave(
@@ -299,6 +348,11 @@ public sealed class AddRouteDialog : Window
         var passengerLine = _passengerLineBox.Text.Trim();
         var definition = new RouteDefinition(name, lineCourse, tripNumber, passengerLine);
         var displayKey = RouteDisplayHelper.ToDisplayStringWithOperatingDays(definition, selectedDays);
+        if (!RouteDateRange.TryParse(_dateFromBox.Text, _dateToBox.Text, out var candidateDateRange))
+        {
+            ShowError("Ungültiges Datum – bitte TT.MM.JJJJ verwenden (von ≤ bis).");
+            return;
+        }
 
         var routesToCheck = EditingRouteKey is null
             ? existingRoutes
@@ -312,18 +366,21 @@ public sealed class AddRouteDialog : Window
             return;
         }
 
-        if (RouteDisplayHelper.HasOperatingDayConflict(
+        if (RouteDisplayHelper.HasRouteScheduleConflict(
                 routesToCheck,
                 operatingDaysByRoute,
+                _dateRangesByRoute,
                 definition,
-                selectedDays))
+                selectedDays,
+                candidateDateRange))
         {
-            ShowError("Route schon vorhanden (Linie/Kurs, Fahrt und Verkehrstag überschneiden sich).");
+            ShowError("Route schon vorhanden (Linie/Kurs, Fahrt, Verkehrstag und/oder Datumsbereich überschneiden sich).");
             return;
         }
 
         ResultDefinition = definition;
         ResultOperatingDays = selectedDays.ToList();
+        ResultDateRange = candidateDateRange.IsRestricted ? candidateDateRange : null;
         ResultItcsRouteListEnabled = _itcsRouteListCheck.IsChecked == true;
         ResultMainDeviceOnly = _mainDeviceOnlyCheck.IsChecked == true;
         DialogResult = true;
@@ -348,6 +405,12 @@ public sealed class AddRouteDialog : Window
                 check.IsChecked = effective.Contains(day);
             }
         }
+    }
+
+    private void ApplyDateRangeToFields(RouteDateRange range)
+    {
+        _dateFromBox.Text = range.From is { } from ? RouteDateRange.FormatDate(from) : string.Empty;
+        _dateToBox.Text = range.To is { } to ? RouteDateRange.FormatDate(to) : string.Empty;
     }
 
     private void FormatLineCourseField()

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -32,6 +33,7 @@ public partial class DataTransferViewModel : ObservableObject
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private TransferButtonVisualState dropboxImportButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState dropboxExportButtonState = TransferButtonVisualState.Idle;
+    [ObservableProperty] private TransferButtonVisualState dropboxLiteUpdateButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState dropboxRemoteUpdateButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState leitstelleStandButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState planerWorkspaceImportButtonState = TransferButtonVisualState.Idle;
@@ -128,6 +130,13 @@ public partial class DataTransferViewModel : ObservableObject
 
     public void RefreshStats()
     {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+        {
+            dispatcher.Invoke(RefreshStats);
+            return;
+        }
+
         var stats = AppServices.Routes.Stats;
         RouteCount = stats.RouteCount;
         StopCount = stats.StopCount;
@@ -202,7 +211,8 @@ public partial class DataTransferViewModel : ObservableObject
     private bool CanExportLiteVehicleUpdate() =>
         !IsBusy &&
         HasLoadedPackage &&
-        IsDropboxConnected;
+        IsDropboxConnected &&
+        DropboxLiteUpdateButtonState != TransferButtonVisualState.Active;
 
     [RelayCommand]
     private void SelectAllRoutesForTransfer()
@@ -271,12 +281,12 @@ public partial class DataTransferViewModel : ObservableObject
             LastActionMessage =
                 $"Kleines Fahrzeugupdate hochgeladen ({DropboxConstants.RouteUpdateFileName}) – " +
                 "Routen/Haltestellen ohne Tondateien; bestehende Ansagen auf dem Gerät bleiben.";
-            DropboxExportButtonState = TransferButtonVisualState.Done;
+            DropboxLiteUpdateButtonState = TransferButtonVisualState.Done;
         }
         catch (Exception ex)
         {
             LastActionMessage = $"Kleines Fahrzeugupdate fehlgeschlagen: {ex.Message}";
-            DropboxExportButtonState = TransferButtonVisualState.Idle;
+            DropboxLiteUpdateButtonState = TransferButtonVisualState.Idle;
         }
         finally
         {
@@ -319,12 +329,12 @@ public partial class DataTransferViewModel : ObservableObject
                 ? $"{actionLabel}: {routeLabel} → {DropboxConstants.RouteUpdateFileName} (ohne Audio). Nicht enthaltene Routen werden auf dem Gerät entfernt."
                 : $"{actionLabel}: {routeLabel} → {DropboxConstants.RouteUpdateFileName} (ohne Audio). Bestehende Tondateien bleiben erhalten.";
 
-            DropboxExportButtonState = TransferButtonVisualState.Done;
+            DropboxLiteUpdateButtonState = TransferButtonVisualState.Done;
         }
         catch (Exception ex)
         {
             LastActionMessage = $"{actionLabel} fehlgeschlagen: {ex.Message}";
-            DropboxExportButtonState = TransferButtonVisualState.Idle;
+            DropboxLiteUpdateButtonState = TransferButtonVisualState.Idle;
         }
         finally
         {
@@ -427,8 +437,24 @@ public partial class DataTransferViewModel : ObservableObject
 
         await RunAsync(async () =>
         {
-            await AppServices.Routes.LoadFromFileAsync(dialog.FileName, persistLocally: true, source: "file-import");
-            LastActionMessage = $"Importiert und lokal gespeichert: {dialog.FileName}";
+            var json = await File.ReadAllTextAsync(dialog.FileName);
+            if (_isLeitstelleProfile && LiteRouteUpdateMerge.IsLiteVehicleUpdate(json))
+            {
+                if (AppServices.Routes.TryMergeLiteRouteUpdateJson(json, out var mergeMessage))
+                {
+                    LastActionMessage = $"{mergeMessage} ({dialog.FileName})";
+                }
+                else
+                {
+                    LastActionMessage = mergeMessage;
+                }
+            }
+            else
+            {
+                await AppServices.Routes.LoadFromFileAsync(dialog.FileName, persistLocally: true, source: "file-import");
+                LastActionMessage = $"Importiert und lokal gespeichert: {dialog.FileName}";
+            }
+
             RefreshStats();
             RoutePackageImported?.Invoke();
         });
@@ -579,6 +605,19 @@ public partial class DataTransferViewModel : ObservableObject
             if (standResult.Imported)
             {
                 LastActionMessage += $" {standResult.Message}";
+            }
+
+            var liteResult = await LiteRouteUpdateDropboxSync.TryMergeFromDropboxAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (liteResult.Imported)
+            {
+                LastActionMessage += $" {liteResult.Message}";
+            }
+            else if (!string.IsNullOrWhiteSpace(liteResult.Message) &&
+                     !liteResult.Message.Contains("bereits übernommen", StringComparison.OrdinalIgnoreCase) &&
+                     !liteResult.Message.Contains("Keine routes_update", StringComparison.OrdinalIgnoreCase))
+            {
+                LastActionMessage += $" ({liteResult.Message})";
             }
         }
 
@@ -895,12 +934,15 @@ public partial class DataTransferViewModel : ObservableObject
         try
         {
             await work(progress).ConfigureAwait(true);
-            setButtonState(TransferButtonVisualState.Done);
+            await RunOnUiAsync(() => setButtonState(TransferButtonVisualState.Done)).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            LastActionMessage = $"Fehler: {ex.Message}";
-            setButtonState(TransferButtonVisualState.Idle);
+            await RunOnUiAsync(() =>
+            {
+                LastActionMessage = $"Fehler: {ex.Message}";
+                setButtonState(TransferButtonVisualState.Idle);
+            }).ConfigureAwait(true);
         }
         finally
         {
@@ -919,6 +961,18 @@ public partial class DataTransferViewModel : ObservableObject
         }
 
         await dispatcher.InvokeAsync(static () => { }, DispatcherPriority.Render);
+    }
+
+    private static Task RunOnUiAsync(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.InvokeAsync(action, DispatcherPriority.Normal).Task;
     }
 
     private async Task RunAsync(Func<Task> action)
@@ -945,6 +999,9 @@ public partial class DataTransferViewModel : ObservableObject
     partial void OnDropboxExportButtonStateChanged(TransferButtonVisualState value) =>
         ExportToDropboxCommand.NotifyCanExecuteChanged();
 
+    partial void OnDropboxLiteUpdateButtonStateChanged(TransferButtonVisualState value) =>
+        ExportLiteVehicleUpdateToDropboxCommand.NotifyCanExecuteChanged();
+
     partial void OnDropboxRemoteUpdateButtonStateChanged(TransferButtonVisualState value) =>
         ExportToDropboxWithRemoteUpdateCommand.NotifyCanExecuteChanged();
 
@@ -960,6 +1017,7 @@ public partial class DataTransferViewModel : ObservableObject
     partial void OnIsBusyChanged(bool value)
     {
         ExportToDropboxCommand.NotifyCanExecuteChanged();
+        ExportLiteVehicleUpdateToDropboxCommand.NotifyCanExecuteChanged();
         NotifyRouteTransferCommandsCanExecute();
     }
 

@@ -5,7 +5,7 @@ namespace SmartOepnv.Core.Dienstvorlagen;
 /// <summary>Wiederverwendbare Dienstvorlage für den Planer.</summary>
 public sealed class DutyTemplate
 {
-    public const int FileVersion = 9;
+    public const int FileVersion = 10;
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
@@ -26,6 +26,12 @@ public sealed class DutyTemplate
     public string Contractor { get; set; } = string.Empty;
 
     public string OperatingDay { get; set; } = string.Empty;
+
+    /// <summary>Optionales Gültigkeitsdatum von (TT.MM.JJJJ).</summary>
+    public string ValidFrom { get; set; } = string.Empty;
+
+    /// <summary>Optionales Gültigkeitsdatum bis (TT.MM.JJJJ).</summary>
+    public string ValidTo { get; set; } = string.Empty;
 
     public string VehicleNumber { get; set; } = string.Empty;
 
@@ -107,6 +113,8 @@ public sealed class DutyTemplate
         DutyNumberPart3 = DutyNumberPart3,
         Contractor = Contractor,
         OperatingDay = OperatingDay,
+        ValidFrom = ValidFrom,
+        ValidTo = ValidTo,
         VehicleNumber = VehicleNumber,
         DefaultLineCourse = DefaultLineCourse,
         ImportedLine = ImportedLine,

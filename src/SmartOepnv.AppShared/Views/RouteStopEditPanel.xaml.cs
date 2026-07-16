@@ -84,6 +84,16 @@ public partial class RouteStopEditPanel : UserControl
                     stop.Destination,
                     RouteStopEditorCatalog.NoDestinationLabel));
             SetComboSelection(
+                StartDs021NeuCombo,
+                RouteStopEditorCatalog.ToComboLabel(
+                    stop.Ds021NeuDestination,
+                    RouteStopEditorCatalog.NoDestinationLabel));
+            SetComboSelection(
+                StartFmaS1Combo,
+                RouteStopEditorCatalog.ToComboLabel(
+                    stop.FmaS1Destination,
+                    RouteStopEditorCatalog.NoDestinationLabel));
+            SetComboSelection(
                 StartDs003aCombo,
                 RouteStopEditorCatalog.ToComboLabel(
                     stop.Ds003aDestination,
@@ -92,6 +102,16 @@ public partial class RouteStopEditPanel : UserControl
                 EndDs021tCombo,
                 RouteStopEditorCatalog.ToComboLabel(
                     stop.EndDestination,
+                    RouteStopEditorCatalog.NoDestinationLabel));
+            SetComboSelection(
+                EndDs021NeuCombo,
+                RouteStopEditorCatalog.ToComboLabel(
+                    stop.Ds021NeuEndDestination,
+                    RouteStopEditorCatalog.NoDestinationLabel));
+            SetComboSelection(
+                EndFmaS1Combo,
+                RouteStopEditorCatalog.ToComboLabel(
+                    stop.FmaS1EndDestination,
                     RouteStopEditorCatalog.NoDestinationLabel));
             SetComboSelection(
                 EndDs003aCombo,
@@ -129,6 +149,16 @@ public partial class RouteStopEditPanel : UserControl
                     comboLabel,
                     RouteStopEditorCatalog.NoDestinationLabel);
                 break;
+            case "startDs021Neu":
+                stop.Ds021NeuDestination = RouteStopEditorCatalog.FromComboLabel(
+                    comboLabel,
+                    RouteStopEditorCatalog.NoDestinationLabel);
+                break;
+            case "startFmaS1":
+                stop.FmaS1Destination = RouteStopEditorCatalog.FromComboLabel(
+                    comboLabel,
+                    RouteStopEditorCatalog.NoDestinationLabel);
+                break;
             case "startDs003a":
                 stop.Ds003aDestination = RouteStopEditorCatalog.FromComboLabel(
                     comboLabel,
@@ -136,6 +166,16 @@ public partial class RouteStopEditPanel : UserControl
                 break;
             case "endDs021t":
                 stop.EndDestination = RouteStopEditorCatalog.FromComboLabel(
+                    comboLabel,
+                    RouteStopEditorCatalog.NoDestinationLabel);
+                break;
+            case "endDs021Neu":
+                stop.Ds021NeuEndDestination = RouteStopEditorCatalog.FromComboLabel(
+                    comboLabel,
+                    RouteStopEditorCatalog.NoDestinationLabel);
+                break;
+            case "endFmaS1":
+                stop.FmaS1EndDestination = RouteStopEditorCatalog.FromComboLabel(
                     comboLabel,
                     RouteStopEditorCatalog.NoDestinationLabel);
                 break;
@@ -156,8 +196,12 @@ public partial class RouteStopEditPanel : UserControl
     {
         yield return StartDs021tCombo;
         yield return StartDs003aCombo;
+        yield return StartDs021NeuCombo;
+        yield return StartFmaS1Combo;
         yield return EndDs021tCombo;
         yield return EndDs003aCombo;
+        yield return EndDs021NeuCombo;
+        yield return EndFmaS1Combo;
         yield return LineCourseTripCombo;
     }
 

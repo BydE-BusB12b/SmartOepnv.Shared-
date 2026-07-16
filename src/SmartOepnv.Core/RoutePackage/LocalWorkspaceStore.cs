@@ -82,13 +82,26 @@ public sealed class LocalWorkspaceStore
             Directory.CreateDirectory(dir);
         }
 
+        var previousMeta = TryLoadMeta();
         SafeDataFileStore.WriteAllText(_packagePath, json, archivePrevious: archivePrevious);
         var meta = new WorkspaceMeta
         {
             LastSavedUtc = DateTimeOffset.UtcNow,
             Source = source,
-            PackageTimestamp = ExtractPackageTimestamp(json)
+            PackageTimestamp = ExtractPackageTimestamp(json),
+            LastMergedRouteUpdateTimestamp = previousMeta?.LastMergedRouteUpdateTimestamp
         };
+        SafeDataFileStore.WriteAllText(_metaPath, JsonSerializer.Serialize(meta, MetaJsonOptions));
+    }
+
+    public long GetLastMergedRouteUpdateTimestamp() =>
+        TryLoadMeta()?.LastMergedRouteUpdateTimestamp ?? 0;
+
+    public void SaveLastMergedRouteUpdateTimestamp(long timestamp)
+    {
+        var meta = TryLoadMeta() ?? new WorkspaceMeta();
+        meta.LastMergedRouteUpdateTimestamp = timestamp;
+        meta.LastSavedUtc = DateTimeOffset.UtcNow;
         SafeDataFileStore.WriteAllText(_metaPath, JsonSerializer.Serialize(meta, MetaJsonOptions));
     }
 

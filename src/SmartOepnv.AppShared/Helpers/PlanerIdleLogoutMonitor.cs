@@ -26,16 +26,24 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
 
     public void Start()
     {
-        if (!AppServices.IsPlannerApp || _isActive)
+        if (!AppServices.IsPlannerApp)
         {
             return;
         }
 
-        InputManager.Current.PreProcessInput += OnPreProcessInput;
         lock (_sync)
         {
-            _isActive = true;
-            ResetTimerCore();
+            if (!_isActive)
+            {
+                InputManager.Current.PreProcessInput += OnPreProcessInput;
+                _isActive = true;
+            }
+
+            if (_suspendCount == 0 && !_logoutInProgress)
+            {
+                ResetTimerCore();
+            }
+
             EnsureWallClockTimerRunning();
         }
     }
@@ -46,16 +54,43 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
         {
             if (!_isActive)
             {
+                _suspendCount = 0;
+                _logoutInProgress = false;
                 return;
             }
 
             _wallClockTimer?.Dispose();
             _wallClockTimer = null;
             _isActive = false;
+            _suspendCount = 0;
+            _logoutInProgress = false;
         }
 
         InputManager.Current.PreProcessInput -= OnPreProcessInput;
         PublishCountdownOnUi(null);
+    }
+
+    /// <summary>Monitor neu starten und Countdown-Anzeige sofort aktualisieren (z. B. nach abgebrochenem Schließen).</summary>
+    public void Restart()
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            if (!_isActive)
+            {
+                InputManager.Current.PreProcessInput += OnPreProcessInput;
+                _isActive = true;
+            }
+
+            _suspendCount = 0;
+            _logoutInProgress = false;
+            ResetTimerCore();
+            EnsureWallClockTimerRunning();
+        }
     }
 
     public void ResetTimer()

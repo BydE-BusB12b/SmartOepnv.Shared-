@@ -6,6 +6,7 @@
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch">
     <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <Style x:Key="DisplaysOpsSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
@@ -27,17 +28,45 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
             <TextBlock Text="Anzeigen &amp; Hinweise"
-                       FontWeight="SemiBold" FontSize="18" Margin="0,0,0,4" />
-            <TextBlock Text="Zielanzeigen und datumgesteuerte Hinweise – werden mit dem Routen-JSON (Dropbox) übertragen. Linienführung über Navidaten."
-                       TextWrapping="Wrap" Opacity="0.7" FontSize="11" />
-        </StackPanel>
+                       FontWeight="SemiBold"
+                       FontSize="18"
+                       VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
+                <Button Content="Zielliste / Außenanzeigen"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="zielliste"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Margin="12,0,8,0" />
+                <Button Content="Datumgesteuerte Hinweise"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="hints"
+                        Style="{StaticResource MaterialDesignRaisedButton}" />
+            </StackPanel>
+        </Grid>
 
         <TabControl Grid.Row="1"
-                    Style="{StaticResource MaterialDesignFilledTabControl}"
+                    SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}"
                     VerticalAlignment="Stretch"
                     HorizontalAlignment="Stretch">
+            <TabControl.Template>
+                <ControlTemplate TargetType="{x:Type TabControl}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}">
+                        <ContentPresenter x:Name="PART_SelectedContentHost"
+                                          ContentSource="SelectedContent" />
+                    </Border>
+                </ControlTemplate>
+            </TabControl.Template>
             <TabItem Header="Zielliste / Außenanzeigen"
                      HorizontalContentAlignment="Stretch"
                      VerticalContentAlignment="Stretch">
@@ -138,7 +167,7 @@
                                        Opacity="0.75"
                                        FontSize="11"
                                        Margin="0,0,0,10"
-                                       Text="DS021T: bis zu 4 Wechseltexte (Schleifenprogramm mit Intervall). DS003a Krefeld: ein Ziel Front/Seite." />
+                                       Text="DS021T / FMA-S1: bis zu 4 Wechseltexte (FMA-S1 mit DS001 Linie+Sonderz.). DS021neu: ein Ziel Front/Seite mit Schriftsteuerung. DS003a Krefeld: ein Ziel Front/Seite." />
 
                             <ScrollViewer Grid.Row="2"
                                           VerticalScrollBarVisibility="Auto"
@@ -191,6 +220,8 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
 
                                         <CheckBox Grid.Row="0" Grid.ColumnSpan="2"
@@ -213,13 +244,13 @@
                                                  Margin="0,0,0,8" />
 
                                         <TextBlock Grid.Row="3" Grid.ColumnSpan="2"
-                                                   Text="Wechseltext (DS021T) – Ziel 1 bis 4:"
+                                                   Text="Wechseltext (DS021T / FMA-S1) – Ziel 1 bis 4:"
                                                    FontWeight="SemiBold"
                                                    Margin="0,4,0,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="False">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -231,7 +262,7 @@
                                             <UniformGrid.Style>
                                                 <Style TargetType="UniformGrid">
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="False">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -251,67 +282,128 @@
                                                     CommandParameter="3" />
                                         </UniformGrid>
 
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Front Zeile 1 (Wechseltext)" VerticalAlignment="Center" Margin="0,0,8,8"
+                                                   Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
+                                        <TextBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8"
+                                                 Text="{Binding DataContext.ActiveFrontLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=LostFocus}"
+                                                 Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
+
                                         <TextBlock Grid.Row="5" Grid.Column="0" Text="Front Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="Front Zeile 1" />
+                                                    <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
-                                                            <Setter Property="Text" Value="Front Zeile 1 (Wechseltext)" />
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8">
+                                        <TextBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8"
+                                                 Text="{Binding FrontLine1, UpdateSourceTrigger=LostFocus}">
                                             <TextBox.Style>
                                                 <Style TargetType="TextBox">
-                                                    <Setter Property="Text" Value="{Binding FrontLine1, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
-                                                            <Setter Property="Text" Value="{Binding DataContext.ActiveFrontLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="6" Grid.Column="1" Margin="0,0,0,8">
+                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8"
+                                                   Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
+                                        <TextBox Grid.Row="6" Grid.Column="1" Margin="0,0,0,8"
+                                                 Text="{Binding DataContext.ActiveFrontLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=LostFocus}"
+                                                 Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
+
+                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBox Grid.Row="6" Grid.Column="1" Margin="0,0,0,8"
+                                                 Text="{Binding FrontLine2, UpdateSourceTrigger=LostFocus}">
                                             <TextBox.Style>
                                                 <Style TargetType="TextBox">
-                                                    <Setter Property="Text" Value="{Binding FrontLine2, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
-                                                            <Setter Property="Text" Value="{Binding DataContext.ActiveFrontLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="7" Grid.Column="1" Margin="0,0,0,8">
+                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8"
+                                                   Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
+                                        <TextBox Grid.Row="7" Grid.Column="1" Margin="0,0,0,8"
+                                                 Text="{Binding DataContext.ActiveSideLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=LostFocus}"
+                                                 Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
+
+                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBox Grid.Row="7" Grid.Column="1" Margin="0,0,0,8"
+                                                 Text="{Binding SideLine1, UpdateSourceTrigger=LostFocus}">
                                             <TextBox.Style>
                                                 <Style TargetType="TextBox">
-                                                    <Setter Property="Text" Value="{Binding SideLine1, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
-                                                            <Setter Property="Text" Value="{Binding DataContext.ActiveSideLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="8" Grid.Column="1" Margin="0,0,0,8">
+                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8"
+                                                   Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
+                                        <TextBox Grid.Row="8" Grid.Column="1" Margin="0,0,0,8"
+                                                 Text="{Binding DataContext.ActiveSideLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=LostFocus}"
+                                                 Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
+
+                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBox Grid.Row="8" Grid.Column="1" Margin="0,0,0,8"
+                                                 Text="{Binding SideLine2, UpdateSourceTrigger=LostFocus}">
                                             <TextBox.Style>
                                                 <Style TargetType="TextBox">
-                                                    <Setter Property="Text" Value="{Binding SideLine2, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="False">
-                                                            <Setter Property="Text" Value="{Binding DataContext.ActiveSideLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -330,24 +422,94 @@
                                                  Text="{Binding Ds001Spec, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8" />
 
-                                        <TextBlock Grid.Row="11" Grid.Column="0" Text="Intervall (Sek.)" VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <TextBlock Grid.Row="11" Grid.ColumnSpan="2"
+                                                   Text="Schrift Front (DS021neu):"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,4,0,8">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDs021Neu}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <Grid Grid.Row="12" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDs021Neu}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="60" />
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Zeile 1 Stärke" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="1"
+                                                     materialDesign:HintAssist.Hint="Normal oder Fett"
+                                                     Text="{Binding FontLine1Weight, UpdateSourceTrigger=LostFocus}"
+                                                     Margin="0,0,12,0" />
+                                            <TextBlock Grid.Column="2" Text="Zeile 1 Höhe (0–9)" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="3"
+                                                     Text="{Binding FontLine1Height, UpdateSourceTrigger=LostFocus}" />
+                                        </Grid>
+
+                                        <Grid Grid.Row="13" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDs021Neu}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="60" />
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Zeile 2 Stärke" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="1"
+                                                     materialDesign:HintAssist.Hint="Normal oder Fett"
+                                                     Text="{Binding FontLine2Weight, UpdateSourceTrigger=LostFocus}"
+                                                     Margin="0,0,12,0" />
+                                            <TextBlock Grid.Column="2" Text="Zeile 2 Höhe (0–9)" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="3"
+                                                     Text="{Binding FontLine2Height, UpdateSourceTrigger=LostFocus}" />
+                                        </Grid>
+
+                                        <TextBlock Grid.Row="14" Grid.Column="0" Text="Intervall (Sek.)" VerticalAlignment="Center" Margin="0,0,8,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
+                                                        <DataTrigger Binding="{Binding IsDs021T}" Value="False">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="11" Grid.Column="1"
+                                        <TextBox Grid.Row="14" Grid.Column="1"
                                                  Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8">
                                             <TextBox.Style>
                                                 <Style TargetType="TextBox">
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
+                                                        <DataTrigger Binding="{Binding IsDs021T}" Value="False">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -355,7 +517,7 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <TextBlock Grid.Row="12" Grid.Column="0" Text="Steuerblock" VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <TextBlock Grid.Row="15" Grid.Column="0" Text="Steuerblock" VerticalAlignment="Center" Margin="0,0,8,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -367,7 +529,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="12" Grid.Column="1"
+                                        <TextBox Grid.Row="15" Grid.Column="1"
                                                  materialDesign:HintAssist.Hint="leer = DG5DG7DG7DG7"
                                                  Text="{Binding ControlCodes, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8">
@@ -383,7 +545,7 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <StackPanel Grid.Row="13" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,4">
+                                        <StackPanel Grid.Row="16" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,4">
                                             <StackPanel.Style>
                                                 <Style TargetType="StackPanel">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -405,6 +567,14 @@
                             <WrapPanel Grid.Row="3">
                                 <Button Content="+ DS021T"
                                         Command="{Binding AddOutsideProgramDs021tCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ DS021neu"
+                                        Command="{Binding AddOutsideProgramDs021NeuCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ FMA-S1"
+                                        Command="{Binding AddOutsideProgramFmaS1Command}"
                                         Style="{StaticResource MaterialDesignRaisedButton}"
                                         Margin="0,0,8,6" />
                                 <Button Content="+ DS003a Krefeld"

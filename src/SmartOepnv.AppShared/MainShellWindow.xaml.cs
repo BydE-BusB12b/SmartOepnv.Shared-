@@ -77,7 +77,7 @@ public partial class MainShellWindow : Window
         if (AppServices.IsPlannerApp && AppServices.PlanerSession?.IsLoggedIn == true)
         {
             LogoutButton.Visibility = Visibility.Visible;
-            StartIdleLogoutMonitor();
+            RestartIdleLogoutMonitor();
         }
 
         if (!_softwareUpdateChecked && AppServices.IsInitialized && !AppServices.IsPlannerApp)
@@ -110,7 +110,7 @@ public partial class MainShellWindow : Window
         if (AppServices.IsPlannerApp && AppServices.PlanerSession?.IsLoggedIn == true)
         {
             LogoutButton.Visibility = Visibility.Visible;
-            StartIdleLogoutMonitor();
+            RestartIdleLogoutMonitor();
         }
 
         Activate();
@@ -178,6 +178,7 @@ public partial class MainShellWindow : Window
         {
             SetLoginOverlay(false);
             _idleLogoutMonitor?.Resume();
+            RestartIdleLogoutMonitor();
             SmartConfirmDialog.ShowInfo(
                 this,
                 "Speichern fehlgeschlagen",
@@ -212,7 +213,24 @@ public partial class MainShellWindow : Window
         BeginPostLoginInitialization(gate);
     }
 
-    private void StartIdleLogoutMonitor() => _idleLogoutMonitor?.Start();
+    private void RestartIdleLogoutMonitor()
+    {
+        if (!AppServices.IsPlannerApp || LoginGateActive || AppServices.PlanerSession?.IsLoggedIn != true)
+        {
+            UpdateIdleCountdownDisplay(null);
+            return;
+        }
+
+        _lifecycleMonitor?.Start();
+        _idleLogoutMonitor?.Restart();
+    }
+
+    private void StopIdleLogoutMonitor()
+    {
+        _idleLogoutMonitor?.Stop();
+        _lifecycleMonitor?.Stop();
+        UpdateIdleCountdownDisplay(null);
+    }
 
     private void OnIdleCountdownChanged(TimeSpan? remaining) => UpdateIdleCountdownDisplay(remaining);
 
@@ -232,7 +250,8 @@ public partial class MainShellWindow : Window
 
         var minutes = totalSeconds / 60;
         var seconds = totalSeconds % 60;
-        IdleLogoutCountdown.Text = $"Abmeldung in {minutes:D2}:{seconds:D2}";
+        var logoutAt = DateTime.Now.AddSeconds(totalSeconds);
+        IdleLogoutCountdown.Text = $"Abmeldung um {logoutAt:HH:mm} ({minutes:D2}:{seconds:D2})";
         IdleLogoutCountdown.Visibility = Visibility.Visible;
         IdleLogoutCountdown.Foreground = totalSeconds switch
         {
@@ -317,7 +336,7 @@ public partial class MainShellWindow : Window
                 _idleLogoutMonitor?.Resume();
                 if (AppServices.PlanerSession?.IsLoggedIn == true && !LoginGateActive)
                 {
-                    StartIdleLogoutMonitor();
+                    RestartIdleLogoutMonitor();
                 }
             }
 
@@ -431,9 +450,6 @@ public partial class MainShellWindow : Window
 
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
-        _idleLogoutMonitor?.Stop();
-        _lifecycleMonitor?.Stop();
-
         if (DataContext is MainViewModel vm && !AppServices.IsPlannerApp)
         {
             vm.ShutdownVoip();
@@ -441,6 +457,7 @@ public partial class MainShellWindow : Window
 
         if (_closeConfirmed || !AppServices.IsInitialized)
         {
+            StopIdleLogoutMonitor();
             return;
         }
 
@@ -472,6 +489,7 @@ public partial class MainShellWindow : Window
         if (closeChoice == PlanerCloseChoice.Cancel)
         {
             _closeHandlerRunning = false;
+            RestartIdleLogoutMonitor();
             return;
         }
 
@@ -505,6 +523,7 @@ public partial class MainShellWindow : Window
                 savingDialog.Close();
                 IsEnabled = true;
                 _idleLogoutMonitor?.Resume();
+                RestartIdleLogoutMonitor();
                 _closeHandlerRunning = false;
                 SmartConfirmDialog.ShowInfo(
                     this,
@@ -544,6 +563,7 @@ public partial class MainShellWindow : Window
         }
 
         _closeHandlerRunning = false;
+        StopIdleLogoutMonitor();
         ConfirmAndClose();
     }
 

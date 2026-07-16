@@ -205,6 +205,31 @@
                                        Style="{StaticResource DutyHintStyle}"
                                        Margin="0,0,0,6"
                                        Visibility="{Binding HasOperatingDayDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock Text="Gültigkeit (optional)"
+                                       Style="{StaticResource DutySectionTitleStyle}"
+                                       Margin="0,0,0,4" />
+                            <TextBlock Style="{StaticResource DutyHintStyle}"
+                                       Text="Kalenderdatum von/bis (TT.MM.JJJJ) – erscheint in der PDF neben dem Betriebstag. Leer = unbegrenzt."
+                                       Margin="0,0,0,6" />
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         materialDesign:HintAssist.Hint="Datum von (TT.MM.JJJJ)"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Text="{Binding ValidFrom, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Grid.Column="2"
+                                         materialDesign:HintAssist.Hint="Datum bis (TT.MM.JJJJ)"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Text="{Binding ValidTo, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+                            <TextBlock Text="{Binding ValidDateRangeDisplay}"
+                                       Style="{StaticResource DutyHintStyle}"
+                                       Margin="0,0,0,6"
+                                       Visibility="{Binding HasValidDateRangeDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <TextBox materialDesign:HintAssist.Hint="Fahrzeug/Bus (z. B. 3)"
                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                      Text="{Binding VehicleNumber, UpdateSourceTrigger=PropertyChanged}"

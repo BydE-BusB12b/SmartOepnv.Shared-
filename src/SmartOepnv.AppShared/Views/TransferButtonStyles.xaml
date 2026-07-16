@@ -72,6 +72,29 @@
         </Style.Triggers>
     </Style>
 
+    <Style x:Key="DropboxLiteUpdateTransferButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource TransferBlinkOutlinedOnDarkStyle}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding DropboxLiteUpdateButtonState}" Value="{x:Static vm:TransferButtonVisualState.Active}">
+                <Setter Property="Foreground" Value="#FFFFCC80" />
+                <Setter Property="Background" Value="#66FFB74D" />
+                <Setter Property="BorderBrush" Value="#FFFF9800" />
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="DropboxLiteUpdateBlink" Storyboard="{StaticResource TransferBlinkStoryboard}" />
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="DropboxLiteUpdateBlink" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding DropboxLiteUpdateButtonState}" Value="{x:Static vm:TransferButtonVisualState.Done}">
+                <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <Style x:Key="DropboxRemoteUpdateTransferButtonStyle"
            TargetType="Button"
            BasedOn="{StaticResource TransferBlinkRaisedLightOnDarkStyle}">

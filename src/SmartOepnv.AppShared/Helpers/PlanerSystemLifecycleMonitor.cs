@@ -18,6 +18,7 @@ public sealed class PlanerSystemLifecycleMonitor : IDisposable
             return;
         }
 
+        Stop();
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
     }
 

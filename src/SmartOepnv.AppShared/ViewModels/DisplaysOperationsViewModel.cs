@@ -23,6 +23,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     private bool _committingChanges;
     private int _loadedRevision = -1;
     private OutsideDisplayProgram? _subscribedOutsideProgram;
+    private bool _isSortingPrograms;
     private CancellationTokenSource? _saveFeedbackCts;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
@@ -33,6 +34,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [ObservableProperty] private string newHintStartDate = string.Empty;
     [ObservableProperty] private string newHintEndDate = string.Empty;
     [ObservableProperty] private DisplaysOperationsButtonState saveButtonState = DisplaysOperationsButtonState.Idle;
+    [ObservableProperty] private int selectedTabIndex;
 
     public ObservableCollection<DateBasedHintItem> DateBasedHints { get; } = [];
     public ObservableCollection<OutsideDisplayProgram> OutsidePrograms { get; } = [];
@@ -183,24 +185,32 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
 
     private void SortOutsidePrograms()
     {
-        if (OutsidePrograms.Count <= 1)
+        if (_isSortingPrograms || OutsidePrograms.Count <= 1)
         {
             return;
         }
 
-        var selected = SelectedOutsideProgram;
-        var sorted = OutsidePrograms
-            .OrderBy(p => p, Comparer<OutsideDisplayProgram>.Create(OutsideDisplayProgram.CompareForZielliste))
-            .ToList();
-        OutsidePrograms.Clear();
-        foreach (var program in sorted)
+        _isSortingPrograms = true;
+        try
         {
-            OutsidePrograms.Add(program);
-        }
+            var selected = SelectedOutsideProgram;
+            var sorted = OutsidePrograms
+                .OrderBy(p => p, Comparer<OutsideDisplayProgram>.Create(OutsideDisplayProgram.CompareForZielliste))
+                .ToList();
+            OutsidePrograms.Clear();
+            foreach (var program in sorted)
+            {
+                OutsidePrograms.Add(program);
+            }
 
-        SelectedOutsideProgram = selected is not null && OutsidePrograms.Contains(selected)
-            ? selected
-            : OutsidePrograms.FirstOrDefault();
+            SelectedOutsideProgram = selected is not null && OutsidePrograms.Contains(selected)
+                ? selected
+                : OutsidePrograms.FirstOrDefault();
+        }
+        finally
+        {
+            _isSortingPrograms = false;
+        }
     }
 
     private void MarkDirty()
@@ -311,6 +321,12 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     }
 
     [RelayCommand]
+    private void SelectTab(string? tabKey)
+    {
+        SelectedTabIndex = tabKey == "hints" ? 1 : 0;
+    }
+
+    [RelayCommand]
     private void SelectWechseltext(string? indexText)
     {
         if (!int.TryParse(indexText, out var index))
@@ -323,6 +339,11 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
 
     private void OnOutsideProgramPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (_isSortingPrograms)
+        {
+            return;
+        }
+
         if (!_committingChanges)
         {
             MarkDirty();
@@ -345,6 +366,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             nameof(OutsideDisplayProgram.WechseltextCount))
         {
             NotifyActiveWechseltextBindings();
+            return;
         }
 
         if (e.PropertyName is nameof(OutsideDisplayProgram.IsListEnabled))
@@ -352,6 +374,20 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             var enabledCount = OutsidePrograms.Count(p => p.IsListEnabled);
             StatusMessage =
                 $"{OutsidePrograms.Count} Zielanzeigen ({enabledCount} in ITCS-Liste), {DateBasedHints.Count} Hinweise – Änderungen bitte speichern.";
+            return;
+        }
+
+        if (e.PropertyName is nameof(OutsideDisplayProgram.FontLine1Weight) or
+            nameof(OutsideDisplayProgram.FontLine1Height) or
+            nameof(OutsideDisplayProgram.FontLine2Weight) or
+            nameof(OutsideDisplayProgram.FontLine2Height) or
+            nameof(OutsideDisplayProgram.Protocol) or
+            nameof(OutsideDisplayProgram.IsDs021Neu) or
+            nameof(OutsideDisplayProgram.IsFmaS1) or
+            nameof(OutsideDisplayProgram.UsesCycleEditor) or
+            nameof(OutsideDisplayProgram.IsDs021T) or
+            nameof(OutsideDisplayProgram.IsKrefeld))
+        {
             return;
         }
 
@@ -420,6 +456,28 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         SelectedOutsideProgram = program;
         MarkDirty();
         StatusMessage = "Neue Zielanzeige (DS021T) – Texte anpassen und speichern.";
+    }
+
+    [RelayCommand]
+    private void AddOutsideProgramDs021Neu()
+    {
+        var program = OutsideDisplayProgram.CreateDs021Neu($"Ziel {OutsidePrograms.Count + 1}");
+        OutsidePrograms.Add(program);
+        SortOutsidePrograms();
+        SelectedOutsideProgram = program;
+        MarkDirty();
+        StatusMessage = "Neue Zielanzeige (DS021neu) – Texte anpassen und speichern.";
+    }
+
+    [RelayCommand]
+    private void AddOutsideProgramFmaS1()
+    {
+        var program = OutsideDisplayProgram.CreateFmaS1($"Ziel {OutsidePrograms.Count + 1}");
+        OutsidePrograms.Add(program);
+        SortOutsidePrograms();
+        SelectedOutsideProgram = program;
+        MarkDirty();
+        StatusMessage = "Neue Zielanzeige (FMA-S1) – Texte anpassen und speichern.";
     }
 
     [RelayCommand]

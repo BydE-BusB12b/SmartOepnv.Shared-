@@ -116,7 +116,7 @@
                                    FontWeight="SemiBold"
                                    Opacity="0.9"
                                    Visibility="Collapsed"
-                                   ToolTip="Verbleibende Zeit bis zur automatischen Abmeldung bei Inaktivität" />
+                                   ToolTip="Uhrzeit der automatischen Abmeldung bei Inaktivität (10 Min.) und verbleibende Zeit" />
                         <Button x:Name="LogoutButton"
                                 Style="{StaticResource MaterialDesignIconForegroundButton}"
                                 ToolTip="Abmelden"
