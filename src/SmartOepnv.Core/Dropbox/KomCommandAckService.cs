@@ -48,6 +48,8 @@ public static class KomCommandAckService
         KomLeitstelleDurchsageService.CommandType => $"Fahrgastraum-Durchsage an {vehicleName} gesendet",
         KomRemoteDestinationService.CommandType => $"Fernziel an {vehicleName} gesendet",
         KomRemoteRouteService.CommandType => $"Fernroute an {vehicleName} gesendet",
+        KomRemoteLockService.CommandType => $"Sperre/Entsperren an {vehicleName} gesendet",
+        KomRemoteDriverLoginService.CommandType => $"Fahreranmeldung an {vehicleName} gesendet",
         RemoteManualUpdateService.CommandType => $"Fernupdate an {vehicleName} gesendet",
         ZblMessageService.CommandType => $"Meldung an {vehicleName} gesendet",
         _ => $"Befehl an {vehicleName} gesendet"
@@ -58,6 +60,8 @@ public static class KomCommandAckService
         KomLeitstelleDurchsageService.CommandType => "Durchsage erfolgreich abgespielt",
         KomRemoteDestinationService.CommandType => "Ziel erfolgreich geändert",
         KomRemoteRouteService.CommandType => "Route erfolgreich übernommen",
+        KomRemoteLockService.CommandType => "Sperrstatus übernommen",
+        KomRemoteDriverLoginService.CommandType => "Fahreranmeldung übernommen",
         RemoteManualUpdateService.CommandType => "Update erfolgreich installiert",
         ZblMessageService.CommandType => "Meldung empfangen",
         _ => "Erfolgreich"

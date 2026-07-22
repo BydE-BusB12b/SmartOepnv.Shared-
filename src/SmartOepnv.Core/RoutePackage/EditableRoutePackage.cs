@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dienstvorlagen;
@@ -7,6 +8,13 @@ namespace SmartOepnv.Core.RoutePackage;
 public sealed class EditableRoutePackage
 {
     private JsonObject _root = new();
+
+    /// <summary>
+    /// Roh-JSON von <c>embeddedSounds</c> / <c>specialAnnouncements</c> aus dem letzten Laden/Rebuild.
+    /// Ermöglicht schnelle lokale Saves ohne erneute Base64-Serialisierung.
+    /// </summary>
+    private string? _cachedEmbeddedSoundsJson;
+    private string? _cachedSpecialAnnouncementsJson;
 
     public IList<string> RouteNames { get; } = new List<string>();
     public JsonObject PackageRoot => _root;
@@ -50,15 +58,16 @@ public sealed class EditableRoutePackage
         }
 
         var package = new EditableRoutePackage { _root = root };
+        package.CaptureHeavyMediaCacheFromSourceJson(json);
         package.ReloadFromRoot();
         return package;
     }
 
-    public string ToJson(bool indented = true)
+    public string ToJson(bool indented = true, bool rebuildEmbeddedMedia = true)
     {
         NormalizeStopsStorageBeforeSave();
         ConsolidateDuplicateRouteKeys();
-        SyncToRoot();
+        SyncToRoot(rebuildEmbeddedMedia);
         _root["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         if (_root["version"] is null)
         {
@@ -72,7 +81,133 @@ public sealed class EditableRoutePackage
 
         _root["autoImport"] = true;
 
-        return _root.ToJsonString();
+        if (!rebuildEmbeddedMedia)
+        {
+            return SerializeRootPreservingHeavyMediaCache();
+        }
+
+        var json = _root.ToJsonString();
+        CaptureHeavyMediaCacheFromSourceJson(json);
+        return json;
+    }
+
+    /// <summary>Cache verwerfen, sobald <c>embeddedSounds</c> inhaltlich geändert wurde.</summary>
+    public void InvalidateEmbeddedSoundsJsonCache() => _cachedEmbeddedSoundsJson = null;
+
+    public void InvalidateSpecialAnnouncementsJsonCache() => _cachedSpecialAnnouncementsJson = null;
+
+    private void CaptureHeavyMediaCacheFromSourceJson(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            _cachedEmbeddedSoundsJson = doc.RootElement.TryGetProperty("embeddedSounds", out var sounds)
+                ? sounds.GetRawText()
+                : null;
+            _cachedSpecialAnnouncementsJson =
+                doc.RootElement.TryGetProperty("specialAnnouncements", out var special)
+                    ? special.GetRawText()
+                    : null;
+        }
+        catch
+        {
+            _cachedEmbeddedSoundsJson = null;
+            _cachedSpecialAnnouncementsJson = null;
+        }
+    }
+
+    private string SerializeRootPreservingHeavyMediaCache()
+    {
+        var hasSounds = _root.ContainsKey("embeddedSounds");
+        var hasSpecial = _root.ContainsKey("specialAnnouncements");
+
+        if ((hasSounds && _cachedEmbeddedSoundsJson is null) ||
+            (hasSpecial && _cachedSpecialAnnouncementsJson is null))
+        {
+            var full = _root.ToJsonString();
+            CaptureHeavyMediaCacheFromSourceJson(full);
+            return full;
+        }
+
+        JsonNode? soundsNode = null;
+        JsonNode? specialNode = null;
+        if (hasSounds)
+        {
+            soundsNode = _root["embeddedSounds"];
+            _root.Remove("embeddedSounds");
+        }
+
+        if (hasSpecial)
+        {
+            specialNode = _root["specialAnnouncements"];
+            _root.Remove("specialAnnouncements");
+        }
+
+        try
+        {
+            var body = _root.ToJsonString();
+            return InjectHeavyMediaProperties(
+                body,
+                hasSounds ? _cachedEmbeddedSoundsJson : null,
+                hasSpecial ? _cachedSpecialAnnouncementsJson : null);
+        }
+        finally
+        {
+            if (soundsNode is not null)
+            {
+                _root["embeddedSounds"] = soundsNode;
+            }
+
+            if (specialNode is not null)
+            {
+                _root["specialAnnouncements"] = specialNode;
+            }
+        }
+    }
+
+    private static string InjectHeavyMediaProperties(
+        string body,
+        string? embeddedSoundsJson,
+        string? specialAnnouncementsJson)
+    {
+        if (embeddedSoundsJson is null && specialAnnouncementsJson is null)
+        {
+            return body;
+        }
+
+        if (body.Length < 2 || body[^1] != '}')
+        {
+            return body;
+        }
+
+        var needsComma = body.Length > 2;
+        var extraLength = (embeddedSoundsJson?.Length ?? 0) + (specialAnnouncementsJson?.Length ?? 0) + 64;
+        var sb = new System.Text.StringBuilder(body.Length + extraLength);
+        sb.Append(body, 0, body.Length - 1);
+
+        void AppendProperty(string name, string valueJson)
+        {
+            if (needsComma)
+            {
+                sb.Append(',');
+            }
+
+            sb.Append('"').Append(name).Append("\":").Append(valueJson);
+            needsComma = true;
+        }
+
+        if (embeddedSoundsJson is not null)
+        {
+            AppendProperty("embeddedSounds", embeddedSoundsJson);
+        }
+
+        if (specialAnnouncementsJson is not null)
+        {
+            AppendProperty("specialAnnouncements", specialAnnouncementsJson);
+        }
+
+        sb.Append('}');
+        return sb.ToString();
     }
 
     public void ReloadFromRoot()
@@ -240,6 +375,8 @@ public sealed class EditableRoutePackage
 
         ConsolidateDuplicateRouteKeys();
         NormalizeRouteDisplayNamesForOperatingDays();
+        OutsideDisplayDestinationResolver.EnsureOutsideDisplayIds(this);
+        OutsideDisplayDestinationResolver.SyncStopLinks(this);
         EnsureRouteNamesForStopBuckets();
         RecoverOrphanedStopsAfterTripNumberChange();
         PruneOrphanStopBuckets();
@@ -550,46 +687,12 @@ public sealed class EditableRoutePackage
         return true;
     }
 
-    private static RouteStopItem CloneStopForRoute(RouteStopItem source, string routeName) =>
-        new()
-        {
-            PlannerStopCode = source.PlannerStopCode,
-            Name = source.Name,
-            RouteName = routeName,
-            GpsCoordinates = source.GpsCoordinates,
-            StopCoordinates = source.StopCoordinates,
-            Radius = source.Radius,
-            VrrStopId = source.VrrStopId,
-            StopDisplay = source.StopDisplay,
-            Time = source.Time,
-            IsWaypoint = source.IsWaypoint,
-            WaypointName = source.WaypointName,
-            IsAnnouncementEnabled = source.IsAnnouncementEnabled,
-            EmbeddedSoundFileName = source.EmbeddedSoundFileName,
-            Destination = source.Destination,
-            Ds021NeuDestination = source.Ds021NeuDestination,
-            FmaS1Destination = source.FmaS1Destination,
-            Ds003aDestination = source.Ds003aDestination,
-            LineNumber = source.LineNumber,
-            EndDestination = source.EndDestination,
-            Ds021NeuEndDestination = source.Ds021NeuEndDestination,
-            FmaS1EndDestination = source.FmaS1EndDestination,
-            Ds003aEndDestination = source.Ds003aEndDestination,
-            IsEndStop = source.IsEndStop,
-            PlayEndStopAnnouncement = source.PlayEndStopAnnouncement,
-            RouteChangeEnabled = source.RouteChangeEnabled,
-            SelectedLineCourseTrip = source.SelectedLineCourseTrip,
-            EndDestinationCoordinates = source.EndDestinationCoordinates,
-            IsDisplayEnabled = source.IsDisplayEnabled,
-            DisplayText = source.DisplayText,
-            DisplayText2 = source.DisplayText2,
-            DisplayText3 = source.DisplayText3,
-            UseDisplayText2 = source.UseDisplayText2,
-            UseDisplayText3 = source.UseDisplayText3,
-            DisplayInterval = source.DisplayInterval,
-            NextStop = source.NextStop,
-            Abstand = source.Abstand
-        };
+    private static RouteStopItem CloneStopForRoute(RouteStopItem source, string routeName)
+    {
+        var clone = source.Clone();
+        clone.RouteName = routeName;
+        return clone;
+    }
 
     public void RemoveRoute(string routeName)
     {
@@ -1071,10 +1174,10 @@ public sealed class EditableRoutePackage
         }
     }
 
-    private void SyncToRoot()
+    private void SyncToRoot(bool rebuildEmbeddedMedia = true)
     {
         var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
-        GpsAnsagenRouteExportSync.ApplyToPackage(this, _root, workspace);
+        GpsAnsagenRouteExportSync.ApplyToPackage(this, _root, workspace, rebuildEmbeddedMedia);
     }
 
     public void ReplaceStopTemplates(IList<ManagedStopTemplateItem> templates)
@@ -1113,9 +1216,13 @@ public sealed class EditableRoutePackage
             workspace);
     }
 
-    private void SyncEmbeddedSoundsFromFileNames(
+    /// <summary>
+    /// true, wenn mindestens ein Ton neu aus Datei/Workspace in <c>embeddedSounds</c> muss –
+    /// false bei reiner Dateinamen-Verknüpfung auf bereits eingebettete Töne.
+    /// </summary>
+    public bool NeedsEmbeddedSoundMaterialization(
         IEnumerable<(string? FileName, string? LocalPath)> items,
-        LocalWorkspaceStore? workspace)
+        LocalWorkspaceStore? workspace = null)
     {
         var existingNames = new HashSet<string>(
             EmbeddedSoundsEditor.ListFileNames(_root),
@@ -1131,8 +1238,53 @@ public sealed class EditableRoutePackage
 
             if (!string.IsNullOrWhiteSpace(localPath) && File.Exists(localPath))
             {
+                return true;
+            }
+
+            if (existingNames.Contains(name))
+            {
+                continue;
+            }
+
+            if (workspace is not null &&
+                PlanerEmbeddedSoundsWorkspace.TryGetLocalFilePath(workspace, name) is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool NeedsEmbeddedSoundMaterialization(
+        IEnumerable<ManagedStopTemplateItem> templates,
+        LocalWorkspaceStore? workspace = null) =>
+        NeedsEmbeddedSoundMaterialization(
+            templates.Select(t => ((string?)t.EmbeddedSoundFileName, t.LocalAudioPath)),
+            workspace);
+
+    private void SyncEmbeddedSoundsFromFileNames(
+        IEnumerable<(string? FileName, string? LocalPath)> items,
+        LocalWorkspaceStore? workspace)
+    {
+        var existingNames = new HashSet<string>(
+            EmbeddedSoundsEditor.ListFileNames(_root),
+            StringComparer.OrdinalIgnoreCase);
+        var changed = false;
+
+        foreach (var (fileName, localPath) in items)
+        {
+            var name = fileName?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(localPath) && File.Exists(localPath))
+            {
                 EmbeddedSoundsEditor.UpsertFromFile(_root, name, localPath);
                 existingNames.Add(name);
+                changed = true;
                 if (workspace is not null)
                 {
                     CopyToWorkspace(workspace, name, localPath);
@@ -1153,8 +1305,14 @@ public sealed class EditableRoutePackage
                 {
                     EmbeddedSoundsEditor.UpsertFromFile(_root, name, wsPath);
                     existingNames.Add(name);
+                    changed = true;
                 }
             }
+        }
+
+        if (changed)
+        {
+            InvalidateEmbeddedSoundsJsonCache();
         }
     }
 

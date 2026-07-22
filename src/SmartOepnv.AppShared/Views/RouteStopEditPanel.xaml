@@ -197,6 +197,8 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
                            Text="Ziel auswählen (DS021T):" Margin="0,0,0,4" Opacity="0.9" />
@@ -262,9 +264,25 @@
                                Text="{Binding SelectedDestinationFmaS1}"
                                ToolTip="{Binding SelectedDestinationFmaS1}" />
                 </Grid>
-                <TextBlock Grid.Row="8" Grid.Column="0" Text="Liniennummer (z. B. 28, _28, !28):"
+                <TextBlock Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2"
+                           Text="Ziel auswählen (Zielnummer):" Margin="0,0,0,4" Opacity="0.9" />
+                <Grid Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="StartZielnummerCombo"
+                              Tag="startZielnummer"
+                              ItemsSource="{Binding ZielnummerDestinations}"
+                              SelectedItem="{Binding SelectedDestinationZielnummer, Mode=OneWay}" />
+                    <TextBlock Grid.Column="1"
+                               Style="{StaticResource RouteStopDestinationValueText}"
+                               Text="{Binding SelectedDestinationZielnummer}"
+                               ToolTip="{Binding SelectedDestinationZielnummer}" />
+                </Grid>
+                <TextBlock Grid.Row="10" Grid.Column="0" Text="Liniennummer (z. B. 28, _28, !28):"
                            Margin="0,0,8,0" Opacity="0.9" VerticalAlignment="Center" />
-                <TextBox Grid.Row="8" Grid.Column="1"
+                <TextBox Grid.Row="10" Grid.Column="1"
                          Text="{Binding SelectedStop.LineNumber, UpdateSourceTrigger=LostFocus}"
                          MaxLength="4" LostFocus="Field_LostFocus" />
             </Grid>
@@ -281,6 +299,9 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -356,8 +377,24 @@
                                ToolTip="{Binding SelectedEndDestinationFmaS1}" />
                 </Grid>
                 <TextBlock Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2"
+                           Text="Endziel auswählen (Zielnummer):" Margin="0,0,0,4" Opacity="0.9" />
+                <Grid Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="EndZielnummerCombo"
+                              Tag="endZielnummer"
+                              ItemsSource="{Binding ZielnummerDestinations}"
+                              SelectedItem="{Binding SelectedEndDestinationZielnummer, Mode=OneWay}" />
+                    <TextBlock Grid.Column="1"
+                               Style="{StaticResource RouteStopDestinationValueText}"
+                               Text="{Binding SelectedEndDestinationZielnummer}"
+                               ToolTip="{Binding SelectedEndDestinationZielnummer}" />
+                </Grid>
+                <TextBlock Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="2"
                            Text="Endziel-GPS (lat, lon):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8" HorizontalAlignment="Stretch">
+                <Grid Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8" HorizontalAlignment="Stretch">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />

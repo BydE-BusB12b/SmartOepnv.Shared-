@@ -40,6 +40,18 @@ public sealed class VehicleRemoteActionsDialog : Window
         {
             new KomRemoteRouteDialog(vehicle, this).ShowDialog();
         }));
+        root.Children.Add(VehicleKomUi.MakeActionButton("Fern-Fahreranmeldung", () =>
+        {
+            new KomRemoteDriverLoginDialog(vehicle, this).ShowDialog();
+        }));
+        root.Children.Add(VehicleKomUi.MakeActionButton("Gerät sperren", () =>
+        {
+            new KomRemoteLockDialog(vehicle, this, locked: true).ShowDialog();
+        }));
+        root.Children.Add(VehicleKomUi.MakeActionButton("Gerät entsperren", () =>
+        {
+            new KomRemoteLockDialog(vehicle, this, locked: false).ShowDialog();
+        }));
         root.Children.Add(VehicleKomUi.MakeActionButton("Fahrgastraum-Durchsage", () =>
         {
             new KomLeitstelleDurchsageDialog(vehicle, this).ShowDialog();

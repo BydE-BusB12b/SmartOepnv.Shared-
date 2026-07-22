@@ -15,6 +15,7 @@ public partial class RoutesViewModel
     public ObservableCollection<string> Ds021NeuDestinations { get; } = [];
     public ObservableCollection<string> FmaS1Destinations { get; } = [];
     public ObservableCollection<string> Ds003aDestinations { get; } = [];
+    public ObservableCollection<string> ZielnummerDestinations { get; } = [];
     public ObservableCollection<string> LineCourseTripRoutes { get; } = [];
 
     private bool _startStopCheckbox;
@@ -135,7 +136,10 @@ public partial class RoutesViewModel
 
     public string? SelectedDestinationDs021t
     {
-        get => ToComboLabel(SelectedStop?.Destination, RouteStopEditorCatalog.NoDestinationLabel);
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Ds021T,
+            SelectedStop?.DestinationId,
+            SelectedStop?.Destination);
         set
         {
             if (SelectedStop is null)
@@ -143,7 +147,7 @@ public partial class RoutesViewModel
                 return;
             }
 
-            SelectedStop.Destination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Ds021T, isEnd: false, value);
             MaintainStartStopMarkerIfNeeded();
             OnPropertyChanged();
             MarkStopDetailDirty();
@@ -152,7 +156,10 @@ public partial class RoutesViewModel
 
     public string? SelectedDestinationDs021Neu
     {
-        get => ToComboLabel(SelectedStop?.Ds021NeuDestination, RouteStopEditorCatalog.NoDestinationLabel);
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Ds021Neu,
+            SelectedStop?.Ds021NeuDestinationId,
+            SelectedStop?.Ds021NeuDestination);
         set
         {
             if (SelectedStop is null)
@@ -160,7 +167,7 @@ public partial class RoutesViewModel
                 return;
             }
 
-            SelectedStop.Ds021NeuDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Ds021Neu, isEnd: false, value);
             MaintainStartStopMarkerIfNeeded();
             OnPropertyChanged();
             MarkStopDetailDirty();
@@ -169,7 +176,10 @@ public partial class RoutesViewModel
 
     public string? SelectedDestinationFmaS1
     {
-        get => ToComboLabel(SelectedStop?.FmaS1Destination, RouteStopEditorCatalog.NoDestinationLabel);
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.FmaS1,
+            SelectedStop?.FmaS1DestinationId,
+            SelectedStop?.FmaS1Destination);
         set
         {
             if (SelectedStop is null)
@@ -177,7 +187,7 @@ public partial class RoutesViewModel
                 return;
             }
 
-            SelectedStop.FmaS1Destination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.FmaS1, isEnd: false, value);
             MaintainStartStopMarkerIfNeeded();
             OnPropertyChanged();
             MarkStopDetailDirty();
@@ -186,7 +196,10 @@ public partial class RoutesViewModel
 
     public string? SelectedDestinationDs003a
     {
-        get => ToComboLabel(SelectedStop?.Ds003aDestination, RouteStopEditorCatalog.NoDestinationLabel);
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Ds003aKrefeld,
+            SelectedStop?.Ds003aDestinationId,
+            SelectedStop?.Ds003aDestination);
         set
         {
             if (SelectedStop is null)
@@ -194,7 +207,27 @@ public partial class RoutesViewModel
                 return;
             }
 
-            SelectedStop.Ds003aDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Ds003aKrefeld, isEnd: false, value);
+            MaintainStartStopMarkerIfNeeded();
+            OnPropertyChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public string? SelectedDestinationZielnummer
+    {
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Zielnummer,
+            SelectedStop?.ZielnummerDestinationId,
+            SelectedStop?.ZielnummerDestination);
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Zielnummer, isEnd: false, value);
             MaintainStartStopMarkerIfNeeded();
             OnPropertyChanged();
             MarkStopDetailDirty();
@@ -203,7 +236,10 @@ public partial class RoutesViewModel
 
     public string? SelectedEndDestinationDs021t
     {
-        get => ToComboLabel(SelectedStop?.EndDestination, RouteStopEditorCatalog.NoDestinationLabel);
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Ds021T,
+            SelectedStop?.EndDestinationId,
+            SelectedStop?.EndDestination);
         set
         {
             if (SelectedStop is null)
@@ -211,7 +247,7 @@ public partial class RoutesViewModel
                 return;
             }
 
-            SelectedStop.EndDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Ds021T, isEnd: true, value);
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
@@ -219,7 +255,10 @@ public partial class RoutesViewModel
 
     public string? SelectedEndDestinationDs021Neu
     {
-        get => ToComboLabel(SelectedStop?.Ds021NeuEndDestination, RouteStopEditorCatalog.NoDestinationLabel);
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Ds021Neu,
+            SelectedStop?.Ds021NeuEndDestinationId,
+            SelectedStop?.Ds021NeuEndDestination);
         set
         {
             if (SelectedStop is null)
@@ -227,7 +266,7 @@ public partial class RoutesViewModel
                 return;
             }
 
-            SelectedStop.Ds021NeuEndDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Ds021Neu, isEnd: true, value);
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
@@ -235,7 +274,10 @@ public partial class RoutesViewModel
 
     public string? SelectedEndDestinationFmaS1
     {
-        get => ToComboLabel(SelectedStop?.FmaS1EndDestination, RouteStopEditorCatalog.NoDestinationLabel);
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.FmaS1,
+            SelectedStop?.FmaS1EndDestinationId,
+            SelectedStop?.FmaS1EndDestination);
         set
         {
             if (SelectedStop is null)
@@ -243,7 +285,7 @@ public partial class RoutesViewModel
                 return;
             }
 
-            SelectedStop.FmaS1EndDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.FmaS1, isEnd: true, value);
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
@@ -251,7 +293,10 @@ public partial class RoutesViewModel
 
     public string? SelectedEndDestinationDs003a
     {
-        get => ToComboLabel(SelectedStop?.Ds003aEndDestination, RouteStopEditorCatalog.NoDestinationLabel);
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Ds003aKrefeld,
+            SelectedStop?.Ds003aEndDestinationId,
+            SelectedStop?.Ds003aEndDestination);
         set
         {
             if (SelectedStop is null)
@@ -259,10 +304,64 @@ public partial class RoutesViewModel
                 return;
             }
 
-            SelectedStop.Ds003aEndDestination = FromComboLabel(value, RouteStopEditorCatalog.NoDestinationLabel);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Ds003aKrefeld, isEnd: true, value);
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
+    }
+
+    public string? SelectedEndDestinationZielnummer
+    {
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Zielnummer,
+            SelectedStop?.ZielnummerEndDestinationId,
+            SelectedStop?.ZielnummerEndDestination);
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Zielnummer, isEnd: true, value);
+            OnPropertyChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    private IReadOnlyList<OutsideDisplayDestinationResolver.CatalogEntry> DestinationCatalog =>
+        OutsideDisplayDestinationResolver.BuildCatalog(
+            AppServices.Routes.Editor?.OutsideDisplays ?? Array.Empty<string>());
+
+    private string? ResolveComboLabel(
+        OutsideDisplayProtocolKind protocol,
+        string? destinationId,
+        string? destinationName)
+    {
+        var resolved = OutsideDisplayDestinationResolver.ResolveDisplayName(
+            DestinationCatalog,
+            protocol,
+            destinationId,
+            destinationName);
+        return ToComboLabel(resolved, RouteStopEditorCatalog.NoDestinationLabel);
+    }
+
+    private void ApplyDestinationSelection(
+        OutsideDisplayProtocolKind protocol,
+        bool isEnd,
+        string? comboLabel)
+    {
+        if (SelectedStop is null)
+        {
+            return;
+        }
+
+        OutsideDisplayDestinationResolver.ApplySelection(
+            SelectedStop,
+            protocol,
+            isEnd,
+            comboLabel,
+            DestinationCatalog);
     }
 
     public string? SelectedLineCourseTrip
@@ -358,7 +457,8 @@ public partial class RoutesViewModel
                 "Endziel-GPS",
                 initial,
                 SelectedStop.GpsCoordinates,
-                "Haltestelle")
+                "Haltestelle",
+                radiusMeters: SelectedStop.Radius > 0 ? SelectedStop.Radius : 50)
             {
                 Owner = owner
             };
@@ -450,10 +550,12 @@ public partial class RoutesViewModel
         EnsureComboValue(Ds021NeuDestinations, ToComboLabel(stop.Ds021NeuDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(FmaS1Destinations, ToComboLabel(stop.FmaS1Destination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds003aDestinations, ToComboLabel(stop.Ds003aDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(ZielnummerDestinations, ToComboLabel(stop.ZielnummerDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds021tDestinations, ToComboLabel(stop.EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds021NeuDestinations, ToComboLabel(stop.Ds021NeuEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(FmaS1Destinations, ToComboLabel(stop.FmaS1EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds003aDestinations, ToComboLabel(stop.Ds003aEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(ZielnummerDestinations, ToComboLabel(stop.ZielnummerEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(
             LineCourseTripRoutes,
             ToComboLabel(stop.SelectedLineCourseTrip, RouteStopEditorCatalog.NoLineCourseTripLabel));
@@ -475,12 +577,14 @@ public partial class RoutesViewModel
         Ds021NeuDestinations.Clear();
         FmaS1Destinations.Clear();
         Ds003aDestinations.Clear();
+        ZielnummerDestinations.Clear();
         LineCourseTripRoutes.Clear();
 
         Ds021tDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         Ds021NeuDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         FmaS1Destinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         Ds003aDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
+        ZielnummerDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         LineCourseTripRoutes.Add(RouteStopEditorCatalog.NoLineCourseTripLabel);
 
         var editor = AppServices.Routes.Editor;
@@ -509,6 +613,11 @@ public partial class RoutesViewModel
             Ds003aDestinations.Add(name);
         }
 
+        foreach (var name in RouteStopEditorCatalog.LoadZielnummerNames(editor))
+        {
+            ZielnummerDestinations.Add(name);
+        }
+
         foreach (var route in RouteStopEditorCatalog.LoadLineCourseTripRoutes(editor))
         {
             LineCourseTripRoutes.Add(route);
@@ -531,10 +640,12 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(SelectedDestinationDs021Neu));
         OnPropertyChanged(nameof(SelectedDestinationFmaS1));
         OnPropertyChanged(nameof(SelectedDestinationDs003a));
+        OnPropertyChanged(nameof(SelectedDestinationZielnummer));
         OnPropertyChanged(nameof(SelectedEndDestinationDs021t));
         OnPropertyChanged(nameof(SelectedEndDestinationDs021Neu));
         OnPropertyChanged(nameof(SelectedEndDestinationFmaS1));
         OnPropertyChanged(nameof(SelectedEndDestinationDs003a));
+        OnPropertyChanged(nameof(SelectedEndDestinationZielnummer));
         OnPropertyChanged(nameof(SelectedLineCourseTrip));
         ApplyLineCourseTripByNumberCommand.NotifyCanExecuteChanged();
     }
@@ -552,6 +663,16 @@ public partial class RoutesViewModel
         if (!_startStopCheckbox || SelectedStop is null)
         {
             return;
+        }
+
+        // Manuelle Liniennummer nicht mehr nutzen (Fehleingaben wie „000“ überschrieben DS001 am Ziel)
+        if (RouteStopEditorCatalog.HasStartStopDestination(SelectedStop.Destination) ||
+            RouteStopEditorCatalog.HasStartStopDestination(SelectedStop.Ds021NeuDestination) ||
+            RouteStopEditorCatalog.HasStartStopDestination(SelectedStop.FmaS1Destination) ||
+            !string.IsNullOrWhiteSpace(SelectedStop.Ds003aDestination) ||
+            !string.IsNullOrWhiteSpace(SelectedStop.ZielnummerDestination))
+        {
+            SelectedStop.LineNumber = string.Empty;
         }
 
         RouteStopEditorCatalog.EnsureStartStopMarker(SelectedStop);
@@ -580,6 +701,9 @@ public partial class RoutesViewModel
             case "startDs003a":
                 SelectedDestinationDs003a = comboLabel;
                 break;
+            case "startZielnummer":
+                SelectedDestinationZielnummer = comboLabel;
+                break;
             case "endDs021t":
                 SelectedEndDestinationDs021t = comboLabel;
                 break;
@@ -591,6 +715,9 @@ public partial class RoutesViewModel
                 break;
             case "endDs003a":
                 SelectedEndDestinationDs003a = comboLabel;
+                break;
+            case "endZielnummer":
+                SelectedEndDestinationZielnummer = comboLabel;
                 break;
             case "lineCourseTrip":
                 SelectedLineCourseTrip = comboLabel;

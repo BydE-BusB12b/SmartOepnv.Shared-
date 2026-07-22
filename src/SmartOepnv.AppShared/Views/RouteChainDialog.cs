@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using SmartOepnv.AppShared.Helpers;
+using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.Views;
@@ -18,12 +19,15 @@ public sealed class RouteChainDialog : Window
 
     private readonly EditableRoutePackage _editor;
     private readonly TextBox _lineCourseBox;
+    private readonly TextBox _dateFromBox;
+    private readonly TextBox _dateToBox;
     private readonly TextBlock _resultCountText;
     private readonly ListBox _tripList;
     private readonly TextBlock _errorText;
     private readonly StackPanel _chainPanel;
 
     private IReadOnlyList<RouteChainPlanner.TripCandidate> _trips = [];
+    private RouteChainPlanner.ChainCheckFilter _activeFilter = RouteChainPlanner.ChainCheckFilter.None;
     private bool _formattingLineCourse;
 
     public RouteChainDialog(EditableRoutePackage editor, string? initialLineCourse = null)
@@ -34,8 +38,8 @@ public sealed class RouteChainDialog : Window
         Width = 720;
         MinWidth = 640;
         MinHeight = 520;
-        Height = 760;
-        MaxHeight = 900;
+        Height = 800;
+        MaxHeight = 940;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = PanelBackground;
 
@@ -68,8 +72,9 @@ public sealed class RouteChainDialog : Window
         });
         root.Children.Add(new TextBlock
         {
-            Text = "Linie/Kurs wie in der App eingeben – alle passenden Fahrten werden zeitlich sortiert. " +
-                   "Die verbundene Routenschnur (Routenwechsel) mit Fahrplan erscheint nach Auswahl einer Fahrt.",
+            Text = "Linie/Kurs und Prüfzeitraum (Datum von/bis) eingeben. " +
+                   "Fahrten werden nach Verkehrstag und Gültigkeit gefiltert; " +
+                   "die Routenschnur löst Folgefahrten für denselben Zeitraum auf.",
             Foreground = MutedForeground,
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
@@ -93,6 +98,30 @@ public sealed class RouteChainDialog : Window
         }
 
         root.Children.Add(_lineCourseBox);
+
+        root.Children.Add(MakeLabel("Prüfzeitraum (Datum von / bis):"));
+        root.Children.Add(new TextBlock
+        {
+            Text = "TT.MM.JJJJ – Verkehrstag aus „Datum von“. Beide Felder erforderlich für die Routenfolge.",
+            Foreground = MutedForeground,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var todayText = RouteDateRange.FormatDate(today);
+        var dateGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        _dateFromBox = MakeDateInput("von", todayText);
+        _dateToBox = MakeDateInput("bis", todayText);
+        Grid.SetColumn(_dateFromBox, 0);
+        Grid.SetColumn(_dateToBox, 2);
+        dateGrid.Children.Add(_dateFromBox);
+        dateGrid.Children.Add(_dateToBox);
+        root.Children.Add(dateGrid);
 
         var searchRow = new StackPanel
         {
@@ -178,6 +207,17 @@ public sealed class RouteChainDialog : Window
         };
     }
 
+    private static TextBox MakeDateInput(string watermarkHint, string initialText) =>
+        new()
+        {
+            Background = InputBackground,
+            Foreground = InputForeground,
+            Padding = new Thickness(10, 8, 10, 8),
+            FontSize = 14,
+            Text = initialText,
+            ToolTip = $"Datum {watermarkHint} (TT.MM.JJJJ)"
+        };
+
     private void FormatLineCourseField()
     {
         if (_formattingLineCourse)
@@ -196,6 +236,27 @@ public sealed class RouteChainDialog : Window
         _formattingLineCourse = false;
     }
 
+    private bool TryReadCheckFilter(out RouteChainPlanner.ChainCheckFilter filter)
+    {
+        filter = RouteChainPlanner.ChainCheckFilter.None;
+        var fromRaw = _dateFromBox.Text?.Trim() ?? string.Empty;
+        var toRaw = _dateToBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(fromRaw) || string.IsNullOrWhiteSpace(toRaw))
+        {
+            ShowError("Bitte Datum von und Datum bis eingeben (TT.MM.JJJJ).");
+            return false;
+        }
+
+        if (!RouteDateRange.TryParse(fromRaw, toRaw, out var range) || !range.IsRestricted)
+        {
+            ShowError("Ungültiger Prüfzeitraum – Format TT.MM.JJJJ, von ≤ bis.");
+            return false;
+        }
+
+        filter = new RouteChainPlanner.ChainCheckFilter(range.From, range.To);
+        return true;
+    }
+
     private void SearchTrips()
     {
         _errorText.Visibility = Visibility.Collapsed;
@@ -203,26 +264,52 @@ public sealed class RouteChainDialog : Window
         {
             ShowError("Bitte Linie/Kurs eingeben (z. B. 12801 oder 128/01).");
             _trips = [];
+            _activeFilter = RouteChainPlanner.ChainCheckFilter.None;
             _tripList.ItemsSource = null;
             _resultCountText.Text = string.Empty;
             _chainPanel.Children.Clear();
             return;
         }
 
-        _trips = RouteChainPlanner.FindTripsByLineCourse(_editor, lineCourse);
+        if (!TryReadCheckFilter(out var filter))
+        {
+            _trips = [];
+            _activeFilter = RouteChainPlanner.ChainCheckFilter.None;
+            _tripList.ItemsSource = null;
+            _resultCountText.Text = string.Empty;
+            _chainPanel.Children.Clear();
+            return;
+        }
+
+        _activeFilter = filter;
+        _trips = RouteChainPlanner.FindTripsByLineCourse(_editor, lineCourse, filter);
         if (_trips.Count == 0)
         {
-            ShowError($"Keine Fahrten für Linie/Kurs {lineCourse} gefunden.");
+            var period = FormatFilterSummary(filter);
+            ShowError($"Keine Fahrten für Linie/Kurs {lineCourse} im Zeitraum {period}.");
             _tripList.ItemsSource = null;
             _resultCountText.Text = "0 Fahrten";
             _chainPanel.Children.Clear();
             return;
         }
 
-        _resultCountText.Text = $"{_trips.Count} Fahrt(en) für Linie/Kurs {lineCourse}";
+        _resultCountText.Text =
+            $"{_trips.Count} Fahrt(en) für Linie/Kurs {lineCourse} · {FormatFilterSummary(filter)}";
         _tripList.ItemsSource = _trips.Select(FormatTripListItem).ToList();
         _tripList.SelectedIndex = 0;
         UpdateChainPreview();
+    }
+
+    private static string FormatFilterSummary(RouteChainPlanner.ChainCheckFilter filter)
+    {
+        var rangeText = RouteDateRange.FormatDisplay(filter.AsQueryRange);
+        if (filter.ReferenceDate is not { } reference)
+        {
+            return rangeText;
+        }
+
+        var dayName = DutyOperatingDayHelper.GetName(DutyOperatingDayHelper.FromDate(reference));
+        return $"{rangeText} ({dayName})";
     }
 
     private static string FormatTripListItem(RouteChainPlanner.TripCandidate trip)
@@ -248,7 +335,7 @@ public sealed class RouteChainDialog : Window
         }
 
         var selected = _trips[_tripList.SelectedIndex];
-        var segments = RouteChainPlanner.BuildChainSchedule(_editor, selected.RouteKey);
+        var segments = RouteChainPlanner.BuildChainSchedule(_editor, selected.RouteKey, _activeFilter);
         if (segments.Count == 0)
         {
             _chainPanel.Children.Add(new TextBlock
@@ -257,6 +344,17 @@ public sealed class RouteChainDialog : Window
                 Foreground = MutedForeground
             });
             return;
+        }
+
+        if (_activeFilter.HasDates)
+        {
+            _chainPanel.Children.Add(new TextBlock
+            {
+                Text = $"Auflösung für Prüfzeitraum: {FormatFilterSummary(_activeFilter)}",
+                Foreground = AccentBrush,
+                FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
         }
 
         for (var i = 0; i < segments.Count; i++)

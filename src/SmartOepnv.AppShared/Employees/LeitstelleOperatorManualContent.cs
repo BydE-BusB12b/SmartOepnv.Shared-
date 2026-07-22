@@ -66,6 +66,8 @@ internal static class LeitstelleOperatorManualContent
             • Rechtsklick auf Fahrzeug → Fernsteuerung öffnen.
             • Fernziel: Außenanzeigen-Ziel setzen.
             • Fernroute: Route remote aktivieren (Pas.Info bleibt erhalten).
+            • Fern-Fahreranmeldung: Fahrer aus dem Roster am Gerät an-/abmelden (ohne PIN am Tablet).
+            • Gerät sperren / entsperren: Vollflächige Bedienungssperre auf dem Fahrzeuggerät (kein System-PIN).
             • Fahrgastraum-Durchsage: Mikrofon oder Text-to-Speech (max. 3 Min.).
             • Meldung: Einzelnachricht an Fahrzeug senden.
             • Jede Aktion wird per Dropbox-KOM an das Tablet gesendet; Bestätigung im Status.

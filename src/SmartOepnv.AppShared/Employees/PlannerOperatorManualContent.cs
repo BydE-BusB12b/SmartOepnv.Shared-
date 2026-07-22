@@ -31,7 +31,7 @@ internal static class PlannerOperatorManualContent
             • Starten Sie den Planer und melden Sie sich mit Ihrer Planer-Personalnummer und Ihrem Planer-Passwort an.
             • Nach der Anmeldung lädt der Planer den gemeinsamen Arbeitsstand aus Dropbox (planer_workspace.json).
             • Die Sitzungssperre verhindert gleichzeitiges Bearbeiten durch mehrere Planer – „Sperre freigeben“ nur nach Rücksprache.
-            • Beim Beenden: Daten werden nach Dropbox gesichert; lokale Kopien liegen unter %AppData%\\Smart-OEPNV\\Planer\\workspace\\.
+            • Beim Beenden: Daten werden nach Dropbox gesichert; lokale Kopien liegen unter %AppData%\\Smart-OEPNV\\Planer\\betriebe\\…\\workspace\\.
             • Versionen/Snapshots können unter Versand → Versionen gesichert werden.
             """,
             "planner_login.png", "Anmeldung Planer"),
@@ -112,6 +112,7 @@ internal static class PlannerOperatorManualContent
             """
             • Tab Fahrzeuge: KOM-Name, Telefon, Typ, VIN, HU/SP, Gurte, Klima, Dispo-Farbe.
             • Registrierte Fahrzeuge erscheinen in der Leitstelle und für Fernsteuerung.
+            • In der Fahrzeugkarte (wie Leitstelle): Fernziel, Fernroute, Fern-Fahreranmeldung, Gerät sperren/entsperren, Durchsage, Meldungen.
             • Tab Mängelkarte: Meldungen aus der App laden, Status setzen (Neu / In Bearbeitung / Erledigt).
             • Badge bei neuen Mängeln in der Navigation.
             """,
@@ -178,6 +179,7 @@ internal static class PlannerOperatorManualContent
             "18. Einstellungen",
             """
             • Dropbox verbinden, Ordnerpfad (/smart öpnv), Verbindungstest.
+            • Betrieb wechseln: vorhandenen Betrieb wählen oder neuen anlegen (leerer Stand + neuer Dropbox-Ordner); Planer startet neu.
             • Firmenlogos für Dienstvorlagen-PDF.
             • Einweisungs-PDF-Passwörter (Gerät + Entsperr) für Fahrer-Einweisungen.
             • Planer-Ordner initialisieren (planer_workspace.json / planer_session.json).

@@ -171,7 +171,7 @@
                           Padding="{TemplateBinding Padding}"
                           Template="{StaticResource SmartDarkComboBoxToggleTemplate}">
                 <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
-                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                  ContentTemplate="{TemplateBinding ItemTemplate}"
                                   ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                   HorizontalAlignment="Stretch"
                                   VerticalAlignment="Center"

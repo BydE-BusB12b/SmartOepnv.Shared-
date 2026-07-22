@@ -72,7 +72,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
-            StatusMessage = "Kein Route-Paket geladen – bitte unter Übersicht importieren.";
+            StatusMessage = "Kein Route-Paket – „Neue Haltestelle“ oder unter Routen „Route hinzufügen“ legt ein leeres Paket an.";
             return;
         }
 
@@ -199,8 +199,14 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         editor.ReplaceStopTemplates(persistable);
         var routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, persistable);
         var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
-        editor.SyncEmbeddedSoundsFromStopTemplates(_allTemplates, workspace);
-        AppServices.Routes.ApplyEditorChanges("haltestellen");
+        // Ton aus der Soundbibliothek: nur Dateiname verknüpfen. Neu einbetten nur bei LocalAudioPath
+        // oder wenn die Datei noch nicht in embeddedSounds liegt.
+        if (editor.NeedsEmbeddedSoundMaterialization(_allTemplates, workspace))
+        {
+            editor.SyncEmbeddedSoundsFromStopTemplates(_allTemplates, workspace);
+        }
+
+        AppServices.Routes.ApplyEditorChanges("haltestellen", rebuildEmbeddedMedia: false);
 
         foreach (var t in _allTemplates)
         {
@@ -409,10 +415,22 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     [RelayCommand]
     private void AddTemplate()
     {
+        if (!AppServices.Routes.EnsureEmptyPackageIfNeeded())
+        {
+            StatusMessage = "Leeres Route-Paket konnte nicht angelegt werden.";
+            return;
+        }
+
         if (AppServices.Routes.Editor is null)
         {
             StatusMessage = "Kein Route-Paket geladen.";
             return;
+        }
+
+        // Nach erstem Anlegen: Listen/Status aktualisieren (z. B. neuer Betrieb).
+        if (AvailableRoutes.Count == 0 && _allTemplates.Count == 0)
+        {
+            RefreshFromEditor();
         }
 
         var code = PlannerStopCode.SuggestNext(_allTemplates.Select(t => t.StopCode));
@@ -597,11 +615,15 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             }
 
             var template = SelectedTemplate;
+            var radius = template!.RadiusMeters > 0
+                ? template.RadiusMeters
+                : ManagedStopTemplateItem.DefaultRadiusMeters;
             var dialog = new GpsMapPickerDialog(
                 title,
-                formatCurrent(template!),
-                formatOther(template!),
-                otherLabel)
+                formatCurrent(template),
+                formatOther(template),
+                otherLabel,
+                radiusMeters: radius)
             {
                 Owner = owner
             };
@@ -684,7 +706,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         SelectedTemplate.EmbeddedSoundFileName = dialog.SelectedFileName.Trim();
         SelectedTemplate.LocalAudioPath = null;
         RefreshSelectedTemplateBinding();
-        StatusMessage = $"Ansage „{SelectedTemplate.EmbeddedSoundFileName}“ zugeordnet – mit „Speichern“ übernehmen.";
+        StatusMessage =
+            $"Ansage „{SelectedTemplate.EmbeddedSoundFileName}“ verknüpft (bereits in Soundbibliothek) – mit „Speichern“ übernehmen.";
         MarkDirty();
     }
 
@@ -1042,7 +1065,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         editor.AddStopFromTemplate(SelectedRouteForInsert, Clone(SelectedTemplate));
-        AppServices.Routes.ApplyEditorChanges("haltestellen-route");
+        AppServices.Routes.ApplyEditorChanges("haltestellen-route", rebuildEmbeddedMedia: false);
         var code = PlannerStopCode.Normalize(SelectedTemplate.StopCode);
         var codeHint = string.IsNullOrEmpty(code) ? string.Empty : $" (ID {code})";
         StatusMessage =

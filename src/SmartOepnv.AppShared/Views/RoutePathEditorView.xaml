@@ -356,11 +356,11 @@
                                    Margin="0,0,0,4" />
                         <ComboBox Style="{StaticResource SmartDarkComboBox}"
                                   ItemsSource="{Binding NavSymbolPickerOptions}"
-                                  SelectedValuePath="Id"
-                                  SelectedValue="{Binding SelectedNavSymbol}"
+                                  SelectedItem="{Binding SelectedNavSymbolOption, Mode=TwoWay}"
                                   MaxDropDownHeight="420"
                                   HorizontalAlignment="Stretch"
                                   MinWidth="320"
+                                  MinHeight="44"
                                   Margin="0,0,0,8">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -368,7 +368,8 @@
                                         <Image Source="{Binding IconUri}"
                                                Width="28" Height="28"
                                                Margin="0,0,8,0"
-                                               Stretch="Uniform" />
+                                               Stretch="Uniform"
+                                               RenderOptions.BitmapScalingMode="HighQuality" />
                                         <TextBlock Text="{Binding Label}"
                                                    Foreground="White"
                                                    VerticalAlignment="Center"

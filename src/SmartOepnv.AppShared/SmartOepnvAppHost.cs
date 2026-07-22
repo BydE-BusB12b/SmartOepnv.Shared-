@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using MaterialDesignColors;
 using MaterialDesignThemes.Wpf;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Betrieb;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.Session;
@@ -29,8 +31,159 @@ public static class SmartOepnvAppHost
         if (!profile.IsLeitstelle)
         {
             PlanerSyncBusAnimation.PreloadBusImage();
+            SyncActiveBetriebFolderPathFromDropboxSettings();
         }
         RegisterShutdownHandlersIfNeeded();
+    }
+
+    /// <summary>Profil-Metadaten an aktuellen Dropbox-Pfad anbinden (falls manuell geändert).</summary>
+    private static void SyncActiveBetriebFolderPathFromDropboxSettings()
+    {
+        try
+        {
+            var active = BetriebProfileStore.GetActiveProfile();
+            if (active is null)
+            {
+                return;
+            }
+
+            var folder = DropboxConstants.NormalizeFolderPath(AppServices.Dropbox.Settings.FolderPath);
+            if (string.Equals(active.DropboxFolderPath, folder, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(active.DisplayName))
+            {
+                return;
+            }
+
+            var name = string.IsNullOrWhiteSpace(active.DisplayName)
+                ? BetriebProfileStore.DeriveDisplayName(folder)
+                : active.DisplayName;
+            BetriebProfileStore.UpdateProfileMeta(active.Id, name, folder);
+        }
+        catch
+        {
+            // optional
+        }
+    }
+
+    /// <summary>
+    /// Speichert aktuellen Betrieb, wechselt Profil und startet den Planer neu.
+    /// </summary>
+    public static async Task SwitchBetriebAndRestartAsync(
+        Window owner,
+        string? switchToExistingId,
+        string? newDisplayName,
+        string? newDropboxFolderPath)
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return;
+        }
+
+        try
+        {
+            AppServices.FlushAllPendingEditsBestEffort();
+        }
+        catch
+        {
+            // weiter
+        }
+
+        if (AppServices.Dropbox.Settings.IsConnected)
+        {
+            try
+            {
+                await PlanerDropboxWorkspaceSync.TryExportAsync(flushBeforeCapture: true).ConfigureAwait(true);
+            }
+            catch
+            {
+                // lokaler Stand bleibt erhalten
+            }
+        }
+
+        // Aktuellen Dropbox-Pfad im Profil festhalten
+        try
+        {
+            var active = BetriebProfileStore.GetActiveProfile();
+            if (active is not null)
+            {
+                BetriebProfileStore.UpdateProfileMeta(
+                    active.Id,
+                    active.DisplayName,
+                    AppServices.Dropbox.Settings.FolderPath);
+            }
+        }
+        catch
+        {
+            // optional
+        }
+
+        if (!string.IsNullOrWhiteSpace(switchToExistingId))
+        {
+            BetriebProfileStore.SwitchTo(switchToExistingId);
+        }
+        else if (!string.IsNullOrWhiteSpace(newDisplayName) && !string.IsNullOrWhiteSpace(newDropboxFolderPath))
+        {
+            BetriebProfileStore.CreateAndActivate(
+                newDisplayName,
+                newDropboxFolderPath,
+                AppServices.Dropbox.Settings);
+        }
+        else
+        {
+            throw new InvalidOperationException("Kein Betrieb gewählt.");
+        }
+
+        SkipShutdownSave = true;
+        RestartCurrentProcess(owner);
+    }
+
+    private static void RestartCurrentProcess(Window? owner)
+    {
+        var exe = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(exe))
+        {
+            try
+            {
+                exe = Process.GetCurrentProcess().MainModule?.FileName;
+            }
+            catch
+            {
+                exe = null;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe))
+        {
+            MessageBox.Show(
+                owner,
+                "Betrieb wurde umgestellt. Bitte den Planer manuell neu starten.",
+                "Betrieb wechseln",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            Application.Current?.Shutdown();
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                owner,
+                $"Neustart fehlgeschlagen ({ex.Message}). Bitte den Planer manuell neu starten.",
+                "Betrieb wechseln",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+
+        Application.Current?.Shutdown();
     }
 
     private static void RegisterShutdownHandlersIfNeeded()

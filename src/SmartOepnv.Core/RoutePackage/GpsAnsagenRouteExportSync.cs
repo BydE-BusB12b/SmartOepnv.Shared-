@@ -32,6 +32,19 @@ public static class GpsAnsagenRouteExportSync
 
     public static void ApplyToPackage(EditableRoutePackage package, JsonObject root, LocalWorkspaceStore? workspace = null)
     {
+        ApplyToPackage(package, root, workspace, rebuildEmbeddedMedia: true);
+    }
+
+    /// <param name="rebuildEmbeddedMedia">
+    /// false = embeddedSounds/Sonderansagen-Audio im Root belassen (schneller lokaler Stop-/Routen-Save).
+    /// true = vollständige Neu-Einbettung (Ansagen-Kartei, Fahrzeug-Export, …).
+    /// </param>
+    public static void ApplyToPackage(
+        EditableRoutePackage package,
+        JsonObject root,
+        LocalWorkspaceStore? workspace,
+        bool rebuildEmbeddedMedia)
+    {
         var allStops = package.StopsByRoute.Values.SelectMany(s => s).ToList();
         var collectedRoutes = RouteDistributionRouteCollector.CollectAllRoutesForDistribution(
             package.RouteNames,
@@ -68,11 +81,15 @@ public static class GpsAnsagenRouteExportSync
             package.AnnouncementTemplates,
             root,
             workspace);
-        EnsureAnnouncementSoundsFromWorkspace(root, package, workspace);
         ManagedAnnouncementTemplateEditor.SaveToRoot(root, package.AnnouncementTemplates);
-        SyncEmbeddedSounds(package, root, workspace);
-        SyncEndStopAnnouncementMetadata(package, root, workspace);
-        SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
+        if (rebuildEmbeddedMedia)
+        {
+            EnsureAnnouncementSoundsFromWorkspace(root, package, workspace);
+            SyncEmbeddedSounds(package, root, workspace);
+            SyncEndStopAnnouncementMetadata(package, root, workspace);
+            SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
+        }
+
         RouteOperatingDaysEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDaysByRoute);
         RouteDateRangeEditor.SaveToRoot(root, packageRoutes, package.RouteDateRangesByRoute);
         RouteInteriorDisplayDestinationEditor.SaveToRoot(

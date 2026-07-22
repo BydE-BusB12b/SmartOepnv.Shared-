@@ -35,6 +35,7 @@ public partial class DataTransferViewModel : ObservableObject
     [ObservableProperty] private TransferButtonVisualState dropboxExportButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState dropboxLiteUpdateButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState dropboxRemoteUpdateButtonState = TransferButtonVisualState.Idle;
+    [ObservableProperty] private TransferButtonVisualState dropboxRemoteSettingsButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState leitstelleStandButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState planerWorkspaceImportButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState planerWorkspaceExportButtonState = TransferButtonVisualState.Idle;
@@ -81,6 +82,9 @@ public partial class DataTransferViewModel : ObservableObject
 
     /// <summary>Nur Smart-ÖPNV Planer: Dropbox-Upload „Für Leitstelle speichern“.</summary>
     public bool ShowLeitstelleStandExportButton => !_isLeitstelleProfile;
+
+    /// <summary>Nur Planer: Tablet-Einstellungen remote senden.</summary>
+    public bool ShowRemoteSettingsSend => !_isLeitstelleProfile;
 
     /// <summary>Nur Planer: JSON-Snapshots als Versionen speichern/laden.</summary>
     public bool ShowVersionManagement => !_isLeitstelleProfile && AppServices.PlannerVersions is not null;
@@ -695,6 +699,49 @@ public partial class DataTransferViewModel : ObservableObject
         return Task.CompletedTask;
     }
 
+    [RelayCommand(CanExecute = nameof(CanSendRemoteSettings))]
+    private Task SendRemoteSettingsAsync()
+    {
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            LastActionMessage = "Dropbox nicht verbunden – bitte Einstellungen öffnen.";
+            return Task.CompletedTask;
+        }
+
+        var json = AppServices.Routes.CurrentJson;
+        var vehicles = string.IsNullOrWhiteSpace(json)
+            ? Array.Empty<RegisteredVehicleInfo>()
+            : RegisteredVehicleInfo.ParseFromJson(json);
+
+        var picker = new RemoteSettingsSendDialog(vehicles)
+        {
+            Owner = Application.Current.MainWindow
+        };
+        if (picker.ShowDialog() != true ||
+            string.IsNullOrWhiteSpace(picker.SelectedPhoneNumber) ||
+            picker.Settings is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var vehicleName = picker.SelectedVehicleName ?? picker.SelectedPhoneNumber;
+        var vehiclePhone = picker.SelectedPhoneNumber;
+        var settings = picker.Settings;
+
+        _ = RunBackgroundTransferAsync(
+            state => DropboxRemoteSettingsButtonState = state,
+            async _ =>
+            {
+                var commandId = await RemoteDeviceSettingsService
+                    .UploadAsync(AppServices.Dropbox, vehiclePhone, settings)
+                    .ConfigureAwait(true);
+                var fileName = RemoteDeviceSettingsService.BuildFileName(vehiclePhone);
+                LastActionMessage =
+                    $"Einstellungen an {vehicleName} gesendet ({fileName}, commandId={commandId}).";
+            });
+        return Task.CompletedTask;
+    }
+
     private async Task RunRemoteUpdateFlowAsync(
         Window owner,
         string vehicleName,
@@ -1005,6 +1052,9 @@ public partial class DataTransferViewModel : ObservableObject
     partial void OnDropboxRemoteUpdateButtonStateChanged(TransferButtonVisualState value) =>
         ExportToDropboxWithRemoteUpdateCommand.NotifyCanExecuteChanged();
 
+    partial void OnDropboxRemoteSettingsButtonStateChanged(TransferButtonVisualState value) =>
+        SendRemoteSettingsCommand.NotifyCanExecuteChanged();
+
     partial void OnLeitstelleStandButtonStateChanged(TransferButtonVisualState value) =>
         SaveLeitstelleStandToDropboxCommand.NotifyCanExecuteChanged();
 
@@ -1037,6 +1087,9 @@ public partial class DataTransferViewModel : ObservableObject
     private bool CanExportToDropboxWithRemoteUpdate() =>
         !_remoteUpdateFlowRunning &&
         DropboxRemoteUpdateButtonState != TransferButtonVisualState.Active;
+
+    private bool CanSendRemoteSettings() =>
+        DropboxRemoteSettingsButtonState != TransferButtonVisualState.Active;
 
     private bool CanSaveLeitstelleStand() =>
         LeitstelleStandButtonState != TransferButtonVisualState.Active;

@@ -75,6 +75,32 @@ public partial class RoutePathEditorViewModel : ObservableObject
             .Select(x => new NavSymbolPickerOption(x.Id, x.Label, NavSymbolImageHelper.GetImageUri(x.Id)))
             .ToList();
 
+    /// <summary>
+    /// Ausgewähltes Symbol inkl. Label/Icon für die ComboBox-Anzeige neben dem Dropdown-Pfeil.
+    /// </summary>
+    public NavSymbolPickerOption? SelectedNavSymbolOption
+    {
+        get => NavSymbolPickerOptions.FirstOrDefault(o =>
+            string.Equals(o.Id, SelectedNavSymbol, StringComparison.OrdinalIgnoreCase));
+        set
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            if (string.Equals(SelectedNavSymbol, value.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            SelectedNavSymbol = value.Id;
+        }
+    }
+
+    partial void OnSelectedNavSymbolChanged(string value) =>
+        OnPropertyChanged(nameof(SelectedNavSymbolOption));
+
     public IReadOnlyList<RouteLineColorOption> RouteLineColorOptions { get; } =
     [
         new("Blau", "#2196f3"),

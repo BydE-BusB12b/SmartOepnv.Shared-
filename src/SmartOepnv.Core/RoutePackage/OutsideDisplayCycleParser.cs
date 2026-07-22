@@ -82,17 +82,47 @@ public static class OutsideDisplayCycleParser
             .Select(c => c.ToGoalPair())
             .ToList();
 
+    /// <summary>
+    /// Seiten-Ziele indexgleich zur Front-Zielliste. Leerer Seiten-Slot übernimmt das Front-Ziel
+    /// derselben Position (nicht: alle Seiten-Ziele nach vorne schieben).
+    /// Ohne jeglichen Seiteninhalt: komplette Front-Liste.
+    /// </summary>
     public static IReadOnlyList<(string Line1, string Line2)> CollectSideGoals(
         IEnumerable<OutsideDisplayTextCycle> sideCycles,
         IReadOnlyList<(string Line1, string Line2)> frontGoals)
     {
-        var side = CollectFrontGoals(sideCycles);
-        if (side.Count > 0)
+        var sideList = sideCycles as IList<OutsideDisplayTextCycle> ?? sideCycles.ToList();
+        var anySide = false;
+        for (var i = 0; i < sideList.Count; i++)
         {
-            return side;
+            if (sideList[i].HasContent)
+            {
+                anySide = true;
+                break;
+            }
         }
 
-        return frontGoals;
+        if (!anySide)
+        {
+            return frontGoals;
+        }
+
+        var result = new List<(string Line1, string Line2)>(Math.Max(frontGoals.Count, 1));
+        for (var i = 0; i < frontGoals.Count; i++)
+        {
+            var side = i < sideList.Count ? sideList[i] : null;
+            result.Add(side is not null && side.HasContent ? side.ToGoalPair() : frontGoals[i]);
+        }
+
+        for (var i = frontGoals.Count; i < sideList.Count && i < MaxCycles; i++)
+        {
+            if (sideList[i].HasContent)
+            {
+                result.Add(sideList[i].ToGoalPair());
+            }
+        }
+
+        return result;
     }
 
     private static int? TryGetGoalCountFromTelegram(byte[]? bytes)

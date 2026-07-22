@@ -89,7 +89,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
-            StatusMessage = "Kein Route-Paket geladen – bitte unter Übersicht importieren.";
+            StatusMessage = "Kein Route-Paket – „Route hinzufügen“ legt ein leeres Paket für den neuen Betrieb an.";
             return;
         }
 
@@ -387,15 +387,22 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         AppServices.Routes.Editor.ConsolidateRouteKeys();
 
         PersistRouteDateRangeFromSelection();
+        var previousRouteKey = SelectedRoute;
         var routeKey = SyncSelectedRouteOperatingDaysToEditor();
         if (!string.IsNullOrWhiteSpace(routeKey))
         {
             SelectedRoute = routeKey;
-            ReloadRoutesList(routeKey);
+            // Volle Listen-Neuberechnung nur wenn sich der Routenschlüssel wirklich ändert
+            // (Verkehrstage) – sonst kostet das bei jedem Haltestellen-Speichern unnötig Zeit.
+            if (!RouteDisplayHelper.RouteKeysMatch(previousRouteKey, routeKey))
+            {
+                ReloadRoutesList(routeKey);
+            }
         }
 
         EnrichStopTemplatesFromRoutes(AppServices.Routes.Editor);
-        AppServices.Routes.ApplyEditorChanges("routes");
+        // Haltestellen/Routen-Felder: Audio in JSON belassen (Rebuild nur bei Ansagen-/Kartei-Saves).
+        AppServices.Routes.ApplyEditorChanges("routes", rebuildEmbeddedMedia: false);
         StatusMessage = $"{_allRoutes.Count} Route(n) – lokal gespeichert.";
         SaveButtonIsSuccess = true;
         _ = ShowSaveButtonSuccessFeedbackAsync();
@@ -446,6 +453,12 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [RelayCommand]
     private void AddRoute()
     {
+        if (!AppServices.Routes.EnsureEmptyPackageIfNeeded())
+        {
+            StatusMessage = "Leeres Route-Paket konnte nicht angelegt werden.";
+            return;
+        }
+
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
@@ -895,7 +908,15 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 UseShellExecute = true
             });
 
-            StatusMessage = $"Fahrplan erstellt: {fileName}";
+            // Ordner im Explorer zeigen (AppData\Local ist sonst leicht zu übersehen)
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{targetPath}\"",
+                UseShellExecute = true
+            });
+
+            StatusMessage = $"Fahrplan gespeichert unter:{Environment.NewLine}{targetPath}";
         }
         catch (Exception ex)
         {

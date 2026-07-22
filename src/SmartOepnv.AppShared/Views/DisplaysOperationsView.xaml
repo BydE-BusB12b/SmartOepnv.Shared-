@@ -167,7 +167,7 @@
                                        Opacity="0.75"
                                        FontSize="11"
                                        Margin="0,0,0,10"
-                                       Text="DS021T / FMA-S1: bis zu 4 Wechseltexte (FMA-S1 mit DS001 Linie+Sonderz.). DS021neu: ein Ziel Front/Seite mit Schriftsteuerung. DS003a Krefeld: ein Ziel Front/Seite." />
+                                       Text="DS021T / FMA-S1: bis zu 4 Wechseltexte (FMA-S1 mit DS001 Linie+Sonderz.). DS021neu: ein Ziel Front/Seite mit Schriftsteuerung. DS003a Krefeld: ein Ziel Front/Seite. Zielnummer: DS001 Linie/Sonderzeichen + DS003-Zielnummer (klassisch, kein Klartext)." />
 
                             <ScrollViewer Grid.Row="2"
                                           VerticalScrollBarVisibility="Auto"
@@ -285,7 +285,7 @@
                                         <TextBlock Grid.Row="5" Grid.Column="0" Text="Front Zeile 1 (Wechseltext)" VerticalAlignment="Center" Margin="0,0,8,8"
                                                    Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
                                         <TextBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8"
-                                                 Text="{Binding DataContext.ActiveFrontLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=LostFocus}"
+                                                 Text="{Binding DataContext.ActiveFrontLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
                                                  Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
 
                                         <TextBlock Grid.Row="5" Grid.Column="0" Text="Front Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8">
@@ -294,6 +294,9 @@
                                                     <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -309,15 +312,25 @@
                                                         <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBox.Style>
                                         </TextBox>
 
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Zielnummer" VerticalAlignment="Center" Margin="0,0,8,8"
+                                                   Visibility="{Binding IsZielnummer, Converter={StaticResource BoolToVis}}" />
+                                        <TextBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8"
+                                                 materialDesign:HintAssist.Hint="z. B. 003"
+                                                 Text="{Binding FrontLine1, UpdateSourceTrigger=LostFocus}"
+                                                 Visibility="{Binding IsZielnummer, Converter={StaticResource BoolToVis}}" />
+
                                         <TextBlock Grid.Row="6" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8"
                                                    Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
                                         <TextBox Grid.Row="6" Grid.Column="1" Margin="0,0,0,8"
-                                                 Text="{Binding DataContext.ActiveFrontLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=LostFocus}"
+                                                 Text="{Binding DataContext.ActiveFrontLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
                                                  Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
 
                                         <TextBlock Grid.Row="6" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8">
@@ -326,6 +339,9 @@
                                                     <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -341,6 +357,9 @@
                                                         <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBox.Style>
@@ -349,7 +368,7 @@
                                         <TextBlock Grid.Row="7" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8"
                                                    Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
                                         <TextBox Grid.Row="7" Grid.Column="1" Margin="0,0,0,8"
-                                                 Text="{Binding DataContext.ActiveSideLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=LostFocus}"
+                                                 Text="{Binding DataContext.ActiveSideLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
                                                  Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
 
                                         <TextBlock Grid.Row="7" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8">
@@ -358,6 +377,9 @@
                                                     <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -373,6 +395,9 @@
                                                         <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBox.Style>
@@ -381,7 +406,7 @@
                                         <TextBlock Grid.Row="8" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8"
                                                    Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
                                         <TextBox Grid.Row="8" Grid.Column="1" Margin="0,0,0,8"
-                                                 Text="{Binding DataContext.ActiveSideLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=LostFocus}"
+                                                 Text="{Binding DataContext.ActiveSideLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
                                                  Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}" />
 
                                         <TextBlock Grid.Row="8" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8">
@@ -390,6 +415,9 @@
                                                     <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -403,6 +431,9 @@
                                                     <Setter Property="Visibility" Value="Visible" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -579,6 +610,10 @@
                                         Margin="0,0,8,6" />
                                 <Button Content="+ DS003a Krefeld"
                                         Command="{Binding AddOutsideProgramKrefeldCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ Zielnummer"
+                                        Command="{Binding AddOutsideProgramZielnummerCommand}"
                                         Style="{StaticResource MaterialDesignRaisedButton}"
                                         Margin="0,0,8,6" />
                                 <Button Content="Auswahl löschen"

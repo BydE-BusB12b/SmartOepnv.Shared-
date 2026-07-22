@@ -164,45 +164,56 @@
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0"
                                Text="Dropbox"
                                FontWeight="SemiBold"
                                FontSize="15"
                                Foreground="White"
-                               VerticalAlignment="Center" />
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Content="Von Dropbox laden"
-                                Command="{Binding ImportFromDropboxCommand}"
-                                Style="{StaticResource DropboxImportTransferButtonStyle}"
-                                Margin="0,0,6,0"
-                                Padding="12,4" />
-                        <Button Content="Nach Dropbox senden"
-                                Command="{Binding ExportToDropboxCommand}"
-                                Style="{StaticResource DropboxExportTransferButtonStyle}"
-                                Margin="0,0,6,0"
-                                Padding="12,4"
-                                ToolTip="Vollständiges routes_export.json inkl. aller Tondateien" />
-                        <Button Content="Kleines Fahrzeugupdate"
-                                Command="{Binding ExportLiteVehicleUpdateToDropboxCommand}"
-                                Style="{StaticResource DropboxLiteUpdateTransferButtonStyle}"
-                                Margin="0,0,6,0"
-                                Padding="12,4"
-                                ToolTip="routes_update.json – alle Routen/Haltestellen ohne embeddedSounds (bestehende Ansagen bleiben)" />
-                        <Button Content="Senden + Fernupdate"
-                                Command="{Binding ExportToDropboxWithRemoteUpdateCommand}"
-                                Style="{StaticResource DropboxRemoteUpdateTransferButtonStyle}"
-                                Margin="0,0,6,0"
-                                Padding="12,4"
-                                ToolTip="Route hochladen (routes_export oder routes_update) und Update auf dem Fahrzeug auslösen" />
-                        <Button Command="{Binding SaveLeitstelleStandToDropboxCommand}"
-                                Style="{StaticResource LeitstelleStandTransferButtonStyle}"
-                                Padding="12,4"
-                                Margin="0,0,6,0"
-                                ToolTip="Fahrer, Fahrzeuge, Nachrichten-Vorlagen, Außenanzeigen-Ziele und Fahrwege für die Leitstelle (leitstelle_stand.json)." />
+                               VerticalAlignment="Center"
+                               Margin="0,0,0,6" />
+                    <StackPanel Grid.Row="1">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button Content="Von Dropbox laden"
+                                    Command="{Binding ImportFromDropboxCommand}"
+                                    Style="{StaticResource DropboxImportTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4" />
+                            <Button Content="Nach Dropbox senden"
+                                    Command="{Binding ExportToDropboxCommand}"
+                                    Style="{StaticResource DropboxExportTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="Vollständiges routes_export.json inkl. aller Tondateien" />
+                            <Button Content="Kleines Fahrzeugupdate"
+                                    Command="{Binding ExportLiteVehicleUpdateToDropboxCommand}"
+                                    Style="{StaticResource DropboxLiteUpdateTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="routes_update.json – alle Routen/Haltestellen ohne embeddedSounds (bestehende Ansagen bleiben)" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Senden + Fernupdate"
+                                    Command="{Binding ExportToDropboxWithRemoteUpdateCommand}"
+                                    Style="{StaticResource DropboxRemoteUpdateTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="Route hochladen (routes_export oder routes_update) und Update auf dem Fahrzeug auslösen" />
+                            <Button Content="Einstellungen senden"
+                                    Command="{Binding SendRemoteSettingsCommand}"
+                                    Style="{StaticResource DropboxRemoteSettingsTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="Tablet-Einstellungen als remote_settings_(Telefonnummer).json an ein gewähltes Gerät senden" />
+                            <Button Command="{Binding SaveLeitstelleStandToDropboxCommand}"
+                                    Style="{StaticResource LeitstelleStandTransferButtonStyle}"
+                                    Padding="12,4"
+                                    Margin="0,0,6,0"
+                                    ToolTip="Fahrer, Fahrzeuge, Nachrichten-Vorlagen, Außenanzeigen-Ziele und Fahrwege für die Leitstelle (leitstelle_stand.json)." />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
 

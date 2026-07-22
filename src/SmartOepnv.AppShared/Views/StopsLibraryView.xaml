@@ -41,6 +41,93 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <!-- Pfeil-Combo: Routenname steht daneben (wie Fahrweg-Editor) -->
+        <ControlTemplate x:Key="StopsLibraryRoutePickerToggleTemplate" TargetType="ToggleButton">
+            <Border x:Name="Bd"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    SnapsToDevicePixels="True">
+                <Path HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Data="M 0 0 L 4 4 L 8 0 Z"
+                      Fill="White" />
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource SmartPrimaryBrush}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="Bd" Property="Opacity" Value="0.5" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+        <ControlTemplate x:Key="StopsLibraryRoutePickerComboTemplate" TargetType="ComboBox">
+            <Grid SnapsToDevicePixels="True" HorizontalAlignment="Stretch">
+                <ToggleButton x:Name="ToggleButton"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              Foreground="{TemplateBinding Foreground}"
+                              Focusable="False"
+                              IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                              ClickMode="Press"
+                              Padding="{TemplateBinding Padding}"
+                              Template="{StaticResource StopsLibraryRoutePickerToggleTemplate}" />
+                <Popup x:Name="PART_Popup"
+                       AllowsTransparency="True"
+                       Placement="Bottom"
+                       IsOpen="{TemplateBinding IsDropDownOpen}"
+                       PopupAnimation="Slide"
+                       Focusable="False">
+                    <Grid MinWidth="280"
+                          MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                        <Border Background="{StaticResource SmartPrimaryDarkBrush}"
+                                BorderBrush="{StaticResource SmartAccentBrush}"
+                                BorderThickness="1"
+                                CornerRadius="0,0,2,2" />
+                        <ScrollViewer Margin="1"
+                                      SnapsToDevicePixels="True"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Visible"
+                                      CanContentScroll="False">
+                            <ScrollViewer.Resources>
+                                <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
+                            </ScrollViewer.Resources>
+                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                        </ScrollViewer>
+                    </Grid>
+                </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="HasItems" Value="False">
+                    <Setter TargetName="PART_Popup" Property="MinHeight" Value="32" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.55" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+        <Style x:Key="StopsLibraryRoutePickerCombo" TargetType="ComboBox" BasedOn="{StaticResource SmartDarkComboBox}">
+            <Setter Property="MaxDropDownHeight" Value="320" />
+            <Setter Property="MinWidth" Value="44" />
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Padding" Value="4,6" />
+            <Setter Property="Template" Value="{StaticResource StopsLibraryRoutePickerComboTemplate}" />
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}"
+                                   Foreground="White"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="360"
+                                   ToolTip="{Binding}" />
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <!-- Kein äußerer ScrollViewer: Liste scrollt in der linken Spalte, Stammdaten rechts in eigenem Bereich -->
@@ -291,6 +378,8 @@
 
                                     <ColumnDefinition Width="Auto" />
 
+                                    <ColumnDefinition Width="Auto" />
+
                                     <ColumnDefinition Width="*" />
 
                                 </Grid.ColumnDefinitions>
@@ -306,12 +395,22 @@
                                            MinWidth="48" />
 
                                 <ComboBox Grid.Column="1"
-
+                                          Style="{StaticResource StopsLibraryRoutePickerCombo}"
                                           ItemsSource="{Binding DataContext.AvailableRoutes, RelativeSource={RelativeSource AncestorType=UserControl}}"
-
                                           SelectedItem="{Binding DataContext.SelectedRouteForInsert, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          ToolTip="Route wählen"
+                                          Margin="0,0,10,6"
+                                          VerticalAlignment="Center" />
 
-                                          Margin="0,0,0,6" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding DataContext.SelectedRouteForInsert, RelativeSource={RelativeSource AncestorType=UserControl}, TargetNullValue='— Route wählen —'}"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,0,6"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="White"
+                                           ToolTip="{Binding DataContext.SelectedRouteForInsert, RelativeSource={RelativeSource AncestorType=UserControl}}" />
 
                             </Grid>
 

@@ -11,6 +11,7 @@ namespace SmartOepnv.Core.RoutePackage;
 public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 {
     private bool _isListEnabled = true;
+    private string _id = string.Empty;
     private string _name = string.Empty;
     private string _frontLine1 = string.Empty;
     private string _frontLine2 = string.Empty;
@@ -20,6 +21,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     public OutsideDisplayProgram()
     {
+        _id = OutsideDisplayId.NewId();
         for (var i = 0; i < OutsideDisplayCycleParser.MaxCycles; i++)
         {
             var front = new OutsideDisplayTextCycle();
@@ -29,6 +31,13 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             FrontCycles.Add(front);
             SideCycles.Add(side);
         }
+    }
+
+    /// <summary>Stabile Ziel-ID (überlebt Umbenennungen).</summary>
+    public string Id
+    {
+        get => _id;
+        set => SetProperty(ref _id, OutsideDisplayId.Ensure(value));
     }
 
     /// <summary>Wechseltext 1–4 (Front), wie Slider im Handy-Dialog.</summary>
@@ -153,6 +162,12 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         set => SetProtocol(value ? OutsideDisplayProtocolKind.FmaS1 : OutsideDisplayProtocolKind.Ds021T);
     }
 
+    public bool IsZielnummer
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Zielnummer;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Zielnummer : OutsideDisplayProtocolKind.Ds021T);
+    }
+
     public bool IsDs021T => Protocol == OutsideDisplayProtocolKind.Ds021T;
 
     /// <summary>DS021T und FMA-S1: bis zu 4 Wechseltexte; DS021neu/Krefeld: ein Ziel.</summary>
@@ -171,6 +186,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsKrefeld));
         OnPropertyChanged(nameof(IsDs021Neu));
         OnPropertyChanged(nameof(IsFmaS1));
+        OnPropertyChanged(nameof(IsZielnummer));
         OnPropertyChanged(nameof(IsDs021T));
         OnPropertyChanged(nameof(UsesCycleEditor));
         OnPropertyChanged(nameof(ProtocolLabel));
@@ -228,6 +244,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OutsideDisplayProtocolKind.Ds003aKrefeld => $"{Name} (DS003a Krefeld)",
         OutsideDisplayProtocolKind.Ds021Neu => $"{Name} (DS021neu)",
         OutsideDisplayProtocolKind.FmaS1 => $"{Name} (FMA-S1)",
+        OutsideDisplayProtocolKind.Zielnummer => $"{Name} (Zielnummer)",
         _ => $"{Name} (DS021T)"
     };
 
@@ -236,6 +253,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OutsideDisplayProtocolKind.Ds003aKrefeld => "DS003a Krefeld",
         OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
         OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
+        OutsideDisplayProtocolKind.Zielnummer => "Zielnummer",
         _ => "DS021T"
     };
 
@@ -283,7 +301,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             : $"{FrontLine1} · {FrontLine2}");
 
     public string SidePreview =>
-        BuildCyclesPreview(SideCycles, fallbackSingle:
+        FormatWechseltextListPreview(SideCycles, fallbackSingle:
             string.IsNullOrWhiteSpace(SideLine1) && string.IsNullOrWhiteSpace(SideLine2)
                 ? "—"
                 : string.IsNullOrWhiteSpace(SideLine2)
@@ -294,9 +312,20 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         FrontCycles.Count(c => c.HasContent);
 
     public string WechseltextPreview =>
-        WechseltextCount <= 1
-            ? FrontPreview
-            : $"{WechseltextCount} Wechseltexte: {string.Join(" → ", FrontCycles.Where(c => c.HasContent).Select(c => c.Preview))}";
+        FormatWechseltextListPreview(FrontCycles, fallbackSingle: FrontPreview);
+
+    private static string FormatWechseltextListPreview(
+        IEnumerable<OutsideDisplayTextCycle> cycles,
+        string fallbackSingle)
+    {
+        var active = cycles.Where(c => c.HasContent).Select(c => c.Preview).ToList();
+        return active.Count switch
+        {
+            0 => fallbackSingle,
+            1 => active[0],
+            _ => $"{active.Count} Wechseltexte: {string.Join(" → ", active)}"
+        };
+    }
 
     private static string BuildCyclesPreview(IEnumerable<OutsideDisplayTextCycle> cycles, string fallbackSingle)
     {
@@ -312,6 +341,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public static OutsideDisplayProgram CreateDs021t(string? name = null) =>
         new()
         {
+            Id = OutsideDisplayId.NewId(),
             Name = name ?? "Neues Ziel",
             FrontLine1 = string.Empty,
             Ds001Type = "line",
@@ -324,6 +354,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public static OutsideDisplayProgram CreateDs021Neu(string? name = null) =>
         new()
         {
+            Id = OutsideDisplayId.NewId(),
             Name = name ?? "Neues Ziel",
             FrontLine1 = string.Empty,
             Ds001Type = "line",
@@ -335,6 +366,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public static OutsideDisplayProgram CreateFmaS1(string? name = null) =>
         new()
         {
+            Id = OutsideDisplayId.NewId(),
             Name = name ?? "Neues Ziel",
             FrontLine1 = string.Empty,
             Ds001Type = "line",
@@ -343,9 +375,22 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             Protocol = OutsideDisplayProtocolKind.FmaS1
         };
 
+    public static OutsideDisplayProgram CreateZielnummer(string? name = null) =>
+        new()
+        {
+            Id = OutsideDisplayId.NewId(),
+            Name = name ?? "Neues Ziel",
+            FrontLine1 = "001",
+            Ds001Type = "line",
+            Ds001Value = "001",
+            Ds001Spec = "E00",
+            Protocol = OutsideDisplayProtocolKind.Zielnummer
+        };
+
     public static OutsideDisplayProgram CreateKrefeld(string? name = null) =>
         new()
         {
+            Id = OutsideDisplayId.NewId(),
             Name = name ?? "Neues Ziel",
             Ds001Type = "line",
             Ds001Value = "001",
@@ -447,6 +492,10 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         }
 
         program.Protocol = InferProtocol(frontBytes, sideBytes, parts);
+        var storedId = OutsideDisplayId.FromStorageEntry(entry);
+        program.Id = OutsideDisplayId.IsValid(storedId)
+            ? storedId
+            : OutsideDisplayId.LegacyStable(program.Name, program.Protocol);
         if (program.Protocol == OutsideDisplayProtocolKind.FmaS1)
         {
             FmaS1CycleLog.ApplyToCycles(program.FrontCycles, frontLog);
@@ -488,6 +537,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             OutsideDisplayProtocolKind.Ds003aKrefeld => OutsideDisplayTelegramFactory.BuildKrefeldTelegrams(this),
             OutsideDisplayProtocolKind.Ds021Neu => OutsideDisplayTelegramFactory.BuildDs021NeuTelegrams(this),
             OutsideDisplayProtocolKind.FmaS1 => OutsideDisplayTelegramFactory.BuildFmaS1Telegrams(this),
+            OutsideDisplayProtocolKind.Zielnummer => OutsideDisplayTelegramFactory.BuildZielnummerTelegrams(this),
             _ => OutsideDisplayTelegramFactory.BuildDs021tTelegrams(this)
         };
 
@@ -515,6 +565,11 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
             sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
         }
+        else if (Protocol == OutsideDisplayProtocolKind.Zielnummer)
+        {
+            frontGoals = [(FrontLine1, string.Empty)];
+            sideGoals = frontGoals;
+        }
         else
         {
             frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(FrontCycles);
@@ -526,12 +581,18 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
         }
 
-        var frontLog = Protocol == OutsideDisplayProtocolKind.FmaS1
-            ? FmaS1CycleLog.Encode(frontGoals)
-            : OutsideDisplayCycleParser.BuildLogString(frontGoals);
-        var sideLog = Protocol == OutsideDisplayProtocolKind.FmaS1
-            ? FmaS1CycleLog.Encode(sideGoals)
-            : OutsideDisplayCycleParser.BuildLogString(sideGoals);
+        var frontLog = Protocol switch
+        {
+            OutsideDisplayProtocolKind.FmaS1 => FmaS1CycleLog.Encode(frontGoals),
+            OutsideDisplayProtocolKind.Zielnummer => OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1),
+            _ => OutsideDisplayCycleParser.BuildLogString(frontGoals)
+        };
+        var sideLog = Protocol switch
+        {
+            OutsideDisplayProtocolKind.FmaS1 => FmaS1CycleLog.Encode(sideGoals),
+            OutsideDisplayProtocolKind.Zielnummer => OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1),
+            _ => OutsideDisplayCycleParser.BuildLogString(sideGoals)
+        };
 
         var parts = new List<string>
         {
@@ -558,6 +619,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         }
 
         parts.Add(EncodeUtf8(ProtocolStorageTag(Protocol)));
+        parts.Add(EncodeUtf8(OutsideDisplayId.Ensure(Id)));
         return string.Join('|', parts);
     }
 
@@ -566,6 +628,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OutsideDisplayProtocolKind.Ds003aKrefeld => "DS003a_Krefeld",
         OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
         OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
+        OutsideDisplayProtocolKind.Zielnummer => "Zielnummer",
         _ => "DS021T"
     };
 
@@ -585,6 +648,11 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         if (string.Equals(tag, "FMA-S1", StringComparison.OrdinalIgnoreCase))
         {
             return OutsideDisplayProtocolKind.FmaS1;
+        }
+
+        if (string.Equals(tag, "Zielnummer", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.Zielnummer;
         }
 
         if (string.Equals(tag, "DS021T", StringComparison.OrdinalIgnoreCase) ||
@@ -616,6 +684,13 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             if (FmaS1ProgramBuilder.IsFmaS1PayloadAscii(ascii))
             {
                 return OutsideDisplayProtocolKind.FmaS1;
+            }
+
+            if (Regex.IsMatch(ascii, @"^z[0-9]") &&
+                !ascii.StartsWith("zA4", StringComparison.Ordinal) &&
+                !ascii.StartsWith("zA5", StringComparison.Ordinal))
+            {
+                return OutsideDisplayProtocolKind.Zielnummer;
             }
 
             if (ascii.Contains("aA", StringComparison.Ordinal))
@@ -719,6 +794,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(Protocol));
         OnPropertyChanged(nameof(IsDs021Neu));
         OnPropertyChanged(nameof(IsFmaS1));
+        OnPropertyChanged(nameof(IsZielnummer));
         OnPropertyChanged(nameof(IsDs021T));
         OnPropertyChanged(nameof(UsesCycleEditor));
         OnPropertyChanged(nameof(IsKrefeld));

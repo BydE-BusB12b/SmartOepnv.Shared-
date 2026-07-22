@@ -244,6 +244,13 @@ public partial class MainViewModel : ObservableObject
             {
                 _dataTransferViewModel.LastActionMessage = syncResult.Message;
             }
+
+            // Neuer Betrieb / leerer Workspace: leeres Paket, damit Routen & Haltestellen angelegt werden können.
+            if (!AppServices.Routes.HasPackage && AppServices.Routes.EnsureEmptyPackageIfNeeded("empty-betrieb"))
+            {
+                OnRoutePackageLoaded();
+                StatusText = "Leeres Route-Paket angelegt – Routen und Haltestellen können jetzt erstellt werden.";
+            }
         }
         catch (Exception ex)
         {

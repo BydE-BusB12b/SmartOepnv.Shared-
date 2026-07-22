@@ -175,10 +175,21 @@
                     <TextBox Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}"
                              materialDesign:HintAssist.Hint="Ordnerpfad"
                              Margin="0,0,0,12" />
-                    <Button Content="Ordnerpfad speichern"
-                            Command="{Binding SaveFolderPathCommand}"
-                            HorizontalAlignment="Left"
-                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <Button Content="Ordnerpfad speichern"
+                                Command="{Binding SaveFolderPathCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="Betrieb wechseln"
+                                Command="{Binding SwitchBetriebCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Visibility="{Binding ShowBetriebSwitch, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+                    <TextBlock Opacity="0.85" TextWrapping="Wrap"
+                               Visibility="{Binding ShowBetriebSwitch, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Run Text="Aktiver Betrieb: " FontWeight="SemiBold" />
+                        <Run Text="{Binding ActiveBetriebLabel}" />
+                    </TextBlock>
                 </StackPanel>
             </materialDesign:Card>
 

@@ -232,21 +232,64 @@ public sealed class RoutePackageService
         return json;
     }
 
-    public void ApplyEditorChanges(string source = "editor", bool archivePreviousSave = false)
+    public void ApplyEditorChanges(
+        string source = "editor",
+        bool archivePreviousSave = false,
+        bool rebuildEmbeddedMedia = true)
     {
         if (Editor is null)
         {
             return;
         }
 
-        _currentJson = Editor.ToJson(indented: false);
+        // Einmal serialisieren – kein zweites ToJson() über GetPersistableJson().
+        // rebuildEmbeddedMedia=false: lokaler Routen-/Haltestellen-Save ohne Audio-Neuaufbau.
+        _currentJson = Editor.ToJson(indented: false, rebuildEmbeddedMedia: rebuildEmbeddedMedia);
         Stats = ParseStats(_currentJson);
         EditorDataRevision++;
 
         if (AppServices.IsInitialized)
         {
-            AppServices.Workspace.SavePackage(GetPersistableJson(), source, archivePreviousSave);
+            AppServices.Workspace.SavePackage(_currentJson, source, archivePreviousSave);
         }
+    }
+
+    /// <summary>
+    /// Legt bei fehlendem Paket ein leeres Route-Paket an (neuer Betrieb / leerer Workspace).
+    /// </summary>
+    /// <returns><c>true</c>, wenn danach ein Editor verfügbar ist.</returns>
+    public bool EnsureEmptyPackageIfNeeded(string source = "empty-package")
+    {
+        if (Editor is not null && HasPackage)
+        {
+            return true;
+        }
+
+        var json = BuildEmptyPackageJson();
+        LoadFromJson(json, persistLocally: true, source: source);
+        return Editor is not null;
+    }
+
+    public static string BuildEmptyPackageJson()
+    {
+        var root = new JsonObject
+        {
+            ["version"] = "1.0",
+            ["exportType"] = "routes",
+            ["autoImport"] = true,
+            ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            ["routes"] = new JsonArray(),
+            ["routeStops"] = new JsonObject(),
+            ["stopTemplates"] = new JsonArray(),
+            ["outsideDisplays"] = new JsonArray(),
+            ["employeeRoster"] = new JsonArray(),
+            ["registeredVehicles"] = new JsonArray(),
+            ["messageTemplates"] = new JsonArray(),
+            ["mailTemplates"] = new JsonArray(),
+            ["announcementTemplates"] = new JsonArray(),
+            ["dateBasedHints"] = new JsonArray()
+        };
+        return root.ToJsonString();
     }
 
     private string GetPersistableJson() => Editor is not null ? Editor.ToJson() : _currentJson!;

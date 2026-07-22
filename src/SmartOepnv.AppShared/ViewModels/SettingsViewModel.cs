@@ -4,8 +4,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Betrieb;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.AppShared;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.AppShared.Voip;
 using SmartOepnv.AppShared.Employees;
@@ -40,6 +42,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string routeFileInfo = "—";
     [ObservableProperty] private string folderFilesSummary = "—";
     [ObservableProperty] private string planerFolderInfo = "—";
+    [ObservableProperty] private string activeBetriebLabel = "—";
     [ObservableProperty] private bool isConnected;
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private string brandingStatus = string.Empty;
@@ -60,6 +63,8 @@ public partial class SettingsViewModel : ObservableObject
     public bool ShowBrandingSection => AppServices.IsPlannerApp;
 
     public bool ShowPlanerFolderSection => AppServices.IsPlannerApp;
+
+    public bool ShowBetriebSwitch => AppServices.IsPlannerApp;
 
     public bool ShowPlannerManualExport => AppServices.IsPlannerApp;
 
@@ -84,9 +89,21 @@ public partial class SettingsViewModel : ObservableObject
             ? $"{s.ConnectedAccountName} ({s.ConnectedAccountEmail})"
             : "—";
         ConnectionStatus = s.IsConnected ? "Verbunden" : "Nicht verbunden";
+        ActiveBetriebLabel = BuildActiveBetriebLabel();
         ReloadBranding();
         ReloadBriefingPasswords();
         RefreshVoipStatus();
+    }
+
+    private static string BuildActiveBetriebLabel()
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return "—";
+        }
+
+        var active = BetriebProfileStore.GetActiveProfile();
+        return active is null ? "—" : active.ListLabel;
     }
 
     public void RefreshVoipStatus()
@@ -335,16 +352,85 @@ public partial class SettingsViewModel : ObservableObject
     {
         var normalized = NormalizeFolderPath(FolderPath);
         var stored = AppServices.Dropbox.Settings;
-        if (string.Equals(stored.FolderPath, normalized, StringComparison.Ordinal))
+        var changed = !string.Equals(stored.FolderPath, normalized, StringComparison.Ordinal);
+        if (changed)
         {
-            FolderPath = normalized;
-            return false;
+            stored.FolderPath = normalized;
+            AppServices.Dropbox.SaveSettings(stored);
         }
 
-        stored.FolderPath = normalized;
-        AppServices.Dropbox.SaveSettings(stored);
         FolderPath = normalized;
-        return true;
+        if (AppServices.IsPlannerApp)
+        {
+            var active = BetriebProfileStore.GetActiveProfile();
+            if (active is not null)
+            {
+                var name = active.DisplayName;
+                if (string.IsNullOrWhiteSpace(name) ||
+                    string.Equals(
+                        BetriebProfileStore.DeriveDisplayName(active.DropboxFolderPath),
+                        name,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    name = BetriebProfileStore.DeriveDisplayName(normalized);
+                }
+
+                BetriebProfileStore.UpdateProfileMeta(active.Id, name, normalized);
+                ActiveBetriebLabel = BuildActiveBetriebLabel();
+            }
+        }
+
+        return changed;
+    }
+
+    [RelayCommand]
+    private async Task SwitchBetriebAsync()
+    {
+        if (!AppServices.IsPlannerApp || IsBusy)
+        {
+            return;
+        }
+
+        var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive)
+            ?? Application.Current?.MainWindow;
+        if (owner is null)
+        {
+            return;
+        }
+
+        PersistFolderPath();
+        var dialog = new BetriebSelectDialog(owner);
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        TestResult = "Betrieb wird gewechselt…";
+        try
+        {
+            if (dialog.CreateNew)
+            {
+                await SmartOepnvAppHost.SwitchBetriebAndRestartAsync(
+                    owner,
+                    switchToExistingId: null,
+                    newDisplayName: dialog.NewDisplayName,
+                    newDropboxFolderPath: dialog.NewDropboxFolderPath);
+            }
+            else
+            {
+                await SmartOepnvAppHost.SwitchBetriebAndRestartAsync(
+                    owner,
+                    switchToExistingId: dialog.SelectedBetriebId,
+                    newDisplayName: null,
+                    newDropboxFolderPath: null);
+            }
+        }
+        catch (Exception ex)
+        {
+            TestResult = $"Betrieb wechseln fehlgeschlagen: {ex.Message}";
+            IsBusy = false;
+        }
     }
 
     public bool PersistBriefingPasswords()

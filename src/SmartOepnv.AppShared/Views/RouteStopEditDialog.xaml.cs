@@ -53,7 +53,8 @@ public partial class RouteStopEditDialog : Window
         {
             EditPanel.Width = width;
             EditPanel.MinWidth = width;
-            EditPanel.SyncComboSelectionsFromStop(_stop);
+            // Kein SyncComboSelectionsFromStop hier: SizeChanged (Dropdown öffnen/schließen)
+            // würde sonst die gerade gewählte Zielauswahl zurücksetzen.
         }
     }
 
@@ -64,7 +65,7 @@ public partial class RouteStopEditDialog : Window
         _viewModel.MaintainStartStopMarkerAfterEdit();
         _viewModel.StopDetailEditedCommand.Execute(null);
         _viewModel.SaveChangesCommand.Execute(null);
-        _viewModel.RefreshStopAfterEdit(_stop);
+        // RefreshStopAfterEdit macht RoutesView nach ShowDialog – hier nicht doppelt.
         EditPanel.DataContext = null;
         DialogResult = true;
         Close();

@@ -75,7 +75,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
-            StatusMessage = "Kein Route-Paket geladen – bitte unter Übersicht importieren.";
+            StatusMessage = "Kein Route-Paket – unter Routen/Haltestellen zuerst anlegen oder Planer neu starten.";
             return;
         }
 
@@ -138,6 +138,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
                 .Where(e => !string.IsNullOrWhiteSpace(e))
                 .ToList();
             editor.ReplaceOutsideDisplays(outsideEntries);
+            OutsideDisplayDestinationResolver.SyncStopLinks(editor);
             AppServices.Routes.ApplyEditorChanges("anzeigen-hinweise");
             _hasUnsavedChanges = false;
             RefreshOutsideProgramListLabels();
@@ -384,6 +385,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             nameof(OutsideDisplayProgram.Protocol) or
             nameof(OutsideDisplayProgram.IsDs021Neu) or
             nameof(OutsideDisplayProgram.IsFmaS1) or
+            nameof(OutsideDisplayProgram.IsZielnummer) or
             nameof(OutsideDisplayProgram.UsesCycleEditor) or
             nameof(OutsideDisplayProgram.IsDs021T) or
             nameof(OutsideDisplayProgram.IsKrefeld))
@@ -450,6 +452,11 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [RelayCommand]
     private void AddOutsideProgramDs021t()
     {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
         var program = OutsideDisplayProgram.CreateDs021t($"Ziel {OutsidePrograms.Count + 1}");
         OutsidePrograms.Add(program);
         SortOutsidePrograms();
@@ -461,6 +468,11 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [RelayCommand]
     private void AddOutsideProgramDs021Neu()
     {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
         var program = OutsideDisplayProgram.CreateDs021Neu($"Ziel {OutsidePrograms.Count + 1}");
         OutsidePrograms.Add(program);
         SortOutsidePrograms();
@@ -472,6 +484,11 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [RelayCommand]
     private void AddOutsideProgramFmaS1()
     {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
         var program = OutsideDisplayProgram.CreateFmaS1($"Ziel {OutsidePrograms.Count + 1}");
         OutsidePrograms.Add(program);
         SortOutsidePrograms();
@@ -483,12 +500,49 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [RelayCommand]
     private void AddOutsideProgramKrefeld()
     {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
         var program = OutsideDisplayProgram.CreateKrefeld($"Ziel {OutsidePrograms.Count + 1}");
         OutsidePrograms.Add(program);
         SortOutsidePrograms();
         SelectedOutsideProgram = program;
         MarkDirty();
         StatusMessage = "Neue Zielanzeige (DS003a Krefeld) – Texte anpassen und speichern.";
+    }
+
+    [RelayCommand]
+    private void AddOutsideProgramZielnummer()
+    {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
+        var program = OutsideDisplayProgram.CreateZielnummer($"Ziel {OutsidePrograms.Count + 1}");
+        OutsidePrograms.Add(program);
+        SortOutsidePrograms();
+        SelectedOutsideProgram = program;
+        MarkDirty();
+        StatusMessage = "Neue Zielanzeige (Zielnummer) – Zielnummer/Linie/Sonderzeichen anpassen und speichern.";
+    }
+
+    private bool EnsurePackageForOutsidePrograms()
+    {
+        if (!AppServices.Routes.EnsureEmptyPackageIfNeeded())
+        {
+            StatusMessage = "Leeres Route-Paket konnte nicht angelegt werden.";
+            return false;
+        }
+
+        if (OutsidePrograms.Count == 0 && DateBasedHints.Count == 0)
+        {
+            RefreshFromEditor();
+        }
+
+        return AppServices.Routes.Editor is not null;
     }
 
     [RelayCommand]

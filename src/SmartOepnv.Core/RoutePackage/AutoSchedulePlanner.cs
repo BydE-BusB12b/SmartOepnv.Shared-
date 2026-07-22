@@ -110,7 +110,9 @@ public static class AutoSchedulePlanner
 
         var tripNumbers = ResolveTripNumbers(editor, request);
         var (routeName, lineCourse) = ExtractRouteParts(request.TemplateRouteKey);
-        var templateOperatingDays = editor.GetRouteOperatingDays(request.TemplateRouteKey);
+        // Leeres Set = Vorlage ohne Eintrag = alle Verkehrstage (wie RouteOperatingDaysEditor).
+        var templateOperatingDays = RouteOperatingDaysEditor.EffectiveDaySet(
+            editor.GetRouteOperatingDays(request.TemplateRouteKey));
         var templateTripNumber = RouteDisplayHelper.NormalizeTripNumber(
             RouteDisplayHelper.Parse(request.TemplateRouteKey).TripNumber);
         var templateInteriorDestination = editor.GetRouteInteriorDisplayDestination(request.TemplateRouteKey);
@@ -233,7 +235,7 @@ public static class AutoSchedulePlanner
             RouteDisplayHelper.Parse(templateRouteKey).TripNumber);
         IReadOnlyCollection<DutyOperatingDay> templateOperatingDays = editor is null
             ? RouteOperatingDaysEditor.AllDays
-            : editor.GetRouteOperatingDays(templateRouteKey);
+            : RouteOperatingDaysEditor.EffectiveDaySet(editor.GetRouteOperatingDays(templateRouteKey));
         for (var i = 0; i < tripNumbers.Count; i++)
         {
             if (!AutoScheduleTripNumber.TryNormalize(tripNumbers[i], out var normalized))

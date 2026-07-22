@@ -108,6 +108,11 @@ public static class AppServices
     public static void Initialize(string settingsSubfolder)
     {
         SettingsSubfolder = settingsSubfolder;
+        if (string.Equals(settingsSubfolder, "Planer", StringComparison.OrdinalIgnoreCase))
+        {
+            Betrieb.BetriebProfileStore.EnsureMigratedAndActivate();
+        }
+
         _dropboxSettingsStore = new DropboxSettingsStore(settingsSubfolder);
         _dropbox = new DropboxApiClient(_dropboxSettingsStore);
         _vehicleTracking = new VehicleTrackingService(_dropbox);

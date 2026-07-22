@@ -19,6 +19,15 @@ public static class IbisTelegramBuilder
 
     public static byte[] CreateIbisMessage(string message) => Build(message);
 
+    /// <summary>DS001 Linie (z. B. <c>l001</c>).</summary>
+    public static byte[] CreateDs001Line(string lineNumber) => Build("l" + lineNumber);
+
+    /// <summary>DS001 Sonderzeichen (z. B. <c>lE03</c>).</summary>
+    public static byte[] CreateDs001Special(string code) => Build("l" + code);
+
+    /// <summary>DS003 Zielnummernabruf (z. B. <c>z003</c>).</summary>
+    public static byte[] CreateDs003DestinationNumber(string number) => Build("z" + number);
+
     public static byte[] CreateDs003aTwoLine(string line1, string line2)
     {
         var l1 = Pad16(line1);
@@ -196,6 +205,31 @@ public static class OutsideDisplayTelegramFactory
         var frontCycles = frontGoals.Select(g => new FmaS1ProgramBuilder.TextCycle(g.Line1, g.Line2)).ToList();
         var sideCycles = sideGoals.Select(g => new FmaS1ProgramBuilder.TextCycle(g.Line1, g.Line2)).ToList();
         return FmaS1ProgramBuilder.CreateDestinationTelegrams(frontCycles, sideCycles, lineNumber);
+    }
+
+    /// <summary>Zielnummer (DS001+DS003 klassisch): DS001-Linie/-Sonderzeichen unverändert, Ziel als <c>z###</c>.</summary>
+    public static (byte[] Front, byte[] Side) BuildZielnummerTelegrams(OutsideDisplayProgram program)
+    {
+        var number = NormalizeZielnummer(program.FrontLine1);
+        var telegram = IbisTelegramBuilder.CreateDs003DestinationNumber(number);
+        return (telegram, telegram);
+    }
+
+    /// <summary>Zielnummer normalisieren: 1–4 Ziffern, auf mind. 3 Stellen mit führenden Nullen auffüllen.</summary>
+    public static string NormalizeZielnummer(string? value)
+    {
+        var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+        {
+            return "000";
+        }
+
+        if (digits.Length > 4)
+        {
+            digits = digits[..4];
+        }
+
+        return digits.Length < 3 ? digits.PadLeft(3, '0') : digits;
     }
 
     private static string? ResolveDs001Special(string? raw)

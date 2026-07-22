@@ -6,5 +6,6 @@ public enum OutsideDisplayProtocolKind
     Ds021T = 0,
     Ds021Neu = 1,
     Ds003aKrefeld = 2,
-    FmaS1 = 3
+    FmaS1 = 3,
+    Zielnummer = 4
 }
