@@ -13,6 +13,7 @@ public sealed class NavigationItem : INotifyPropertyChanged
     public string? Description { get; init; }
 
     private string _badgeText = string.Empty;
+    private bool _isSelected;
 
     public string BadgeText
     {
@@ -25,6 +26,21 @@ public sealed class NavigationItem : INotifyPropertyChanged
             }
 
             _badgeText = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value)
+            {
+                return;
+            }
+
+            _isSelected = value;
             OnPropertyChanged();
         }
     }

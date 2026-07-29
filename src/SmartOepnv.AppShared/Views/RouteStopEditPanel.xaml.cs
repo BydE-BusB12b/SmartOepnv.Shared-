@@ -343,6 +343,7 @@ public partial class RouteStopEditPanel : UserControl
         if (DataContext is RoutesViewModel vm && vm.SelectedStop is not null)
         {
             vm.SelectedStop.Time = normalized;
+            vm.NotifyStopTimeEdited(vm.SelectedStop);
         }
 
         Field_LostFocus(sender, e);

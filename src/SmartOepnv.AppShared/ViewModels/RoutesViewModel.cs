@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.RoutePath;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
@@ -18,6 +19,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     private readonly EditorAreaSyncState _sync = new();
     private CancellationTokenSource? _saveButtonFeedbackCts;
+    private readonly SearchQueryDebouncer _searchDebouncer;
 
     [ObservableProperty] private string? selectedRoute;
     [ObservableProperty] private RouteStopItem? selectedStop;
@@ -27,17 +29,27 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private string routeDateFrom = string.Empty;
     [ObservableProperty] private string routeDateTo = string.Empty;
     [ObservableProperty] private string routeDateRangeDisplay = string.Empty;
+    [ObservableProperty] private string routeOperatingDatesText = string.Empty;
+    [ObservableProperty] private string routeOperatingDatesDisplay = string.Empty;
     [ObservableProperty] private string routeInteriorDisplayDestination = string.Empty;
     [ObservableProperty] private bool routeItcsRouteListEnabled = true;
     [ObservableProperty] private bool routeMainDeviceOnly;
     [ObservableProperty] private bool saveButtonIsSuccess;
     [ObservableProperty] private bool isRouteSettingsExpanded;
+    /// <summary>Erhöhen, damit die Zeit-Warnungsfarbe in der Haltestellenliste neu gebunden wird.</summary>
+    [ObservableProperty] private int stopTimeOrderWarningTick;
+    /// <summary>Erhöhen, damit Routenwechsel-Zeile unter Endhaltestelle live aktualisiert wird.</summary>
+    [ObservableProperty] private int routeChangeDisplayTick;
+    [ObservableProperty] private bool hasAnyStopTimeOrderWarning;
+    [ObservableProperty] private string stopTimeOrderWarningText = string.Empty;
 
     public string RouteSettingsButtonLabel =>
         IsRouteSettingsExpanded ? "Verkehrstage & Gültigkeit ausblenden" : "Verkehrstage & Gültigkeit";
 
+    private readonly HashSet<int> _stopTimeOrderWarningIndices = [];
     private bool _suppressOperatingDaySync;
     private bool _suppressDateRangeSync;
+    private bool _suppressOperatingDatesSync;
     private bool _suppressInteriorDestinationSync;
     private bool _suppressItcsRouteListSync;
     private bool _suppressMainDeviceOnlySync;
@@ -49,9 +61,12 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     public bool HasRouteOperatingDaysDisplay => !string.IsNullOrWhiteSpace(RouteOperatingDaysDisplay);
     public bool HasRouteDateRangeDisplay => !string.IsNullOrWhiteSpace(RouteDateRangeDisplay);
+    public bool HasRouteOperatingDatesDisplay => !string.IsNullOrWhiteSpace(RouteOperatingDatesDisplay);
 
     public RoutesViewModel()
     {
+        _searchDebouncer = new SearchQueryDebouncer(ApplyRouteFilter);
+
         foreach (var (day, name) in DutyOperatingDayHelper.AllDays)
         {
             var item = new OperatingDayOptionItem(day, name);
@@ -105,7 +120,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         _sync.AfterRefresh();
     }
 
-    partial void OnSearchQueryChanged(string value) => ApplyRouteFilter();
+    partial void OnSearchQueryChanged(string value) => _searchDebouncer.Schedule();
 
     private void ApplyRouteFilter()
     {
@@ -233,6 +248,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             Stops.Add(stop);
         }
 
+        RefreshStopTimeOrderWarnings(showDialog: false);
         RemoveSelectedStopCommand.NotifyCanExecuteChanged();
         NotifyMoveStopCommandsCanExecute();
     }
@@ -264,6 +280,11 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         OnPropertyChanged(nameof(HasRouteDateRangeDisplay));
     }
 
+    partial void OnRouteOperatingDatesDisplayChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasRouteOperatingDatesDisplay));
+    }
+
     partial void OnRouteDateFromChanged(string value)
     {
         if (_suppressDateRangeSync)
@@ -282,6 +303,16 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         }
 
         PersistRouteDateRangeFromSelection();
+    }
+
+    partial void OnRouteOperatingDatesTextChanged(string value)
+    {
+        if (_suppressOperatingDatesSync)
+        {
+            return;
+        }
+
+        PersistRouteOperatingDatesFromSelection();
     }
 
     partial void OnIsRouteSettingsExpandedChanged(bool value) =>
@@ -329,6 +360,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         SelectedStop = null;
         LoadRouteOperatingDaysForSelection(value);
         LoadRouteDateRangeForSelection(value);
+        LoadRouteOperatingDatesForSelection(value);
         LoadRouteInteriorDisplayDestinationForSelection(value);
         LoadRouteItcsRouteListForSelection(value);
         LoadRouteMainDeviceOnlyForSelection(value);
@@ -481,7 +513,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 out var error,
                 dialog.ResultItcsRouteListEnabled,
                 dialog.ResultMainDeviceOnly,
-                dialog.ResultDateRange))
+                dialog.ResultDateRange,
+                dialog.ResultOperatingDates))
         {
             StatusMessage = error ?? "Route konnte nicht angelegt werden.";
             return;
@@ -526,7 +559,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 dialog.ResultMainDeviceOnly,
                 out var displayKey,
                 out var error,
-                dialog.ResultDateRange))
+                dialog.ResultDateRange,
+                dialog.ResultOperatingDates))
         {
             StatusMessage = error ?? "Route konnte nicht gespeichert werden.";
             return;
@@ -715,9 +749,14 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         Stops.Move(index, index + direction);
         _sync.MarkDirty();
         CommitChanges();
-        StatusMessage = direction < 0
+        var movedMessage = direction < 0
             ? $"„{SelectedStop.Name}“ nach oben verschoben."
             : $"„{SelectedStop.Name}“ nach unten verschoben.";
+        if (!RefreshStopTimeOrderWarnings(showDialog: true))
+        {
+            StatusMessage = movedMessage;
+        }
+
         NotifyMoveStopCommandsCanExecute();
     }
 
@@ -739,7 +778,11 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
         _sync.MarkDirty();
         CommitChanges();
-        StatusMessage = $"„{name}“ aus Route entfernt.";
+        if (!RefreshStopTimeOrderWarnings(showDialog: false))
+        {
+            StatusMessage = $"„{name}“ aus Route entfernt.";
+        }
+
         RemoveSelectedStopCommand.NotifyCanExecuteChanged();
     }
 
@@ -753,6 +796,64 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         }
 
         CommitChanges();
+        // CommitChanges setzt StatusMessage auf „gespeichert“ – Warnung danach erneut setzen.
+        RefreshStopTimeOrderWarnings(showDialog: true);
+    }
+
+    /// <summary>true, wenn die Haltestelle in der Liste eine rückwärts springende Uhrzeit hat.</summary>
+    public bool HasStopTimeOrderWarning(RouteStopItem? stop)
+    {
+        if (stop is null)
+        {
+            return false;
+        }
+
+        var index = Stops.IndexOf(stop);
+        return index >= 0 && _stopTimeOrderWarningIndices.Contains(index);
+    }
+
+    /// <summary>
+    /// Prüft rückwärts springende Haltestellenzeiten.
+    /// </summary>
+    /// <returns>true, wenn mindestens eine Warnung gesetzt wurde.</returns>
+    public bool RefreshStopTimeOrderWarnings(bool showDialog)
+    {
+        var issues = RouteStopTimeOrder.FindIssues(Stops);
+        _stopTimeOrderWarningIndices.Clear();
+        foreach (var issue in issues)
+        {
+            _stopTimeOrderWarningIndices.Add(issue.Index);
+        }
+
+        HasAnyStopTimeOrderWarning = issues.Count > 0;
+        StopTimeOrderWarningText = HasAnyStopTimeOrderWarning
+            ? RouteStopTimeOrder.FormatWarningMessage(issues)
+            : string.Empty;
+        StopTimeOrderWarningTick++;
+
+        if (!HasAnyStopTimeOrderWarning)
+        {
+            return false;
+        }
+
+        StatusMessage = StopTimeOrderWarningText;
+        if (showDialog)
+        {
+            var owner = Application.Current?.MainWindow;
+            if (owner is not null)
+            {
+                SmartConfirmDialog.ShowInfo(owner, "Uhrzeit-Reihenfolge", StopTimeOrderWarningText);
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Nach Zeit-Änderung einer Haltestelle: Warnung, falls sie vor der vorherigen liegt.</summary>
+    public void NotifyStopTimeEdited(RouteStopItem? stop)
+    {
+        var showDialog = stop is not null && RouteStopTimeOrder.HasIssueForStop(Stops, stop);
+        RefreshStopTimeOrderWarnings(showDialog);
     }
 
     [RelayCommand]
@@ -992,6 +1093,59 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         StatusMessage = range.IsRestricted
             ? $"Gültigkeit für „{SelectedRoute}“ gesetzt – bitte speichern."
             : $"Gültigkeit für „{SelectedRoute}“ entfernt – bitte speichern.";
+    }
+
+    private void LoadRouteOperatingDatesForSelection(string? routeKey)
+    {
+        var editor = AppServices.Routes.Editor;
+        _suppressOperatingDatesSync = true;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(routeKey) || editor is null)
+            {
+                RouteOperatingDatesText = string.Empty;
+                RouteOperatingDatesDisplay = string.Empty;
+                return;
+            }
+
+            var dates = editor.GetRouteOperatingDates(routeKey);
+            RouteOperatingDatesText = RouteOperatingDatesEditor.FormatDisplay(dates);
+            RouteOperatingDatesDisplay = RouteOperatingDatesText;
+        }
+        finally
+        {
+            _suppressOperatingDatesSync = false;
+        }
+    }
+
+    private void PersistRouteOperatingDatesFromSelection()
+    {
+        if (_suppressOperatingDatesSync || string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return;
+        }
+
+        if (!RouteOperatingDatesEditor.TryParseDateList(
+                RouteOperatingDatesText,
+                out var dates,
+                out var error))
+        {
+            StatusMessage = error ?? "Ungültige Betriebstage.";
+            return;
+        }
+
+        editor.SetRouteOperatingDates(SelectedRoute, dates);
+        RouteOperatingDatesDisplay = RouteOperatingDatesEditor.FormatDisplay(dates);
+        _sync.MarkDirty();
+        StatusMessage = dates.Count > 0
+            ? $"Betriebstage für „{SelectedRoute}“ gesetzt ({dates.Count}) – bitte speichern."
+            : $"Betriebstage für „{SelectedRoute}“ entfernt – bitte speichern.";
     }
 
     private void LoadRouteInteriorDisplayDestinationForSelection(string? routeKey)

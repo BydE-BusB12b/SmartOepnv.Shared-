@@ -120,7 +120,12 @@ public partial class RoutePathEditorViewModel : ObservableObject
         get
         {
             var editor = AppServices.Routes.Editor;
-            return editor?.RouteNames.ToList() ?? [];
+            if (editor is null)
+            {
+                return [];
+            }
+
+            return RouteDisplayHelper.SortRoutesByLineCourseAndTrip(editor.RouteNames);
         }
     }
 
@@ -481,10 +486,12 @@ public partial class RoutePathEditorViewModel : ObservableObject
             }
 
             RoutePathDraftMutator.DeduplicateSegmentsByEdge(_draft);
+            var selectedDistanceBeforeDedupe = TryPeekSelectedManeuverDistanceM(_draft, root);
             RoutePathDraftMutator.DeduplicateManeuversPerEdge(_draft);
             RoutePathDraftMutator.EnsureBusStraightEdgeKeys(_draft);
             RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(_draft);
             SyncSelectionFromMapJson(root);
+            RemapSelectedNavMarkerKeyAfterManeuverDedupe(selectedDistanceBeforeDedupe);
             MarkDraftDirty();
 
             if (movedNodeIds.Count > 0 && !forceApplyFromMap)
@@ -540,6 +547,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
 
             StatusMessage = $"Entwurf aktualisiert – {_draft.Segments.Count} Verbindungen.";
             RefreshNavManeuverList(_selectedNavMarkerKey);
+            // Nach Dedup/Index-Shift: Karten-Badges an die Listen-Nummern koppeln.
+            PushDraftToMap(skipNavListRefresh: true);
             return true;
         }
         catch (Exception ex)
@@ -591,6 +600,104 @@ public partial class RoutePathEditorViewModel : ObservableObject
         {
             _selectedNavMarkerKey = navKey;
         }
+    }
+
+    /// <summary>
+    /// Nach Dedup können <c>_m{i}</c>-Indizes verrutschen. Auswahl anhand Distanz neu binden.
+    /// </summary>
+    private void RemapSelectedNavMarkerKeyAfterManeuverDedupe(double? preferredDistanceM)
+    {
+        if (_draft is null ||
+            string.IsNullOrWhiteSpace(_selectedSegmentFrom) ||
+            string.IsNullOrWhiteSpace(_selectedSegmentTo))
+        {
+            return;
+        }
+
+        var key = RoutePathDraft.SegmentEdgeKey(_selectedSegmentFrom, _selectedSegmentTo);
+        if (!_draft.RoadSegmentManeuvers.TryGetValue(key, out var mans) || mans.Count == 0)
+        {
+            return;
+        }
+
+        var preferredIndex = 0;
+        if (preferredDistanceM is double targetDist)
+        {
+            preferredIndex = mans
+                .Select((m, i) => (Index: i, Delta: Math.Abs(m.DistanceM - targetDist)))
+                .OrderBy(x => x.Delta)
+                .ThenBy(x => x.Index)
+                .First().Index;
+        }
+        else
+        {
+            preferredIndex = Math.Clamp(_selectedManeuverIndex, 0, mans.Count - 1);
+        }
+
+        _selectedManeuverIndex = preferredIndex;
+        _selectedNavMarkerKey = $"{key}_m{preferredIndex}";
+    }
+
+    private static double? TryPeekSelectedManeuverDistanceM(RoutePathDraft draft, JsonObject root)
+    {
+        var navKey = root["selectedNavMarkerKey"]?.GetValue<string>()?.Trim();
+        var from = root["selectedSegmentFrom"]?.GetValue<string>()?.Trim();
+        var to = root["selectedSegmentTo"]?.GetValue<string>()?.Trim();
+        if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
+        {
+            // Fallback: Key „from\u0001to_m{i}“
+            if (string.IsNullOrEmpty(navKey))
+            {
+                return null;
+            }
+
+            var sep = navKey.LastIndexOf("_m", StringComparison.Ordinal);
+            if (sep <= 0)
+            {
+                return null;
+            }
+
+            var edge = navKey[..sep];
+            var parts = edge.Split('\u0001', 2);
+            if (parts.Length != 2)
+            {
+                return null;
+            }
+
+            from = parts[0];
+            to = parts[1];
+            if (!int.TryParse(navKey[(sep + 2)..], out var idxFromKey))
+            {
+                return null;
+            }
+
+            var edgeKey = RoutePathDraft.SegmentEdgeKey(from, to);
+            if (!draft.RoadSegmentManeuvers.TryGetValue(edgeKey, out var list) ||
+                idxFromKey < 0 ||
+                idxFromKey >= list.Count)
+            {
+                return null;
+            }
+
+            return list[idxFromKey].DistanceM;
+        }
+
+        var key = RoutePathDraft.SegmentEdgeKey(from, to);
+        if (!draft.RoadSegmentManeuvers.TryGetValue(key, out var mans) || mans.Count == 0)
+        {
+            return null;
+        }
+
+        var idx = 0;
+        if (!string.IsNullOrEmpty(navKey) &&
+            navKey.StartsWith(key + "_m", StringComparison.Ordinal) &&
+            int.TryParse(navKey[(key.Length + 2)..], out var parsed))
+        {
+            idx = parsed;
+        }
+
+        idx = Math.Clamp(idx, 0, mans.Count - 1);
+        return mans[idx].DistanceM;
     }
 
     private void SetActiveEditSegmentOrder(int order)
@@ -1114,9 +1221,11 @@ public partial class RoutePathEditorViewModel : ObservableObject
                 current.RoadSnappedEdgeKeys.Add(key);
             }
 
-            foreach (var busKey in previous.RoadBusStraightEdgeKeys)
+            // Busspur nur für diese Kante mergen – und nicht über einen neuen Straßensnap legen.
+            if (previous.RoadBusStraightEdgeKeys.Contains(key) &&
+                !LooksLikeStreetSnapOverridingBus(current, key))
             {
-                current.RoadBusStraightEdgeKeys.Add(busKey);
+                current.RoadBusStraightEdgeKeys.Add(key);
             }
 
             if (previous.RoadSegmentManeuvers.TryGetValue(key, out var prevMans))
@@ -1157,6 +1266,35 @@ public partial class RoutePathEditorViewModel : ObservableObject
         var parts = edgeKey.Split('\u0001', 2);
         return parts.Length == 2 &&
                (nodeIds.Contains(parts[0]) || nodeIds.Contains(parts[1]));
+    }
+
+    /// <summary>
+    /// Aktueller Stand hat Bus-Key bewusst entfernt und liefert Straßen-Geometrie –
+    /// vorherige Busspur-Markierung nicht wiederherstellen.
+    /// </summary>
+    private static bool LooksLikeStreetSnapOverridingBus(RoutePathDraft current, string key)
+    {
+        if (current.RoadBusStraightEdgeKeys.Contains(key))
+        {
+            return false;
+        }
+
+        if (!current.RoadSnappedEdgeKeys.Contains(key) ||
+            !current.RoadSegmentPolylines.TryGetValue(key, out var pts) ||
+            pts.Count < 4)
+        {
+            return false;
+        }
+
+        if (current.RoadSegmentManeuvers.TryGetValue(key, out var mans) &&
+            mans.Any(m => (m.Instruction ?? string.Empty)
+                .Contains("Busspur", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        // Genug Stützpunkte ohne Busspur-Text → Straßensnap, Bus-Key nicht zurückholen.
+        return true;
     }
 
     private bool IsSegmentRoadSnapped(RoutePathSegment segment)
@@ -1213,7 +1351,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             return null;
         }
 
-        RoutePathSegment? FindSegment(string? from, string? to)
+        RoutePathSegment? FindSegment(string? from, string? to, bool allowBus = false)
         {
             if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
             {
@@ -1222,7 +1360,18 @@ public partial class RoutePathEditorViewModel : ObservableObject
 
             var segment = _draft!.Segments.FirstOrDefault(s =>
                 s.FromNodeId == from && s.ToNodeId == to);
-            return segment is not null && !IsSegmentBusStraight(segment) ? segment : null;
+            if (segment is null)
+            {
+                return null;
+            }
+
+            // Explizite Auswahl: Busspur → Straße snappen erlauben (Bus-Key wird in Prepare entfernt).
+            if (allowBus)
+            {
+                return segment;
+            }
+
+            return IsSegmentBusStraight(segment) ? null : segment;
         }
 
         bool NeedsSnap(RoutePathSegment segment)
@@ -1235,7 +1384,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
         if (_activeEditSegmentOrder is int editOrder)
         {
             var editing = _draft.Segments.FirstOrDefault(s => s.Order == editOrder);
-            if (editing is not null && !IsSegmentBusStraight(editing))
+            if (editing is not null)
             {
                 return editing;
             }
@@ -1267,8 +1416,9 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
 
         // 4. Auswahl nur, wenn das Teilstück noch gelb/offen ist (nicht bereits gesnapptes Blau).
-        var selected = FindSegment(_selectedSegmentFrom, _selectedSegmentTo);
-        if (selected is not null && NeedsSnap(selected))
+        //    Busspur-Auswahl: trotzdem erlauben, damit „Straße snappen“ die Busspur ersetzen kann.
+        var selected = FindSegment(_selectedSegmentFrom, _selectedSegmentTo, allowBus: true);
+        if (selected is not null && (NeedsSnap(selected) || IsSegmentBusStraight(selected)))
         {
             return selected;
         }
@@ -2017,7 +2167,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
 
         RoutePathDraftRepository.SaveToPackage(editor.PackageRoot, _draft);
-        AppServices.Routes.ApplyEditorChanges("navidaten");
+        AppServices.Routes.ApplyEditorChanges("navidaten", rebuildEmbeddedMedia: false);
         return true;
     }
 
@@ -2090,6 +2240,20 @@ public partial class RoutePathEditorViewModel : ObservableObject
         try
         {
             SelectedNavManeuverItem = NavManeuverItems.FirstOrDefault(x => x.MapMarkerKey == mapMarkerKey);
+            if (SelectedNavManeuverItem is null &&
+                !string.IsNullOrEmpty(_selectedSegmentFrom) &&
+                !string.IsNullOrEmpty(_selectedSegmentTo))
+            {
+                // Index nach Dedup verschoben: erstes Manöver derselben Kante wählen.
+                SelectedNavManeuverItem = NavManeuverItems.FirstOrDefault(x =>
+                    string.Equals(x.FromNodeId, _selectedSegmentFrom, StringComparison.Ordinal) &&
+                    string.Equals(x.ToNodeId, _selectedSegmentTo, StringComparison.Ordinal) &&
+                    x.ManeuverIndex == _selectedManeuverIndex)
+                    ?? NavManeuverItems.FirstOrDefault(x =>
+                        string.Equals(x.FromNodeId, _selectedSegmentFrom, StringComparison.Ordinal) &&
+                        string.Equals(x.ToNodeId, _selectedSegmentTo, StringComparison.Ordinal));
+            }
+
             if (SelectedNavManeuverItem is not null)
             {
                 _selectedNavMarkerKey = SelectedNavManeuverItem.MapMarkerKey;

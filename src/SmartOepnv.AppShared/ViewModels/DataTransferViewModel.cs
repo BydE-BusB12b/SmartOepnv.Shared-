@@ -107,7 +107,8 @@ public partial class DataTransferViewModel : ObservableObject
 
         var routesHint =
             $"Planer-Arbeitsstand: {new PlanerWorkspaceService(AppServices.SettingsSubfolder).LocalFilePath} " +
-            $"(routes_export.json nur manuell: {AppServices.Workspace.PackageFilePath}).";
+            $"(lokaler Routen-Cache: {AppServices.Workspace.PackageFilePath}; " +
+            $"App-Vollstand routes_export.json nur manuell nach Dropbox).";
         var overlayHint = PlannerLocalOverlayHint;
         LocalWorkspaceHint = string.IsNullOrWhiteSpace(overlayHint)
             ? routesHint

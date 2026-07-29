@@ -12,7 +12,8 @@ public static class OutsideDisplayDestinationResolver
         foreach (var entry in outsideDisplayEntries)
         {
             var program = OutsideDisplayProgram.TryParse(entry);
-            if (program is null || !program.IsListEnabled)
+            // Planer muss auch Ziele mit „ITCS-Liste: aus“ verknüpfen können.
+            if (program is null || string.IsNullOrWhiteSpace(program.Name))
             {
                 continue;
             }

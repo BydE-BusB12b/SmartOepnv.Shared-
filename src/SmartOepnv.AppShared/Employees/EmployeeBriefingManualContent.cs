@@ -45,6 +45,7 @@ internal static class EmployeeBriefingManualContent
             • In der Kopfzeile sehen Sie Linie/Kurs, Routenname und Ziel: – ohne hinterlegtes Starthaltestellenziel erscheint „Ziel: Kein Ziel“.
             • Pas.-Info: rot „off“ = Fahrgastinformation und Ansagen aktiv, grün „on“ = deaktiviert – vor Fahrtantritt einschalten, wenn vorgesehen.
             • IBIS-USB in der Statuszeile: rot = nicht verbunden, grün = verbunden, blau blinkend = sendet gerade IBIS-Daten.
+            • Gelber Kreis neben dem Netz-/Empfangssymbol in der Statuszeile: Synchronisation bzw. Routen-Update läuft (z. B. neues Fahrzeugupdate). Währenddessen die App nicht beenden und warten, bis das Symbol wieder verschwindet.
             • Die aktuelle Haltestelle ist gelb umrandet; ausfallende Haltestellen erscheinen rot mit X.
             • Symbol mit Fragezeichen in der Statuszeile: Route wurde verlassen – fehlt die Linienführung oder gibt es Fehler, diese bitte über Mängelmeldung melden oder an die Planung wenden.
             • Wählen Sie vor Abfahrt Linie/Kurs und Fahrt aus – Ablauf in Abschnitt 2; prüfen Sie Zielanzeige und Fahrtrichtung.
@@ -53,10 +54,10 @@ internal static class EmployeeBriefingManualContent
             • Bei Störungen oder Unklarheiten wenden Sie sich an die Leitstelle – schnelle Meldungen über „Mail“ (Abschnitt 9).
             """,
             [
-                new BriefingImage("ITCS – Pas.-Info aus", "briefing_itcs_pasinfo_off.png"),
+                new BriefingImage("ITCS – Pas.-Info an", "briefing_itcs_pasinfo_on.png"),
                 new BriefingImage(
-                    "ITCS – Pas.-Info an, ausfallende und aktuelle Haltestelle, Route verlassen",
-                    "briefing_itcs_pasinfo_on.png")
+                    "ITCS – Pas.-Info aus, ausfallende und aktuelle Haltestelle, Route verlassen",
+                    "briefing_itcs_pasinfo_off.png")
             ]),
         new BriefingSection(
             "4. Pas.Info, Ansagen und Fahrgastinformation",

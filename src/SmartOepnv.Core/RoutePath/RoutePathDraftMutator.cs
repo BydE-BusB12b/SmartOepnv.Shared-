@@ -18,6 +18,79 @@ public static class RoutePathDraftMutator
         draft.RoadSegmentManeuvers.Clear();
     }
 
+    /// <summary>Entfernt Snap-Geometrie und Manöver einer Kante.</summary>
+    public static void ClearEdgeSnap(RoutePathDraft draft, string edgeKey)
+    {
+        draft.RoadSnappedEdgeKeys.Remove(edgeKey);
+        draft.RoadBusStraightEdgeKeys.Remove(edgeKey);
+        draft.RoadSegmentPolylines.Remove(edgeKey);
+        draft.RoadSegmentManeuvers.Remove(edgeKey);
+    }
+
+    /// <summary>Entfernt Snap-Daten aller Kanten, die einen der Knoten berühren.</summary>
+    public static void ClearEdgesTouchingNodes(RoutePathDraft draft, IEnumerable<string> nodeIds)
+    {
+        var set = nodeIds as ISet<string> ?? nodeIds.ToHashSet(StringComparer.Ordinal);
+        if (set.Count == 0)
+        {
+            return;
+        }
+
+        var keys = draft.RoadSegmentPolylines.Keys
+            .Concat(draft.RoadSegmentManeuvers.Keys)
+            .Concat(draft.RoadSnappedEdgeKeys)
+            .Concat(draft.RoadBusStraightEdgeKeys)
+            .Distinct(StringComparer.Ordinal)
+            .Where(k => EdgeTouchesAny(k, set))
+            .ToList();
+
+        foreach (var key in keys)
+        {
+            ClearEdgeSnap(draft, key);
+        }
+    }
+
+    /// <summary>
+    /// Entfernt nur Snap-Daten für Kanten, die nicht (mehr) in der Segmentliste vorkommen.
+    /// Löscht keine gültige Straßengeometrie wegen Endpunkt-Toleranz (OSRM weicht oft ab).
+    /// </summary>
+    public static void PruneOrphanEdgeSnaps(RoutePathDraft draft)
+    {
+        var validKeys = draft.Segments
+            .Select(s => RoutePathDraft.SegmentEdgeKey(s.FromNodeId, s.ToNodeId))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var orphanKeys = draft.RoadSegmentPolylines.Keys
+            .Concat(draft.RoadSegmentManeuvers.Keys)
+            .Concat(draft.RoadSnappedEdgeKeys)
+            .Concat(draft.RoadBusStraightEdgeKeys)
+            .Distinct(StringComparer.Ordinal)
+            .Where(k => !validKeys.Contains(k))
+            .ToList();
+
+        foreach (var key in orphanKeys)
+        {
+            ClearEdgeSnap(draft, key);
+        }
+
+        draft.RoadSnappedEdgeKeys.IntersectWith(validKeys);
+        draft.RoadBusStraightEdgeKeys.IntersectWith(validKeys);
+    }
+
+    /// <summary>
+    /// Veraltet: früher zu aggressiv (Endpunkt-Check löschte Snaps).
+    /// Behält nur Orphan-Pruning – Aufrufer sollen <see cref="PruneOrphanEdgeSnaps"/> nutzen.
+    /// </summary>
+    public static void PruneInvalidEdgeSnaps(RoutePathDraft draft, double endpointToleranceMeters = 80) =>
+        PruneOrphanEdgeSnaps(draft);
+
+    private static bool EdgeTouchesAny(string edgeKey, ISet<string> nodeIds)
+    {
+        var parts = edgeKey.Split('\u0001', 2);
+        return parts.Length == 2 &&
+               (nodeIds.Contains(parts[0]) || nodeIds.Contains(parts[1]));
+    }
+
     public static bool DeleteSegment(RoutePathDraft draft, string fromNodeId, string toNodeId)
     {
         var target = draft.Segments.FirstOrDefault(s =>
@@ -142,7 +215,11 @@ public static class RoutePathDraftMutator
         }
     }
 
-    /// <summary>Busspur-Markierung wiederherstellen, wenn Manöver/Geometrie darauf hindeuten (z. B. nach Karten-Sync).</summary>
+    /// <summary>
+    /// Busspur-Markierung nur bei expliziter Busspur-Anweisung wiederherstellen.
+    /// Mehrere „Manuell“-Symbole allein dürfen keinen Straßensnap zur Busspur machen
+    /// (sonst überschreibt die Karte die OSRM-Geometrie wieder mit einer Gerade).
+    /// </summary>
     public static void EnsureBusStraightEdgeKeys(RoutePathDraft draft)
     {
         foreach (var key in draft.RoadSegmentManeuvers.Keys)
@@ -159,13 +236,7 @@ public static class RoutePathDraftMutator
 
             var hasBusInstruction = mans.Any(m =>
                 (m.Instruction ?? string.Empty).Contains("Busspur", StringComparison.OrdinalIgnoreCase));
-            var hasMultipleManual = mans.Count > 1 &&
-                                    mans.All(m =>
-                                        NavManeuverHelper.IsManualManeuver(m) ||
-                                        (m.Instruction ?? string.Empty).Contains(
-                                            "Busspur",
-                                            StringComparison.OrdinalIgnoreCase));
-            if (hasBusInstruction || hasMultipleManual)
+            if (hasBusInstruction)
             {
                 draft.RoadBusStraightEdgeKeys.Add(key);
             }

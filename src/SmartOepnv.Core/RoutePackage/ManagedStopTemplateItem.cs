@@ -10,7 +10,7 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public const int DefaultRadiusMeters = 25;
+    public const int DefaultRadiusMeters = 35;
 
     /// <summary>Standardtitel beim Anlegen – wird nicht dauerhaft gespeichert, solange keine Stammdaten fehlen.</summary>
     public const string PlaceholderStopName = "Neue Haltestelle";

@@ -76,6 +76,75 @@ public static class RouteDisplayHelper
             : baseDisplay[..closeIndex] + $", Verkehr: {label})";
     }
 
+    /// <summary>
+    /// Anzeige mit Linie/Kurs und Fahrt vorne, danach der Name
+    /// (z. B. „Linie: 002/01, Fahrt: 1  002 / Bettrath…“). Speicherschlüssel unverändert lassen.
+    /// </summary>
+    public static string ToLineCourseTripFirstDisplayString(string? routeDisplayKey)
+    {
+        var text = (routeDisplayKey ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        var parsed = Parse(text);
+        var lineCourse = (parsed.LineCourse ?? string.Empty).Trim();
+        var tripNumber = (parsed.TripNumber ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(lineCourse) && string.IsNullOrEmpty(tripNumber))
+        {
+            return text;
+        }
+
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(lineCourse))
+        {
+            parts.Add($"Linie: {lineCourse}");
+        }
+
+        if (!string.IsNullOrEmpty(tripNumber))
+        {
+            parts.Add($"Fahrt: {tripNumber}");
+        }
+
+        var traffic = ExtractVerkehrLabel(text);
+        if (!string.IsNullOrEmpty(traffic))
+        {
+            parts.Add($"Verkehr: {traffic}");
+        }
+
+        var name = (parsed.Name ?? string.Empty).Trim();
+        var prefix = string.Join(", ", parts);
+        return string.IsNullOrEmpty(name) ? prefix : $"{prefix}  {name}";
+    }
+
+    private static string ExtractVerkehrLabel(string displayString)
+    {
+        var text = (displayString ?? string.Empty).Trim();
+        var nameEndIndex = text.IndexOf('(');
+        if (nameEndIndex < 0)
+        {
+            return string.Empty;
+        }
+
+        var infoStartIndex = nameEndIndex + 1;
+        var infoEndIndex = text.LastIndexOf(')');
+        var info = infoEndIndex > infoStartIndex
+            ? text[infoStartIndex..infoEndIndex]
+            : string.Empty;
+
+        foreach (var part in info.Split(','))
+        {
+            var trimmed = part.Trim();
+            if (trimmed.StartsWith("Verkehr:", StringComparison.OrdinalIgnoreCase))
+            {
+                return trimmed["Verkehr:".Length..].Trim();
+            }
+        }
+
+        return string.Empty;
+    }
+
     /// <summary>Fahrtnummer wie in der App (ohne führende Nullen: „01“ → „1“).</summary>
     public static string NormalizeTripNumber(string? tripNumber)
     {
@@ -174,6 +243,76 @@ public static class RouteDisplayHelper
         return digitsOnly[..slashPosition] + "/" + digitsOnly[slashPosition..];
     }
 
+    /// <summary>
+    /// True wenn <paramref name="existing"/> und <paramref name="incoming"/> dieselbe Fahrt sind,
+    /// aber der Name nur um ein Datumspräfix ergänzt/entfernt wurde
+    /// (z. B. „Leerfahrt…“ → „13.07.2026Leerfahrt…“). Zwei Wochenvarianten mit je eigenem Präfix: false.
+    /// </summary>
+    public static bool IsLikelyRenamedRoute(RouteDefinition existing, RouteDefinition incoming)
+    {
+        if (!string.Equals(
+                NormalizeLineCourse(existing.LineCourse),
+                NormalizeLineCourse(incoming.LineCourse),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.Equals(
+                NormalizeTripNumber(existing.TripNumber),
+                NormalizeTripNumber(incoming.TripNumber),
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return IsLikelyRenamedRouteName(existing.Name, incoming.Name);
+    }
+
+    public static bool IsLikelyRenamedRouteName(string? existingName, string? incomingName)
+    {
+        var existing = (existingName ?? string.Empty).Trim();
+        var incoming = (incomingName ?? string.Empty).Trim();
+        if (existing.Length == 0 || incoming.Length == 0)
+        {
+            return false;
+        }
+
+        if (string.Equals(existing, incoming, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var strippedExisting = StripLeadingCalendarDatePrefix(existing);
+        var strippedIncoming = StripLeadingCalendarDatePrefix(incoming);
+        if (!string.Equals(strippedExisting, strippedIncoming, StringComparison.OrdinalIgnoreCase) ||
+            strippedExisting.Length == 0)
+        {
+            return false;
+        }
+
+        var existingHadPrefix = !string.Equals(existing, strippedExisting, StringComparison.Ordinal);
+        var incomingHadPrefix = !string.Equals(incoming, strippedIncoming, StringComparison.Ordinal);
+        // Beide mit Datumspräfix = parallele Wochenfahrten, keine Umbenennung.
+        if (existingHadPrefix && incomingHadPrefix)
+        {
+            return false;
+        }
+
+        return existingHadPrefix || incomingHadPrefix;
+    }
+
+    public static string StripLeadingCalendarDatePrefix(string name)
+    {
+        var trimmed = (name ?? string.Empty).Trim();
+        var stripped = LeadingCalendarDatePrefix.Replace(trimmed, string.Empty, 1).Trim();
+        return string.IsNullOrEmpty(stripped) ? trimmed : stripped;
+    }
+
+    private static readonly Regex LeadingCalendarDatePrefix = new(
+        @"^\d{1,2}\.\d{1,2}\.\d{2,4}\s*",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     public static string NormalizeLineCourse(string? lineCourse)
     {
         var value = (lineCourse ?? string.Empty).Trim();
@@ -237,7 +376,9 @@ public static class RouteDisplayHelper
         IDictionary<string, RouteDateRange>? dateRangesByRoute,
         RouteDefinition candidate,
         IReadOnlyCollection<DutyOperatingDay> candidateDays,
-        RouteDateRange? candidateDateRange)
+        RouteDateRange? candidateDateRange,
+        IDictionary<string, HashSet<DateOnly>>? operatingDatesByRoute = null,
+        IReadOnlyCollection<DateOnly>? candidateOperatingDates = null)
     {
         var lineCourse = NormalizeLineCourse(candidate.LineCourse);
         var trip = NormalizeTripNumber(candidate.TripNumber);
@@ -269,6 +410,14 @@ public static class RouteDisplayHelper
                 ? RouteDateRange.Unrestricted
                 : RouteDateRangeEditor.GetRangeForRoute(dateRangesByRoute, key);
             if (!RouteDateRange.RangesOverlap(existingRange, candidateDateRange))
+            {
+                continue;
+            }
+
+            var existingDates = operatingDatesByRoute is null
+                ? null
+                : RouteOperatingDatesEditor.GetDatesForRoute(operatingDatesByRoute, key);
+            if (!RouteOperatingDatesEditor.DateListsOverlap(existingDates, candidateOperatingDates))
             {
                 continue;
             }

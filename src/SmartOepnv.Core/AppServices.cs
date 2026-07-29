@@ -1,5 +1,6 @@
 using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.Dropbox;
+using SmartOepnv.Core.Mitteilungen;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.Sev;
 using SmartOepnv.Core.Session;
@@ -44,6 +45,8 @@ public static class AppServices
 
     public static SevSignDraftStore? SevSignDrafts => _sevSignDrafts;
 
+    public static MitteilungDraftStore? MitteilungDrafts => _mitteilungDrafts;
+
     public static DutyTemplateStore? DutyTemplates => _dutyTemplates;
 
     public static DutyTemplateEditorSessionStore? DutyTemplateEditorSession => _dutyTemplateEditorSession;
@@ -56,6 +59,7 @@ public static class AppServices
     private static PlannerPackageVersionStore? _plannerVersions;
     private static DeviceRegistrationDropboxService? _deviceRegistration;
     private static SevSignDraftStore? _sevSignDrafts;
+    private static MitteilungDraftStore? _mitteilungDrafts;
     private static DutyTemplateStore? _dutyTemplates;
     private static DutyTemplateEditorSessionStore? _dutyTemplateEditorSession;
     private static PlanerSessionService? _planerSession;
@@ -123,6 +127,7 @@ public static class AppServices
             _plannerVersions = new PlannerPackageVersionStore(settingsSubfolder);
             _deviceRegistration = new DeviceRegistrationDropboxService();
             _sevSignDrafts = new SevSignDraftStore(settingsSubfolder);
+            _mitteilungDrafts = new MitteilungDraftStore(settingsSubfolder);
             _dutyTemplates = new DutyTemplateStore(settingsSubfolder);
             _dutyTemplateEditorSession = new DutyTemplateEditorSessionStore(settingsSubfolder);
             _planerSession = new PlanerSessionService(_dropbox);

@@ -32,6 +32,14 @@ public partial class RoutesViewModel
                 return;
             }
 
+            // Unveränderter Wert: nichts tun. Sonst setzt Speichern-Flush der unchecked
+            // „Starthaltestelle“-Checkbox IsAnnouncementEnabled immer auf true und
+            // überschreibt „Ansage ausblenden“.
+            if (_startStopCheckbox == value)
+            {
+                return;
+            }
+
             _startStopCheckbox = value;
             if (value)
             {
@@ -59,7 +67,13 @@ public partial class RoutesViewModel
                 return;
             }
 
-            SelectedStop.IsAnnouncementEnabled = !value;
+            var enabled = !value;
+            if (SelectedStop.IsAnnouncementEnabled == enabled)
+            {
+                return;
+            }
+
+            SelectedStop.IsAnnouncementEnabled = enabled;
             NotifyStopEditorStateChanged();
             MarkStopDetailDirty();
         }
@@ -648,6 +662,7 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(SelectedEndDestinationZielnummer));
         OnPropertyChanged(nameof(SelectedLineCourseTrip));
         ApplyLineCourseTripByNumberCommand.NotifyCanExecuteChanged();
+        RouteChangeDisplayTick++;
     }
 
     private void MarkStopDetailDirty()
@@ -655,7 +670,10 @@ public partial class RoutesViewModel
         CancelSaveButtonSuccessFeedback();
         MaintainStartStopMarkerIfNeeded();
         _sync.MarkDirty();
-        StatusMessage = "Haltestellen-Änderungen – bitte „Speichern“.";
+        if (!RefreshStopTimeOrderWarnings(showDialog: false))
+        {
+            StatusMessage = "Haltestellen-Änderungen – bitte „Speichern“.";
+        }
     }
 
     private void MaintainStartStopMarkerIfNeeded()

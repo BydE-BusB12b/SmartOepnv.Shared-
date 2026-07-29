@@ -37,6 +37,9 @@ public sealed class EditableRoutePackage
     public IDictionary<string, RouteDateRange> RouteDateRangesByRoute { get; } =
         new Dictionary<string, RouteDateRange>(StringComparer.Ordinal);
 
+    public IDictionary<string, HashSet<DateOnly>> RouteOperatingDatesByRoute { get; } =
+        new Dictionary<string, HashSet<DateOnly>>(StringComparer.Ordinal);
+
     public IDictionary<string, string> RouteInteriorDisplayDestinationsByRoute { get; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -63,7 +66,10 @@ public sealed class EditableRoutePackage
         return package;
     }
 
-    public string ToJson(bool indented = true, bool rebuildEmbeddedMedia = true)
+    /// <param name="includeHeavyMedia">
+    /// false = nur Routen/Haltestellen/Metadaten (schnell speichern); Audio bleibt im Cache/Sidecar.
+    /// </param>
+    public string ToJson(bool indented = true, bool rebuildEmbeddedMedia = true, bool includeHeavyMedia = true)
     {
         NormalizeStopsStorageBeforeSave();
         ConsolidateDuplicateRouteKeys();
@@ -81,6 +87,16 @@ public sealed class EditableRoutePackage
 
         _root["autoImport"] = true;
 
+        if (!includeHeavyMedia)
+        {
+            if (rebuildEmbeddedMedia)
+            {
+                CaptureHeavyMediaCacheFromRootNodes();
+            }
+
+            return SerializeRootWithoutHeavyMedia();
+        }
+
         if (!rebuildEmbeddedMedia)
         {
             return SerializeRootPreservingHeavyMediaCache();
@@ -89,6 +105,44 @@ public sealed class EditableRoutePackage
         var json = _root.ToJsonString();
         CaptureHeavyMediaCacheFromSourceJson(json);
         return json;
+    }
+
+    /// <summary>Sidecar-JSON mit nur <c>embeddedSounds</c>/<c>specialAnnouncements</c> (oder null).</summary>
+    public string? TryGetHeavyMediaSidecarJson()
+    {
+        if (_cachedEmbeddedSoundsJson is null && _cachedSpecialAnnouncementsJson is null)
+        {
+            CaptureHeavyMediaCacheFromRootNodes();
+        }
+
+        if (_cachedEmbeddedSoundsJson is null && _cachedSpecialAnnouncementsJson is null)
+        {
+            return null;
+        }
+
+        var sb = new System.Text.StringBuilder(64
+            + (_cachedEmbeddedSoundsJson?.Length ?? 0)
+            + (_cachedSpecialAnnouncementsJson?.Length ?? 0));
+        sb.Append('{');
+        var needsComma = false;
+        if (_cachedEmbeddedSoundsJson is not null)
+        {
+            sb.Append("\"embeddedSounds\":").Append(_cachedEmbeddedSoundsJson);
+            needsComma = true;
+        }
+
+        if (_cachedSpecialAnnouncementsJson is not null)
+        {
+            if (needsComma)
+            {
+                sb.Append(',');
+            }
+
+            sb.Append("\"specialAnnouncements\":").Append(_cachedSpecialAnnouncementsJson);
+        }
+
+        sb.Append('}');
+        return sb.ToString();
     }
 
     /// <summary>Cache verwerfen, sobald <c>embeddedSounds</c> inhaltlich geändert wurde.</summary>
@@ -116,28 +170,37 @@ public sealed class EditableRoutePackage
         }
     }
 
-    private string SerializeRootPreservingHeavyMediaCache()
+    private void CaptureHeavyMediaCacheFromRootNodes()
     {
-        var hasSounds = _root.ContainsKey("embeddedSounds");
-        var hasSpecial = _root.ContainsKey("specialAnnouncements");
-
-        if ((hasSounds && _cachedEmbeddedSoundsJson is null) ||
-            (hasSpecial && _cachedSpecialAnnouncementsJson is null))
+        try
         {
-            var full = _root.ToJsonString();
-            CaptureHeavyMediaCacheFromSourceJson(full);
-            return full;
-        }
+            if (_root["embeddedSounds"] is JsonNode sounds)
+            {
+                _cachedEmbeddedSoundsJson = sounds.ToJsonString();
+            }
 
+            if (_root["specialAnnouncements"] is JsonNode special)
+            {
+                _cachedSpecialAnnouncementsJson = special.ToJsonString();
+            }
+        }
+        catch
+        {
+            // Cache bleibt unverändert
+        }
+    }
+
+    private string SerializeRootWithoutHeavyMedia()
+    {
         JsonNode? soundsNode = null;
         JsonNode? specialNode = null;
-        if (hasSounds)
+        if (_root.ContainsKey("embeddedSounds"))
         {
             soundsNode = _root["embeddedSounds"];
             _root.Remove("embeddedSounds");
         }
 
-        if (hasSpecial)
+        if (_root.ContainsKey("specialAnnouncements"))
         {
             specialNode = _root["specialAnnouncements"];
             _root.Remove("specialAnnouncements");
@@ -145,11 +208,7 @@ public sealed class EditableRoutePackage
 
         try
         {
-            var body = _root.ToJsonString();
-            return InjectHeavyMediaProperties(
-                body,
-                hasSounds ? _cachedEmbeddedSoundsJson : null,
-                hasSpecial ? _cachedSpecialAnnouncementsJson : null);
+            return _root.ToJsonString();
         }
         finally
         {
@@ -165,7 +224,27 @@ public sealed class EditableRoutePackage
         }
     }
 
-    private static string InjectHeavyMediaProperties(
+    private string SerializeRootPreservingHeavyMediaCache()
+    {
+        var hasSounds = _root.ContainsKey("embeddedSounds");
+        var hasSpecial = _root.ContainsKey("specialAnnouncements");
+
+        if ((hasSounds && _cachedEmbeddedSoundsJson is null) ||
+            (hasSpecial && _cachedSpecialAnnouncementsJson is null))
+        {
+            var full = _root.ToJsonString();
+            CaptureHeavyMediaCacheFromSourceJson(full);
+            return full;
+        }
+
+        var body = SerializeRootWithoutHeavyMedia();
+        return InjectHeavyMediaProperties(
+            body,
+            hasSounds ? _cachedEmbeddedSoundsJson : null,
+            hasSpecial ? _cachedSpecialAnnouncementsJson : null);
+    }
+
+    public static string InjectHeavyMediaProperties(
         string body,
         string? embeddedSoundsJson,
         string? specialAnnouncementsJson)
@@ -226,6 +305,7 @@ public sealed class EditableRoutePackage
         OutsideDisplays.Clear();
         RouteOperatingDaysByRoute.Clear();
         RouteDateRangesByRoute.Clear();
+        RouteOperatingDatesByRoute.Clear();
         RouteInteriorDisplayDestinationsByRoute.Clear();
         RoutesExcludedFromItcsRouteList.Clear();
         RoutesMainDeviceOnly.Clear();
@@ -356,6 +436,11 @@ public sealed class EditableRoutePackage
         foreach (var (key, range) in RouteDateRangeEditor.LoadFromRoot(_root))
         {
             RouteDateRangesByRoute[key] = range;
+        }
+
+        foreach (var (key, dates) in RouteOperatingDatesEditor.LoadFromRoot(_root))
+        {
+            RouteOperatingDatesByRoute[key] = dates;
         }
 
         foreach (var key in RouteItcsRouteListEditor.LoadFromRoot(_root))
@@ -542,7 +627,8 @@ public sealed class EditableRoutePackage
         out string? error,
         bool inItcsRouteList = false,
         bool mainDeviceOnly = false,
-        RouteDateRange? dateRange = null)
+        RouteDateRange? dateRange = null,
+        IReadOnlyCollection<DateOnly>? operatingDates = null)
     {
         var days = operatingDays is null
             ? RouteOperatingDaysEditor.AllDays.ToList()
@@ -578,7 +664,9 @@ public sealed class EditableRoutePackage
                 RouteDateRangesByRoute,
                 definition,
                 days,
-                dateRange))
+                dateRange,
+                RouteOperatingDatesByRoute,
+                operatingDates))
         {
             error = "Route schon vorhanden (Linie/Kurs, Fahrt, Verkehrstag und/oder Datumsbereich überschneiden sich).";
             return false;
@@ -587,6 +675,7 @@ public sealed class EditableRoutePackage
         AddRoute(displayKey);
         SetRouteOperatingDays(displayKey, days);
         SetRouteDateRange(displayKey, dateRange);
+        SetRouteOperatingDates(displayKey, operatingDates);
         SetRouteInItcsRouteList(displayKey, inItcsRouteList);
         SetRouteMainDeviceOnly(displayKey, mainDeviceOnly);
         if (!string.IsNullOrWhiteSpace(copyStopsFromRouteKey))
@@ -605,7 +694,8 @@ public sealed class EditableRoutePackage
                     StopsByRoute.Remove(routeKeyForStops);
                 }
 
-                RouteNavigationMetadataCopy.CopyForRoute(_root, sourceKey, routeKeyForStops);
+                // Kanonischer Schlüssel (Fahrt: 4, nicht 0004) – sonst findet die Route den Snap nicht.
+                RouteNavigationMetadataCopy.CopyForRoute(_root, sourceKey, storageKey);
             }
         }
 
@@ -621,7 +711,8 @@ public sealed class EditableRoutePackage
         bool mainDeviceOnly,
         out string displayKey,
         out string? error,
-        RouteDateRange? dateRange = null)
+        RouteDateRange? dateRange = null,
+        IReadOnlyCollection<DateOnly>? operatingDates = null)
     {
         var oldKey = ResolveExistingRouteKey(existingRouteKey);
         if (!RouteNames.Contains(oldKey) && !StopsByRoute.ContainsKey(RouteDisplayHelper.ToCanonicalRouteKey(oldKey)))
@@ -666,7 +757,9 @@ public sealed class EditableRoutePackage
                 RouteDateRangesByRoute,
                 definition,
                 days,
-                dateRange))
+                dateRange,
+                RouteOperatingDatesByRoute,
+                operatingDates))
         {
             error = "Route schon vorhanden (Linie/Kurs, Fahrt, Verkehrstag und/oder Datumsbereich überschneiden sich).";
             return false;
@@ -677,10 +770,12 @@ public sealed class EditableRoutePackage
             RenameRouteKey(oldKey, displayKey);
             RouteOperatingDaysEditor.RemoveRoute(RouteOperatingDaysByRoute, oldKey);
             RouteDateRangeEditor.RemoveRoute(RouteDateRangesByRoute, oldKey);
+            RouteOperatingDatesEditor.RemoveRoute(RouteOperatingDatesByRoute, oldKey);
         }
 
         SetRouteOperatingDays(displayKey, days);
         SetRouteDateRange(displayKey, dateRange);
+        SetRouteOperatingDates(displayKey, operatingDates);
         SetRouteInItcsRouteList(displayKey, inItcsRouteList);
         SetRouteMainDeviceOnly(displayKey, mainDeviceOnly);
         error = null;
@@ -706,6 +801,7 @@ public sealed class EditableRoutePackage
             RouteNames.Remove(key);
             RouteOperatingDaysEditor.RemoveRoute(RouteOperatingDaysByRoute, key);
             RouteDateRangeEditor.RemoveRoute(RouteDateRangesByRoute, key);
+            RouteOperatingDatesEditor.RemoveRoute(RouteOperatingDatesByRoute, key);
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, key);
             RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, key);
             RouteMainDeviceOnlyEditor.RemoveRoute(RoutesMainDeviceOnly, key);
@@ -827,6 +923,7 @@ public sealed class EditableRoutePackage
 
         AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, oldKey, newKey);
         RouteDateRangeEditor.RenameRouteKey(RouteDateRangesByRoute, oldKey, newKey);
+        RouteOperatingDatesEditor.RenameRouteKey(RouteOperatingDatesByRoute, oldKey, newKey);
 
         RouteNavigationMetadataCopy.CopyForRoute(_root, oldKey, newKey);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, oldKey);
@@ -982,6 +1079,7 @@ public sealed class EditableRoutePackage
 
         RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, alias);
         AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, alias, primary);
+        RouteOperatingDatesEditor.RenameRouteKey(RouteOperatingDatesByRoute, alias, primary);
         RouteNavigationMetadataCopy.CopyForRoute(_root, alias, primary);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, alias);
     }
@@ -997,6 +1095,12 @@ public sealed class EditableRoutePackage
 
     public void SetRouteDateRange(string routeDisplayKey, RouteDateRange? range) =>
         RouteDateRangeEditor.SetRangeForRoute(RouteDateRangesByRoute, routeDisplayKey, range);
+
+    public HashSet<DateOnly> GetRouteOperatingDates(string routeDisplayKey) =>
+        RouteOperatingDatesEditor.GetDatesForRoute(RouteOperatingDatesByRoute, routeDisplayKey);
+
+    public void SetRouteOperatingDates(string routeDisplayKey, IEnumerable<DateOnly>? dates) =>
+        RouteOperatingDatesEditor.SetDatesForRoute(RouteOperatingDatesByRoute, routeDisplayKey, dates);
 
     public string GetRouteInteriorDisplayDestination(string routeDisplayKey) =>
         RouteInteriorDisplayDestinationEditor.GetForRoute(RouteInteriorDisplayDestinationsByRoute, routeDisplayKey);

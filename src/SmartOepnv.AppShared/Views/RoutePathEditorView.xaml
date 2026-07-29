@@ -4,10 +4,12 @@
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels"
+             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch"
              Margin="0">
     <UserControl.Resources>
+        <conv:RouteLineCourseTripFirstConverter x:Key="RouteLineCourseTripFirstConverter" />
         <!-- Gedämpfte Zustandsfarben (Outlined wie die übrigen Buttons, kein greller Vollton) -->
         <Storyboard x:Key="RoutePathSaveBlinkStoryboard" RepeatBehavior="Forever">
             <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)"
@@ -85,7 +87,7 @@
                        IsOpen="{TemplateBinding IsDropDownOpen}"
                        PopupAnimation="Slide"
                        Focusable="False">
-                    <Grid MinWidth="280"
+                    <Grid MinWidth="360"
                           MaxHeight="{TemplateBinding MaxDropDownHeight}">
                         <Border Background="{StaticResource SmartPrimaryDarkBrush}"
                                 BorderBrush="{StaticResource SmartAccentBrush}"
@@ -122,11 +124,11 @@
             <Setter Property="ItemTemplate">
                 <Setter.Value>
                     <DataTemplate>
-                        <TextBlock Text="{Binding}"
+                        <TextBlock Text="{Binding Converter={StaticResource RouteLineCourseTripFirstConverter}}"
                                    Foreground="White"
                                    TextWrapping="Wrap"
-                                   MaxWidth="360"
-                                   ToolTip="{Binding}" />
+                                   MaxWidth="420"
+                                   ToolTip="{Binding Converter={StaticResource RouteLineCourseTripFirstConverter}}" />
                     </DataTemplate>
                 </Setter.Value>
             </Setter>
@@ -172,14 +174,14 @@
                                       SelectedItem="{Binding SelectedRoute}"
                                       ToolTip="Route wechseln" />
                             <TextBlock Grid.Column="1"
-                                       Text="{Binding SelectedRoute, TargetNullValue='— Route wählen —'}"
+                                       Text="{Binding SelectedRoute, Converter={StaticResource RouteLineCourseTripFirstConverter}, TargetNullValue='— Route wählen —'}"
                                        TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        Margin="10,0,0,0"
                                        FontSize="13"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource SmartPrimaryBrush}"
-                                       ToolTip="{Binding SelectedRoute}" />
+                                       ToolTip="{Binding SelectedRoute, Converter={StaticResource RouteLineCourseTripFirstConverter}}" />
                         </Grid>
 
                         <Button Content="Haltestellen laden"

@@ -137,7 +137,7 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
                 .Where(e => !BuiltinAdminEmployee.IsBuiltinAdmin(e))
                 .Select(Clone)
                 .ToList());
-        AppServices.Routes.ApplyEditorChanges("fahrer");
+        AppServices.Routes.ApplyEditorChanges("fahrer", rebuildEmbeddedMedia: false);
         AppServices.PlannerLocal?.PersistFromEditor(editor);
         StatusMessage =
             $"{Employees.Count} Mitarbeiter im Planer gespeichert (lokal, höchste Priorität) – werden mit Routen-Export/Dropbox übertragen.";

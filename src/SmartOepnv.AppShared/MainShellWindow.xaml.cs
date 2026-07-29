@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media.Effects;
 using SmartOepnv.AppShared.Helpers;
+using SmartOepnv.AppShared.Models;
 using SmartOepnv.AppShared.ViewModels;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
@@ -572,5 +574,21 @@ public partial class MainShellWindow : Window
     {
         _closeConfirmed = true;
         Dispatcher.BeginInvoke(Close);
+    }
+
+    private void NavigationGroup_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: NavigationGroup group })
+        {
+            group.SetHoverOpen(true);
+        }
+    }
+
+    private void NavigationGroup_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: NavigationGroup group })
+        {
+            group.SetHoverOpen(false);
+        }
     }
 }

@@ -150,7 +150,11 @@ public static class OutsideDisplayCycleParser
         }
 
         var header = ascii.Length >= 5 ? ascii[..5] : ascii;
-        if (header.Length < 5 || !header.StartsWith("aA1", StringComparison.Ordinal))
+        // Front: aA1…, Seite DS021T A2: aA2…, Seite A4 teils aA3…
+        if (header.Length < 5 ||
+            header[0] != 'a' ||
+            header[1] != 'A' ||
+            header[2] is not ('1' or '2' or '3'))
         {
             return null;
         }

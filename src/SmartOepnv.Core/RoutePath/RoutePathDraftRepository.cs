@@ -34,21 +34,53 @@ public static class RoutePathDraftRepository
     public static string? TryGetDraftJson(JsonObject? packageRoot, string routeName)
     {
         if (packageRoot?["routePathDrafts"] is not JsonObject drafts) return null;
-        return DraftNodeToJsonText(drafts[routeName]);
+        var direct = DraftNodeToJsonText(drafts[routeName]);
+        if (!string.IsNullOrWhiteSpace(direct))
+        {
+            return direct;
+        }
+
+        // Auto-Fahrplan speicherte zeitweise „Fahrt: 0004“ statt „Fahrt: 4“
+        foreach (var entry in drafts)
+        {
+            if (RouteDisplayHelper.RouteKeysMatch(entry.Key, routeName))
+            {
+                return DraftNodeToJsonText(entry.Value);
+            }
+        }
+
+        return null;
     }
 
-    private static void RefreshNodesFromStops(RoutePathDraft draft, IList<RouteStopItem> stops)
+    /// <summary>
+    /// Schreibt Drafts unter kanonischem Routenschlüssel (ohne führende Nullen in der Fahrtnummer).
+    /// </summary>
+    public static void NormalizeDraftKeysToCanonical(JsonObject packageRoot)
     {
-        var seeded = RoutePathDraftBuilder.BuildSeedNodes(stops);
-        var preserved = draft.Nodes
-            .Where(n => n.Type is RoutePathNodeType.AUTO_WAYPOINT or RoutePathNodeType.MANUAL_WAYPOINT)
-            .ToList();
-        draft.Nodes = seeded.Concat(preserved).ToList();
-        var validIds = draft.Nodes.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
-        draft.Segments = draft.Segments
-            .Where(s => validIds.Contains(s.FromNodeId) && validIds.Contains(s.ToNodeId))
-            .OrderBy(s => s.Order)
-            .Select((s, idx) => new RoutePathSegment { Order = idx + 1, FromNodeId = s.FromNodeId, ToNodeId = s.ToNodeId })
-            .ToList();
+        if (packageRoot["routePathDrafts"] is not JsonObject drafts || drafts.Count == 0)
+        {
+            return;
+        }
+
+        var normalized = new JsonObject();
+        foreach (var entry in drafts)
+        {
+            var text = DraftNodeToJsonText(entry.Value);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                continue;
+            }
+
+            var canonical = RouteDisplayHelper.ToCanonicalRouteKey(entry.Key);
+            if (normalized[canonical] is null)
+            {
+                normalized[canonical] = JsonValue.Create(text);
+            }
+        }
+
+        packageRoot["routePathDrafts"] = normalized;
     }
+
+    private static void RefreshNodesFromStops(RoutePathDraft draft, IList<RouteStopItem> stops) =>
+        RoutePathNodeRefresh.RefreshNodesFromStops(draft, stops);
 }

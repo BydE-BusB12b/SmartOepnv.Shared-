@@ -197,9 +197,10 @@ public static class RouteStopEditorCatalog
             return [];
         }
 
+        // Alle Ziele wählbar (Planer-Haltestellen). „ITCS-Liste“ steuert nur die App-/KOM-Liste.
         return editor.OutsideDisplays
             .Select(OutsideDisplayProgram.TryParse)
-            .Where(p => p is not null && p.IsListEnabled && !string.IsNullOrWhiteSpace(p.Name) && p.Protocol == protocol)
+            .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Name) && p.Protocol == protocol)
             .Select(p => p!.Name.Trim())
             .Distinct(StringComparer.Ordinal)
             .OrderBy(n => n, StringComparer.Ordinal)

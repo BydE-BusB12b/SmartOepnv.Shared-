@@ -22,12 +22,15 @@ public sealed class AddRouteDialog : Window
     private readonly List<CheckBox> _operatingDayChecks = [];
     private readonly TextBox _dateFromBox;
     private readonly TextBox _dateToBox;
+    private readonly TextBox _operatingDatesBox;
     private readonly IDictionary<string, RouteDateRange> _dateRangesByRoute;
+    private readonly IDictionary<string, HashSet<DateOnly>> _operatingDatesByRoute;
     private bool _formattingLineCourse;
 
     public RouteDefinition? ResultDefinition { get; private set; }
     public IReadOnlyList<DutyOperatingDay> ResultOperatingDays { get; private set; } = [];
     public RouteDateRange? ResultDateRange { get; private set; }
+    public IReadOnlyList<DateOnly> ResultOperatingDates { get; private set; } = [];
     public string? CopyStopsFromRouteKey { get; private set; }
     public string? EditingRouteKey { get; }
     public bool ResultItcsRouteListEnabled { get; private set; }
@@ -38,6 +41,7 @@ public sealed class AddRouteDialog : Window
             package.RouteNames.ToList(),
             package.RouteOperatingDaysByRoute,
             package.RouteDateRangesByRoute,
+            package.RouteOperatingDatesByRoute,
             initial,
             copyFromRouteKey,
             editingRouteKey,
@@ -50,6 +54,7 @@ public sealed class AddRouteDialog : Window
         IReadOnlyList<string> existingRoutes,
         IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute,
         IDictionary<string, RouteDateRange> dateRangesByRoute,
+        IDictionary<string, HashSet<DateOnly>> operatingDatesByRoute,
         RouteDefinition? initial = null,
         string? copyFromRouteKey = null,
         string? editingRouteKey = null,
@@ -57,6 +62,7 @@ public sealed class AddRouteDialog : Window
         bool initialMainDeviceOnly = false)
     {
         _dateRangesByRoute = dateRangesByRoute;
+        _operatingDatesByRoute = operatingDatesByRoute;
         EditingRouteKey = string.IsNullOrWhiteSpace(editingRouteKey) ? null : editingRouteKey.Trim();
         var isEdit = EditingRouteKey is not null;
 
@@ -192,10 +198,25 @@ public sealed class AddRouteDialog : Window
         dateGrid.Children.Add(_dateFromBox);
         dateGrid.Children.Add(_dateToBox);
         form.Children.Add(dateGrid);
+        form.Children.Add(MakeLabel("Einzelne Betriebstage (optional)"));
+        form.Children.Add(new TextBlock
+        {
+            Text = "Mehrere Tage kommagetrennt, z. B. 28.07, 30.07, 31.07, 07.08 – " +
+                   "Route nur an diesen Tagen sichtbar (zusätzlich zu Verkehrstagen und von/bis). Leer = alle Tage im Zeitraum.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        _operatingDatesBox = MakeInput("z. B. 28.07, 30.07.2026, 31.07, 07.08", string.Empty);
+        _operatingDatesBox.AcceptsReturn = false;
+        form.Children.Add(_operatingDatesBox);
         if (isEdit)
         {
             ApplyDateRangeToFields(
                 RouteDateRangeEditor.GetRangeForRoute(_dateRangesByRoute, EditingRouteKey!));
+            ApplyOperatingDatesToField(
+                RouteOperatingDatesEditor.GetDatesForRoute(_operatingDatesByRoute, EditingRouteKey!));
         }
 
         _itcsRouteListCheck = new CheckBox
@@ -321,6 +342,7 @@ public sealed class AddRouteDialog : Window
         ApplyOperatingDaysToChecks(
             RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, selected));
         ApplyDateRangeToFields(RouteDateRangeEditor.GetRangeForRoute(_dateRangesByRoute, selected));
+        ApplyOperatingDatesToField(RouteOperatingDatesEditor.GetDatesForRoute(_operatingDatesByRoute, selected));
         ShowError($"Haltestellen werden von „{selected}“ kopiert – bitte neue Fahrtnummer, Verkehrstage und Gültigkeit setzen.");
     }
 
@@ -354,6 +376,15 @@ public sealed class AddRouteDialog : Window
             return;
         }
 
+        if (!RouteOperatingDatesEditor.TryParseDateList(
+                _operatingDatesBox.Text,
+                out var candidateOperatingDates,
+                out var datesError))
+        {
+            ShowError(datesError ?? "Ungültige Betriebstage.");
+            return;
+        }
+
         var routesToCheck = EditingRouteKey is null
             ? existingRoutes
             : existingRoutes
@@ -372,7 +403,9 @@ public sealed class AddRouteDialog : Window
                 _dateRangesByRoute,
                 definition,
                 selectedDays,
-                candidateDateRange))
+                candidateDateRange,
+                _operatingDatesByRoute,
+                candidateOperatingDates))
         {
             ShowError("Route schon vorhanden (Linie/Kurs, Fahrt, Verkehrstag und/oder Datumsbereich überschneiden sich).");
             return;
@@ -381,6 +414,7 @@ public sealed class AddRouteDialog : Window
         ResultDefinition = definition;
         ResultOperatingDays = selectedDays.ToList();
         ResultDateRange = candidateDateRange.IsRestricted ? candidateDateRange : null;
+        ResultOperatingDates = candidateOperatingDates;
         ResultItcsRouteListEnabled = _itcsRouteListCheck.IsChecked == true;
         ResultMainDeviceOnly = _mainDeviceOnlyCheck.IsChecked == true;
         DialogResult = true;
@@ -412,6 +446,9 @@ public sealed class AddRouteDialog : Window
         _dateFromBox.Text = range.From is { } from ? RouteDateRange.FormatDate(from) : string.Empty;
         _dateToBox.Text = range.To is { } to ? RouteDateRange.FormatDate(to) : string.Empty;
     }
+
+    private void ApplyOperatingDatesToField(IReadOnlyCollection<DateOnly> dates) =>
+        _operatingDatesBox.Text = RouteOperatingDatesEditor.FormatDisplay(dates);
 
     private void FormatLineCourseField()
     {

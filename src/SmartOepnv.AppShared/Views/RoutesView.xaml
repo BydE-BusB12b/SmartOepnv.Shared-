@@ -6,6 +6,9 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <conv:RouteStopStrikeThroughConverter x:Key="RouteStopStrikeThroughConverter" />
+        <conv:RouteStopTimeOrderWarningConverter x:Key="RouteStopTimeOrderWarningConverter" />
+        <conv:RouteStopRouteChangeDisplayConverter x:Key="RouteStopRouteChangeDisplayConverter" />
+        <conv:RouteStopRouteChangeVisibleConverter x:Key="RouteStopRouteChangeVisibleConverter" />
         <Style x:Key="RoutesSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
@@ -156,6 +159,23 @@
                                        FontSize="11"
                                        Margin="0,0,0,10"
                                        Visibility="{Binding HasRouteDateRangeDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock Text="Einzelne Betriebstage (optional)"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"
+                                       Margin="0,0,0,4" />
+                            <TextBlock Text="Kommagetrennt, z. B. 28.07, 30.07, 31.07, 07.08 – nur an diesen Tagen in der App (zusätzlich zu Verkehrstagen und von/bis). Leer = alle Tage im Zeitraum."
+                                       Opacity="0.7"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,6" />
+                            <TextBox materialDesign:HintAssist.Hint="z. B. 28.07, 30.07.2026, 31.07, 07.08"
+                                     Text="{Binding RouteOperatingDatesText, UpdateSourceTrigger=LostFocus}"
+                                     Margin="0,0,0,4" />
+                            <TextBlock Text="{Binding RouteOperatingDatesDisplay}"
+                                       Opacity="0.75"
+                                       FontSize="11"
+                                       Margin="0,0,0,10"
+                                       Visibility="{Binding HasRouteOperatingDatesDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <TextBlock Text="Haltestellenanzeige Zieltext"
                                        FontWeight="SemiBold"
                                        FontSize="12"
@@ -244,9 +264,17 @@
                     <Grid Grid.Row="2" Grid.IsSharedSizeScope="True">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                    <TextBlock Grid.Row="0"
+                               Text="{Binding StopTimeOrderWarningText}"
+                               Foreground="#FFFF5252"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8"
+                               Visibility="{Binding HasAnyStopTimeOrderWarning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Grid Grid.Row="1" Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="68" />
                             <ColumnDefinition Width="Auto" SharedSizeGroup="RouteStopCols" />
@@ -262,7 +290,7 @@
                         <TextBlock Grid.Column="3" Text="Anzeige" FontWeight="SemiBold" Margin="4,0" Opacity="0.85" />
                         <TextBlock Grid.Column="4" Text="VRR" FontWeight="SemiBold" Margin="4,0" Opacity="0.85" />
                     </Grid>
-                    <ListBox x:Name="StopsList" Grid.Row="1"
+                    <ListBox x:Name="StopsList" Grid.Row="2"
                              ItemsSource="{Binding Stops}" SelectedItem="{Binding SelectedStop}"
                              BorderThickness="0" Background="Transparent"
                              HorizontalContentAlignment="Stretch"
@@ -280,48 +308,79 @@
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Grid Margin="0,4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="68" />
-                                        <ColumnDefinition Width="Auto" SharedSizeGroup="RouteStopCols" />
-                                        <ColumnDefinition Width="58" />
-                                        <ColumnDefinition Width="130" />
-                                        <ColumnDefinition Width="52" />
-                                        <ColumnDefinition Width="36" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding PlannerStopCode}"
-                                               Margin="4,0" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Name}"
-                                               Margin="12,0,4,0" VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Converter={StaticResource RouteStopStrikeThroughConverter}}"
-                                                                 Value="True">
-                                                        <Setter Property="TextDecorations" Value="Strikethrough" />
-                                                        <Setter Property="Foreground" Value="#FF8A80" />
-                                                        <Setter Property="Opacity" Value="0.9" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
+                                <StackPanel>
+                                    <Grid Margin="0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="68" />
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="RouteStopCols" />
+                                            <ColumnDefinition Width="58" />
+                                            <ColumnDefinition Width="130" />
+                                            <ColumnDefinition Width="52" />
+                                            <ColumnDefinition Width="36" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding PlannerStopCode}"
+                                                   Margin="4,0" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                   Margin="12,0,4,0" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Converter={StaticResource RouteStopStrikeThroughConverter}}"
+                                                                     Value="True">
+                                                            <Setter Property="TextDecorations" Value="Strikethrough" />
+                                                            <Setter Property="Foreground" Value="#FF8A80" />
+                                                            <Setter Property="Opacity" Value="0.9" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="2" Text="{Binding Time}"
+                                                   Margin="4,0" VerticalAlignment="Center"
+                                                   FontWeight="SemiBold"
+                                                   ToolTip="Rot = Uhrzeit liegt vor der vorherigen Haltestelle">
+                                            <TextBlock.Foreground>
+                                                <MultiBinding Converter="{StaticResource RouteStopTimeOrderWarningConverter}">
+                                                    <Binding />
+                                                    <Binding ElementName="StopsList" Path="DataContext" />
+                                                    <Binding ElementName="StopsList" Path="DataContext.StopTimeOrderWarningTick" />
+                                                </MultiBinding>
+                                            </TextBlock.Foreground>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="3" Text="{Binding StopDisplay}"
+                                                   Margin="4,0" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="4" Text="{Binding VrrStopId}"
+                                                   Margin="4,0" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <Button Grid.Column="5" Content="✕"
+                                                Command="{Binding DataContext.RemoveStopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Padding="0" Width="26" Height="26" ToolTip="Zeile löschen"
+                                                HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <TextBlock Margin="80,0,0,2"
+                                               FontSize="11"
+                                               FontStyle="Italic"
+                                               Foreground="#FF81D4FA"
+                                               TextWrapping="Wrap"
+                                               ToolTip="Automatischer Routenwechsel an dieser Endhaltestelle">
+                                        <TextBlock.Visibility>
+                                            <MultiBinding Converter="{StaticResource RouteStopRouteChangeVisibleConverter}">
+                                                <Binding />
+                                                <Binding ElementName="StopsList" Path="DataContext.RouteChangeDisplayTick" />
+                                            </MultiBinding>
+                                        </TextBlock.Visibility>
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{StaticResource RouteStopRouteChangeDisplayConverter}">
+                                                <Binding />
+                                                <Binding ElementName="StopsList" Path="DataContext.RouteChangeDisplayTick" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
                                     </TextBlock>
-                                    <TextBlock Grid.Column="2" Text="{Binding Time}"
-                                               Margin="4,0" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="3" Text="{Binding StopDisplay}"
-                                               Margin="4,0" VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Grid.Column="4" Text="{Binding VrrStopId}"
-                                               Margin="4,0" VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <Button Grid.Column="5" Content="✕"
-                                            Command="{Binding DataContext.RemoveStopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            Padding="0" Width="26" Height="26" ToolTip="Zeile löschen"
-                                            HorizontalAlignment="Left" VerticalAlignment="Center" />
-                                </Grid>
+                                </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
+        xmlns:models="clr-namespace:SmartOepnv.AppShared.Models"
         mc:Ignorable="d"
         Title="{Binding ProductName}"
         Height="900" Width="1440"
@@ -152,59 +153,180 @@
                                    Margin="20,20,20,8"
                                    FontWeight="SemiBold"
                                    Opacity="0.7" />
-                        <ListBox ItemsSource="{Binding NavigationItems}"
-                                 SelectedItem="{Binding SelectedNavigationItem}"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 HorizontalContentAlignment="Left"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 Margin="8,0,8,12">
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
-                                    <Setter Property="Padding" Value="12,10" />
-                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border Width="22" Height="22"
-                                                    CornerRadius="11"
-                                                    Background="#FBC02D"
-                                                    Margin="0,0,8,0"
-                                                    VerticalAlignment="Center">
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding BadgeText}" Value="">
-                                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Border.Style>
-                                                <TextBlock Text="{Binding BadgeText}"
-                                                           HorizontalAlignment="Center"
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Margin="8,0,8,12">
+                            <ItemsControl ItemsSource="{Binding NavigationMenu}">
+                                <ItemsControl.Resources>
+                                    <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+                                    <!-- Einzelner Menüpunkt -->
+                                    <DataTemplate DataType="{x:Type models:NavigationItem}">
+                                        <Button Command="{Binding DataContext.SelectNavigationCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                HorizontalContentAlignment="Left"
+                                                HorizontalAlignment="Stretch"
+                                                Margin="0,3"
+                                                Padding="12,12"
+                                                Cursor="Hand"
+                                                BorderThickness="0"
+                                                Background="Transparent"
+                                                Foreground="White">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+                                                    <Setter Property="Background" Value="Transparent" />
+                                                    <Setter Property="MinHeight" Value="44" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                            <Setter Property="Background" Value="#28FFFFFF" />
+                                                        </DataTrigger>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#18FFFFFF" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="22" Height="22"
+                                                        CornerRadius="11"
+                                                        Background="#FBC02D"
+                                                        Margin="0,0,8,0"
+                                                        VerticalAlignment="Center">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding BadgeText}" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="{Binding BadgeText}"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               FontWeight="Bold"
+                                                               FontSize="10"
+                                                               Foreground="#1B1B1B" />
+                                                </Border>
+                                                <materialDesign:PackIcon Kind="{Binding Icon}"
+                                                                         Width="22" Height="22"
+                                                                         VerticalAlignment="Center"
+                                                                         Margin="0,0,14,0"
+                                                                         Foreground="{StaticResource SmartAccentBrush}" />
+                                                <TextBlock Text="{Binding Title}"
                                                            VerticalAlignment="Center"
-                                                           FontWeight="Bold"
-                                                           FontSize="10"
-                                                           Foreground="#1B1B1B" />
-                                            </Border>
-                                            <materialDesign:PackIcon Kind="{Binding Icon}"
-                                                                     Width="22" Height="22"
-                                                                     VerticalAlignment="Center"
-                                                                     Margin="0,0,14,0"
-                                                                     Foreground="{StaticResource SmartAccentBrush}" />
-                                            <TextBlock Text="{Binding Title}"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="15"
-                                                       TextWrapping="NoWrap" />
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                                                           FontSize="15"
+                                                           FontFamily="Segoe UI"
+                                                           LineHeight="22"
+                                                           TextWrapping="NoWrap" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+
+                                    <!-- Gruppe mit Hover-Untermenü -->
+                                    <DataTemplate DataType="{x:Type models:NavigationGroup}">
+                                        <Border Background="Transparent"
+                                                MouseEnter="NavigationGroup_MouseEnter"
+                                                MouseLeave="NavigationGroup_MouseLeave"
+                                                Margin="0,3">
+                                            <StackPanel>
+                                                <Border Padding="12,12" Background="Transparent">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Width="22" Height="22"
+                                                                CornerRadius="11"
+                                                                Background="#FBC02D"
+                                                                Margin="0,0,8,0"
+                                                                VerticalAlignment="Center">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding BadgeText}" Value="">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <TextBlock Text="{Binding BadgeText}"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       FontWeight="Bold"
+                                                                       FontSize="10"
+                                                                       Foreground="#1B1B1B" />
+                                                        </Border>
+                                                        <materialDesign:PackIcon Kind="{Binding Icon}"
+                                                                                 Width="22" Height="22"
+                                                                                 VerticalAlignment="Center"
+                                                                                 Margin="0,0,14,0"
+                                                                                 Foreground="{StaticResource SmartAccentBrush}" />
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   VerticalAlignment="Center"
+                                                                   FontSize="15"
+                                                                   FontWeight="SemiBold"
+                                                                   FontFamily="Segoe UI"
+                                                                   LineHeight="22"
+                                                                   TextWrapping="NoWrap" />
+                                                        <materialDesign:PackIcon Kind="ChevronDown"
+                                                                                 Width="16" Height="16"
+                                                                                 Margin="8,0,0,0"
+                                                                                 VerticalAlignment="Center"
+                                                                                 Opacity="0.55"
+                                                                                 Foreground="White" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <ItemsControl ItemsSource="{Binding Children}"
+                                                              Margin="12,0,0,4"
+                                                              Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="{x:Type models:NavigationItem}">
+                                                            <Button Command="{Binding DataContext.SelectNavigationCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                    CommandParameter="{Binding}"
+                                                                    HorizontalContentAlignment="Left"
+                                                                    HorizontalAlignment="Stretch"
+                                                                    Margin="0,2"
+                                                                    Padding="12,10"
+                                                                    Cursor="Hand"
+                                                                    BorderThickness="0"
+                                                                    Background="Transparent"
+                                                                    Foreground="White">
+                                                                <Button.Style>
+                                                                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+                                                                        <Setter Property="Background" Value="Transparent" />
+                                                                        <Setter Property="MinHeight" Value="40" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                                            </DataTrigger>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter Property="Background" Value="#18FFFFFF" />
+                                                                            </Trigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Button.Style>
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <materialDesign:PackIcon Kind="{Binding Icon}"
+                                                                                             Width="20" Height="20"
+                                                                                             VerticalAlignment="Center"
+                                                                                             Margin="0,0,12,0"
+                                                                                             Foreground="{StaticResource SmartAccentBrush}" />
+                                                                    <TextBlock Text="{Binding Title}"
+                                                                               VerticalAlignment="Center"
+                                                                               FontSize="14"
+                                                                               FontFamily="Segoe UI"
+                                                                               LineHeight="20"
+                                                                               TextWrapping="NoWrap" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.Resources>
+                            </ItemsControl>
+                        </ScrollViewer>
                     </DockPanel>
                 </materialDesign:Card>
 

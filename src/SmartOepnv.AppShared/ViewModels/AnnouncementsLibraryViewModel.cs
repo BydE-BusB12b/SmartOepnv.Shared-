@@ -14,6 +14,8 @@ using Microsoft.Win32;
 
 using System.Windows;
 
+using SmartOepnv.AppShared.Helpers;
+
 using SmartOepnv.AppShared.Models;
 
 using SmartOepnv.AppShared.Views;
@@ -37,6 +39,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
     private readonly List<ManagedAnnouncementTemplateItem> _allAnnouncements = [];
 
     private readonly EditorAreaSyncState _sync = new();
+
+    private readonly SearchQueryDebouncer _searchDebouncer;
 
     private string? _loadedFingerprint;
 
@@ -97,6 +101,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
     public AnnouncementsLibraryViewModel()
 
     {
+
+        _searchDebouncer = new SearchQueryDebouncer(ApplyFilter);
 
         if (AppServices.IsInitialized)
 
@@ -508,7 +514,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-    partial void OnSearchQueryChanged(string value) => ApplyFilter();
+    partial void OnSearchQueryChanged(string value) => _searchDebouncer.Schedule();
 
     partial void OnSelectedAnnouncementChanged(ManagedAnnouncementTemplateItem? value)
     {

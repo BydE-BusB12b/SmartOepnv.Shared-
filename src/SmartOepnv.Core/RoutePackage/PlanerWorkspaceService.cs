@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.Dropbox;
+using SmartOepnv.Core.Mitteilungen;
 using SmartOepnv.Core.Sev;
 
 namespace SmartOepnv.Core.RoutePackage;
@@ -32,6 +33,7 @@ public sealed class PlanerWorkspaceService
     private readonly VehicleDispositionStore _dispositionStore;
     private readonly DriverDispositionStore _driverDispositionStore;
     private readonly SevSignDraftStore _sevStore;
+    private readonly MitteilungDraftStore _mitteilungStore;
     private readonly DutyTemplateStore _dutyTemplateStore;
 
     public PlanerWorkspaceService(string appSubfolder)
@@ -44,6 +46,7 @@ public sealed class PlanerWorkspaceService
         _dispositionStore = new VehicleDispositionStore(appSubfolder);
         _driverDispositionStore = new DriverDispositionStore(appSubfolder);
         _sevStore = new SevSignDraftStore(appSubfolder);
+        _mitteilungStore = new MitteilungDraftStore(appSubfolder);
         _dutyTemplateStore = new DutyTemplateStore(appSubfolder);
     }
 
@@ -80,6 +83,7 @@ public sealed class PlanerWorkspaceService
             VehicleDispositionAssignments = _dispositionStore.Load().Select(a => a.Clone()).ToList(),
             DriverDispositionAssignments = _driverDispositionStore.Load().Select(a => a.Clone()).ToList(),
             SevSignDrafts = _sevStore.LoadAll().Select(CloneSevDraft).ToList(),
+            MitteilungDrafts = _mitteilungStore.LoadAll().Select(CloneMitteilungDraft).ToList(),
             DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
             PackageVersionSnapshots = CapturePackageVersionSnapshots(request?.ReuseSnapshotPackageJsonFrom),
             AnnouncementRawSounds = AppServices.IsInitialized
@@ -135,6 +139,7 @@ public sealed class PlanerWorkspaceService
             ApplyVehicleDispositionReplace(document.VehicleDispositionAssignments);
             ApplyDriverDispositionReplace(document.DriverDispositionAssignments ?? []);
             _sevStore.ReplaceAll(document.SevSignDrafts);
+            _mitteilungStore.ReplaceAll(document.MitteilungDrafts ?? []);
             _dutyTemplateStore.ReplaceAll(document.DutyTemplates ?? []);
         }
         else
@@ -143,6 +148,7 @@ public sealed class PlanerWorkspaceService
             ApplyVehicleDisposition(document.VehicleDispositionAssignments);
             ApplyDriverDisposition(document.DriverDispositionAssignments ?? []);
             _sevStore.MergeIncoming(document.SevSignDrafts);
+            _mitteilungStore.MergeIncoming(document.MitteilungDrafts ?? []);
             _dutyTemplateStore.MergeIncoming(document.DutyTemplates ?? []);
         }
 
@@ -326,6 +332,7 @@ public sealed class PlanerWorkspaceService
             VehicleDispositionAssignments = _dispositionStore.Load().Select(a => a.Clone()).ToList(),
             DriverDispositionAssignments = _driverDispositionStore.Load().Select(a => a.Clone()).ToList(),
             SevSignDrafts = _sevStore.LoadAll().Select(CloneSevDraft).ToList(),
+            MitteilungDrafts = _mitteilungStore.LoadAll().Select(CloneMitteilungDraft).ToList(),
             DutyTemplates = _dutyTemplateStore.LoadAll().Select(CloneDutyTemplate).ToList(),
             PackageVersionSnapshots = CapturePackageVersionSnapshots(document.PackageVersionSnapshots),
             AnnouncementRawSounds = AppServices.IsInitialized
@@ -382,6 +389,7 @@ public sealed class PlanerWorkspaceService
             VehicleDispositionAssignments = full.VehicleDispositionAssignments,
             DriverDispositionAssignments = full.DriverDispositionAssignments,
             SevSignDrafts = full.SevSignDrafts,
+            MitteilungDrafts = full.MitteilungDrafts,
             DutyTemplates = full.DutyTemplates,
             PackageVersionSnapshots = full.PackageVersionSnapshots
                 .Select(snapshot => new PlannerPackageVersionSnapshotData
@@ -547,6 +555,22 @@ public sealed class PlanerWorkspaceService
         Operators = draft.Operators.ToList(),
         SourceRoute = draft.SourceRoute,
         ImportRouteReverse = draft.ImportRouteReverse
+    };
+
+    private static MitteilungDraft CloneMitteilungDraft(MitteilungDraft draft) => new()
+    {
+        Id = draft.Id,
+        Name = draft.Name,
+        UpdatedAtUtcMs = draft.UpdatedAtUtcMs,
+        Title = draft.Title,
+        Body = draft.Body,
+        ValidFrom = draft.ValidFrom,
+        ValidTo = draft.ValidTo,
+        UntilRevoked = draft.UntilRevoked,
+        ShowSmartOepnvLogo = draft.ShowSmartOepnvLogo,
+        CompanyLogoId = draft.CompanyLogoId,
+        SignerNameAndDate = draft.SignerNameAndDate,
+        SignatureId = draft.SignatureId
     };
 
     private static DutyTemplate CloneDutyTemplate(DutyTemplate template) => template.Clone();

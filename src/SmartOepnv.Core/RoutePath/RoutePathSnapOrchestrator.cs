@@ -430,37 +430,6 @@ public static class RoutePathSnapOrchestrator
             NavManeuverHelper.IsManualManeuver(m) ||
             !string.Equals(m.NavSymbolType, "straight", StringComparison.OrdinalIgnoreCase));
 
-    private static void PruneStaleSnapKeys(RoutePathDraft draft)
-    {
-        var nodeMap = draft.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
-        foreach (var key in draft.RoadSnappedEdgeKeys.ToList())
-        {
-            if (draft.RoadBusStraightEdgeKeys.Contains(key))
-            {
-                continue;
-            }
-
-            if (!draft.RoadSegmentPolylines.TryGetValue(key, out var pts) || pts.Count < 2)
-            {
-                draft.RoadSnappedEdgeKeys.Remove(key);
-                continue;
-            }
-
-            var parts = key.Split('\u0001', 2);
-            if (parts.Length != 2 ||
-                !nodeMap.TryGetValue(parts[0], out var from) ||
-                !nodeMap.TryGetValue(parts[1], out var to))
-            {
-                continue;
-            }
-
-            if (!RoutePathGeo.IsRealRoadPolyline(
-                    pts,
-                    new RoutePathLatLng { Lat = from.Lat, Lon = from.Lon },
-                    new RoutePathLatLng { Lat = to.Lat, Lon = to.Lon }))
-            {
-                draft.RoadSnappedEdgeKeys.Remove(key);
-            }
-        }
-    }
+    private static void PruneStaleSnapKeys(RoutePathDraft draft) =>
+        RoutePathDraftMutator.PruneOrphanEdgeSnaps(draft);
 }

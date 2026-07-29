@@ -137,6 +137,20 @@
           };
           draft.segmentSnaps.push(snap);
         } else {
+          // Bereits echte Straßen-Geometrie und keine Busspur-Anweisung:
+          // Key war vermutlich fälschlich gesetzt (Multi-Manuell) – Gerade nicht erzwingen.
+          const hasBusInstr = (snap.maneuvers || []).some(m =>
+            String(m.instruction || '').toLowerCase().includes('busspur'));
+          const pts = (snap.points || []).map(normalizePoint).filter(Boolean);
+          if (!hasBusInstr && pts.length >= 4) {
+            const mid = pts[Math.floor(pts.length / 2)];
+            const direct = haversineMeters(a, b);
+            const viaMid = haversineMeters(a, mid) + haversineMeters(mid, b);
+            if (direct > 1 && viaMid > direct * 1.08) {
+              draft.roadBusStraightEdgeKeys = busKeys.filter(k => k !== key);
+              return;
+            }
+          }
           snap.points = straight;
           if (!snap.maneuvers || !snap.maneuvers.length) {
             snap.maneuvers = [{ distanceM: 0, instruction: 'Geradeaus (Busspur / direkt)', navSymbolType: 'straight' }];
@@ -183,23 +197,93 @@
         !(s.fromNodeId === fromId && s.toNodeId === toId));
     }
 
+    function splitPolylineAtDistance(shape, splitMeters) {
+      if (!shape || shape.length < 2) {
+        return { before: shape ? shape.slice() : [], after: shape ? shape.slice() : [], splitPoint: null };
+      }
+      let remaining = Math.max(0, splitMeters || 0);
+      const before = [shape[0]];
+      for (let i = 1; i < shape.length; i++) {
+        const a = shape[i - 1], b = shape[i];
+        const len = haversineMeters(a, b);
+        if (remaining <= len || i === shape.length - 1) {
+          const t = len <= 0 ? 0 : Math.min(1, remaining / len);
+          const splitPoint = {
+            lat: a.lat + (b.lat - a.lat) * t,
+            lon: a.lon + (b.lon - a.lon) * t
+          };
+          before.push(splitPoint);
+          const after = [splitPoint];
+          if (t < 1 - 1e-9) after.push(b);
+          for (let j = i + 1; j < shape.length; j++) after.push(shape[j]);
+          return { before, after, splitPoint };
+        }
+        before.push(b);
+        remaining -= len;
+      }
+      const last = shape[shape.length - 1];
+      return { before: shape.slice(), after: [last, last], splitPoint: last };
+    }
+
     function insertWaypointOnSegment(seg, clickLatLng, latlngs) {
-      const snap = closestLatLngOnPolyline(latlngs, clickLatLng);
+      const shape = latlngs.map(p => ({ lat: Number(p[0] ?? p.lat), lon: Number(p[1] ?? p.lon) }));
+      const along = Math.max(0, distanceAlongPolylineMeters(latlngs, clickLatLng));
+      const split = splitPolylineAtDistance(shape, along);
+      const snapPt = split.splitPoint || closestLatLngOnPolyline(latlngs, clickLatLng);
       const id = 'manual_' + Date.now();
       draft.nodes.push({
         id, type: 'MANUAL_WAYPOINT', title: 'Zwischenpunkt ' + id.slice(-4),
-        lat: snap.lat, lon: snap.lng, sourceStopName: null
+        lat: snapPt.lat, lon: snapPt.lon || snapPt.lng, sourceStopName: null
       });
       const idx = (draft.segments || []).findIndex(s =>
         s.fromNodeId === seg.fromNodeId && s.toNodeId === seg.toNodeId);
       if (idx < 0) return;
       const order = draft.segments[idx].order || (idx + 1);
+
+      const oldSnap = segmentSnap(seg);
+      const oldMans = (oldSnap && oldSnap.maneuvers) ? oldSnap.maneuvers.slice() : [];
+      const wasSnapped = segmentEdgeSnapped(seg);
+      const wasBus = (draft.roadBusStraightEdgeKeys || []).includes(edgeKey(seg.fromNodeId, seg.toNodeId));
       invalidateSnapsForSegment(seg.fromNodeId, seg.toNodeId);
+
       draft.segments.splice(idx, 1,
         { order: order, fromNodeId: seg.fromNodeId, toNodeId: id },
         { order: order + 1, fromNodeId: id, toNodeId: seg.toNodeId }
       );
       renumberSegments();
+
+      const mans1 = oldMans
+        .filter(m => (m.distanceM || 0) <= along + 0.5)
+        .map(m => Object.assign({}, m));
+      const mans2 = oldMans
+        .filter(m => (m.distanceM || 0) > along + 0.5)
+        .map(m => Object.assign({}, m, { distanceM: Math.max(0, (m.distanceM || 0) - along) }));
+
+      draft.segmentSnaps = draft.segmentSnaps || [];
+      const snap1 = {
+        fromNodeId: seg.fromNodeId,
+        toNodeId: id,
+        points: split.before,
+        maneuvers: mans1
+      };
+      const snap2 = {
+        fromNodeId: id,
+        toNodeId: seg.toNodeId,
+        points: split.after,
+        maneuvers: mans2
+      };
+      draft.segmentSnaps.push(snap1, snap2);
+      if (wasSnapped || (split.before && split.before.length >= 3)) {
+        markSegmentRoadSnapped({ fromNodeId: seg.fromNodeId, toNodeId: id });
+      }
+      if (wasSnapped || (split.after && split.after.length >= 3)) {
+        markSegmentRoadSnapped({ fromNodeId: id, toNodeId: seg.toNodeId });
+      }
+      if (wasBus) {
+        ensureBusStraightEdgeKey({ fromNodeId: seg.fromNodeId, toNodeId: id });
+        ensureBusStraightEdgeKey({ fromNodeId: id, toNodeId: seg.toNodeId });
+      }
+
       selectedFrom = null;
       render();
       notifyDraftChanged(true);
@@ -277,12 +361,12 @@
       (draft.segmentSnaps || []).forEach(s => {
         if (!s || !s.fromNodeId || !s.toNodeId) return;
         const key = edgeKey(s.fromNodeId, s.toNodeId);
+        // Nur explizite Busspur-Anweisung – mehrere „Manuell“-Symbole auf
+        // Straßensnap dürfen die Kante NICHT zur Busspur machen (sonst wird
+        // die OSRM-Geometrie bei jedem Render wieder zur Gerade überschrieben).
         const hasBus = (s.maneuvers || []).some(m =>
           String(m.instruction || '').toLowerCase().includes('busspur'));
-        const hasMultiManual = (s.maneuvers || []).length > 1 &&
-          (s.maneuvers || []).every(m =>
-            String(m.instruction || '').toLowerCase().includes('manuell') || hasBus);
-        if ((hasBus || hasMultiManual) && !draft.roadBusStraightEdgeKeys.includes(key)) {
+        if (hasBus && !draft.roadBusStraightEdgeKeys.includes(key)) {
           draft.roadBusStraightEdgeKeys.push(key);
         }
       });
@@ -290,16 +374,13 @@
 
     function pruneOrphanSegmentGeometry() {
       if (!draft) return;
+      const validKeys = new Set((draft.segments || []).map(s => edgeKey(s.fromNodeId, s.toNodeId)));
+      draft.segmentSnaps = (draft.segmentSnaps || []).filter(s =>
+        validKeys.has(edgeKey(s.fromNodeId, s.toNodeId)));
+      draft.roadSnappedEdgeKeys = (draft.roadSnappedEdgeKeys || []).filter(k => validKeys.has(k));
+      draft.roadBusStraightEdgeKeys = (draft.roadBusStraightEdgeKeys || []).filter(k => validKeys.has(k));
       syncSnapKeysFromGeometry();
       syncKeysFromSegmentSnaps();
-      const snapKeys = draft.roadSnappedEdgeKeys || [];
-      const busKeys = draft.roadBusStraightEdgeKeys || [];
-      draft.segmentSnaps = (draft.segmentSnaps || []).filter(s => {
-        const key = edgeKey(s.fromNodeId, s.toNodeId);
-        if (snapKeys.includes(key) || busKeys.includes(key)) return true;
-        if (s.points && s.points.length >= 3) return true;
-        return false;
-      });
     }
 
     function dedupeSegmentsForDraw() {
@@ -312,12 +393,24 @@
           byEdge.set(key, seg);
           return;
         }
-        const prevSnapped = segmentEdgeSnapped(prev);
-        const curSnapped = segmentEdgeSnapped(seg);
-        if (curSnapped && !prevSnapped) byEdge.set(key, seg);
-        else if (curSnapped === prevSnapped && (seg.order || 0) > (prev.order || 0)) byEdge.set(key, seg);
+        if (segmentMapDisplayRank(seg) > segmentMapDisplayRank(prev)) {
+          byEdge.set(key, seg);
+        }
       });
       return Array.from(byEdge.values()).sort((a, b) => (a.order || 0) - (b.order || 0));
+    }
+
+    function segmentMapDisplayRank(seg) {
+      const key = segmentEdgeKey(seg);
+      let rank = 0;
+      const snapKeys = draft.roadSnappedEdgeKeys || [];
+      const busKeys = draft.roadBusStraightEdgeKeys || [];
+      if (snapKeys.includes(key)) rank += 4;
+      if (busKeys.includes(key)) rank += 4;
+      const hit = segmentSnap(seg);
+      const pts = hit && hit.points ? hit.points : [];
+      if (pts.length >= 3) rank += 2;
+      return rank * 1000 + (seg.order || 0);
     }
 
     function removeLineLayersForKey(key) {
@@ -632,6 +725,8 @@
       if (isBus) ensureBusStraightEdgeKey(seg);
       selectedNavMarkerKey = edgeKey(seg.fromNodeId, seg.toNodeId) + '_m' + idx;
       draft.selectedNavMarkerKey = selectedNavMarkerKey;
+      rebuildSnappedShapeFromSegments();
+      delete draft.navDisplayNumbers;
       render();
       notifyDraftChanged(true);
       emitNavSymbolSelected(seg, idx, 'straight', 'Manuell', { recordUndo: true });
@@ -931,6 +1026,7 @@
     function notifyDraftChanged(recordUndo, manualFrom, manualTo) {
       if (!draft) return;
       draft.mapEditGeneration = (draft.mapEditGeneration || 0) + 1;
+      delete draft.navDisplayNumbers;
       if (manualFrom && manualTo) {
         draft.manualConnectFrom = manualFrom;
         draft.manualConnectTo = manualTo;
@@ -1057,59 +1153,119 @@
       ordered.forEach(seg => drawOne(seg));
     }
 
-    function addNavSymbolMarkers() {
-      const ordered = dedupeSegmentsForDraw();
-      let displaySeq = 0;
-      const seenMarkerKeys = new Set();
+    function rebuildSnappedShapeFromSegments() {
+      if (!draft) return;
+      const ordered = (draft.segments || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      const shape = [];
       ordered.forEach(seg => {
         const pts = segmentPolylinePoints(seg);
         if (!pts || pts.length < 2) return;
+        pts.forEach((p, i) => {
+          if (i === 0 && shape.length) {
+            const last = shape[shape.length - 1];
+            if (Math.abs(last.lat - p.lat) < 1e-10 && Math.abs(last.lon - p.lon) < 1e-10) return;
+          }
+          shape.push({ lat: p.lat, lon: p.lon });
+        });
+      });
+      draft.snappedShape = shape;
+    }
+
+    /**
+     * Nummerierung = Reihenfolge auf der Snap-Route (Segment-Order + Distanz im Segment).
+     * Keine Projektion auf die Gesamt-Shape: bei Kreuzungen/Stichfahrt würde sonst die
+     * geografisch früheste Passage greifen (Worringer: Rechtsabbiegen als 3 statt 7).
+     */
+    function numberCandidatesBySnapRouteOrder(candidates) {
+      return candidates.slice().sort((a, b) =>
+        (a.prefer - b.prefer) ||
+        ((a.seg.order || 0) - (b.seg.order || 0)) ||
+        ((Number(a.maneuver.distanceM) || 0) - (Number(b.maneuver.distanceM) || 0)) ||
+        (a.idx - b.idx)
+      ).map(c => {
+        c.along = c.prefer;
+        return c;
+      });
+    }
+
+    function addNavSymbolMarkers() {
+      rebuildSnappedShapeFromSegments();
+      delete draft.navDisplayNumbers;
+      const orderedSegs = (draft.segments || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      const candidates = [];
+      let cumulative = 0;
+      const seenMarkerKeys = new Set();
+      orderedSegs.forEach(seg => {
+        const pts = segmentPolylinePoints(seg);
+        const segLen = pts && pts.length >= 2 ? polylineLengthMeters(pts) : 0;
         const mans = segmentManeuvers(seg);
-        const segLen = polylineLengthMeters(pts);
+        if (!pts || pts.length < 2) {
+          cumulative += segLen;
+          return;
+        }
         mans.forEach((maneuver, idx) => {
           const symbolType = effectiveSymbolType(maneuver);
           if (!shouldDisplayManeuverOnMap(maneuver, symbolType, segLen)) return;
-          const key = edgeKey(seg.fromNodeId, seg.toNodeId) + '_m' + idx;
-          if (seenMarkerKeys.has(key)) return;
+          let key = edgeKey(seg.fromNodeId, seg.toNodeId) + '_m' + idx;
+          if (seenMarkerKeys.has(key)) {
+            key = edgeKey(seg.fromNodeId, seg.toNodeId) + '_o' + (seg.order || 0) + '_m' + idx;
+            if (seenMarkerKeys.has(key)) return;
+          }
           seenMarkerKeys.add(key);
-          displaySeq += 1;
-          const pos = samplePointAtDistance(pts, maneuver.distanceM);
+          const rawD = Math.max(0, Number(maneuver.distanceM) || 0);
+          const localD = (segLen > 1 && rawD > segLen + 15)
+            ? Math.min(Math.max(0, rawD - cumulative), segLen)
+            : Math.min(rawD, segLen > 0 ? segLen : rawD);
+          const pos = samplePointAtDistance(pts, localD);
           if (!pos) return;
-          const isNavSelected = selectedNavMarkerKey === key;
-          const icon = createNavSymbolIcon(symbolType, isNavSelected, String(displaySeq));
-          ensureNavManeuverPane();
-          const m = L.marker([pos.lat, pos.lon], {
-            icon,
-            draggable: true,
-            pane: 'navManeuverPane',
-            className: 'nav-marker-leaflet',
-            zIndexOffset: 3000 + displaySeq + (isNavSelected ? 250 : 0)
-          }).addTo(map);
-          const dist = Math.round(maneuver.distanceM || 0);
-          m.bindTooltip((displaySeq) + '. ' + maneuverDisplayLabel(maneuver, symbolType) + ' (' + dist + ' m)', { direction: 'top' });
-          m.on('click', ev => {
-            if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev);
-            selectedFrom = null;
-            selectedNavMarkerKey = key;
-            draft.selectedNavMarkerKey = key;
-            render();
-            emitNavSymbolSelected(seg, idx, symbolType, maneuver.instruction);
+          // Meter ab Routenstart entlang der Segmentkette (= Snap-Fahrreihenfolge)
+          const prefer = cumulative + localD;
+          candidates.push({
+            seg, idx, maneuver, symbolType, key, pos, prefer, along: prefer
           });
-          m.on('drag', () => { constrainMarkerToSegmentPolyline(m, seg); });
-          m.on('dragend', () => {
-            const hit = constrainMarkerToSegmentPolyline(m, seg);
-            if (!hit) return;
-            const along = Math.max(0, Math.min(hit.segLen, distanceAlongPolylineMeters(hit.latlngs, hit.snapped)));
-            maneuver.distanceM = along;
-            const snap = ensureSegmentSnap(seg, hit.latlngs);
-            if (snap.maneuvers && snap.maneuvers[idx]) snap.maneuvers[idx].distanceM = along;
-            selectedNavMarkerKey = key;
-            render();
-            notifyDraftChanged(true);
-            emitNavSymbolSelected(seg, idx, symbolType, maneuver.instruction, { recordUndo: true });
-          });
-          navMarkers[key] = m;
         });
+        cumulative += segLen;
+      });
+      const numbered = numberCandidatesBySnapRouteOrder(candidates);
+      numbered.forEach((c, i) => {
+        const badge = i + 1;
+        const isNavSelected = selectedNavMarkerKey === c.key;
+        const icon = createNavSymbolIcon(c.symbolType, isNavSelected, String(badge));
+        ensureNavManeuverPane();
+        const m = L.marker([c.pos.lat, c.pos.lon], {
+          icon,
+          draggable: true,
+          pane: 'navManeuverPane',
+          className: 'nav-marker-leaflet',
+          zIndexOffset: 3000 + badge + (isNavSelected ? 250 : 0)
+        }).addTo(map);
+        const dist = Math.round(c.along || 0);
+        m.bindTooltip(
+          badge + '. ' + maneuverDisplayLabel(c.maneuver, c.symbolType) + ' (' + dist + ' m)',
+          { direction: 'top' }
+        );
+        m.on('click', ev => {
+          if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev);
+          selectedFrom = null;
+          selectedNavMarkerKey = c.key;
+          draft.selectedNavMarkerKey = c.key;
+          render();
+          emitNavSymbolSelected(c.seg, c.idx, c.symbolType, c.maneuver.instruction);
+        });
+        m.on('drag', () => { constrainMarkerToSegmentPolyline(m, c.seg); });
+        m.on('dragend', () => {
+          const hit = constrainMarkerToSegmentPolyline(m, c.seg);
+          if (!hit) return;
+          const alongDrag = Math.max(0, Math.min(hit.segLen, distanceAlongPolylineMeters(hit.latlngs, hit.snapped)));
+          c.maneuver.distanceM = alongDrag;
+          const snap = ensureSegmentSnap(c.seg, hit.latlngs);
+          if (snap.maneuvers && snap.maneuvers[c.idx]) snap.maneuvers[c.idx].distanceM = alongDrag;
+          selectedNavMarkerKey = c.key;
+          render();
+          notifyDraftChanged(true);
+          emitNavSymbolSelected(c.seg, c.idx, c.symbolType, c.maneuver.instruction, { recordUndo: true });
+        });
+        navMarkers[c.key] = m;
       });
     }
 

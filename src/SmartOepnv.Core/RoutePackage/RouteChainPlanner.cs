@@ -238,6 +238,12 @@ public static class RouteChainPlanner
             return false;
         }
 
+        var operatingDates = editor.GetRouteOperatingDates(routeKey);
+        if (!RouteOperatingDatesEditor.Contains(operatingDates, date))
+        {
+            return false;
+        }
+
         var requiredDay = DutyOperatingDayHelper.FromDate(date);
         var routeDays = editor.GetRouteOperatingDays(routeKey);
         return RouteOperatingDaysEditor.EffectiveDaySet(routeDays).Contains(requiredDay);

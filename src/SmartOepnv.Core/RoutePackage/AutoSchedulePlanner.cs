@@ -116,6 +116,8 @@ public static class AutoSchedulePlanner
         var templateTripNumber = RouteDisplayHelper.NormalizeTripNumber(
             RouteDisplayHelper.Parse(request.TemplateRouteKey).TripNumber);
         var templateInteriorDestination = editor.GetRouteInteriorDisplayDestination(request.TemplateRouteKey);
+        var templateInItcsRouteList = editor.IsRouteInItcsRouteList(request.TemplateRouteKey);
+        var templateMainDeviceOnly = editor.IsRouteMainDeviceOnly(request.TemplateRouteKey);
         var templateStartTime = ResolveTemplateStartTime(templateStops, request.StartTime);
         string? firstRouteKey = null;
         var createdCount = 0;
@@ -125,7 +127,7 @@ public static class AutoSchedulePlanner
             var tripStartTime = RouteScheduleTimeCalculator.CalculateTripStartTime(
                 request.StartTime,
                 tripIndex * request.IntervalMinutes);
-            var tripNumber = tripNumbers[tripIndex];
+            var tripNumber = RouteDisplayHelper.NormalizeTripNumber(tripNumbers[tripIndex]);
             if (!string.IsNullOrEmpty(templateTripNumber) &&
                 string.Equals(tripNumber, templateTripNumber, StringComparison.Ordinal))
             {
@@ -139,7 +141,9 @@ public static class AutoSchedulePlanner
                     templateOperatingDays,
                     request.TemplateRouteKey,
                     out var displayKey,
-                    out var addError))
+                    out var addError,
+                    inItcsRouteList: templateInItcsRouteList,
+                    mainDeviceOnly: templateMainDeviceOnly))
             {
                 throw new InvalidOperationException(addError ?? "Route konnte nicht angelegt werden.");
             }
@@ -256,18 +260,26 @@ public static class AutoSchedulePlanner
             }
 
             if (!string.IsNullOrEmpty(templateTripNumber) &&
-                string.Equals(normalized, templateTripNumber, StringComparison.Ordinal))
+                string.Equals(
+                    RouteDisplayHelper.NormalizeTripNumber(normalized),
+                    templateTripNumber,
+                    StringComparison.Ordinal))
             {
                 continue;
             }
 
-            var definition = new RouteDefinition(routeName, lineCourse, normalized);
+            var definition = new RouteDefinition(
+                routeName,
+                lineCourse,
+                RouteDisplayHelper.NormalizeTripNumber(normalized));
             if (RouteDisplayHelper.HasRouteScheduleConflict(
                     editor.RouteNames,
                     editor.RouteOperatingDaysByRoute,
                     editor.RouteDateRangesByRoute,
                     definition,
                     templateOperatingDays,
+                    null,
+                    editor.RouteOperatingDatesByRoute,
                     null))
             {
                 error = $"Fahrtnummer {normalized} existiert in dieser Linie/Kurs bereits.";

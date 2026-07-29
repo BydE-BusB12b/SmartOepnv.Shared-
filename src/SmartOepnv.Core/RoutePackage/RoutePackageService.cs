@@ -83,18 +83,14 @@ public sealed class RoutePackageService
 
     public async Task SaveToFileAsync(string filePath)
     {
-        if (string.IsNullOrWhiteSpace(_currentJson))
-        {
-            throw new InvalidOperationException("Kein Route-Paket geladen.");
-        }
-
+        var json = GetFullPackageJson(rebuildEmbeddedMedia: false);
         var dir = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrEmpty(dir))
         {
             Directory.CreateDirectory(dir);
         }
 
-        await File.WriteAllTextAsync(filePath, _currentJson);
+        await File.WriteAllTextAsync(filePath, json);
     }
 
     public string PrepareExportJson()
@@ -242,16 +238,50 @@ public sealed class RoutePackageService
             return;
         }
 
-        // Einmal serialisieren – kein zweites ToJson() über GetPersistableJson().
-        // rebuildEmbeddedMedia=false: lokaler Routen-/Haltestellen-Save ohne Audio-Neuaufbau.
-        _currentJson = Editor.ToJson(indented: false, rebuildEmbeddedMedia: rebuildEmbeddedMedia);
-        Stats = ParseStats(_currentJson);
+        // Lokale Edits ohne Audio-Rebuild: schlanker Body (~Routen/Haltestellen), Audio im Sidecar.
+        // Vollexport / Ansagen: Audio neu aufbauen und Sidecar aktualisieren.
+        var body = Editor.ToJson(
+            indented: false,
+            rebuildEmbeddedMedia: rebuildEmbeddedMedia,
+            includeHeavyMedia: false);
+        _currentJson = body;
+        Stats = ParseStats(body);
         EditorDataRevision++;
 
         if (AppServices.IsInitialized)
         {
-            AppServices.Workspace.SavePackage(_currentJson, source, archivePreviousSave);
+            var updateHeavy = rebuildEmbeddedMedia || !File.Exists(AppServices.Workspace.HeavyMediaSidecarPath);
+            string? heavy = null;
+            if (updateHeavy)
+            {
+                heavy = Editor.TryGetHeavyMediaSidecarJson();
+            }
+
+            AppServices.Workspace.SavePackageBody(
+                body,
+                source,
+                archivePreviousSave,
+                heavyMediaJson: heavy,
+                updateHeavyMediaSidecar: updateHeavy && !string.IsNullOrWhiteSpace(heavy));
         }
+    }
+
+    /// <summary>Vollständiges Paket inkl. Audio (für Merge/Datei-Export); baut bei Bedarf aus Cache/Sidecar.</summary>
+    public string GetFullPackageJson(bool rebuildEmbeddedMedia = false)
+    {
+        if (Editor is not null)
+        {
+            return Editor.ToJson(indented: false, rebuildEmbeddedMedia: rebuildEmbeddedMedia, includeHeavyMedia: true);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentJson))
+        {
+            return AppServices.IsInitialized
+                ? AppServices.Workspace.TryLoadPackageJson() ?? _currentJson
+                : _currentJson;
+        }
+
+        throw new InvalidOperationException("Kein Route-Paket geladen.");
     }
 
     /// <summary>
@@ -292,7 +322,10 @@ public sealed class RoutePackageService
         return root.ToJsonString();
     }
 
-    private string GetPersistableJson() => Editor is not null ? Editor.ToJson() : _currentJson!;
+    private string GetPersistableJson() =>
+        Editor is not null
+            ? Editor.ToJson(indented: false, rebuildEmbeddedMedia: true, includeHeavyMedia: true)
+            : _currentJson!;
 
     private static string StripPlannerSecretsFromExportJson(string json)
     {
@@ -367,18 +400,22 @@ public sealed class RoutePackageService
             }
         }
 
-        var stopCount = 0;
+        // Route-Namen weiterhin aus routeStops (Fahrten), Haltestellen-Zahl aber aus der
+        // Stammliste managedStopTemplates – nicht Summe aller Routen-Einträge.
         if (root.TryGetProperty("routeStops", out var routeStops) &&
             routeStops.ValueKind == JsonValueKind.Object)
         {
             foreach (var route in routeStops.EnumerateObject())
             {
                 routeNames.Add(route.Name);
-                if (route.Value.ValueKind == JsonValueKind.Array)
-                {
-                    stopCount += route.Value.GetArrayLength();
-                }
             }
+        }
+
+        var stopCount = 0;
+        if (root.TryGetProperty("managedStopTemplates", out var stopTemplates) &&
+            stopTemplates.ValueKind == JsonValueKind.Array)
+        {
+            stopCount = stopTemplates.GetArrayLength();
         }
 
         var driverCount = 0;
@@ -470,7 +507,8 @@ public sealed class RoutePackageService
             }
             else
             {
-                var merged = LiteRouteUpdateMerge.MergeIntoPackageJson(_currentJson, json);
+                var baseJson = GetFullPackageJson(rebuildEmbeddedMedia: false);
+                var merged = LiteRouteUpdateMerge.MergeIntoPackageJson(baseJson, json);
                 LoadFromJson(merged, persistLocally: true, source: "routes-update-merge");
             }
 

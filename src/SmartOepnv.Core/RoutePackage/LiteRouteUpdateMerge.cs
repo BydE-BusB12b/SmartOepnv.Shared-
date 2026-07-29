@@ -64,6 +64,8 @@ public static class LiteRouteUpdateMerge
 
         RouteDateRangeEditor.RootFieldName,
 
+        RouteOperatingDatesEditor.RootFieldName,
+
         RouteInteriorDisplayDestinationEditor.RootFieldName,
 
         AutoScheduleSourceRouteEditor.RootFieldName,
@@ -476,17 +478,33 @@ public static class LiteRouteUpdateMerge
 
             {
 
-                var liteDisplay = RouteDisplayHelper.ToDisplayString(
+                var liteDefinition = ParseLineCourseRouteObject(liteRouteNode, lineCourseKey);
 
-                    ParseLineCourseRouteObject(liteRouteNode, lineCourseKey));
+                var liteDisplay = RouteDisplayHelper.ToDisplayString(liteDefinition);
 
                 mergedRoutes.RemoveAll(existing =>
 
-                    RouteDisplayHelper.RouteKeysMatch(
+                {
 
-                        RouteDisplayHelper.ToDisplayString(ParseLineCourseRouteObject(existing, lineCourseKey)),
+                    var existingDefinition = ParseLineCourseRouteObject(existing, lineCourseKey);
 
-                        liteDisplay));
+                    if (RouteDisplayHelper.RouteKeysMatch(
+
+                            RouteDisplayHelper.ToDisplayString(existingDefinition),
+
+                            liteDisplay))
+
+                    {
+
+                        return true;
+
+                    }
+
+                    // Umbenennung: gleiche Linie/Kurs + Fahrt, Basisname mit/ohne Datumspräfix
+
+                    return RouteDisplayHelper.IsLikelyRenamedRoute(existingDefinition, liteDefinition);
+
+                });
 
                 mergedRoutes.Add(liteRouteNode.DeepClone().AsObject());
 

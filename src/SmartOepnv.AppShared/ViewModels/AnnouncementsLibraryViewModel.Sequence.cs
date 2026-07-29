@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using SmartOepnv.AppShared.Models;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
@@ -340,17 +341,22 @@ public partial class AnnouncementsLibraryViewModel
             Filter = "Audio (*.mp3;*.wav;*.ogg)|*.mp3;*.wav;*.ogg|Alle Dateien (*.*)|*.*"
         };
 
-        if (AppServices.IsInitialized)
+        try
         {
-            try
+            var exportDir = DropboxSyncFolderLocator.TryResolveHamblochExportFolder();
+            if (!string.IsNullOrEmpty(exportDir))
+            {
+                dialog.InitialDirectory = exportDir;
+            }
+            else if (AppServices.IsInitialized)
             {
                 dialog.InitialDirectory =
                     PlanerAnnouncementRawSoundsWorkspace.GetRawSoundsDirectory(AppServices.Workspace);
             }
-            catch
-            {
-                // Dateidialog ohne Startordner
-            }
+        }
+        catch
+        {
+            // Dateidialog ohne Startordner
         }
 
         return dialog;

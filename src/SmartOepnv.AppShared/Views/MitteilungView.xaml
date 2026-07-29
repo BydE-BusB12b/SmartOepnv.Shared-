@@ -1,0 +1,189 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.MitteilungView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             VerticalAlignment="Stretch"
+             HorizontalAlignment="Stretch">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </UserControl.Resources>
+    <Grid Margin="8,4,8,8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="Mitteilung erstellen"
+                       Style="{StaticResource SmartPageTitleStyle}"
+                       FontSize="22"
+                       Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
+                       TextWrapping="Wrap"
+                       Text="Mitteilungen im Planer speichern und als PDF exportieren – Layout wie bei der Fahreranleitung." />
+        </StackPanel>
+
+        <materialDesign:Card Grid.Row="1"
+                             Padding="16"
+                             UniformCornerRadius="10"
+                             Background="{StaticResource SmartSurfaceBrush}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                    <TextBlock Text="Gespeicherte Mitteilungen"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,6" />
+                    <TextBlock Text="Vorlagen werden lokal gespeichert und mit dem Planer-Workspace über Dropbox mitgenommen."
+                               Opacity="0.65"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="Vorlagenname"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding DraftName, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <ListBox ItemsSource="{Binding SavedDrafts}"
+                             SelectedItem="{Binding SelectedDraft}"
+                             MinHeight="72"
+                             MaxHeight="140"
+                             BorderThickness="1"
+                             BorderBrush="#334155"
+                             Background="Transparent"
+                             Margin="0,0,0,8">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" />
+                                    <TextBlock Text="{Binding Summary}" FontSize="10" Opacity="0.7" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <UniformGrid Columns="2" Margin="0,0,0,4">
+                        <Button Content="Speichern"
+                                Command="{Binding SaveDraftAsNewCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,4,0"
+                                Padding="8,4" />
+                        <Button Content="Aktualisieren"
+                                Command="{Binding UpdateDraftCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Padding="8,4" />
+                    </UniformGrid>
+                    <UniformGrid Columns="3" Margin="0,0,0,16">
+                        <Button Content="Laden"
+                                Command="{Binding LoadDraftCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,4,0"
+                                Padding="8,4" />
+                        <Button Content="Neu"
+                                Command="{Binding NewDraftCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,4,0"
+                                Padding="8,4" />
+                        <Button Content="Löschen"
+                                Command="{Binding DeleteDraftCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Padding="8,4" />
+                    </UniformGrid>
+
+                    <TextBox materialDesign:HintAssist.Hint="Überschrift"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,12" />
+
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 materialDesign:HintAssist.Hint="Gültig ab (z. B. 01.08.2026)"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                 Text="{Binding ValidFromText, UpdateSourceTrigger=PropertyChanged}" />
+                        <Grid Grid.Column="2">
+                            <TextBox Text="{Binding ValidToText, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                        <Setter Property="materialDesign:HintAssist.Hint" Value="Gültig bis" />
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding UntilRevoked}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                            <Border BorderBrush="#90A4AE"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="12,10"
+                                    Visibility="{Binding UntilRevoked, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="bis auf Widerruf"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold"
+                                           Opacity="0.9" />
+                            </Border>
+                        </Grid>
+                    </Grid>
+
+                    <CheckBox Content="bis auf Widerruf"
+                              IsChecked="{Binding UntilRevoked}"
+                              Margin="0,0,0,12" />
+
+                    <CheckBox Content="Smart-ÖPNV-Logo (oben rechts)"
+                              IsChecked="{Binding ShowSmartOepnvLogo}"
+                              Margin="0,0,0,12" />
+
+                    <ComboBox materialDesign:HintAssist.Hint="Firmenlogo"
+                              Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                              ItemsSource="{Binding CompanyLogoOptions}"
+                              DisplayMemberPath="Name"
+                              SelectedValuePath="Id"
+                              SelectedValue="{Binding SelectedCompanyLogoId, UpdateSourceTrigger=PropertyChanged}"
+                              Margin="0,0,0,12" />
+
+                    <TextBox materialDesign:HintAssist.Hint="Mitteilung"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             MinHeight="160"
+                             Margin="0,0,0,12" />
+
+                    <TextBox materialDesign:HintAssist.Hint="Name/Vorname und Datum (unten links)"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding SignerNameAndDate, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,12" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <Button Content="Unterschrift…"
+                                Command="{Binding ChooseSignatureCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,12,0"
+                                Padding="14,4" />
+                        <TextBlock Text="{Binding SelectedSignatureName}"
+                                   VerticalAlignment="Center"
+                                   Opacity="0.88" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="PDF erstellen"
+                                Command="{Binding CreatePdfCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Padding="18,6" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding StatusMessage}"
+                               TextWrapping="Wrap"
+                               Margin="0,12,0,0"
+                               Opacity="0.88"
+                               FontSize="12" />
+                </StackPanel>
+            </ScrollViewer>
+        </materialDesign:Card>
+    </Grid>
+</UserControl>

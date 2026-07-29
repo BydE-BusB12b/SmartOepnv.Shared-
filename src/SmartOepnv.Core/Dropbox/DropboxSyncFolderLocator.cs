@@ -67,6 +67,24 @@ public static class DropboxSyncFolderLocator
         return File.Exists(path) ? path : null;
     }
 
+    /// <summary>
+    /// Lokal synchronisierter Ordner „Verkehrsbetrieb Hambloch/Export“ unter Dropbox.
+    /// </summary>
+    public static string? TryResolveHamblochExportFolder()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        foreach (var dropboxRoot in GetDropboxRoots(home))
+        {
+            var path = Path.Combine(dropboxRoot, "Verkehrsbetrieb Hambloch", "Export");
+            if (Directory.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        return null;
+    }
+
     private static string NormalizeRelativeFolder(string? configuredApiFolderPath)
     {
         return DropboxConstants.NormalizeFolderPath(configuredApiFolderPath).Trim('/').Replace('\\', '/');

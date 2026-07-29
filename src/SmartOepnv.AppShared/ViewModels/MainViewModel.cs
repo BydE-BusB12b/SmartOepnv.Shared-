@@ -38,6 +38,7 @@ public partial class MainViewModel : ObservableObject
     private FahrzeugdispoViewModel? _fahrzeugdispoViewModel;
     private DienstvorlagenViewModel? _dienstvorlagenViewModel;
     private DienstvorlagenLibraryViewModel? _dienstvorlagenLibraryViewModel;
+    private MitteilungViewModel? _mitteilungViewModel;
 
     private RoutesViewModel RoutesViewModel => _routesViewModel ??= new();
     private RoutePathEditorViewModel RoutePathEditorViewModel => _routePathEditorViewModel ??= new();
@@ -51,6 +52,7 @@ public partial class MainViewModel : ObservableObject
     private FahrzeugdispoViewModel FahrzeugdispoViewModel => _fahrzeugdispoViewModel ??= new();
     private DienstvorlagenViewModel DienstvorlagenViewModel => _dienstvorlagenViewModel ??= new();
     private DienstvorlagenLibraryViewModel DienstvorlagenLibraryViewModel => _dienstvorlagenLibraryViewModel ??= new();
+    private MitteilungViewModel MitteilungViewModel => _mitteilungViewModel ??= new();
 
     private NavigationItem? _previousNavigationItem;
     private bool _suppressNavigationCommit;
@@ -76,7 +78,9 @@ public partial class MainViewModel : ObservableObject
         AppVersion = ResolveDisplayedAppVersion();
         _dataTransferViewModel = new DataTransferViewModel(profile);
 
-        NavigationItems = new ObservableCollection<NavigationItem>(CreateNavigationItems());
+        NavigationMenu = new ObservableCollection<object>();
+        NavigationItems = new ObservableCollection<NavigationItem>();
+        BuildNavigation();
         SelectedNavigationItem = NavigationItems[0];
         _previousNavigationItem = SelectedNavigationItem;
         if (!profile.IsLeitstelle)
@@ -274,6 +278,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string productSubtitle = string.Empty;
     [ObservableProperty] private string dashboardHint = string.Empty;
 
+    public ObservableCollection<object> NavigationMenu { get; }
+
     public ObservableCollection<NavigationItem> NavigationItems { get; }
 
     [ObservableProperty]
@@ -294,6 +300,16 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedNavigationItemChanged(NavigationItem? value)
     {
+        foreach (var item in NavigationItems)
+        {
+            item.IsSelected = ReferenceEquals(item, value);
+        }
+
+        foreach (var entry in NavigationMenu.OfType<NavigationGroup>())
+        {
+            entry.SyncSelection(value);
+        }
+
         if (_suppressNavigationCommit)
         {
             ApplyNavigationSelection(value);
@@ -312,6 +328,17 @@ public partial class MainViewModel : ObservableObject
         ApplyNavigationSelection(value);
     }
 
+    [RelayCommand]
+    private void SelectNavigation(NavigationItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        SelectedNavigationItem = item;
+    }
+
     private void ApplyNavigationSelection(NavigationItem? value)
     {
         _previousNavigationItem = value;
@@ -328,7 +355,7 @@ public partial class MainViewModel : ObservableObject
         {
             _settingsViewModel.ReloadFromStore();
         }
-        else if (value.Title is "Übersicht" or "Versand")
+        else if (value.Title is "\u00DCbersicht" or "Übersicht" or "Versand")
         {
             _dataTransferViewModel.RefreshStats();
         }
@@ -408,6 +435,10 @@ public partial class MainViewModel : ObservableObject
         else if (value.Title == "Vorlagen-Bibliothek")
         {
             DienstvorlagenLibraryViewModel.RefreshFromEditor();
+        }
+        else if (value.Title == "Mitteilung")
+        {
+            MitteilungViewModel.RefreshFromEditor();
         }
         else
         {
@@ -899,8 +930,11 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private IReadOnlyList<NavigationItem> CreateNavigationItems()
+    private void BuildNavigation()
     {
+        NavigationMenu.Clear();
+        NavigationItems.Clear();
+
         _fahrzeugverwaltungNavItem = new NavigationItem
         {
             Title = "Fahrzeugverwaltung",
@@ -916,138 +950,40 @@ public partial class MainViewModel : ObservableObject
             CreateContent = () => new EmployeesView { DataContext = _employeesViewModel }
         };
 
-        var items = new List<NavigationItem>
+        void AddLeaf(NavigationItem item)
         {
-            new()
-            {
-                Title = "Übersicht",
-                Icon = PackIconKind.ViewDashboard,
-                Description = "Dashboard, Import und Export",
-                CreateContent = () => new DashboardView { DataContext = _dataTransferViewModel }
-            },
-            _personalverwaltungNavItem,
-            new()
-            {
-                Title = _profile.IsLeitstelle ? "Nachricht senden" : "Nachrichten",
-                Icon = PackIconKind.MessageText,
-                Description = _profile.IsLeitstelle
-                    ? "Vorlagen wählen und per Dropbox an Fahrzeuge senden (zbl_message)"
-                    : "KOM- und Mail-Vorlagen (messageTemplates / mailTemplates)",
-                CreateContent = () => _profile.IsLeitstelle
-                    ? new MessageSendView { DataContext = _messageSendViewModel }
-                    : new MessagesView { DataContext = MessagesViewModel }
-            },
-            new()
-            {
-                Title = "Versand",
-                Icon = PackIconKind.Send,
-                Description = "JSON Import/Export und Dropbox",
-                CreateContent = () => new DataTransferView { DataContext = _dataTransferViewModel }
-            },
-            new()
-            {
-                Title = "Einstellungen",
-                Icon = PackIconKind.Cog,
-                Description = "Dropbox, Ordnerpfad, Verbindungstest",
-                CreateContent = () => new SettingsView { DataContext = _settingsViewModel }
-            }
-        };
-
-        if (!_profile.IsLeitstelle)
-        {
-            var personalIdx = items.FindIndex(i => i.Title == "Personalverwaltung");
-            if (personalIdx >= 0)
-            {
-                items.Insert(personalIdx + 1, new NavigationItem
-                {
-                    Title = "Fahrerdisposition",
-                    Icon = PackIconKind.CalendarAccount,
-                    Description = "Fahrer den Linien und Fahrten zuordnen",
-                    CreateContent = () => new FahrerdispoView { DataContext = FahrerdispoViewModel }
-                });
-                items.Insert(personalIdx + 2, new NavigationItem
-                {
-                    Title = "Fahrzeugdisposition",
-                    Icon = PackIconKind.BusMultiple,
-                    Description = "Fahrzeuge den Linien und Fahrten zuordnen",
-                    CreateContent = () => new FahrzeugdispoView { DataContext = FahrzeugdispoViewModel }
-                });
-                items.Insert(personalIdx + 3, _fahrzeugverwaltungNavItem);
-                items.Insert(personalIdx + 4, new NavigationItem
-                {
-                    Title = "Dienstvorlagen",
-                    Icon = PackIconKind.CalendarClock,
-                    Description = "Dienstschablonen erstellen, aus Fahrplan importieren und als PDF exportieren",
-                    CreateContent = () => new DienstvorlagenView { DataContext = DienstvorlagenViewModel }
-                });
-                items.Insert(personalIdx + 5, new NavigationItem
-                {
-                    Title = "Vorlagen-Bibliothek",
-                    Icon = PackIconKind.BookOpenPageVariant,
-                    Description = "Gespeicherte Dienstvorlagen anzeigen und als PDF exportieren (301, 302, …)",
-                    CreateContent = () => new DienstvorlagenLibraryView { DataContext = DienstvorlagenLibraryViewModel }
-                });
-            }
-
-            items.Insert(1, new NavigationItem
-            {
-                Title = "Routen",
-                Icon = PackIconKind.SignDirection,
-                Description = "Routen und Haltestellen bearbeiten",
-                CreateContent = () => new RoutesView { DataContext = RoutesViewModel }
-            });
-            items.Insert(2, new NavigationItem
-            {
-                Title = "Haltestellen",
-                Icon = PackIconKind.BusMarker,
-                Description = "Haltestellenbibliothek und Vorlagen (managedStopTemplates)",
-                CreateContent = () => new StopsLibraryView { DataContext = StopsLibraryViewModel }
-            });
-            items.Insert(3, new NavigationItem
-            {
-                Title = "Ansagen",
-                Icon = PackIconKind.VolumeHigh,
-                Description = "Nur Ansagen: 4-stellige ID, Ton, ★ Sonder mit „S“",
-                CreateContent = () => new AnnouncementsLibraryView { DataContext = AnnouncementsLibraryViewModel }
-            });
-            items.Insert(4, new NavigationItem
-            {
-                Title = "Navidaten",
-                Icon = PackIconKind.MapMarkerPath,
-                Description = "Fahrweg auf Karte planen (Handy-kompatibel)",
-                CreateContent = () => new RoutePathEditorView { DataContext = RoutePathEditorViewModel }
-            });
-            items.Insert(items.Count - 2, new NavigationItem
-            {
-                Title = "Anzeigen & Hinweise",
-                Icon = PackIconKind.Billboard,
-                Description = "Zielliste und datumgesteuerte Hinweise",
-                CreateContent = () => new DisplaysOperationsView { DataContext = DisplaysOperationsViewModel }
-            });
-            items.Insert(items.Count - 2, new NavigationItem
-            {
-                Title = "SEV-Schilder",
-                Icon = PackIconKind.FilePdfBox,
-                Description = "NRW-SEV-Schild A3 quer als PDF (Linie, Ziel, Haltestellen, Betreiber)",
-                CreateContent = () => new SevSignEditorView { DataContext = SevSignEditorViewModel }
-            });
-            items.Insert(items.Count - 2, new NavigationItem
-            {
-                Title = "Zeitwirtschaft",
-                Icon = PackIconKind.ClockOutline,
-                Description = "Zeitstempel aus Tablets zusammenführen (Dropbox JSON)",
-                CreateContent = () => new ZeitwirtschaftPlannerView { DataContext = ZeitwirtschaftPlannerViewModel }
-            });
+            NavigationMenu.Add(item);
+            NavigationItems.Add(item);
         }
+
+        void AddGroup(NavigationGroup group)
+        {
+            NavigationMenu.Add(group);
+            foreach (var child in group.Children)
+            {
+                NavigationItems.Add(child);
+            }
+        }
+
+        AddLeaf(new NavigationItem
+        {
+            Title = "\u00DCbersicht",
+            Icon = PackIconKind.ViewDashboard,
+            Description = "Dashboard, Import und Export",
+            CreateContent = () => new DashboardView { DataContext = _dataTransferViewModel }
+        });
 
         if (_profile.IsLeitstelle)
         {
-            var personalIdx = items.FindIndex(i => i.Title == "Personalverwaltung");
-            if (personalIdx >= 0)
+            AddLeaf(new NavigationItem
             {
-                items.Insert(personalIdx + 1, _fahrzeugverwaltungNavItem);
-            }
-
+                Title = "Fahrzeuge",
+                Icon = PackIconKind.MapMarkerRadius,
+                Description = "Live-Karte – Wagennummer und Linie/Kurs aus Dropbox",
+                CreateContent = () => new VehicleTrackingView { DataContext = _vehicleTrackingViewModel }
+            });
+            AddLeaf(_personalverwaltungNavItem);
+            AddLeaf(_fahrzeugverwaltungNavItem);
             _leitstelleMessagesNavItem = new NavigationItem
             {
                 Title = "Nachrichten",
@@ -1055,17 +991,154 @@ public partial class MainViewModel : ObservableObject
                 Description = "MailChat / SOS aus Dropbox (SOS → Karte)",
                 CreateContent = () => new LeitstelleMessagesInboxView { DataContext = _leitstelleMessagesInboxViewModel }
             };
-            items.Insert(3, _leitstelleMessagesNavItem);
-            items.Insert(1, new NavigationItem
+            AddLeaf(_leitstelleMessagesNavItem);
+            AddLeaf(new NavigationItem
             {
-                Title = "Fahrzeuge",
-                Icon = PackIconKind.MapMarkerRadius,
-                Description = "Live-Karte – Wagennummer und Linie/Kurs aus Dropbox",
-                CreateContent = () => new VehicleTrackingView { DataContext = _vehicleTrackingViewModel }
+                Title = "Nachricht senden",
+                Icon = PackIconKind.MessageText,
+                Description = "Vorlagen wählen und per Dropbox an Fahrzeuge senden (zbl_message)",
+                CreateContent = () => new MessageSendView { DataContext = _messageSendViewModel }
+            });
+        }
+        else
+        {
+            var fahrerdispo = new NavigationItem
+            {
+                Title = "Fahrerdisposition",
+                Icon = PackIconKind.CalendarAccount,
+                Description = "Fahrer den Linien und Fahrten zuordnen",
+                CreateContent = () => new FahrerdispoView { DataContext = FahrerdispoViewModel }
+            };
+            var fahrzeugdispo = new NavigationItem
+            {
+                Title = "Fahrzeugdisposition",
+                Icon = PackIconKind.BusMultiple,
+                Description = "Fahrzeuge den Linien und Fahrten zuordnen",
+                CreateContent = () => new FahrzeugdispoView { DataContext = FahrzeugdispoViewModel }
+            };
+            var routen = new NavigationItem
+            {
+                Title = "Routen",
+                Icon = PackIconKind.SignDirection,
+                Description = "Routen und Haltestellen bearbeiten",
+                CreateContent = () => new RoutesView { DataContext = RoutesViewModel }
+            };
+            var haltestellen = new NavigationItem
+            {
+                Title = "Haltestellen",
+                Icon = PackIconKind.BusMarker,
+                Description = "Haltestellenbibliothek und Vorlagen (managedStopTemplates)",
+                CreateContent = () => new StopsLibraryView { DataContext = StopsLibraryViewModel }
+            };
+            var ansagen = new NavigationItem
+            {
+                Title = "Ansagen",
+                Icon = PackIconKind.VolumeHigh,
+                Description = "Nur Ansagen: 4-stellige ID, Ton, ★ Sonder mit „S“",
+                CreateContent = () => new AnnouncementsLibraryView { DataContext = AnnouncementsLibraryViewModel }
+            };
+            var navidaten = new NavigationItem
+            {
+                Title = "Navidaten",
+                Icon = PackIconKind.MapMarkerPath,
+                Description = "Fahrweg auf Karte planen (Handy-kompatibel)",
+                CreateContent = () => new RoutePathEditorView { DataContext = RoutePathEditorViewModel }
+            };
+            var anzeigen = new NavigationItem
+            {
+                Title = "Anzeigen & Hinweise",
+                Icon = PackIconKind.Billboard,
+                Description = "Zielliste und datumgesteuerte Hinweise",
+                CreateContent = () => new DisplaysOperationsView { DataContext = DisplaysOperationsViewModel }
+            };
+            var nachrichten = new NavigationItem
+            {
+                Title = "Nachrichten",
+                Icon = PackIconKind.MessageText,
+                Description = "KOM- und Mail-Vorlagen (messageTemplates / mailTemplates)",
+                CreateContent = () => new MessagesView { DataContext = MessagesViewModel }
+            };
+            var zeitwirtschaft = new NavigationItem
+            {
+                Title = "Zeitwirtschaft",
+                Icon = PackIconKind.ClockOutline,
+                Description = "Zeitstempel aus Tablets zusammenführen (Dropbox JSON)",
+                CreateContent = () => new ZeitwirtschaftPlannerView { DataContext = ZeitwirtschaftPlannerViewModel }
+            };
+            var dienstvorlagen = new NavigationItem
+            {
+                Title = "Dienstvorlagen",
+                Icon = PackIconKind.CalendarClock,
+                Description = "Dienstschablonen erstellen, aus Fahrplan importieren und als PDF exportieren",
+                CreateContent = () => new DienstvorlagenView { DataContext = DienstvorlagenViewModel }
+            };
+            var vorlagenBibliothek = new NavigationItem
+            {
+                Title = "Vorlagen-Bibliothek",
+                Icon = PackIconKind.BookOpenPageVariant,
+                Description = "Gespeicherte Dienstvorlagen anzeigen und als PDF exportieren (301, 302, …)",
+                CreateContent = () => new DienstvorlagenLibraryView { DataContext = DienstvorlagenLibraryViewModel }
+            };
+
+            AddGroup(NavigationGroup.Create(
+                "ITCS",
+                PackIconKind.TransitConnectionVariant,
+                routen,
+                haltestellen,
+                ansagen,
+                navidaten,
+                anzeigen,
+                nachrichten));
+
+            AddGroup(NavigationGroup.Create(
+                "Personal",
+                PackIconKind.AccountGroup,
+                _personalverwaltungNavItem,
+                fahrerdispo,
+                zeitwirtschaft));
+
+            AddGroup(NavigationGroup.Create(
+                "Fahrzeug",
+                PackIconKind.Bus,
+                fahrzeugdispo,
+                _fahrzeugverwaltungNavItem));
+
+            AddGroup(NavigationGroup.Create(
+                "Dienstvorlagen",
+                PackIconKind.CalendarClock,
+                dienstvorlagen,
+                vorlagenBibliothek));
+
+            AddLeaf(new NavigationItem
+            {
+                Title = "Mitteilung",
+                Icon = PackIconKind.FileDocumentEditOutline,
+                Description = "Mitteilung als PDF erstellen (Gültigkeit, Logos, Unterschrift)",
+                CreateContent = () => new MitteilungView { DataContext = MitteilungViewModel }
+            });
+            AddLeaf(new NavigationItem
+            {
+                Title = "SEV-Schilder",
+                Icon = PackIconKind.FilePdfBox,
+                Description = "NRW-SEV-Schild A3 quer als PDF (Linie, Ziel, Haltestellen, Betreiber)",
+                CreateContent = () => new SevSignEditorView { DataContext = SevSignEditorViewModel }
             });
         }
 
-        return items;
+        AddLeaf(new NavigationItem
+        {
+            Title = "Versand",
+            Icon = PackIconKind.Send,
+            Description = "JSON Import/Export und Dropbox",
+            CreateContent = () => new DataTransferView { DataContext = _dataTransferViewModel }
+        });
+        AddLeaf(new NavigationItem
+        {
+            Title = "Einstellungen",
+            Icon = PackIconKind.Cog,
+            Description = "Dropbox, Ordnerpfad, Verbindungstest",
+            CreateContent = () => new SettingsView { DataContext = _settingsViewModel }
+        });
     }
 
     private void OnLeitstelleSosAlertRaised(string phoneNormalized) =>

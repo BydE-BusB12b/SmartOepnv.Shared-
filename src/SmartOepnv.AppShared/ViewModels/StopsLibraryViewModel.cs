@@ -6,6 +6,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
@@ -19,6 +20,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
     private readonly List<ManagedStopTemplateItem> _allTemplates = [];
     private readonly EditorAreaSyncState _sync = new();
+    private readonly SearchQueryDebouncer _searchDebouncer;
     private string? _loadedFingerprint;
     private CancellationTokenSource? _saveButtonFeedbackCts;
 
@@ -41,6 +43,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
     public StopsLibraryViewModel()
     {
+        _searchDebouncer = new SearchQueryDebouncer(ApplyFilter);
         if (AppServices.IsInitialized)
         {
             AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
@@ -270,7 +273,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
     }
 
-    partial void OnSearchQueryChanged(string value) => ApplyFilter();
+    partial void OnSearchQueryChanged(string value) => _searchDebouncer.Schedule();
 
     partial void OnSelectedTemplateChanged(ManagedStopTemplateItem? value)
     {

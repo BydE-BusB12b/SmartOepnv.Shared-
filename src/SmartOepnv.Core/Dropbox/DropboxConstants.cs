@@ -40,6 +40,15 @@ public static class DropboxConstants
     public const string RouteFileName = "routes_export.json";
 
     /// <summary>
+    /// Lokaler Planer-/Leitstelle-Arbeitscache (nicht Dropbox-App-Export).
+    /// Audio liegt getrennt in <see cref="LocalRouteCacheHeavyMediaFileName"/>.
+    /// </summary>
+    public const string LocalRouteCacheFileName = "routes_cache.json";
+
+    /// <summary>Audio-Sidecar zum lokalen <see cref="LocalRouteCacheFileName"/>.</summary>
+    public const string LocalRouteCacheHeavyMediaFileName = "routes_cache.heavymedia.json";
+
+    /// <summary>
     /// Leichtes Fahrzeugupdate ohne Audio (Merge auf dem Gerät, routes_export.json bleibt Vollbackup).
     /// </summary>
     public const string RouteUpdateFileName = "routes_update.json";

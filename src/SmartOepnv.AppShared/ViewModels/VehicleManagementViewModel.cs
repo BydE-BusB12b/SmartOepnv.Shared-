@@ -147,7 +147,7 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
 
         editor.ReplaceRegisteredVehicles(Vehicles.Select(CloneForSave).ToList());
         editor.ReplaceRegisteredVehiclePhoneRedirects(redirects);
-        AppServices.Routes.ApplyEditorChanges("fahrzeugverwaltung");
+        AppServices.Routes.ApplyEditorChanges("fahrzeugverwaltung", rebuildEmbeddedMedia: false);
         AppServices.PlannerLocal?.PersistFromEditor(editor);
         Maengelkarte.RefreshVehicleFilterOptions();
 

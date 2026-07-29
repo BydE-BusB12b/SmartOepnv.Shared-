@@ -139,7 +139,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
                 .ToList();
             editor.ReplaceOutsideDisplays(outsideEntries);
             OutsideDisplayDestinationResolver.SyncStopLinks(editor);
-            AppServices.Routes.ApplyEditorChanges("anzeigen-hinweise");
+            AppServices.Routes.ApplyEditorChanges("anzeigen-hinweise", rebuildEmbeddedMedia: false);
             _hasUnsavedChanges = false;
             RefreshOutsideProgramListLabels();
             var enabledCount = OutsidePrograms.Count(p => p.IsListEnabled);

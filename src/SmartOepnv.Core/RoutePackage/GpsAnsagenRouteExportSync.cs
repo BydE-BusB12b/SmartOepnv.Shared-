@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using SmartOepnv.Core;
+using SmartOepnv.Core.RoutePath;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -63,6 +64,7 @@ public static class GpsAnsagenRouteExportSync
         SyncRouteStops(package, packageRoutes, root);
         root.Remove("routeDirections");
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", packageRoutes);
+        RoutePathDraftRepository.NormalizeDraftKeysToCanonical(root);
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", packageRoutes);
         DateBasedHintsEditor.SaveToRoot(root, package.DateBasedHints);
         RoutePackagePhoneMetadata.SaveOutsideDisplays(root, package.OutsideDisplays);
@@ -92,6 +94,7 @@ public static class GpsAnsagenRouteExportSync
 
         RouteOperatingDaysEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDaysByRoute);
         RouteDateRangeEditor.SaveToRoot(root, packageRoutes, package.RouteDateRangesByRoute);
+        RouteOperatingDatesEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDatesByRoute);
         RouteInteriorDisplayDestinationEditor.SaveToRoot(
             root,
             packageRoutes,
@@ -360,7 +363,8 @@ public static class GpsAnsagenRouteExportSync
         if (liteVehicleUpdate)
         {
             SyncLiteVehiclePhoneMetadata(package, root);
-            ApplyLiteVehicleUpdateMetadata(root);
+            // Senden (prune): Katalog ersetzen. Update (Merge): Geschwisterfahrten behalten.
+            ApplyLiteVehicleUpdateMetadata(root, replaceLineCourseRoutes: pruneOthersOnDevice);
         }
 
         root["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -380,7 +384,7 @@ public static class GpsAnsagenRouteExportSync
             ?? throw new InvalidOperationException("Route-Paket konnte nicht gelesen werden.");
 
         ApplyLiteRouteDataToRoot(package, root, workspace);
-        ApplyLiteVehicleUpdateMetadata(root);
+        ApplyLiteVehicleUpdateMetadata(root, replaceLineCourseRoutes: true);
         root["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         root["autoImport"] = true;
         return root.ToJsonString();
@@ -404,9 +408,11 @@ public static class GpsAnsagenRouteExportSync
         SyncRouteStops(package, packageRoutes, root);
         root.Remove("routeDirections");
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", packageRoutes);
+        RoutePathDraftRepository.NormalizeDraftKeysToCanonical(root);
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", packageRoutes);
         RouteOperatingDaysEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDaysByRoute);
         RouteDateRangeEditor.SaveToRoot(root, packageRoutes, package.RouteDateRangesByRoute);
+        RouteOperatingDatesEditor.SaveToRoot(root, packageRoutes, package.RouteOperatingDatesByRoute);
         RouteInteriorDisplayDestinationEditor.SaveToRoot(
             root,
             packageRoutes,
@@ -423,11 +429,16 @@ public static class GpsAnsagenRouteExportSync
         RoutePackagePhoneMetadata.SaveOutsideDisplays(root, package.OutsideDisplays);
     }
 
-    private static void ApplyLiteVehicleUpdateMetadata(JsonObject root)
+    private static void ApplyLiteVehicleUpdateMetadata(
+        JsonObject root,
+        bool replaceLineCourseRoutes)
     {
         StripLiteVehicleUpdateFields(root);
         root["exportProfile"] = LiteExportProfile;
         root["skipEmbeddedSounds"] = true;
+        // true: vollständiger Lite-Katalog oder Senden (Allowlist) – App ersetzt lineCourseRoutes.
+        // false: Teil-Update – mergen, sonst verschwinden Geschwisterfahrten derselben Linie/Kurs.
+        root["replaceLineCourseRoutes"] = replaceLineCourseRoutes;
     }
 
     private static void StripLiteVehicleUpdateFields(JsonObject root)
@@ -454,6 +465,7 @@ public static class GpsAnsagenRouteExportSync
                 package.RouteInteriorDisplayDestinationsByRoute);
             SyncRouteStops(package, routesToExport, root, replaceAll: true);
             RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", routesToExport);
+            RoutePathDraftRepository.NormalizeDraftKeysToCanonical(root);
             RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", routesToExport);
         }
         else
