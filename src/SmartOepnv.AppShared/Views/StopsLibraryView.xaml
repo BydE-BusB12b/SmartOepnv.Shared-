@@ -6,11 +6,14 @@
 
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
 
+             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
+
              VerticalAlignment="Stretch"
 
              HorizontalAlignment="Stretch">
 
     <UserControl.Resources>
+        <conv:RouteLineCourseTripFirstConverter x:Key="RouteLineCourseTripFirstConverter" />
         <Style x:Key="StopsLibrarySaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
@@ -82,22 +85,35 @@
                        IsOpen="{TemplateBinding IsDropDownOpen}"
                        PopupAnimation="Slide"
                        Focusable="False">
-                    <Grid MinWidth="280"
+                    <Grid MinWidth="360"
                           MaxHeight="{TemplateBinding MaxDropDownHeight}">
                         <Border Background="{StaticResource SmartPrimaryDarkBrush}"
                                 BorderBrush="{StaticResource SmartAccentBrush}"
                                 BorderThickness="1"
                                 CornerRadius="0,0,2,2" />
-                        <ScrollViewer Margin="1"
-                                      SnapsToDevicePixels="True"
-                                      HorizontalScrollBarVisibility="Disabled"
-                                      VerticalScrollBarVisibility="Visible"
-                                      CanContentScroll="False">
-                            <ScrollViewer.Resources>
-                                <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
-                            </ScrollViewer.Resources>
-                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
-                        </ScrollViewer>
+                        <DockPanel Margin="1">
+                            <TextBox DockPanel.Dock="Top"
+                                     Margin="6,6,6,4"
+                                     Padding="6,4"
+                                     Background="#FF0D47A1"
+                                     Foreground="White"
+                                     CaretBrush="White"
+                                     BorderBrush="{StaticResource SmartAccentBrush}"
+                                     BorderThickness="1"
+                                     materialDesign:HintAssist.Hint="Suchen (Linie, Kurs, Fahrt, Name)"
+                                     materialDesign:HintAssist.Foreground="#BBDEFB"
+                                     materialDesign:TextFieldAssist.UnderlineBrush="{StaticResource SmartAccentBrush}"
+                                     Text="{Binding DataContext.RouteAssignSearchQuery, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                            <ScrollViewer SnapsToDevicePixels="True"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          VerticalScrollBarVisibility="Visible"
+                                          CanContentScroll="False">
+                                <ScrollViewer.Resources>
+                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
+                                </ScrollViewer.Resources>
+                                <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                            </ScrollViewer>
+                        </DockPanel>
                     </Grid>
                 </Popup>
             </Grid>
@@ -119,11 +135,11 @@
             <Setter Property="ItemTemplate">
                 <Setter.Value>
                     <DataTemplate>
-                        <TextBlock Text="{Binding}"
+                        <TextBlock Text="{Binding Converter={StaticResource RouteLineCourseTripFirstConverter}}"
                                    Foreground="White"
                                    TextWrapping="Wrap"
-                                   MaxWidth="360"
-                                   ToolTip="{Binding}" />
+                                   MaxWidth="420"
+                                   ToolTip="{Binding Converter={StaticResource RouteLineCourseTripFirstConverter}}" />
                     </DataTemplate>
                 </Setter.Value>
             </Setter>
@@ -403,14 +419,14 @@
                                           VerticalAlignment="Center" />
 
                                 <TextBlock Grid.Column="2"
-                                           Text="{Binding DataContext.SelectedRouteForInsert, RelativeSource={RelativeSource AncestorType=UserControl}, TargetNullValue='— Route wählen —'}"
+                                           Text="{Binding DataContext.SelectedRouteForInsert, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource RouteLineCourseTripFirstConverter}, TargetNullValue='— Route wählen —'}"
                                            TextWrapping="Wrap"
                                            VerticalAlignment="Center"
                                            Margin="0,0,0,6"
                                            FontSize="13"
                                            FontWeight="SemiBold"
                                            Foreground="White"
-                                           ToolTip="{Binding DataContext.SelectedRouteForInsert, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                           ToolTip="{Binding DataContext.SelectedRouteForInsert, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource RouteLineCourseTripFirstConverter}}" />
 
                             </Grid>
 

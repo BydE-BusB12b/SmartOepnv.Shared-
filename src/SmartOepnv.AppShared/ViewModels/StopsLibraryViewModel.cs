@@ -19,13 +19,16 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     private const int SuccessFeedbackMs = 5000;
 
     private readonly List<ManagedStopTemplateItem> _allTemplates = [];
+    private readonly List<string> _allRoutes = [];
     private readonly EditorAreaSyncState _sync = new();
     private readonly SearchQueryDebouncer _searchDebouncer;
+    private readonly SearchQueryDebouncer _routeAssignSearchDebouncer;
     private string? _loadedFingerprint;
     private CancellationTokenSource? _saveButtonFeedbackCts;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private string searchQuery = string.Empty;
+    [ObservableProperty] private string routeAssignSearchQuery = string.Empty;
     [ObservableProperty] private ManagedStopTemplateItem? selectedTemplate;
     [ObservableProperty] private string? selectedRouteForInsert;
     [ObservableProperty] private string selectedAnnouncementCoordinates = string.Empty;
@@ -38,12 +41,15 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
     private bool _syncingCoordinates;
 
+    private bool _suppressRouteAssignSearchChanged;
+
     public ObservableCollection<ManagedStopTemplateItem> FilteredTemplates { get; } = [];
     public ObservableCollection<string> AvailableRoutes { get; } = [];
 
     public StopsLibraryViewModel()
     {
         _searchDebouncer = new SearchQueryDebouncer(ApplyFilter);
+        _routeAssignSearchDebouncer = new SearchQueryDebouncer(ApplyRouteAssignFilter);
         if (AppServices.IsInitialized)
         {
             AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
@@ -68,7 +74,17 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     {
         _allTemplates.Clear();
         FilteredTemplates.Clear();
+        _allRoutes.Clear();
         AvailableRoutes.Clear();
+        _suppressRouteAssignSearchChanged = true;
+        try
+        {
+            RouteAssignSearchQuery = string.Empty;
+        }
+        finally
+        {
+            _suppressRouteAssignSearchChanged = false;
+        }
         SelectedTemplate = null;
         SelectedRouteForInsert = null;
 
@@ -79,11 +95,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             return;
         }
 
-        foreach (var route in editor.RouteNames)
-        {
-            AvailableRoutes.Add(route);
-        }
-
+        _allRoutes.AddRange(editor.RouteNames);
+        ApplyRouteAssignFilter();
         SelectedRouteForInsert = AvailableRoutes.FirstOrDefault();
 
         var fromManaged = 0;
@@ -275,6 +288,16 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
     partial void OnSearchQueryChanged(string value) => _searchDebouncer.Schedule();
 
+    partial void OnRouteAssignSearchQueryChanged(string value)
+    {
+        if (_suppressRouteAssignSearchChanged)
+        {
+            return;
+        }
+
+        _routeAssignSearchDebouncer.Schedule();
+    }
+
     partial void OnSelectedTemplateChanged(ManagedStopTemplateItem? value)
     {
         InsertIntoRouteButtonIsSuccess = false;
@@ -431,7 +454,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         // Nach erstem Anlegen: Listen/Status aktualisieren (z. B. neuer Betrieb).
-        if (AvailableRoutes.Count == 0 && _allTemplates.Count == 0)
+        if (_allRoutes.Count == 0 && _allTemplates.Count == 0)
         {
             RefreshFromEditor();
         }
@@ -1125,6 +1148,56 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         {
             MarkDirty();
         }
+    }
+
+    private void ApplyRouteAssignFilter()
+    {
+        var selected = SelectedRouteForInsert;
+        var query = RouteAssignSearchQuery.Trim();
+        AvailableRoutes.Clear();
+
+        IEnumerable<string> source = _allRoutes;
+        if (!string.IsNullOrEmpty(query))
+        {
+            source = _allRoutes.Where(route => RouteMatchesAssignSearch(route, query));
+        }
+
+        foreach (var route in RouteDisplayHelper.SortRoutesByLineCourseAndTrip(source))
+        {
+            AvailableRoutes.Add(route);
+        }
+
+        // Auswahl behalten, auch wenn die Suche sie ausblendet (sonst leert die ComboBox die Bindung).
+        if (!string.IsNullOrEmpty(selected) && !AvailableRoutes.Contains(selected))
+        {
+            AvailableRoutes.Insert(0, selected);
+        }
+
+        if (!string.IsNullOrEmpty(selected) && AvailableRoutes.Contains(selected))
+        {
+            SelectedRouteForInsert = selected;
+        }
+    }
+
+    private static bool RouteMatchesAssignSearch(string routeKey, string query)
+    {
+        var definition = RouteDisplayHelper.Parse(routeKey);
+        var display = RouteDisplayHelper.ToLineCourseTripFirstDisplayString(routeKey);
+        var haystack = string.Join(' ',
+            routeKey,
+            display,
+            definition.Name,
+            definition.LineCourse,
+            definition.TripNumber,
+            definition.PassengerDisplayLine);
+
+        var tokens = query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0)
+        {
+            return true;
+        }
+
+        return tokens.All(token => haystack.Contains(token, StringComparison.OrdinalIgnoreCase));
     }
 
     private void ApplyFilter()
