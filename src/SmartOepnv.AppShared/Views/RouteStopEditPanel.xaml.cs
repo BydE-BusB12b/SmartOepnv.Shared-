@@ -37,7 +37,9 @@ public partial class RouteStopEditPanel : UserControl
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(RoutesViewModel.SelectedLineCourseTrip))
+        if (e.PropertyName is nameof(RoutesViewModel.SelectedLineCourseTrip)
+            or nameof(RoutesViewModel.IsStartStop)
+            or nameof(RoutesViewModel.ShowStartStopFields))
         {
             SyncComboSelectionsFromViewModel();
         }
@@ -58,7 +60,8 @@ public partial class RouteStopEditPanel : UserControl
 
         if (DataContext is RoutesViewModel viewModel)
         {
-            // Zielwahl inkl. DestinationId (Anzeige liest ID bevorzugt)
+            // Zielwahl inkl. DestinationId (Anzeige liest ID bevorzugt).
+            // Ohne Starthaltestelle: Start-Ziele nicht aus (sichtbar versteckten) Combos zurückschreiben.
             foreach (var combo in EnumerateDestinationCombos())
             {
                 if (combo.Tag is not string fieldKey)
@@ -66,10 +69,26 @@ public partial class RouteStopEditPanel : UserControl
                     continue;
                 }
 
+                if (!viewModel.IsStartStop && IsStartDestinationField(fieldKey))
+                {
+                    viewModel.ApplyDestinationComboSelection(
+                        fieldKey,
+                        RouteStopEditorCatalog.NoDestinationLabel);
+                    continue;
+                }
+
                 viewModel.ApplyDestinationComboSelection(fieldKey, ResolveComboSelection(combo));
             }
 
-            viewModel.MaintainStartStopMarkerAfterEdit();
+            if (viewModel.IsStartStop)
+            {
+                viewModel.MaintainStartStopMarkerAfterEdit();
+            }
+            else
+            {
+                RouteStopEditorCatalog.ClearStartStopFields(stop);
+            }
+
             viewModel.NotifyStopEditorStateChanged();
             return;
         }
@@ -84,6 +103,9 @@ public partial class RouteStopEditPanel : UserControl
             ApplyDestinationToStop(stop, fieldKey, ResolveComboSelection(combo));
         }
     }
+
+    private static bool IsStartDestinationField(string fieldKey) =>
+        fieldKey.StartsWith("start", StringComparison.Ordinal);
 
     public void SyncComboSelectionsFromStop(RouteStopItem stop)
     {

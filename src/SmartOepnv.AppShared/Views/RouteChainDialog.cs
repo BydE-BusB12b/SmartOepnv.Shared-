@@ -18,10 +18,13 @@ public sealed class RouteChainDialog : Window
     private static readonly Brush AccentBrush = new SolidColorBrush(Color.FromRgb(0x4F, 0xC3, 0xF7));
 
     private readonly EditableRoutePackage _editor;
+    private readonly Action? _onPackageChanged;
     private readonly TextBox _lineCourseBox;
     private readonly TextBox _dateFromBox;
     private readonly TextBox _dateToBox;
     private readonly TextBlock _resultCountText;
+    private readonly TextBlock _validityText;
+    private readonly Button _changeValidityButton;
     private readonly ListBox _tripList;
     private readonly TextBlock _errorText;
     private readonly StackPanel _chainPanel;
@@ -30,9 +33,13 @@ public sealed class RouteChainDialog : Window
     private RouteChainPlanner.ChainCheckFilter _activeFilter = RouteChainPlanner.ChainCheckFilter.None;
     private bool _formattingLineCourse;
 
-    public RouteChainDialog(EditableRoutePackage editor, string? initialLineCourse = null)
+    public RouteChainDialog(
+        EditableRoutePackage editor,
+        string? initialLineCourse = null,
+        Action? onPackageChanged = null)
     {
         _editor = editor;
+        _onPackageChanged = onPackageChanged;
 
         Title = "Routenschnur & Fahrplan";
         Width = 720;
@@ -152,9 +159,39 @@ public sealed class RouteChainDialog : Window
         {
             Foreground = MutedForeground,
             FontSize = 12,
-            Margin = new Thickness(0, 0, 0, 6)
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center
         };
-        root.Children.Add(_resultCountText);
+
+        _validityText = new TextBlock
+        {
+            Foreground = AccentBrush,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 4, 12, 0)
+        };
+
+        _changeValidityButton = new Button
+        {
+            Content = "Gültigkeit ändern",
+            Padding = new Thickness(12, 6, 12, 6),
+            Margin = new Thickness(0, 4, 0, 0),
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Collapsed,
+            ToolTip = "Verkehrstage und Gültigkeit von/bis für alle Fahrten der ausgewählten Routenschnur setzen"
+        };
+        _changeValidityButton.Click += (_, _) => ChangeChainValidity();
+
+        var resultRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6), LastChildFill = true };
+        DockPanel.SetDock(_changeValidityButton, Dock.Right);
+        resultRow.Children.Add(_changeValidityButton);
+        var resultTexts = new StackPanel();
+        resultTexts.Children.Add(_resultCountText);
+        resultTexts.Children.Add(_validityText);
+        resultRow.Children.Add(resultTexts);
+        root.Children.Add(resultRow);
 
         root.Children.Add(MakeLabel("Fahrten (zeitlich sortiert):"));
         _tripList = new ListBox
@@ -167,7 +204,11 @@ public sealed class RouteChainDialog : Window
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x33, 0x55, 0x77)),
             BorderThickness = new Thickness(1)
         };
-        _tripList.SelectionChanged += (_, _) => UpdateChainPreview();
+        _tripList.SelectionChanged += (_, _) =>
+        {
+            UpdateChainPreview();
+            UpdateValiditySummary();
+        };
         root.Children.Add(_tripList);
 
         root.Children.Add(MakeLabel("Verbundene Routenschnur:"));
@@ -267,6 +308,7 @@ public sealed class RouteChainDialog : Window
             _activeFilter = RouteChainPlanner.ChainCheckFilter.None;
             _tripList.ItemsSource = null;
             _resultCountText.Text = string.Empty;
+            ClearValidityUi();
             _chainPanel.Children.Clear();
             return;
         }
@@ -277,6 +319,7 @@ public sealed class RouteChainDialog : Window
             _activeFilter = RouteChainPlanner.ChainCheckFilter.None;
             _tripList.ItemsSource = null;
             _resultCountText.Text = string.Empty;
+            ClearValidityUi();
             _chainPanel.Children.Clear();
             return;
         }
@@ -289,15 +332,264 @@ public sealed class RouteChainDialog : Window
             ShowError($"Keine Fahrten für Linie/Kurs {lineCourse} im Zeitraum {period}.");
             _tripList.ItemsSource = null;
             _resultCountText.Text = "0 Fahrten";
+            ClearValidityUi();
             _chainPanel.Children.Clear();
             return;
         }
 
         _resultCountText.Text =
-            $"{_trips.Count} Fahrt(en) für Linie/Kurs {lineCourse} · {FormatFilterSummary(filter)}";
+            $"{_trips.Count} Fahrt(en) für Linie/Kurs {lineCourse} · Prüfzeitraum {FormatFilterSummary(filter)}";
         _tripList.ItemsSource = _trips.Select(FormatTripListItem).ToList();
         _tripList.SelectedIndex = 0;
         UpdateChainPreview();
+        UpdateValiditySummary();
+    }
+
+    private void ClearValidityUi()
+    {
+        _validityText.Text = string.Empty;
+        _changeValidityButton.Visibility = Visibility.Collapsed;
+    }
+
+    private IReadOnlyList<string> GetSelectedChainRouteKeys()
+    {
+        if (_tripList.SelectedIndex < 0 || _tripList.SelectedIndex >= _trips.Count)
+        {
+            return [];
+        }
+
+        var selected = _trips[_tripList.SelectedIndex];
+        return RouteChainPlanner.BuildConnectedRouteChain(_editor, selected.RouteKey, _activeFilter);
+    }
+
+    private void UpdateValiditySummary()
+    {
+        var chainKeys = GetSelectedChainRouteKeys();
+        if (chainKeys.Count == 0)
+        {
+            ClearValidityUi();
+            return;
+        }
+
+        _changeValidityButton.Visibility = Visibility.Visible;
+        _changeValidityButton.IsEnabled = true;
+
+        var dateLabels = chainKeys
+            .Select(key =>
+            {
+                var range = _editor.GetRouteDateRange(key);
+                var text = RouteDateRange.FormatDisplay(range);
+                return string.IsNullOrWhiteSpace(text) ? "unbegrenzt" : text;
+            })
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var dayLabels = chainKeys
+            .Select(key =>
+            {
+                var days = _editor.GetRouteOperatingDays(key);
+                return RouteOperatingDaysEditor.IsConfiguredForAllDays(days)
+                    ? "alle Tage"
+                    : DutyOperatingDayHelper.FormatDisplay(days);
+            })
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var datePart = dateLabels.Count == 1
+            ? dateLabels[0]
+            : $"unterschiedlich (Startfahrt: {FormatRouteValidityDate(chainKeys[0])})";
+        var daysPart = dayLabels.Count == 1
+            ? dayLabels[0]
+            : $"unterschiedlich (Startfahrt: {FormatRouteValidityDays(chainKeys[0])})";
+
+        _validityText.Text =
+            $"Gültigkeit der Schnur ({chainKeys.Count} Fahrt/en): {datePart} · Verkehrstage: {daysPart}";
+    }
+
+    private string FormatRouteValidityDate(string routeKey)
+    {
+        var text = RouteDateRange.FormatDisplay(_editor.GetRouteDateRange(routeKey));
+        return string.IsNullOrWhiteSpace(text) ? "unbegrenzt" : text;
+    }
+
+    private string FormatRouteValidityDays(string routeKey)
+    {
+        var days = _editor.GetRouteOperatingDays(routeKey);
+        return RouteOperatingDaysEditor.IsConfiguredForAllDays(days)
+            ? "alle Tage"
+            : DutyOperatingDayHelper.FormatDisplay(days);
+    }
+
+    private void ChangeChainValidity()
+    {
+        _errorText.Visibility = Visibility.Collapsed;
+        var chainKeys = GetSelectedChainRouteKeys();
+        if (chainKeys.Count == 0)
+        {
+            ShowError("Bitte zuerst eine Fahrt mit Routenschnur auswählen.");
+            return;
+        }
+
+        var seedKey = chainKeys[0];
+        var seedDays = _editor.GetRouteOperatingDays(seedKey);
+        var seedRange = _editor.GetRouteDateRange(seedKey);
+
+        var dialog = new Window
+        {
+            Title = "Gültigkeit der Routenschnur ändern",
+            Width = 480,
+            MinWidth = 420,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            Background = PanelBackground,
+            ResizeMode = ResizeMode.NoResize
+        };
+        WindowTitleBarHelper.ApplyDarkWindowBackground(dialog);
+        WindowTitleBarHelper.ApplySmartOepnvTitleBar(dialog);
+
+        var root = new StackPanel { Margin = new Thickness(20) };
+        root.Children.Add(new TextBlock
+        {
+            Text = $"Änderung gilt für alle {chainKeys.Count} verknüpften Fahrten der Routenschnur " +
+                   "(Reihenfolge wie unten in der Vorschau).",
+            Foreground = MutedForeground,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+
+        root.Children.Add(MakeLabel("Verkehrstage"));
+        var dayWrap = new WrapPanel { Margin = new Thickness(0, 0, 0, 12) };
+        var dayChecks = new List<CheckBox>();
+        var effectiveSeedDays = RouteOperatingDaysEditor.IsConfiguredForAllDays(seedDays)
+            ? RouteOperatingDaysEditor.AllDays.ToHashSet()
+            : seedDays;
+        foreach (var (day, name) in DutyOperatingDayHelper.AllDays)
+        {
+            var check = new CheckBox
+            {
+                Content = name,
+                IsChecked = effectiveSeedDays.Contains(day),
+                Tag = day,
+                Foreground = Brushes.White,
+                Margin = new Thickness(0, 0, 12, 4)
+            };
+            dayChecks.Add(check);
+            dayWrap.Children.Add(check);
+        }
+
+        root.Children.Add(dayWrap);
+
+        root.Children.Add(MakeLabel("Gültigkeit von / bis (optional)"));
+        root.Children.Add(new TextBlock
+        {
+            Text = "TT.MM.JJJJ – leer lassen = unbegrenzt",
+            Foreground = MutedForeground,
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+
+        var editDateGrid = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+        editDateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        editDateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        editDateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var fromBox = MakeDateInput(
+            "von",
+            seedRange.From is { } fromDate ? RouteDateRange.FormatDate(fromDate) : string.Empty);
+        var toBox = MakeDateInput(
+            "bis",
+            seedRange.To is { } toDate ? RouteDateRange.FormatDate(toDate) : string.Empty);
+        Grid.SetColumn(fromBox, 0);
+        Grid.SetColumn(toBox, 2);
+        editDateGrid.Children.Add(fromBox);
+        editDateGrid.Children.Add(toBox);
+        root.Children.Add(editDateGrid);
+
+        var localError = new TextBlock
+        {
+            Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x80)),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8),
+            Visibility = Visibility.Collapsed
+        };
+        root.Children.Add(localError);
+
+        var bar = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        var cancel = new Button
+        {
+            Content = "Abbrechen",
+            Padding = new Thickness(16, 8, 16, 8),
+            Margin = new Thickness(0, 0, 8, 0),
+            IsCancel = true,
+            Cursor = Cursors.Hand
+        };
+        cancel.Click += (_, _) =>
+        {
+            dialog.DialogResult = false;
+            dialog.Close();
+        };
+        var save = new Button
+        {
+            Content = "Übernehmen",
+            Padding = new Thickness(16, 8, 16, 8),
+            IsDefault = true,
+            Cursor = Cursors.Hand
+        };
+        save.Click += (_, _) =>
+        {
+            var selectedDays = dayChecks
+                .Where(c => c.IsChecked == true && c.Tag is DutyOperatingDay)
+                .Select(c => (DutyOperatingDay)c.Tag!)
+                .ToHashSet();
+            if (selectedDays.Count == 0)
+            {
+                localError.Text = "Bitte mindestens einen Verkehrstag auswählen.";
+                localError.Visibility = Visibility.Visible;
+                return;
+            }
+
+            if (!RouteDateRange.TryParse(fromBox.Text, toBox.Text, out var range))
+            {
+                localError.Text = "Ungültige Gültigkeit – Format TT.MM.JJJJ, von ≤ bis (oder beide leer).";
+                localError.Visibility = Visibility.Visible;
+                return;
+            }
+
+            foreach (var routeKey in chainKeys)
+            {
+                _editor.SetRouteOperatingDays(routeKey, selectedDays);
+                _editor.SetRouteDateRange(routeKey, range.IsRestricted ? range : null);
+            }
+
+            _onPackageChanged?.Invoke();
+            dialog.DialogResult = true;
+            dialog.Close();
+        };
+        bar.Children.Add(cancel);
+        bar.Children.Add(save);
+        root.Children.Add(bar);
+        dialog.Content = root;
+
+        if (dialog.ShowDialog() == true)
+        {
+            // Liste neu filtern – geänderte Gültigkeit kann Fahrten aus dem Prüfzeitraum nehmen
+            var selectedKey = _trips[_tripList.SelectedIndex].RouteKey;
+            SearchTrips();
+            var newIndex = _trips.ToList().FindIndex(t =>
+                string.Equals(t.RouteKey, selectedKey, StringComparison.OrdinalIgnoreCase));
+            if (newIndex >= 0)
+            {
+                _tripList.SelectedIndex = newIndex;
+            }
+
+            UpdateValiditySummary();
+            UpdateChainPreview();
+        }
     }
 
     private static string FormatFilterSummary(RouteChainPlanner.ChainCheckFilter filter)
@@ -376,7 +668,7 @@ public sealed class RouteChainDialog : Window
         }
     }
 
-    private static Border BuildSegmentCard(RouteChainPlanner.ChainSegment segment)
+    private Border BuildSegmentCard(RouteChainPlanner.ChainSegment segment)
     {
         var card = new Border
         {
@@ -404,9 +696,16 @@ public sealed class RouteChainDialog : Window
             meta.Add($"Start {segment.StartTimeDisplay}");
         }
 
+        var validity = FormatRouteValidityDate(segment.RouteKey);
+        meta.Add($"Gültig: {validity}");
+
         if (!string.IsNullOrWhiteSpace(segment.OperatingDaysDisplay))
         {
             meta.Add($"Verkehr: {segment.OperatingDaysDisplay}");
+        }
+        else
+        {
+            meta.Add($"Verkehr: {FormatRouteValidityDays(segment.RouteKey)}");
         }
 
         if (!string.IsNullOrWhiteSpace(segment.RouteChangeTo))

@@ -959,7 +959,18 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
                 }
             }
 
-            var dialog = new RouteChainDialog(editor, initialLineCourse) { Owner = owner };
+            var dialog = new RouteChainDialog(
+                editor,
+                initialLineCourse,
+                onPackageChanged: () =>
+                {
+                    _sync.MarkDirty();
+                    LoadRouteOperatingDaysForSelection(SelectedRoute);
+                    LoadRouteDateRangeForSelection(SelectedRoute);
+                })
+            {
+                Owner = owner
+            };
             dialog.ShowDialog();
         }
         catch (Exception ex)

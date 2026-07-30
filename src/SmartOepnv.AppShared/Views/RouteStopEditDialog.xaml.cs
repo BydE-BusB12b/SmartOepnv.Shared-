@@ -62,7 +62,16 @@ public partial class RouteStopEditDialog : Window
     {
         FlushPendingFieldBindings(EditPanel, includeComboBoxes: false);
         EditPanel.ApplyComboSelectionsToStop(_stop);
-        _viewModel.MaintainStartStopMarkerAfterEdit();
+        // ApplyComboSelections pflegt Startziele/Marker; ohne Starthaltestelle Felder leer halten
+        if (!_viewModel.IsStartStop)
+        {
+            RouteStopEditorCatalog.ClearStartStopFields(_stop);
+        }
+        else
+        {
+            _viewModel.MaintainStartStopMarkerAfterEdit();
+        }
+
         _viewModel.StopDetailEditedCommand.Execute(null);
         _viewModel.SaveChangesCommand.Execute(null);
         // RefreshStopAfterEdit macht RoutesView nach ShowDialog – hier nicht doppelt.

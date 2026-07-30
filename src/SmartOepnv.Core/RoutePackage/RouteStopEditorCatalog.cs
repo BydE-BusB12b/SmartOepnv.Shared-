@@ -46,20 +46,16 @@ public static class RouteStopEditorCatalog
 
     public static void ClearStartStopFields(RouteStopItem stop)
     {
-        if (IsStartStopPlaceholder(stop.Destination))
-        {
-            stop.Destination = string.Empty;
-        }
-        else
-        {
-            stop.Destination = string.Empty;
-        }
-
         stop.Destination = string.Empty;
+        stop.DestinationId = string.Empty;
         stop.Ds021NeuDestination = string.Empty;
+        stop.Ds021NeuDestinationId = string.Empty;
         stop.FmaS1Destination = string.Empty;
+        stop.FmaS1DestinationId = string.Empty;
         stop.Ds003aDestination = string.Empty;
+        stop.Ds003aDestinationId = string.Empty;
         stop.ZielnummerDestination = string.Empty;
+        stop.ZielnummerDestinationId = string.Empty;
         stop.LineNumber = string.Empty;
     }
 
