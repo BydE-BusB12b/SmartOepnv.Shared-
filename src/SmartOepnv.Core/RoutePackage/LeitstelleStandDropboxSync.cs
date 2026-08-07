@@ -1,9 +1,11 @@
 using SmartOepnv.Core.Dropbox;
+using SmartOepnv.Core.RoutePath;
 
 namespace SmartOepnv.Core.RoutePackage;
 
 /// <summary>
-/// Planer: <c>leitstelle_stand.json</c> nach Dropbox (beim Speichern/Beenden automatisch).
+/// Planer: <c>leitstelle_stand.json</c> + <c>leitstelle_routes.json</c> nach Dropbox
+/// („Für Leitstelle speichern“). Nicht <c>routes_update.json</c> – das bleibt Fahrzeug-only.
 /// </summary>
 public static class LeitstelleStandDropboxSync
 {
@@ -18,25 +20,47 @@ public static class LeitstelleStandDropboxSync
 
         if (!AppServices.Routes.HasPackage || AppServices.Routes.Editor is null)
         {
-            return new ExportResult(false, "Kein Paket geladen – leitstelle_stand.json übersprungen.");
+            return new ExportResult(false, "Kein Paket geladen – Leitstelle-Stand übersprungen.");
         }
 
         if (!AppServices.Dropbox.Settings.IsConnected)
         {
-            return new ExportResult(false, "Dropbox nicht verbunden – leitstelle_stand.json nicht hochgeladen.");
+            return new ExportResult(false, "Dropbox nicht verbunden – Leitstelle-Stand nicht hochgeladen.");
         }
 
         try
         {
-            var json = AppServices.Routes.BuildLeitstelleStandJson();
-            await AppServices.Dropbox.UploadLeitstelleStandAsync(json, ct).ConfigureAwait(false);
+            AppServices.FlushAllPendingEditsBestEffort();
+
+            var standJson = AppServices.Routes.BuildLeitstelleStandJson();
+            await AppServices.Dropbox.UploadLeitstelleStandAsync(standJson, ct).ConfigureAwait(false);
+
+            // Eigene Datei nur für die Leitstelle – Fahrzeuge importieren routes_update.json, nicht diese.
+            var liteJson = AppServices.Routes.PrepareFullLiteVehicleUpdateJson();
+            // Volle Karten-Overviews aus Drafts – nicht die ggf. unvollständigen Cache-Einträge im PackageRoot.
+            if (AppServices.Routes.Editor is { } editor)
+            {
+                var liteRoot = System.Text.Json.Nodes.JsonNode.Parse(liteJson)?.AsObject();
+                if (liteRoot is not null)
+                {
+                    liteRoot[LeitstelleRoutePathOverview.OverviewsKey] =
+                        LeitstelleRoutePathOverview.BuildOverviewsObject(editor);
+                    liteJson = liteRoot.ToJsonString();
+                }
+            }
+
+            await AppServices.Dropbox
+                .UploadNamedFileAsync(DropboxConstants.LeitstelleRoutesFileName, liteJson, ct)
+                .ConfigureAwait(false);
+
             return new ExportResult(
                 true,
-                $"Leitstelle-Stand in Dropbox gespeichert ({DropboxConstants.LeitstelleStandFileName}).");
+                $"Leitstelle gespeichert: {DropboxConstants.LeitstelleStandFileName} + " +
+                $"{DropboxConstants.LeitstelleRoutesFileName} (Routen, Haltestellen, Fahrwege – ohne Fahrzeug-Update).");
         }
         catch (Exception ex)
         {
-            return new ExportResult(false, $"Leitstelle-Stand-Export fehlgeschlagen: {ex.Message}");
+            return new ExportResult(false, $"Leitstelle-Export fehlgeschlagen: {ex.Message}");
         }
     }
 

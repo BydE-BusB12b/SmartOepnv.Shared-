@@ -111,7 +111,7 @@ public static class GpsAnsagenRouteExportSync
     {
         var needsEndStopAudio = package.StopsByRoute.Values
             .SelectMany(stops => stops)
-            .Any(s => s.IsEndStop && s.PlayEndStopAnnouncement);
+            .Any(s => s.PlayEndStopAnnouncement);
 
         if (!needsEndStopAudio)
         {
@@ -135,6 +135,8 @@ public static class GpsAnsagenRouteExportSync
 
     /// <summary>
     /// Legt fehlende Ansagen-Töne aus dem Workspace in <c>embeddedSounds</c> ab (Sonderansagen inkl.).
+    /// Fehlt die referenzierte Datei, wird der Ton der verknüpften Haltestellen-Vorlage verwendet
+    /// (z. B. Ansage 0162 → Stop-Vorlage 00138 mit 0081_…_zusammen.wav).
     /// </summary>
     private static void EnsureAnnouncementSoundsFromWorkspace(
         JsonObject root,
@@ -154,6 +156,21 @@ public static class GpsAnsagenRouteExportSync
                 string.IsNullOrWhiteSpace(template.EmbeddedSoundFileName))
             {
                 template.EmbeddedSoundFileName = name;
+            }
+
+            // Expliziter Dateiname existiert nicht → Ton der verknüpften Haltestellen-Vorlage
+            if (!string.IsNullOrWhiteSpace(name) &&
+                !existing.ContainsKey(name) &&
+                PlanerEmbeddedSoundsWorkspace.TryGetLocalFilePath(workspace, name) is null &&
+                (string.IsNullOrWhiteSpace(template.LocalAudioPath) || !File.Exists(template.LocalAudioPath)))
+            {
+                var fallback = TryResolveSoundFromLinkedStopTemplate(package, template);
+                if (!string.IsNullOrWhiteSpace(fallback) &&
+                    !string.Equals(fallback, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    template.EmbeddedSoundFileName = fallback;
+                    name = fallback;
+                }
             }
 
             if (string.IsNullOrWhiteSpace(name) || existing.ContainsKey(name))
@@ -182,6 +199,22 @@ public static class GpsAnsagenRouteExportSync
                 // Einzelne Datei überspringen
             }
         }
+    }
+
+    private static string? TryResolveSoundFromLinkedStopTemplate(
+        EditableRoutePackage package,
+        ManagedAnnouncementTemplateItem announcement)
+    {
+        var stopId = announcement.StopTemplateId?.Trim() ?? string.Empty;
+        if (stopId.Length == 0)
+        {
+            return null;
+        }
+
+        var stop = package.StopTemplates.FirstOrDefault(t =>
+            string.Equals(t.Id?.Trim(), stopId, StringComparison.OrdinalIgnoreCase));
+        var fileName = stop?.EmbeddedSoundFileName?.Trim();
+        return string.IsNullOrWhiteSpace(fileName) ? null : fileName;
     }
 
     private static void SyncRoutesAndLineCourse(

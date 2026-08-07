@@ -1,8 +1,12 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.IO;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
+using SmartOepnv.AppShared.Pdf;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
 
@@ -23,7 +27,9 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     private bool _committingChanges;
     private int _loadedRevision = -1;
     private OutsideDisplayProgram? _subscribedOutsideProgram;
+    private string? _selectedProgramIdSnapshot;
     private bool _isSortingPrograms;
+    private bool _suppressIdCollisionCheck;
     private CancellationTokenSource? _saveFeedbackCts;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
@@ -98,6 +104,11 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         SortOutsidePrograms();
+
+        if (OutsideDisplayId.AssignUniqueFourDigitIds(OutsidePrograms))
+        {
+            MarkDirty();
+        }
 
         SelectedHint = DateBasedHints.FirstOrDefault();
         SelectedOutsideProgram = OutsidePrograms.FirstOrDefault();
@@ -219,6 +230,47 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         _hasUnsavedChanges = true;
     }
 
+    /// <summary>false = ID zurückgesetzt (Kollision).</summary>
+    private bool EnforceUniqueDestinationId(OutsideDisplayProgram program)
+    {
+        if (!OutsideDisplayId.IsFourDigit(program.Id))
+        {
+            return true;
+        }
+
+        var clash = OutsidePrograms.Any(p =>
+            !ReferenceEquals(p, program) &&
+            string.Equals(p.Id, program.Id, StringComparison.Ordinal));
+        if (!clash)
+        {
+            _selectedProgramIdSnapshot = program.Id;
+            return true;
+        }
+
+        StatusMessage = $"ID {program.Id} ist bereits vergeben – bitte eine freie Nummer wählen.";
+        var restore = OutsideDisplayId.IsFourDigit(_selectedProgramIdSnapshot)
+            ? _selectedProgramIdSnapshot!
+            : OutsideDisplayId.NewUniqueId(
+                OutsidePrograms.Where(p => !ReferenceEquals(p, program)).Select(p => p.Id));
+
+        if (string.Equals(program.Id, restore, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        _suppressIdCollisionCheck = true;
+        try
+        {
+            program.Id = restore;
+        }
+        finally
+        {
+            _suppressIdCollisionCheck = false;
+        }
+
+        return false;
+    }
+
     partial void OnSelectedOutsideProgramChanged(OutsideDisplayProgram? value)
     {
         if (_subscribedOutsideProgram is not null)
@@ -227,6 +279,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         _subscribedOutsideProgram = value;
+        _selectedProgramIdSnapshot = value?.Id;
         SelectedWechseltextIndex = 0;
 
         if (value is not null)
@@ -345,6 +398,17 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             return;
         }
 
+        if (!_committingChanges &&
+            !_suppressIdCollisionCheck &&
+            sender is OutsideDisplayProgram program &&
+            e.PropertyName is nameof(OutsideDisplayProgram.Id) or nameof(OutsideDisplayProgram.IdEditText))
+        {
+            if (!EnforceUniqueDestinationId(program))
+            {
+                return;
+            }
+        }
+
         if (!_committingChanges)
         {
             MarkDirty();
@@ -458,6 +522,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         var program = OutsideDisplayProgram.CreateDs021t($"Ziel {OutsidePrograms.Count + 1}");
+        program.Id = OutsideDisplayId.NewUniqueId(OutsidePrograms.Select(p => p.Id));
         OutsidePrograms.Add(program);
         SortOutsidePrograms();
         SelectedOutsideProgram = program;
@@ -474,6 +539,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         var program = OutsideDisplayProgram.CreateDs021Neu($"Ziel {OutsidePrograms.Count + 1}");
+        program.Id = OutsideDisplayId.NewUniqueId(OutsidePrograms.Select(p => p.Id));
         OutsidePrograms.Add(program);
         SortOutsidePrograms();
         SelectedOutsideProgram = program;
@@ -490,6 +556,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         var program = OutsideDisplayProgram.CreateFmaS1($"Ziel {OutsidePrograms.Count + 1}");
+        program.Id = OutsideDisplayId.NewUniqueId(OutsidePrograms.Select(p => p.Id));
         OutsidePrograms.Add(program);
         SortOutsidePrograms();
         SelectedOutsideProgram = program;
@@ -506,6 +573,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         var program = OutsideDisplayProgram.CreateKrefeld($"Ziel {OutsidePrograms.Count + 1}");
+        program.Id = OutsideDisplayId.NewUniqueId(OutsidePrograms.Select(p => p.Id));
         OutsidePrograms.Add(program);
         SortOutsidePrograms();
         SelectedOutsideProgram = program;
@@ -522,6 +590,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         var program = OutsideDisplayProgram.CreateZielnummer($"Ziel {OutsidePrograms.Count + 1}");
+        program.Id = OutsideDisplayId.NewUniqueId(OutsidePrograms.Select(p => p.Id));
         OutsidePrograms.Add(program);
         SortOutsidePrograms();
         SelectedOutsideProgram = program;
@@ -576,6 +645,46 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         MarkDirty();
         StatusMessage =
             $"Alle {OutsidePrograms.Count} Zielanzeigen in der ITCS-Liste aktiviert – „Speichern“ und Dropbox-Export nicht vergessen.";
+    }
+
+    [RelayCommand]
+    private void ExportDestinationsPdf()
+    {
+        if (OutsidePrograms.Count == 0)
+        {
+            StatusMessage = "Keine Ziele in der Zielliste – PDF kann nicht erstellt werden.";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Zielliste als PDF speichern",
+            Filter = "PDF-Datei (*.pdf)|*.pdf",
+            FileName = OutsideDisplayDestinationsPdfGenerator.BuildDefaultFileName(),
+            AddExtension = true,
+            DefaultExt = ".pdf"
+        };
+
+        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.FileName))
+        {
+            return;
+        }
+
+        try
+        {
+            OutsideDisplayDestinationsPdfGenerator.Generate(dialog.FileName, OutsidePrograms.ToList());
+            StatusMessage = $"PDF gespeichert: {Path.GetFileName(dialog.FileName)} ({OutsidePrograms.Count} Ziele)";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"PDF fehlgeschlagen: {ex.Message}";
+            MessageBox.Show(
+                Application.Current?.MainWindow,
+                ex.Message,
+                "Anzeigen & Hinweise",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private static bool TryParseGermanDate(string input, out DateTime date)

@@ -13,6 +13,9 @@ public sealed class RoutePathNavReuseCandidate
     public required IReadOnlyList<string> StopLabels { get; init; }
     public int SnappedEdgeCount { get; init; }
 
+    /// <summary>Beste Quelle für diesen Ziel-Abschnitt (Standard-Häkchen im Dialog).</summary>
+    public bool IsPreferredDefault { get; init; }
+
     public string FromLabel => StopLabels.Count > 0 ? StopLabels[0] : "?";
     public string ToLabel => StopLabels.Count > 0 ? StopLabels[^1] : "?";
 }

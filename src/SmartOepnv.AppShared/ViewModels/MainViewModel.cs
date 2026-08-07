@@ -189,7 +189,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        StatusText = "Lade Planer-Arbeitsstand aus Dropbox…";
+        StatusText = "Prüfe Planer-Arbeitsstand…";
         PlanerWorkspaceSaveCoordinator.Reset();
         try
         {
@@ -197,9 +197,10 @@ public partial class MainViewModel : ObservableObject
 
             if (syncResult?.Imported == true)
             {
+                var usedLocalOnly = syncResult.Message.Contains("kein Dropbox-Download", StringComparison.Ordinal);
                 StatusText = AppServices.Routes.HasPackage
-                    ? BuildLocalStatusText("Dropbox synchronisiert")
-                    : "Planer-Arbeitsstand aus Dropbox übernommen.";
+                    ? BuildLocalStatusText(usedLocalOnly ? "Lokal (Dropbox unverändert)" : "Dropbox synchronisiert")
+                    : syncResult.Message;
                 return;
             }
 
@@ -642,7 +643,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var result = await PlanerDropboxWorkspaceSync.TryImportFromDropboxAsync(
-                    forceOverwrite: true,
+                    forceOverwrite: false,
                     transferProgress)
                 .ConfigureAwait(true);
             if (result.Imported)
@@ -651,9 +652,10 @@ public partial class MainViewModel : ObservableObject
                 FahrerdispoViewModel.RefreshFromEditor();
                 DienstvorlagenViewModel.RefreshFromEditor();
                 DienstvorlagenLibraryViewModel.RefreshFromEditor();
+                var usedLocalOnly = result.Message.Contains("kein Dropbox-Download", StringComparison.Ordinal);
                 StatusText = AppServices.Routes.HasPackage
-                    ? BuildLocalStatusText("Dropbox synchronisiert")
-                    : "Planer-Arbeitsstand aus Dropbox übernommen.";
+                    ? BuildLocalStatusText(usedLocalOnly ? "Lokal (Dropbox unverändert)" : "Dropbox synchronisiert")
+                    : result.Message;
             }
             else if (AppServices.Routes.HasPackage)
             {
@@ -734,6 +736,13 @@ public partial class MainViewModel : ObservableObject
             if (!hadLocal || remoteTimestamp > localTimestamp)
             {
                 AppServices.Routes.LoadFromJson(remoteJson, persistLocally: true, source: "dropbox-startup");
+                // Vollpaket ersetzt Workspace – Lite-/Leitstelle-Timestamps ungültig, sonst bleiben Snaps weg.
+                if (AppServices.IsInitialized)
+                {
+                    AppServices.Workspace.SaveLastMergedLeitstelleRoutesTimestamp(0);
+                    AppServices.Workspace.SaveLastMergedRouteUpdateTimestamp(0);
+                }
+
                 OnRoutePackageLoaded();
                 importedRoutePackage = true;
 
@@ -769,6 +778,17 @@ public partial class MainViewModel : ObservableObject
                         ? $"{prefix}: {standResult.Message}"
                         : $"{_dataTransferViewModel.LastActionMessage} {standResult.Message}";
                 }
+            }
+
+            var leitstelleRoutesResult = await LeitstelleRoutesDropboxSync.TryMergeFromDropboxAsync().ConfigureAwait(true);
+            if (leitstelleRoutesResult.Imported)
+            {
+                OnRoutePackageLoaded();
+                importedRoutePackage = true;
+                var prefixRoutes = isBackground ? $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm})" : "Dropbox-Stand";
+                _dataTransferViewModel.LastActionMessage = string.IsNullOrWhiteSpace(_dataTransferViewModel.LastActionMessage)
+                    ? $"{prefixRoutes}: {leitstelleRoutesResult.Message}"
+                    : $"{_dataTransferViewModel.LastActionMessage} {leitstelleRoutesResult.Message}";
             }
 
             var liteResult = await LiteRouteUpdateDropboxSync.TryMergeFromDropboxAsync().ConfigureAwait(true);
@@ -901,6 +921,7 @@ public partial class MainViewModel : ObservableObject
             _leitstelleMessagesInboxViewModel.RefreshFromEditor();
             _ = _leitstelleMessagesInboxViewModel.RefreshAsync();
             UpdateLeitstelleMessagesBadge();
+            _vehicleTrackingViewModel.NotifyRoutePackageChanged();
         }
 
         UpdatePersonalverwaltungBadge();

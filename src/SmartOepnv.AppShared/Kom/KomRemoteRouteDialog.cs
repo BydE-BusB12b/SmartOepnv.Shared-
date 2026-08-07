@@ -1,5 +1,8 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using SmartOepnv.AppShared.ViewModels;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
@@ -11,14 +14,17 @@ namespace SmartOepnv.AppShared.Kom;
 public sealed class KomRemoteRouteDialog : Window
 {
     private readonly KomSendDialogGuard _sendGuard;
+    private readonly ObservableCollection<RoutePickItem> _allRoutes = [];
+    private readonly ICollectionView _view;
+    private string _filter = string.Empty;
 
     public KomRemoteRouteDialog(VehicleListItemViewModel vehicle, Window owner)
     {
         _sendGuard = new KomSendDialogGuard(this);
         Owner = owner;
         Title = "Fernroute auslösen";
-        Width = 520;
-        Height = 460;
+        Width = 560;
+        Height = 520;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         var phone = VehicleKomUi.ResolvePhoneOrWarn(this, vehicle);
@@ -27,10 +33,17 @@ public sealed class KomRemoteRouteDialog : Window
             Loaded += (_, _) => { DialogResult = false; Close(); };
         }
 
-        var routes = RouteDisplayHelper.SortRoutesByLineCourseAndTrip(
-            AppServices.Routes.Editor?.RouteNames ?? []);
+        foreach (var key in RouteDisplayHelper.SortRoutesByLineCourseAndTrip(
+                     AppServices.Routes.Editor?.RouteNames ?? []))
+        {
+            _allRoutes.Add(new RoutePickItem(key));
+        }
+
+        _view = CollectionViewSource.GetDefaultView(_allRoutes);
+        _view.Filter = FilterRow;
 
         var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -44,22 +57,44 @@ public sealed class KomRemoteRouteDialog : Window
             17,
             FontWeights.SemiBold), row++));
         root.Children.Add(MakeAtRow(VehicleKomUi.MakeText(
-            routes.Count == 0
+            _allRoutes.Count == 0
                 ? "Keine Routen im Paket geladen."
-                : "Route wählen – das Fahrzeug öffnet sie und aktiviert Pas.Info (wie in der App).",
+                : "Route wählen – das Fahrzeug öffnet sie und aktiviert Pas.Info (wie in der App). " +
+                  "Sortiert nach Linie/Kurs und Fahrt.",
             13), row++));
+
+        var filterBox = new TextBox
+        {
+            Margin = new Thickness(0, 8, 0, 0),
+            Padding = new Thickness(8, 5, 8, 5),
+            FontSize = 13
+        };
+        VehicleKomUi.StyleTextBox(filterBox);
+        Grid.SetRow(filterBox, row++);
+        root.Children.Add(filterBox);
 
         var list = new ListBox
         {
-            ItemsSource = routes,
+            ItemsSource = _view,
+            DisplayMemberPath = nameof(RoutePickItem.Display),
             Margin = new Thickness(0, 8, 0, 0),
-            IsEnabled = routes.Count > 0
+            IsEnabled = _allRoutes.Count > 0
         };
         VehicleKomUi.StyleListBox(list);
-        if (routes.Count > 0)
+        if (_allRoutes.Count > 0)
         {
             list.SelectedIndex = 0;
         }
+
+        filterBox.TextChanged += (_, _) =>
+        {
+            _filter = (filterBox.Text ?? string.Empty).Trim();
+            _view.Refresh();
+            if (list.SelectedItem is null && _view.Cast<object>().Any())
+            {
+                list.SelectedIndex = 0;
+            }
+        };
 
         Grid.SetRow(list, row++);
         root.Children.Add(list);
@@ -85,7 +120,7 @@ public sealed class KomRemoteRouteDialog : Window
             primary: true,
             isDefault: true,
             minWidth: 140);
-        send.IsEnabled = routes.Count > 0 && phone is not null;
+        send.IsEnabled = _allRoutes.Count > 0 && phone is not null;
         send.Click += async (_, _) =>
         {
             if (!VehicleKomUi.EnsureDropboxConnected(this) || phone is null)
@@ -93,7 +128,7 @@ public sealed class KomRemoteRouteDialog : Window
                 return;
             }
 
-            if (list.SelectedItem is not string route)
+            if (list.SelectedItem is not RoutePickItem pick)
             {
                 SmartConfirmDialog.ShowInfo(this, Title, "Bitte eine Route wählen.");
                 return;
@@ -112,7 +147,7 @@ public sealed class KomRemoteRouteDialog : Window
                     ct => KomRemoteRouteService.UploadAsync(
                         AppServices.Dropbox,
                         phone,
-                        route,
+                        pick.Key,
                         pasInfo.IsChecked == true,
                         ct)))
                 {
@@ -140,11 +175,35 @@ public sealed class KomRemoteRouteDialog : Window
         root.Children.Add(buttons);
 
         VehicleKomUi.PrepareWindow(this, root);
+
+        Loaded += (_, _) => filterBox.Focus();
+    }
+
+    private bool FilterRow(object obj)
+    {
+        if (obj is not RoutePickItem item)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(_filter))
+        {
+            return true;
+        }
+
+        return item.Key.Contains(_filter, StringComparison.OrdinalIgnoreCase) ||
+               item.Display.Contains(_filter, StringComparison.OrdinalIgnoreCase);
     }
 
     private static UIElement MakeAtRow(UIElement element, int row)
     {
         Grid.SetRow(element, row);
         return element;
+    }
+
+    private sealed class RoutePickItem(string key)
+    {
+        public string Key { get; } = key;
+        public string Display { get; } = RouteDisplayHelper.ToLineCourseTripFirstDisplayString(key);
     }
 }

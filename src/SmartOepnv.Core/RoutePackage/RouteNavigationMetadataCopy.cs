@@ -72,6 +72,43 @@ public static class RouteNavigationMetadataCopy
             var draft = RoutePathDraftCloner.Clone(RoutePathDraftSerializer.FromJson(json));
             draft.RouteName = target;
             draft.UpdatedAtEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            // Vollersatz: Shape der Vorlage behalten, nur IDs/Reihenfolge bereinigen falls nötig
+            var shapeBackup = draft.SnappedShape
+                .Select(p => new RoutePathLatLng { Lat = p.Lat, Lon = p.Lon })
+                .ToList();
+            var maneuversBackup = draft.SnappedManeuvers
+                .Select(m => new RoutePathSnapManeuver
+                {
+                    DistanceM = m.DistanceM,
+                    Instruction = m.Instruction,
+                    CurrentStreet = m.CurrentStreet,
+                    NextStreet = m.NextStreet,
+                    NavSymbolType = m.NavSymbolType
+                })
+                .ToList();
+
+            RoutePathDraftRepair.NormalizeReuseNodeIds(draft);
+            RoutePathDraftMutator.DeduplicateSegmentsByEdge(draft);
+            RoutePathDraftRepair.ReorderSegmentsAsSinglePath(draft);
+
+            if (shapeBackup.Count >= 2 &&
+                RoutePathDraftIntegrity.Evaluate(
+                    new RoutePathDraft
+                    {
+                        RouteName = draft.RouteName,
+                        Nodes = draft.Nodes,
+                        Segments = draft.Segments,
+                        SnappedShape = shapeBackup
+                    }).Count == 0)
+            {
+                draft.SnappedShape = shapeBackup;
+                draft.SnappedManeuvers = maneuversBackup;
+            }
+            else
+            {
+                RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(draft);
+            }
+
             RoutePathDraftRepository.SaveToPackage(root, draft);
         }
         catch

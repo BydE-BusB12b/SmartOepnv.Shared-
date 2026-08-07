@@ -53,6 +53,15 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         FocusVehicleOnMapRequested?.Invoke(value.Id);
     }
 
+    /// <summary>Nach Paket-Import Karten-Fahrwege neu laden.</summary>
+    public void NotifyRoutePackageChanged()
+    {
+        if (_vehicles.Count > 0)
+        {
+            PushVehiclesToMap();
+        }
+    }
+
     public void OnViewActivated()
     {
         StartPolling();
@@ -221,7 +230,7 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         var root = AppServices.Routes.Editor?.PackageRoot;
         return root is null
             ? null
-            : LeitstelleRoutePathOverview.ResolveRouteKey(root, vehicle.RouteName);
+            : LeitstelleRoutePathOverview.ResolveRouteKey(root, vehicle.RouteName, vehicle.LineCourse);
     }
 
     private static Task RunOnUiAsync(Action action)
@@ -366,7 +375,10 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
         if (!string.IsNullOrWhiteSpace(SelectedVehicle?.RouteName) && root is not null)
         {
-            var highlightKey = LeitstelleRoutePathOverview.ResolveRouteKey(root, SelectedVehicle.RouteName);
+            var highlightKey = LeitstelleRoutePathOverview.ResolveRouteKey(
+                root,
+                SelectedVehicle.RouteName,
+                SelectedVehicle.LineCourse);
             if (highlightKey is not null)
             {
                 payload["highlightRouteKey"] = highlightKey;
@@ -386,7 +398,7 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
         if (SelectedVehicle is not null && !string.IsNullOrWhiteSpace(SelectedVehicle.RouteName))
         {
-            AddResolvedRouteKey(keys, root, SelectedVehicle.RouteName);
+            AddResolvedRouteKey(keys, root, SelectedVehicle.RouteName, SelectedVehicle.LineCourse);
             return keys;
         }
 
@@ -398,15 +410,19 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
                 continue;
             }
 
-            AddResolvedRouteKey(keys, root, vehicle.RouteName);
+            AddResolvedRouteKey(keys, root, vehicle.RouteName, vehicle.LineCourse);
         }
 
         return keys;
     }
 
-    private static void AddResolvedRouteKey(HashSet<string> keys, JsonObject root, string routeName)
+    private static void AddResolvedRouteKey(
+        HashSet<string> keys,
+        JsonObject root,
+        string routeName,
+        string? lineCourse = null)
     {
-        var key = LeitstelleRoutePathOverview.ResolveRouteKey(root, routeName);
+        var key = LeitstelleRoutePathOverview.ResolveRouteKey(root, routeName, lineCourse);
         if (key is not null)
         {
             keys.Add(key);

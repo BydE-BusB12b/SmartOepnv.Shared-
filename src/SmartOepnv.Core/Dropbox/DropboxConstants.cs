@@ -50,8 +50,15 @@ public static class DropboxConstants
 
     /// <summary>
     /// Leichtes Fahrzeugupdate ohne Audio (Merge auf dem Gerät, routes_export.json bleibt Vollbackup).
+    /// Nur bei bewusstem Fahrzeug-Versand – nicht beim Planer-Schließen / „Für Leitstelle speichern“.
     /// </summary>
     public const string RouteUpdateFileName = "routes_update.json";
+
+    /// <summary>
+    /// Routen/Haltestellen/Fahrwege für die Leitstelle (ohne Audio) – Fahrzeuge lesen diese Datei nicht.
+    /// </summary>
+    public const string LeitstelleRoutesFileName = "leitstelle_routes.json";
+
     public const string LeitstelleStandFileName = "leitstelle_stand.json";
     public const string MaengelkarteFileName = "maengelkarte.json";
     public const string PlanerSessionFileName = "planer_session.json";

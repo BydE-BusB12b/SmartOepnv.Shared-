@@ -35,11 +35,12 @@ public static class RoutePathNavReusePrompt
             return false;
         }
 
+        var toApply = RoutePathNavReuseFinder.SelectNonOverlappingBest(dialog.SelectedMatches);
         appliedEdgeCount = RoutePathNavReuseApplier.Apply(
             root,
             targetRouteKey,
             editor.GetStops(targetRouteKey),
-            dialog.SelectedMatches,
+            toApply,
             editor.GetStops);
         return appliedEdgeCount > 0;
     }

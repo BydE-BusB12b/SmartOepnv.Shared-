@@ -28,7 +28,7 @@ internal static class LeitstelleOperatorManualContent
             """
             • Die Leitstelle startet ohne Planer-Login – direkter Zugriff nach Programmstart.
             • Dropbox-Verbindung unter Einstellungen einrichten; Standardordner /smart öpnv.
-            • Beim Start: routes_export.json und leitstelle_stand.json werden geladen (Auto-Sync alle 15 Min.).
+            • Beim Start: routes_export.json, leitstelle_stand.json und leitstelle_routes.json (Routen/Fahrwege vom Planer) werden geladen (Auto-Sync alle 15 Min.).
             • VoIP/Funk startet automatisch, sofern konfiguriert.
             • Software-Updates werden über software_versions.json in Dropbox angeboten.
             """,
@@ -130,7 +130,8 @@ internal static class LeitstelleOperatorManualContent
             "12. Versand und Datenabgleich",
             """
             • routes_export.json laden/senden – Vollbackup mit Audio.
-            • routes_update.json – leichtes Update ohne Tondateien.
+            • leitstelle_routes.json – Routen/Fahrwege vom Planer (ohne Audio, nur Leitstelle).
+            • routes_update.json – leichtes Fahrzeugupdate ohne Tondateien (nur bei bewusstem Versand).
             • Senden + Fernupdate: Dialog mit Wahl Vollbackup oder Update, dann Fahrzeug auswählen.
             • Routen an Fahrzeuge: Update (Merge) oder Senden (mit Löschung nicht ausgewählter Routen).
             • Kein Planer-Workspace – nur Fahrzeug- und Leitstellen-relevante Dateien.

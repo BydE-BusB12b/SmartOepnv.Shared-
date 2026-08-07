@@ -69,7 +69,7 @@ public static class RoutePathNavReuseFinder
                 minStopsInSegment);
         }
 
-        return SelectNonOverlappingBest(results);
+        return SelectCandidatesForDialog(results);
     }
 
     private static void AppendMatchesForPair(
@@ -132,10 +132,76 @@ public static class RoutePathNavReuseFinder
         }
     }
 
-    private static List<RoutePathNavReuseCandidate> SelectNonOverlappingBest(
+    /// <summary>
+    /// Pro Ziel-Abschnitt alle Quell-Routen (sortiert nach Qualität). Kürzere überlappende
+    /// Abschnitte entfallen; bei gleichem Abschnitt bleiben Alternativen (z. B. Fahrt 2112 vs. 2064).
+    /// </summary>
+    private static List<RoutePathNavReuseCandidate> SelectCandidatesForDialog(
         List<RoutePathNavReuseCandidate> all)
     {
-        var ordered = all
+        var byTargetRange = all
+            .GroupBy(m => (m.TargetFirstListIndex, m.TargetLastListIndex))
+            .OrderByDescending(g => g.First().StopLabels.Count)
+            .ThenBy(g => g.Key.TargetFirstListIndex)
+            .ToList();
+
+        var occupied = new List<(int From, int To)>();
+        var selected = new List<RoutePathNavReuseCandidate>();
+
+        foreach (var group in byTargetRange)
+        {
+            var from = group.Key.TargetFirstListIndex;
+            var to = group.Key.TargetLastListIndex;
+            if (occupied.Any(r => RangesOverlap(r.From, r.To, from, to)))
+            {
+                continue;
+            }
+
+            var orderedSources = group
+                .GroupBy(m => m.SourceRouteKey, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g
+                    .OrderByDescending(m => m.SnappedEdgeCount)
+                    .ThenByDescending(m => m.StopLabels.Count)
+                    .First())
+                .OrderByDescending(m => m.SnappedEdgeCount)
+                .ThenByDescending(m => m.StopLabels.Count)
+                .ThenBy(m => m.SourceRouteKey, StringComparer.OrdinalIgnoreCase)
+                .Take(40)
+                .ToList();
+
+            for (var i = 0; i < orderedSources.Count; i++)
+            {
+                var m = orderedSources[i];
+                selected.Add(new RoutePathNavReuseCandidate
+                {
+                    SourceRouteKey = m.SourceRouteKey,
+                    TargetFirstListIndex = m.TargetFirstListIndex,
+                    TargetLastListIndex = m.TargetLastListIndex,
+                    SourceFirstListIndex = m.SourceFirstListIndex,
+                    SourceLastListIndex = m.SourceLastListIndex,
+                    StopLabels = m.StopLabels,
+                    SnappedEdgeCount = m.SnappedEdgeCount,
+                    IsPreferredDefault = i == 0
+                });
+            }
+
+            occupied.Add((from, to));
+        }
+
+        return selected
+            .OrderBy(m => m.TargetFirstListIndex)
+            .ThenByDescending(m => m.IsPreferredDefault)
+            .ThenByDescending(m => m.SnappedEdgeCount)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Beim Übernehmen: bei überlappenden Ziel-Abschnitten nur die beste Auswahl behalten.
+    /// </summary>
+    public static List<RoutePathNavReuseCandidate> SelectNonOverlappingBest(
+        IEnumerable<RoutePathNavReuseCandidate> matches)
+    {
+        var ordered = matches
             .OrderByDescending(m => m.StopLabels.Count)
             .ThenByDescending(m => m.SnappedEdgeCount)
             .ThenBy(m => m.TargetFirstListIndex)

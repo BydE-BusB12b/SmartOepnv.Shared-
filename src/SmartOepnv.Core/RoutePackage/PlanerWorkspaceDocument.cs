@@ -19,6 +19,11 @@ public sealed class PlanerWorkspaceDocument
 
     public long SavedAtUtcMs { get; set; }
 
+    /// <summary>
+    /// Eindeutige fortlaufende Stand-Nummer (erhöht sich bei jedem lokalen Speichern/Dropbox-Export).
+    /// </summary>
+    public long SyncGeneration { get; set; }
+
     /// <summary>Routen liegen in Dropbox unter planer_routes.json.</summary>
     public bool RoutesStoredExternally { get; set; }
 

@@ -11,7 +11,9 @@ using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.Core.RoutePath;
 using System.Windows;
+using System.Text;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
@@ -281,6 +283,12 @@ public partial class DataTransferViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            if (!ConfirmRoutePathIntegrityOrCancel())
+            {
+                LastActionMessage = "Kleines Fahrzeugupdate abgebrochen – Fahrweg-Prüfung.";
+                return;
+            }
+
             var json = AppServices.Routes.PrepareFullLiteVehicleUpdateJson();
             await AppServices.Dropbox.UploadNamedFileAsync(DropboxConstants.RouteUpdateFileName, json);
             LastActionMessage =
@@ -298,6 +306,51 @@ public partial class DataTransferViewModel : ObservableObject
             IsBusy = false;
             NotifyRouteTransferCommandsCanExecute();
         }
+    }
+
+    /// <summary>
+    /// true = fortfahren, false = Abbruch.
+    /// </summary>
+    private bool ConfirmRoutePathIntegrityOrCancel()
+    {
+        var editor = AppServices.Routes.Editor;
+        if (editor?.PackageRoot is null)
+        {
+            return true;
+        }
+
+        var bad = RoutePathDraftIntegrity.ScanPackage(editor.PackageRoot);
+        if (bad.Count == 0)
+        {
+            return true;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"{bad.Count} Fahrweg(e) wirken fehlerhaft (zu lang / Ende falsch / doppelte Segmente):");
+        sb.AppendLine();
+        foreach (var (routeKey, finding) in bad.Take(12))
+        {
+            sb.AppendLine($"• {routeKey}");
+            sb.AppendLine($"  {finding.Message}");
+            sb.AppendLine();
+        }
+
+        if (bad.Count > 12)
+        {
+            sb.AppendLine($"… und {bad.Count - 12} weitere.");
+            sb.AppendLine();
+        }
+
+        sb.Append("Trotzdem hochladen? (Empfehlung: nein – zuerst im Fahrweg-Editor bereinigen.)");
+
+        return SmartConfirmDialog.ShowConfirm(
+            Application.Current?.MainWindow,
+            "Fahrweg-Prüfung",
+            sb.ToString(),
+            confirmButton: "Ja",
+            cancelButton: "Nein",
+            preferCancel: true,
+            width: 640);
     }
 
     private async Task UploadVehicleTransferAsync(
@@ -320,6 +373,12 @@ public partial class DataTransferViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            if (!ConfirmRoutePathIntegrityOrCancel())
+            {
+                LastActionMessage = $"{actionLabel} abgebrochen – Fahrweg-Prüfung.";
+                return;
+            }
+
             var json = AppServices.Routes.PrepareVehicleTransferJson(
                 selectedRoutes,
                 pruneOthersOnDevice,
@@ -537,13 +596,15 @@ public partial class DataTransferViewModel : ObservableObject
                     var reason = result.RemoteHasMoreContent
                         ? "Dropbox enthält mehr Daten als der lokale Stand (z. B. vom anderen Rechner)."
                         : "Der lokale Planer-Arbeitsstand ist neuer als Dropbox.";
-                    var confirm = MessageBox.Show(
+                    var confirm = SmartConfirmDialog.ShowConfirm(
+                        Application.Current?.MainWindow,
+                        "Planer-Arbeitsstand laden",
                         $"{reason}\n\n" +
                         "Trotzdem von Dropbox laden? Ungespeicherte lokale Änderungen gehen dabei verloren.",
-                        "Planer-Arbeitsstand laden",
-                        MessageBoxButton.YesNo,
-                        MessageBoxImage.Warning);
-                    if (confirm == MessageBoxResult.Yes)
+                        confirmButton: "Ja",
+                        cancelButton: "Nein",
+                        preferCancel: true);
+                    if (confirm)
                     {
                         result = await PlanerDropboxWorkspaceSync.TryImportFromDropboxAsync(forceOverwrite: true, progress)
                             .ConfigureAwait(true);
@@ -610,6 +671,13 @@ public partial class DataTransferViewModel : ObservableObject
             if (standResult.Imported)
             {
                 LastActionMessage += $" {standResult.Message}";
+            }
+
+            var leitstelleRoutesResult = await LeitstelleRoutesDropboxSync.TryMergeFromDropboxAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (leitstelleRoutesResult.Imported)
+            {
+                LastActionMessage += $" {leitstelleRoutesResult.Message}";
             }
 
             var liteResult = await LiteRouteUpdateDropboxSync.TryMergeFromDropboxAsync(cancellationToken)
@@ -857,7 +925,8 @@ public partial class DataTransferViewModel : ObservableObject
                 AppServices.FlushAllPendingEdits();
                 var result = await LeitstelleStandDropboxSync.TryExportAsync().ConfigureAwait(true);
                 LastActionMessage = result.Exported
-                    ? $"Für Leitstelle gespeichert: {DropboxConstants.LeitstelleStandFileName} (Fahrer, Fahrzeuge, Vorlagen, Fahrwege)."
+                    ? $"Für Leitstelle gespeichert: {DropboxConstants.LeitstelleStandFileName} + " +
+                      $"{DropboxConstants.LeitstelleRoutesFileName} (Fahrer, Fahrzeuge, Vorlagen, Routen, Fahrwege – ohne Fahrzeug-Update)."
                     : result.Message;
             });
         return Task.CompletedTask;

@@ -56,8 +56,15 @@ public partial class RoutePathEditorViewModel : ObservableObject
     public Func<Task<string?>>? PullMapDraftJsonAsync { get; set; }
 
     [ObservableProperty] private string statusMessage = "Route wählen und Fahrweg planen.";
+    /// <summary>Warnung bei verdoppeltem/zu langem Fahrweg (Nav-Übernahme).</summary>
+    [ObservableProperty] private string? integrityWarning;
     [ObservableProperty] private string? selectedRoute;
     [ObservableProperty] private bool isBusy;
+
+    public bool HasIntegrityWarning => !string.IsNullOrWhiteSpace(IntegrityWarning);
+
+    partial void OnIntegrityWarningChanged(string? value) =>
+        OnPropertyChanged(nameof(HasIntegrityWarning));
     [ObservableProperty] private string? selectedManeuverText;
     [ObservableProperty] private string selectedNavSymbol = "straight";
     [ObservableProperty] private RoutePathNavManeuverListItem? selectedNavManeuverItem;
@@ -245,7 +252,9 @@ public partial class RoutePathEditorViewModel : ObservableObject
             _draftGeneration = 0;
             _lastAppliedMapEditGeneration = 0;
             _activeEditSegmentOrder = PickDefaultEditSegmentOrder();
-            EnsureStopsOnDraft(stops);
+            // Kein EnsureStopsOnDraft hier: das würde Halt-/Ansage-Positionen aus der
+            // Halteliste neu setzen und gespeicherte Karten-Verschiebungen verwerfen.
+            // LoadOrCreate → RefreshNodesFromStops behält Lat/Lon und Manuell-Reihenfolge.
             SelectedRouteLineColor = string.IsNullOrWhiteSpace(_draft.RouteLineColor)
                 ? "#2196f3"
                 : _draft.RouteLineColor;
@@ -317,19 +326,20 @@ public partial class RoutePathEditorViewModel : ObservableObject
 
     private void EnsureStopsOnDraft(IList<RouteStopItem> stops)
     {
-        if (_draft is null) return;
+        if (_draft is null)
+        {
+            return;
+        }
 
-        var seeded = RoutePathDraftBuilder.BuildSeedNodes(stops);
-        var preserved = _draft.Nodes
-            .Where(n => n.Type is RoutePathNodeType.AUTO_WAYPOINT or RoutePathNodeType.MANUAL_WAYPOINT)
-            .ToList();
-        _draft.Nodes = seeded.Concat(preserved).ToList();
+        // Gleiche Logik wie beim Laden: Positionen und Manuell-Reihenfolge behalten.
+        RoutePathNodeRefresh.RefreshNodesFromStops(_draft, stops);
     }
 
     private void ReportDraftStatus()
     {
         if (_draft is null)
         {
+            IntegrityWarning = null;
             StatusMessage = "Kein Entwurf geladen.";
             return;
         }
@@ -338,11 +348,21 @@ public partial class RoutePathEditorViewModel : ObservableObject
         var annCount = _draft.Nodes.Count(n => n.Type == RoutePathNodeType.ANNOUNCEMENT);
         if (stopCount == 0 && annCount == 0)
         {
+            IntegrityWarning = null;
             StatusMessage = "Keine GPS-Koordinaten in den Haltestellen – bitte unter „Routen“ gpsCoordinates/stopCoordinates pflegen, dann „Haltestellen laden“.";
             return;
         }
 
-        StatusMessage = $"„{SelectedRoute}“ – {stopCount} Haltestellen, {annCount} Ansagepunkte, {_draft.Segments.Count} Verbindungen.";
+        RefreshIntegrityWarning();
+        var length = RoutePathDraftIntegrity.FormatLengthSummary(_draft);
+        StatusMessage =
+            $"„{SelectedRoute}“ – {stopCount} Haltestellen, {annCount} Ansagepunkte, {_draft.Segments.Count} Verbindungen · {length}.";
+    }
+
+    private void RefreshIntegrityWarning()
+    {
+        IntegrityWarning = RoutePathDraftIntegrity.FormatWarning(
+            RoutePathDraftIntegrity.Evaluate(_draft));
     }
 
     public bool ApplyDraftJsonFromMap(string json, bool recordUndo = false, bool forceFromMap = false)
@@ -422,20 +442,12 @@ public partial class RoutePathEditorViewModel : ObservableObject
             var movedNodeIds = new HashSet<string>(StringComparer.Ordinal);
             if (forceFromMap && _draft is not null)
             {
-                if (parsed.Segments.Count < _draft.Segments.Count)
-                {
-                    parsed.Segments = _draft.Segments
-                        .Select(s => new RoutePathSegment
-                        {
-                            Order = s.Order,
-                            FromNodeId = s.FromNodeId,
-                            ToNodeId = s.ToNodeId
-                        })
-                        .ToList();
-                }
-
+                // Speichern / expliziter Pull: Karte ist Quelle der Wahrheit.
+                // Alte Segmente/Snaps nicht zurückholen – sonst wirken Änderungen „ungespeichert“.
+                movedNodeIds = DetectMovedNodeIds(_draft, parsed);
+                parsed.CreatedAtEpochMs = _draft.CreatedAtEpochMs;
                 MergePreservedSnapData(
-                    _draft, parsed, manualConnectFrom, manualConnectTo, movedNodeIds, forceRestoreAllSnaps: true);
+                    _draft, parsed, manualConnectFrom, manualConnectTo, movedNodeIds, forceRestoreAllSnaps: false);
             }
             else if (_draft is not null)
             {
@@ -870,6 +882,25 @@ public partial class RoutePathEditorViewModel : ObservableObject
         _selectedSegmentTo = null;
         SelectedManeuverText = null;
         StatusMessage = "Fahrweg und Snap-Daten zurückgesetzt – Haltestellen bleiben.";
+        MarkDraftDirty();
+        PushDraftToMap();
+    }
+
+    [RelayCommand]
+    private void RepairBloatedPath()
+    {
+        if (_draft is null)
+        {
+            StatusMessage = "Kein Entwurf geladen.";
+            return;
+        }
+
+        PushUndoSnapshot();
+        var ok = RoutePathDraftRepair.TryRepair(_draft);
+        RefreshIntegrityWarning();
+        StatusMessage = ok
+            ? $"Fahrweg bereinigt · {RoutePathDraftIntegrity.FormatLengthSummary(_draft)}."
+            : $"Bereinigung ausgeführt – bitte prüfen: {IntegrityWarning ?? RoutePathDraftIntegrity.FormatLengthSummary(_draft)}";
         MarkDraftDirty();
         PushDraftToMap();
     }
@@ -1865,7 +1896,10 @@ public partial class RoutePathEditorViewModel : ObservableObject
         try
         {
             await RoutePathSnapOrchestrator.SnapAllSegmentsAsync(_draft, _osrm);
-            StatusMessage = $"Straßenzug fertig – {_draft.RoadSnappedEdgeKeys.Count} Segmente gesnappt.";
+            RefreshIntegrityWarning();
+            StatusMessage = IntegrityWarning is null
+                ? $"Straßenzug fertig – {_draft.RoadSnappedEdgeKeys.Count} Segmente gesnappt · {RoutePathDraftIntegrity.FormatLengthSummary(_draft)}."
+                : $"Straßenzug fertig – {_draft.RoadSnappedEdgeKeys.Count} Segmente · {RoutePathDraftIntegrity.FormatLengthSummary(_draft)}.";
         }
         catch (Exception ex)
         {
@@ -2124,7 +2158,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
             NavManeuverHelper.NormalizeManualManeuverInstructions(_draft!);
             RoutePathDraftMutator.EnsureBusStraightEdgeKeys(_draft!);
             await Task.Yield();
-            var ok = await Task.Run(CommitDraftToWorkspace);
+            // Auf UI-Thread speichern – _draft darf nicht parallel zu Karten-Events geändert werden.
+            var ok = CommitDraftToWorkspace();
             if (!ok)
             {
                 MarkDraftDirty();
@@ -2133,8 +2168,10 @@ public partial class RoutePathEditorViewModel : ObservableObject
             }
 
             MarkDraftSaved();
-            StatusMessage =
-                $"Fahrweg lokal gespeichert (routePathDrafts[\"{SelectedRoute}\"]) – für Fahrzeuge über Dropbox senden.";
+            RefreshIntegrityWarning();
+            StatusMessage = IntegrityWarning is null
+                ? $"Fahrweg lokal gespeichert (routePathDrafts[\"{_draft!.RouteName}\"]) – für Fahrzeuge über Dropbox senden · {RoutePathDraftIntegrity.FormatLengthSummary(_draft)}."
+                : $"Fahrweg gespeichert – bitte prüfen: {IntegrityWarning}";
         }
         catch (Exception ex)
         {
@@ -2161,13 +2198,28 @@ public partial class RoutePathEditorViewModel : ObservableObject
     public bool CommitDraftToWorkspace()
     {
         var editor = AppServices.Routes.Editor;
-        if (editor is null || _draft is null || string.IsNullOrWhiteSpace(SelectedRoute))
+        if (editor is null || _draft is null)
         {
             return false;
         }
 
+        if (string.IsNullOrWhiteSpace(_draft.RouteName))
+        {
+            if (string.IsNullOrWhiteSpace(SelectedRoute))
+            {
+                return false;
+            }
+
+            _draft.RouteName = SelectedRoute;
+        }
+
+        // 1) Draft in PackageRoot
         RoutePathDraftRepository.SaveToPackage(editor.PackageRoot, _draft);
+        // 2) ToJson/SyncToRoot (kann Keys normalisieren)
         AppServices.Routes.ApplyEditorChanges("navidaten", rebuildEmbeddedMedia: false);
+        // 3) Erneut setzen – SyncToRoot darf den frischen Draft nicht verlieren
+        RoutePathDraftRepository.SaveToPackage(editor.PackageRoot, _draft);
+        AppServices.Routes.PersistPackageBodyOnly("navidaten-draft");
         return true;
     }
 

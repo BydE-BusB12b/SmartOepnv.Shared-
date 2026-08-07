@@ -290,7 +290,13 @@
 
         <CheckBox Content="Endhaltestelle" IsChecked="{Binding IsEndStop, Mode=TwoWay}" Margin="0,0,0,8" />
 
-        <StackPanel Visibility="{Binding ShowEndStopFields, Converter={StaticResource BoolToVis}}"
+        <CheckBox Content="Endhaltestellen-Ansage"
+                  IsChecked="{Binding PlayEndStopAnnouncement, Mode=TwoWay}"
+                  Visibility="{Binding ShowEndStopAnnouncementFields, Converter={StaticResource BoolToVis}}"
+                  ToolTip="Hängt die Ansage „Endhaltestelle“ aus der Ansagen-Kartei nach der Haltestellenansage an (unabhängig von Endhaltestelle)"
+                  Margin="0,0,0,8" />
+
+        <StackPanel Visibility="{Binding ShowEndDestinationFields, Converter={StaticResource BoolToVis}}"
                     Margin="0,0,0,12"
                     HorizontalAlignment="Stretch">
             <Grid HorizontalAlignment="Stretch">
@@ -407,12 +413,11 @@
                             ToolTip="Endziel-GPS auf der Karte wählen (wie in der App)" />
                 </Grid>
             </Grid>
+        </StackPanel>
 
-            <CheckBox Content="Endhaltestellen-Ansage"
-                      IsChecked="{Binding PlayEndStopAnnouncement, Mode=TwoWay}"
-                      ToolTip="Hängt die Ansage „Endhaltestelle“ aus der Ansagen-Kartei nach der Haltestellenansage an"
-                      Margin="0,0,0,8" />
-
+        <StackPanel Visibility="{Binding ShowRouteChangeOption, Converter={StaticResource BoolToVis}}"
+                    Margin="0,0,0,12"
+                    HorizontalAlignment="Stretch">
             <CheckBox Content="Automatischer Routenwechsel"
                       IsChecked="{Binding RouteChangeEnabled, Mode=TwoWay}" Margin="0,0,0,8" />
 

@@ -64,7 +64,8 @@ public static class RoutePathNavReuseApplier
                 RoutePathPolylineJoin.AlignSegmentEndpointsAtSharedNodes(targetDraft, key);
             }
 
-            RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(targetDraft);
+            // Verhindert reuse_reuse_… und Zickzack-Shapes nach wiederholter Nav-Übernahme
+            RoutePathDraftRepair.TryRepair(targetDraft);
             RoutePathDraftRepository.SaveToPackage(packageRoot, targetDraft);
         }
 
@@ -184,7 +185,13 @@ public static class RoutePathNavReuseApplier
             return false;
         }
 
-        var reuseId = $"reuse_{SanitizeReuseNodeId(sourceNodeId)}";
+        var baseId = sourceNodeId;
+        while (baseId.StartsWith("reuse_", StringComparison.OrdinalIgnoreCase))
+        {
+            baseId = baseId["reuse_".Length..];
+        }
+
+        var reuseId = $"reuse_{SanitizeReuseNodeId(baseId)}";
         if (target.Nodes.Any(n => string.Equals(n.Id, reuseId, StringComparison.Ordinal)))
         {
             mappedNodeId = reuseId;

@@ -498,7 +498,7 @@
 
                                           ToolTip="Next Stop.mp3 nach Nächste Haltestelle (1 s Pause dazwischen)" />
 
-                                <TextBlock Text="Endhaltestelle: in der Route markieren und „Endhaltestellen-Ansage“ aktivieren – Ton aus der Kartei-Eintrag „Endhaltestelle“."
+                                <TextBlock Text="Endhaltestelle-Ansage: an der gewünschten Haltestelle „Endhaltestellen-Ansage“ aktivieren (unabhängig von Endhaltestelle) – Ton aus dem Kartei-Eintrag „Endhaltestelle“."
                                            Foreground="White"
                                            Opacity="0.85"
                                            TextWrapping="Wrap"

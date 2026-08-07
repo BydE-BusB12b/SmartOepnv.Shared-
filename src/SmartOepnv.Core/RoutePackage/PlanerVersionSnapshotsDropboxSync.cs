@@ -36,23 +36,43 @@ public static class PlanerVersionSnapshotsDropboxSync
 
         foreach (var snap in snapshots)
         {
-            if (string.IsNullOrWhiteSpace(snap.Id) || string.IsNullOrWhiteSpace(snap.PackageJson))
+            if (string.IsNullOrWhiteSpace(snap.Id))
             {
                 continue;
             }
 
             var fileName = $"{Path.GetFileName(snap.Id)}.json";
-            var size = snap.ByteSize > 0
-                ? snap.ByteSize
-                : System.Text.Encoding.UTF8.GetByteCount(snap.PackageJson);
+            var size = snap.ByteSize;
+            if (size <= 0 && !string.IsNullOrWhiteSpace(snap.PackageJson))
+            {
+                size = System.Text.Encoding.UTF8.GetByteCount(snap.PackageJson);
+            }
 
-            if (remoteSizes.TryGetValue(fileName, out var remoteSize) && remoteSize == size)
+            if (size > 0 &&
+                remoteSizes.TryGetValue(fileName, out var remoteSize) &&
+                remoteSize == size)
             {
                 skipped++;
                 continue;
             }
 
-            toUpload.Add((snap.Id, snap.PackageJson, size));
+            var packageJson = snap.PackageJson;
+            if (string.IsNullOrWhiteSpace(packageJson) && AppServices.PlannerVersions is not null)
+            {
+                packageJson = AppServices.PlannerVersions.TryLoadPackageJson(snap.Id);
+            }
+
+            if (string.IsNullOrWhiteSpace(packageJson))
+            {
+                continue;
+            }
+
+            if (size <= 0)
+            {
+                size = System.Text.Encoding.UTF8.GetByteCount(packageJson);
+            }
+
+            toUpload.Add((snap.Id, packageJson, size));
         }
 
         if (toUpload.Count == 0)

@@ -172,7 +172,7 @@ internal static class PlannerOperatorManualContent
             • Routen an Fahrzeuge: Update (Merge), Senden (mit Löschung), Kleines Fahrzeugupdate, Senden + Fernupdate.
             • Fernupdate-Dialog: Wahl zwischen routes_export (Vollbackup) und routes_update (ohne Audio).
             • Planer-Arbeitsstand: planer_workspace.json, Snapshots, planer_ansagen_roh/.
-            • Für Leitstelle speichern: leitstelle_stand.json (kompakter Stand für die Leitstelle).
+            • Für Leitstelle speichern: leitstelle_stand.json + leitstelle_routes.json (Routen/Fahrwege). routes_update.json nur bei bewusstem Fahrzeug-Versand.
             """,
             "planner_data_transfer.png", "Versand und Dropbox"),
         Section(

@@ -458,16 +458,24 @@ public static class RouteDisplayHelper
         var (lineCourse1, trip1) = ExtractLineCourseAndTrip(route1);
         var (lineCourse2, trip2) = ExtractLineCourseAndTrip(route2);
         var lineComparison = CompareLineCourse(lineCourse1, lineCourse2);
-        return lineComparison != 0 ? lineComparison : CompareTripNumber(trip1, trip2);
+        if (lineComparison != 0)
+        {
+            return lineComparison;
+        }
+
+        var tripComparison = CompareTripNumber(trip1, trip2);
+        if (tripComparison != 0)
+        {
+            return tripComparison;
+        }
+
+        var name1 = (Parse(route1).Name ?? route1).Trim();
+        var name2 = (Parse(route2).Name ?? route2).Trim();
+        return string.Compare(name1, name2, StringComparison.OrdinalIgnoreCase);
     }
 
     private static (string LineCourse, string TripNumber) ExtractLineCourseAndTrip(string route)
     {
-        if (!route.Contains("(Linie:", StringComparison.OrdinalIgnoreCase))
-        {
-            return (string.Empty, string.Empty);
-        }
-
         var parsed = Parse(route);
         return (NormalizeLineCourse(parsed.LineCourse), (parsed.TripNumber ?? string.Empty).Trim());
     }

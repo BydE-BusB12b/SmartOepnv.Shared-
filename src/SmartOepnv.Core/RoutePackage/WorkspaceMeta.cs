@@ -8,4 +8,7 @@ public sealed class WorkspaceMeta
 
     /// <summary>Zuletzt übernommenes <c>routes_update.json</c>-Timestamp (Leitstelle-Merge).</summary>
     public long? LastMergedRouteUpdateTimestamp { get; set; }
+
+    /// <summary>Zuletzt übernommenes <c>leitstelle_routes.json</c>-Timestamp.</summary>
+    public long? LastMergedLeitstelleRoutesTimestamp { get; set; }
 }

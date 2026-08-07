@@ -92,10 +92,6 @@ public partial class RoutesViewModel
             }
 
             SelectedStop.IsEndStop = value;
-            if (!value)
-            {
-                SelectedStop.PlayEndStopAnnouncement = false;
-            }
 
             if (value && SelectedStop.Radius <= 0)
             {
@@ -118,7 +114,7 @@ public partial class RoutesViewModel
             }
 
             SelectedStop.PlayEndStopAnnouncement = value;
-            OnPropertyChanged();
+            NotifyStopEditorStateChanged();
             MarkStopDetailDirty();
         }
     }
@@ -140,7 +136,15 @@ public partial class RoutesViewModel
     }
 
     public bool ShowStartStopFields => HasSelectedStop && IsStartStop;
-    public bool ShowEndStopFields => HasSelectedStop && IsEndStop;
+    /** Endziel-Felder: bei Endhaltestelle oder Endhaltestellen-Ansage (ohne Routenwechsel). */
+    public bool ShowEndDestinationFields =>
+        HasSelectedStop && (IsEndStop || PlayEndStopAnnouncement);
+    /** @deprecated Alias – Prefer [ShowEndDestinationFields]. */
+    public bool ShowEndStopFields => ShowEndDestinationFields;
+    /** Endhaltestellen-Ansage-Checkbox unabhängig von Endhaltestelle. */
+    public bool ShowEndStopAnnouncementFields => HasSelectedStop;
+    /** Automatischer Routenwechsel nur bei echter Endhaltestelle. */
+    public bool ShowRouteChangeOption => HasSelectedStop && IsEndStop;
     public bool ShowRouteChangeFields => HasSelectedStop && IsEndStop && RouteChangeEnabled;
 
     [ObservableProperty]
@@ -648,7 +652,10 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(PlayEndStopAnnouncement));
         OnPropertyChanged(nameof(RouteChangeEnabled));
         OnPropertyChanged(nameof(ShowStartStopFields));
+        OnPropertyChanged(nameof(ShowEndDestinationFields));
         OnPropertyChanged(nameof(ShowEndStopFields));
+        OnPropertyChanged(nameof(ShowEndStopAnnouncementFields));
+        OnPropertyChanged(nameof(ShowRouteChangeOption));
         OnPropertyChanged(nameof(ShowRouteChangeFields));
         OnPropertyChanged(nameof(SelectedDestinationDs021t));
         OnPropertyChanged(nameof(SelectedDestinationDs021Neu));

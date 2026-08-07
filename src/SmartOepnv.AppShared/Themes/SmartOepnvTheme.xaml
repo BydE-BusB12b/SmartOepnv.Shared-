@@ -86,19 +86,24 @@
 
     <Style x:Key="SmartDarkComboBoxScrollBar" TargetType="ScrollBar">
         <Setter Property="Background" Value="#FF001433" />
-        <Setter Property="Width" Value="12" />
+        <Setter Property="Width" Value="18" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">
                     <Grid Background="{TemplateBinding Background}">
                         <Track x:Name="PART_Track" IsDirectionReversed="True">
                             <Track.Thumb>
-                                <Thumb>
+                                <!-- MinHeight: bei sehr langen Listen sonst kaum greifbar -->
+                                <Thumb MinHeight="56"
+                                       MinWidth="14"
+                                       Cursor="Hand">
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="Thumb">
                                             <Border Background="{StaticResource SmartAccentBrush}"
-                                                    CornerRadius="4"
-                                                    Margin="2" />
+                                                    CornerRadius="5"
+                                                    MinHeight="56"
+                                                    MinWidth="10"
+                                                    Margin="2,1" />
                                         </ControlTemplate>
                                     </Thumb.Template>
                                 </Thumb>
@@ -110,7 +115,7 @@
         </Setter>
         <Style.Triggers>
             <Trigger Property="Orientation" Value="Horizontal">
-                <Setter Property="Height" Value="12" />
+                <Setter Property="Height" Value="18" />
                 <Setter Property="Width" Value="Auto" />
             </Trigger>
         </Style.Triggers>

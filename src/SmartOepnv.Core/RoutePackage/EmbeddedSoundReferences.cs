@@ -25,7 +25,7 @@ public static class EmbeddedSoundReferences
             .Select(n => n.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        if (stops.Any(s => s.IsEndStop && s.PlayEndStopAnnouncement) && root is not null)
+        if (stops.Any(s => s.PlayEndStopAnnouncement) && root is not null)
         {
             var endStopFile = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
                 package.AnnouncementTemplates,

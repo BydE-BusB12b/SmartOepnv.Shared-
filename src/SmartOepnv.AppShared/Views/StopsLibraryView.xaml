@@ -86,13 +86,15 @@
                        PopupAnimation="Slide"
                        Focusable="False">
                     <Grid MinWidth="360"
-                          MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                          MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                          FocusManager.IsFocusScope="True">
                         <Border Background="{StaticResource SmartPrimaryDarkBrush}"
                                 BorderBrush="{StaticResource SmartAccentBrush}"
                                 BorderThickness="1"
                                 CornerRadius="0,0,2,2" />
                         <DockPanel Margin="1">
-                            <TextBox DockPanel.Dock="Top"
+                            <TextBox x:Name="RouteAssignSearchBox"
+                                     DockPanel.Dock="Top"
                                      Margin="6,6,6,4"
                                      Padding="6,4"
                                      Background="#FF0D47A1"
@@ -100,18 +102,22 @@
                                      CaretBrush="White"
                                      BorderBrush="{StaticResource SmartAccentBrush}"
                                      BorderThickness="1"
+                                     Focusable="True"
                                      materialDesign:HintAssist.Hint="Suchen (Linie, Kurs, Fahrt, Name)"
                                      materialDesign:HintAssist.Foreground="#BBDEFB"
                                      materialDesign:TextFieldAssist.UnderlineBrush="{StaticResource SmartAccentBrush}"
-                                     Text="{Binding DataContext.RouteAssignSearchQuery, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                     Text="{Binding DataContext.RouteAssignSearchQuery, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}"
+                                     Loaded="RouteAssignSearchBox_OnLoaded" />
                             <ScrollViewer SnapsToDevicePixels="True"
                                           HorizontalScrollBarVisibility="Disabled"
                                           VerticalScrollBarVisibility="Visible"
-                                          CanContentScroll="False">
+                                          CanContentScroll="False"
+                                          Focusable="False">
                                 <ScrollViewer.Resources>
                                     <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
                                 </ScrollViewer.Resources>
-                                <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"
+                                                Focusable="False" />
                             </ScrollViewer>
                         </DockPanel>
                     </Grid>

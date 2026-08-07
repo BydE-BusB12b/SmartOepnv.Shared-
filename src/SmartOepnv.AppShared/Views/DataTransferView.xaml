@@ -10,7 +10,9 @@
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </UserControl.Resources>
-    <!-- Kein ScrollViewer: soll auf der Übersicht ohne vertikales Scrollen passen -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  Padding="0,0,4,0">
     <StackPanel Margin="8,4,8,6" VerticalAlignment="Top">
         <TextBlock Text="Daten importieren / exportieren"
                    Style="{StaticResource SmartPageTitleStyle}"
@@ -212,7 +214,7 @@
                                     Style="{StaticResource LeitstelleStandTransferButtonStyle}"
                                     Padding="12,4"
                                     Margin="0,0,6,0"
-                                    ToolTip="Fahrer, Fahrzeuge, Nachrichten-Vorlagen, Außenanzeigen-Ziele und Fahrwege für die Leitstelle (leitstelle_stand.json)." />
+                                    ToolTip="Für die Leitstelle: leitstelle_stand.json (Fahrer, Fahrzeuge, Vorlagen, Karten) und leitstelle_routes.json (Routen/Haltestellen/Snaps). Nicht routes_update.json – Fahrzeuge bleiben unberührt." />
                         </StackPanel>
                     </StackPanel>
                 </Grid>
@@ -371,4 +373,5 @@
             </StackPanel>
         </materialDesign:Card>
     </StackPanel>
+    </ScrollViewer>
 </UserControl>

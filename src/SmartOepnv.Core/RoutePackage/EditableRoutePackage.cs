@@ -107,6 +107,29 @@ public sealed class EditableRoutePackage
         return json;
     }
 
+    /// <summary>
+    /// Serialisiert den aktuellen PackageRoot ohne SyncToRoot
+    /// (Drafts/Metadaten bleiben unverändert).
+    /// </summary>
+    public string SerializeCurrentRootWithoutSync(bool includeHeavyMedia = false)
+    {
+        _root["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (_root["version"] is null)
+        {
+            _root["version"] = "1.0";
+        }
+
+        if (_root["exportType"] is null)
+        {
+            _root["exportType"] = "routes";
+        }
+
+        _root["autoImport"] = true;
+        return includeHeavyMedia
+            ? _root.ToJsonString()
+            : SerializeRootWithoutHeavyMedia();
+    }
+
     /// <summary>Sidecar-JSON mit nur <c>embeddedSounds</c>/<c>specialAnnouncements</c> (oder null).</summary>
     public string? TryGetHeavyMediaSidecarJson()
     {

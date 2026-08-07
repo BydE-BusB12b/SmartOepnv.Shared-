@@ -124,7 +124,8 @@ public sealed class LocalWorkspaceStore
             LastSavedUtc = DateTimeOffset.UtcNow,
             Source = source,
             PackageTimestamp = ExtractPackageTimestamp(bodyJson),
-            LastMergedRouteUpdateTimestamp = previousMeta?.LastMergedRouteUpdateTimestamp
+            LastMergedRouteUpdateTimestamp = previousMeta?.LastMergedRouteUpdateTimestamp,
+            LastMergedLeitstelleRoutesTimestamp = previousMeta?.LastMergedLeitstelleRoutesTimestamp
         };
         SafeDataFileStore.WriteAllText(_metaPath, JsonSerializer.Serialize(meta, MetaJsonOptions));
     }
@@ -181,6 +182,17 @@ public sealed class LocalWorkspaceStore
     {
         var meta = TryLoadMeta() ?? new WorkspaceMeta();
         meta.LastMergedRouteUpdateTimestamp = timestamp;
+        meta.LastSavedUtc = DateTimeOffset.UtcNow;
+        SafeDataFileStore.WriteAllText(_metaPath, JsonSerializer.Serialize(meta, MetaJsonOptions));
+    }
+
+    public long GetLastMergedLeitstelleRoutesTimestamp() =>
+        TryLoadMeta()?.LastMergedLeitstelleRoutesTimestamp ?? 0;
+
+    public void SaveLastMergedLeitstelleRoutesTimestamp(long timestamp)
+    {
+        var meta = TryLoadMeta() ?? new WorkspaceMeta();
+        meta.LastMergedLeitstelleRoutesTimestamp = timestamp;
         meta.LastSavedUtc = DateTimeOffset.UtcNow;
         SafeDataFileStore.WriteAllText(_metaPath, JsonSerializer.Serialize(meta, MetaJsonOptions));
     }

@@ -10,6 +10,7 @@ using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.Core.RoutePath;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
@@ -664,7 +665,20 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         {
             _sync.MarkDirty();
             CommitChanges();
-            StatusMessage = $"Navidaten übernommen ({edges} Verbindungen).";
+            var warning = RoutePathDraftIntegrity.FormatWarning(
+                RoutePathDraftIntegrity.EvaluatePackageRoute(editor.PackageRoot, SelectedRoute));
+            StatusMessage = warning is null
+                ? $"Navidaten übernommen ({edges} Verbindungen)."
+                : $"Navidaten übernommen ({edges} Verbindungen). {warning}";
+            if (warning is not null)
+            {
+                SmartConfirmDialog.ShowInfo(
+                    Application.Current?.MainWindow,
+                    "Fahrweg-Prüfung",
+                    warning + "\n\nBitte Fahrweg-Editor öffnen, bereinigen und neu snappen, bevor Sie an Fahrzeuge senden.",
+                    width: 560);
+            }
+
             return;
         }
 
@@ -689,7 +703,19 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         {
             _sync.MarkDirty();
             CommitChanges();
-            StatusMessage = $"Navidaten übernommen ({edges} Verbindungen) – kein erneutes Snappen nötig.";
+            var warning = RoutePathDraftIntegrity.FormatWarning(
+                RoutePathDraftIntegrity.EvaluatePackageRoute(editor.PackageRoot, SelectedRoute));
+            StatusMessage = warning is null
+                ? $"Navidaten übernommen ({edges} Verbindungen) – kein erneutes Snappen nötig."
+                : $"Navidaten übernommen ({edges} Verbindungen). {warning}";
+            if (warning is not null)
+            {
+                SmartConfirmDialog.ShowInfo(
+                    Application.Current?.MainWindow,
+                    "Fahrweg-Prüfung",
+                    warning + "\n\nBitte Fahrweg-Editor öffnen, bereinigen und neu snappen, bevor Sie an Fahrzeuge senden.",
+                    width: 560);
+            }
         }
     }
 
@@ -918,9 +944,21 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         var source = editor.GetAutoScheduleSourceRoute(SelectedRoute);
         _sync.MarkDirty();
         CommitChanges();
-        StatusMessage = string.IsNullOrWhiteSpace(source)
-            ? "Navidaten kopiert."
-            : $"Navidaten von „{source}“ nach „{SelectedRoute}“ kopiert.";
+        var warning = RoutePathDraftIntegrity.FormatWarning(
+            RoutePathDraftIntegrity.EvaluatePackageRoute(editor.PackageRoot, SelectedRoute));
+        StatusMessage = warning is null
+            ? (string.IsNullOrWhiteSpace(source)
+                ? "Navidaten kopiert."
+                : $"Navidaten von „{source}“ nach „{SelectedRoute}“ kopiert.")
+            : $"Navidaten kopiert – Warnung: {warning}";
+        if (warning is not null)
+        {
+            SmartConfirmDialog.ShowInfo(
+                Application.Current?.MainWindow,
+                "Fahrweg-Prüfung",
+                warning + "\n\nIm Fahrweg-Editor „Fahrweg bereinigen“ nutzen oder Vorlage neu snappen und erneut kopieren.",
+                width: 560);
+        }
     }
 
     private bool CanCopyNavigationDataForSelectedRoute()

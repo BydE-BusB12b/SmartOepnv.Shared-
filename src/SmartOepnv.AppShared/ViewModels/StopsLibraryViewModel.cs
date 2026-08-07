@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -1152,30 +1153,67 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
     private void ApplyRouteAssignFilter()
     {
-        var selected = SelectedRouteForInsert;
-        var query = RouteAssignSearchQuery.Trim();
-        AvailableRoutes.Clear();
+        EnsureAvailableRoutesPopulated();
 
-        IEnumerable<string> source = _allRoutes;
-        if (!string.IsNullOrEmpty(query))
+        var view = CollectionViewSource.GetDefaultView(AvailableRoutes);
+        if (view is null)
         {
-            source = _allRoutes.Where(route => RouteMatchesAssignSearch(route, query));
+            return;
         }
 
-        foreach (var route in RouteDisplayHelper.SortRoutesByLineCourseAndTrip(source))
+        var query = RouteAssignSearchQuery.Trim();
+        var selected = SelectedRouteForInsert;
+
+        // Filter statt Clear/Add: ComboBox behält Popup + Fokus im Suchfeld.
+        view.Filter = obj =>
+        {
+            if (obj is not string route)
+            {
+                return false;
+            }
+
+            // Aktuelle Auswahl sichtbar lassen (Anzeige neben dem Pfeil).
+            if (!string.IsNullOrEmpty(selected) &&
+                string.Equals(route, selected, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrEmpty(query))
+            {
+                return true;
+            }
+
+            return RouteMatchesAssignSearch(route, query);
+        };
+        view.Refresh();
+    }
+
+    private void EnsureAvailableRoutesPopulated()
+    {
+        var sorted = RouteDisplayHelper.SortRoutesByLineCourseAndTrip(_allRoutes).ToList();
+        if (AvailableRoutes.Count == sorted.Count)
+        {
+            var same = true;
+            for (var i = 0; i < sorted.Count; i++)
+            {
+                if (!string.Equals(AvailableRoutes[i], sorted[i], StringComparison.Ordinal))
+                {
+                    same = false;
+                    break;
+                }
+            }
+
+            if (same)
+            {
+                return;
+            }
+        }
+
+        AvailableRoutes.Clear();
+        foreach (var route in sorted)
         {
             AvailableRoutes.Add(route);
-        }
-
-        // Auswahl behalten, auch wenn die Suche sie ausblendet (sonst leert die ComboBox die Bindung).
-        if (!string.IsNullOrEmpty(selected) && !AvailableRoutes.Contains(selected))
-        {
-            AvailableRoutes.Insert(0, selected);
-        }
-
-        if (!string.IsNullOrEmpty(selected) && AvailableRoutes.Contains(selected))
-        {
-            SelectedRouteForInsert = selected;
         }
     }
 

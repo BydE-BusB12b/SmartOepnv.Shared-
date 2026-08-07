@@ -42,6 +42,66 @@ public static class PlanerDropboxWorkspaceSync
         ReportOverall(progress, "Planer-Arbeitsstand wird geprüft…", 0);
 
         var localTimestamp = Workspace.GetLocalSavedAtUtcMs();
+        var localSyncGeneration = Workspace.GetLocalSyncGeneration();
+        var workspacePath = Workspace.LocalFilePath;
+
+        DropboxNamedFileMetadata? remoteMeta = null;
+        try
+        {
+            remoteMeta = await AppServices.Dropbox
+                .TryGetNamedFileMetadataAsync(DropboxConstants.PlanerWorkspaceFileName, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            return new ImportResult(false, 0, localTimestamp, $"Dropbox-Metadaten fehlgeschlagen: {ex.Message}");
+        }
+
+        if (remoteMeta is null)
+        {
+            return new ImportResult(
+                false,
+                0,
+                localTimestamp,
+                "Kein Planer-Arbeitsstand in Dropbox – lokaler Stand beibehalten.");
+        }
+
+        var stamp = PlanerWorkspaceDropboxSyncStamp.TryLoad(workspacePath);
+        if (!forceOverwrite &&
+            File.Exists(workspacePath) &&
+            PlanerWorkspaceDropboxSyncStamp.MatchesRemote(stamp, remoteMeta.Value, localSyncGeneration) &&
+            Workspace.TryApplyLocalDocument())
+        {
+            IReadOnlyDictionary<string, PlanerWorkspaceBinaryPayload>? soundsManifest = null;
+            if (AppServices.IsInitialized)
+            {
+                soundsManifest = PlanerAnnouncementRawSoundsWorkspace.CaptureForSync(AppServices.Workspace);
+            }
+
+            var soundsProgress = ScaleProgress(
+                progress,
+                "Fehlende Ansagen-Rohdateien werden geprüft…",
+                50,
+                100);
+            var soundsResult = await PlanerAnnouncementRawSoundsDropboxSync
+                .ImportMissingFilesAsync(soundsManifest, soundsProgress, ct)
+                .ConfigureAwait(false);
+            ReportOverall(progress, "Lokaler Planer-Arbeitsstand übernommen.", 100);
+            var soundsHint = soundsResult.Downloaded > 0
+                ? $" {soundsResult.Downloaded} Ansagen-Rohdatei(en) nachgeladen."
+                : string.Empty;
+            var genHint = localSyncGeneration > 0
+                ? $" Stand #{localSyncGeneration}."
+                : string.Empty;
+            return new ImportResult(
+                true,
+                stamp?.LocalSavedAtUtcMs ?? localTimestamp,
+                localTimestamp,
+                "Lokal aktuell – kein Dropbox-Download (planer_workspace.json unverändert)." +
+                genHint +
+                soundsHint);
+        }
+
         var localDocument = Workspace.TryReadLocalDocument();
 
         string remoteJson;
@@ -80,15 +140,31 @@ public static class PlanerDropboxWorkspaceSync
 
         var remoteTimestamp = document.SavedAtUtcMs;
         var remoteHasMoreContent = PlanerWorkspaceContentCompare.RemoteHasMoreContentThanLocal(document, localDocument);
-        var localIsNewerThanRemote = localTimestamp > 0 && remoteTimestamp < localTimestamp;
-        var preferRemote = !localIsNewerThanRemote &&
-                           (ShouldPreferRemoteDespiteLocalTimestamp(document, localDocument) || remoteHasMoreContent);
+        var localGeneration = localDocument?.SyncGeneration ?? 0;
+        var remoteGeneration = document.SyncGeneration;
+        var localIsNewerByGeneration = localGeneration > 0 &&
+                                       remoteGeneration > 0 &&
+                                       localGeneration > remoteGeneration;
+        var remoteIsNewerByGeneration = remoteGeneration > 0 &&
+                                        localGeneration > 0 &&
+                                        remoteGeneration > localGeneration;
+        var localIsNewerThanRemote = (localTimestamp > 0 && remoteTimestamp < localTimestamp) ||
+                                     localIsNewerByGeneration;
+        var preferRemote = remoteIsNewerByGeneration ||
+                           (!localIsNewerThanRemote &&
+                            (ShouldPreferRemoteDespiteLocalTimestamp(document, localDocument) || remoteHasMoreContent));
 
         if (!forceOverwrite &&
             localTimestamp > 0 &&
             remoteTimestamp <= localTimestamp &&
             !preferRemote)
         {
+            // Stempel speichern, damit der nächste Start den großen Download überspringt.
+            PlanerWorkspaceDropboxSyncStamp.Save(
+                workspacePath,
+                remoteMeta.Value,
+                localTimestamp,
+                localDocument?.SyncGeneration ?? document.SyncGeneration);
             var mergedVersions = PlanerWorkspaceService.MergePackageVersionSnapshots(document.PackageVersionSnapshots);
             var versionHint = mergedVersions > 0
                 ? $" {mergedVersions} Version(en) aus Dropbox übernommen."
@@ -110,18 +186,24 @@ public static class PlanerDropboxWorkspaceSync
 
         Workspace.Apply(document, authoritative: true);
 
-        var soundsProgress = ScaleProgress(
+        var soundsProgressAfterDownload = ScaleProgress(
             progress,
             "Ansagen-Rohdateien werden geladen…",
             93,
             100);
-        var soundsResult = await PlanerAnnouncementRawSoundsDropboxSync
-            .ImportMissingFilesAsync(document.AnnouncementRawSounds, soundsProgress, ct)
+        var soundsResultAfterDownload = await PlanerAnnouncementRawSoundsDropboxSync
+            .ImportMissingFilesAsync(document.AnnouncementRawSounds, soundsProgressAfterDownload, ct)
             .ConfigureAwait(false);
 
+        PlanerWorkspaceDropboxSyncStamp.Save(
+            workspacePath,
+            remoteMeta.Value,
+            document.SavedAtUtcMs,
+            document.SyncGeneration);
+
         ReportOverall(progress, "Planer-Arbeitsstand übernommen.", 100);
-        var soundsHint = soundsResult.Downloaded > 0
-            ? $" {soundsResult.Downloaded} Ansagen-Rohdatei(en) aus {DropboxConstants.PlanerAnnouncementRawSoundsFolderName}/ geladen."
+        var soundsHintAfterDownload = soundsResultAfterDownload.Downloaded > 0
+            ? $" {soundsResultAfterDownload.Downloaded} Ansagen-Rohdatei(en) aus {DropboxConstants.PlanerAnnouncementRawSoundsFolderName}/ geladen."
             : string.Empty;
         return new ImportResult(
             true,
@@ -129,7 +211,7 @@ public static class PlanerDropboxWorkspaceSync
             localTimestamp,
             (forceOverwrite
                 ? $"Planer-Arbeitsstand aus Dropbox geladen ({DropboxConstants.PlanerWorkspaceFileName}, lokaler Stand überschrieben)."
-                : $"Planer-Arbeitsstand aus Dropbox übernommen ({DropboxConstants.PlanerWorkspaceFileName}).") + soundsHint,
+                : $"Planer-Arbeitsstand aus Dropbox übernommen ({DropboxConstants.PlanerWorkspaceFileName}).") + soundsHintAfterDownload,
             RemoteHasMoreContent: remoteHasMoreContent);
     }
 
@@ -147,13 +229,11 @@ public static class PlanerDropboxWorkspaceSync
         {
             ReportOverall(progress, "Arbeitsstand wird vorbereitet…", 2);
 
-            var existingDocument = Workspace.TryReadLocalDocument();
+            // Kein volles Einlesen der lokalen Workspace-Datei (kann GB groß sein).
             var captureRequest = new PlanerWorkspaceCaptureRequest
             {
                 SkipFlush = !flushBeforeCapture,
-                PreferCachedRoutesJson = !flushBeforeCapture,
-                ReuseSnapshotPackageJsonFrom = existingDocument?.PackageVersionSnapshots,
-                ReuseAnnouncementRawSoundsFrom = existingDocument?.AnnouncementRawSounds
+                PreferCachedRoutesJson = !flushBeforeCapture
             };
 
             var document = Workspace.CaptureCurrent(captureRequest);
@@ -218,6 +298,8 @@ public static class PlanerDropboxWorkspaceSync
 
                 if (string.IsNullOrWhiteSpace(leitstelleJson))
                 {
+                    await RememberRemoteWorkspaceStampAsync(document.SavedAtUtcMs, document.SyncGeneration, ct)
+                        .ConfigureAwait(false);
                     PlanerWorkspaceSaveCoordinator.MarkDropboxExported();
                     ReportOverall(progress, "Upload abgeschlossen.", 100);
                     return new ExportResult(
@@ -229,6 +311,8 @@ public static class PlanerDropboxWorkspaceSync
 
                 if (!RoutePackageRosterPreserve.JsonContainsRosterData(leitstelleJson))
                 {
+                    await RememberRemoteWorkspaceStampAsync(document.SavedAtUtcMs, document.SyncGeneration, ct)
+                        .ConfigureAwait(false);
                     PlanerWorkspaceSaveCoordinator.MarkDropboxExported();
                     ReportOverall(progress, "Upload abgeschlossen.", 100);
                     return new ExportResult(
@@ -246,13 +330,15 @@ public static class PlanerDropboxWorkspaceSync
                     100);
                 await AppServices.Dropbox.UploadLeitstelleStandAsync(leitstelleJson, ct, leitstelleProgress)
                     .ConfigureAwait(false);
+                await RememberRemoteWorkspaceStampAsync(document.SavedAtUtcMs, document.SyncGeneration, ct)
+                    .ConfigureAwait(false);
                 PlanerWorkspaceSaveCoordinator.MarkDropboxExported();
                 ReportOverall(progress, "Upload abgeschlossen.", 100);
                 return new ExportResult(
                     true,
                     $"Planer-Arbeitsstand in Dropbox gespeichert ({DropboxConstants.PlanerWorkspaceFileName}, {sizeKb} KB). " +
                     $"{routesResult.Message} {versionsResult.Message} {soundsResult.Message} " +
-                    $"{DropboxConstants.LeitstelleStandFileName} aktualisiert.",
+                    $"{DropboxConstants.LeitstelleStandFileName} aktualisiert (ohne {DropboxConstants.RouteUpdateFileName}).",
                     LocalSaved: true);
             }
             finally
@@ -273,6 +359,33 @@ public static class PlanerDropboxWorkspaceSync
     }
 
     public static bool TryApplyLocalWorkspace() => Workspace.TryApplyLocalDocument();
+
+    private static async Task RememberRemoteWorkspaceStampAsync(
+        long localSavedAtUtcMs,
+        long syncGeneration,
+        CancellationToken ct)
+    {
+        try
+        {
+            var meta = await AppServices.Dropbox
+                .TryGetNamedFileMetadataAsync(DropboxConstants.PlanerWorkspaceFileName, ct)
+                .ConfigureAwait(false);
+            if (meta is null)
+            {
+                return;
+            }
+
+            PlanerWorkspaceDropboxSyncStamp.Save(
+                Workspace.LocalFilePath,
+                meta.Value,
+                localSavedAtUtcMs,
+                syncGeneration);
+        }
+        catch
+        {
+            // Stempel ist nur Optimierung.
+        }
+    }
 
     private static bool ShouldPreferRemoteDespiteLocalTimestamp(
         PlanerWorkspaceDocument remote,

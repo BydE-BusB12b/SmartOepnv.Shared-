@@ -6,7 +6,10 @@ using SmartOepnv.Core;
 
 namespace SmartOepnv.Core.Dropbox;
 
-public readonly record struct DropboxNamedFileMetadata(long? ServerModifiedUtcMs, long SizeBytes);
+public readonly record struct DropboxNamedFileMetadata(
+    long? ServerModifiedUtcMs,
+    long SizeBytes,
+    string? ContentHash = null);
 
 public sealed class DropboxApiClient
 {
@@ -288,7 +291,7 @@ public sealed class DropboxApiClient
                 DateTime.SpecifyKind(modified, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
         }
 
-        return new DropboxNamedFileMetadata(modifiedUtcMs, meta.Value.Size);
+        return new DropboxNamedFileMetadata(modifiedUtcMs, meta.Value.Size, meta.Value.ContentHash);
     }
 
     public async Task<string> DownloadNamedFileAsync(
@@ -640,7 +643,7 @@ public sealed class DropboxApiClient
                 DateTime.SpecifyKind(modified, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
         }
 
-        return new DropboxNamedFileMetadata(modifiedUtcMs, meta.Value.Size);
+        return new DropboxNamedFileMetadata(modifiedUtcMs, meta.Value.Size, meta.Value.ContentHash);
     }
 
     public async Task UploadNamedBinaryFileAsync(string fileName, byte[] content, CancellationToken ct = default)
@@ -1401,7 +1404,14 @@ public sealed class DropboxApiClient
         }
 
         long size = root.TryGetProperty("size", out var sz) ? sz.GetInt64() : 0;
-        return new DropboxFileMetadata(modified, size);
+        string? contentHash = null;
+        if (root.TryGetProperty("content_hash", out var ch) &&
+            ch.ValueKind == JsonValueKind.String)
+        {
+            contentHash = ch.GetString();
+        }
+
+        return new DropboxFileMetadata(modified, size, contentHash);
     }
 
     private async Task<IReadOnlyList<string>> ListFileNamesAsync(string folderPath, string token, CancellationToken ct)
@@ -1538,7 +1548,7 @@ public sealed class DropboxApiClient
         return request;
     }
 
-    private readonly record struct DropboxFileMetadata(DateTime? ServerModified, long Size);
+    private readonly record struct DropboxFileMetadata(DateTime? ServerModified, long Size, string? ContentHash = null);
 }
 
 public sealed class DropboxConnectionTestResult

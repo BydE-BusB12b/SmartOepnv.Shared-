@@ -7,16 +7,19 @@ namespace SmartOepnv.Core.RoutePackage;
 /// <summary>
 /// Kompakt-Paket für die Leitstelle: Fahrer, Fahrzeuge, Nachrichten/Mail-Vorlagen,
 /// Außenanzeigen-Zielliste (<c>outsideDisplays</c>) und vereinfachte Fahrwege für die Karte.
-/// Wird als eigene Dropbox-Datei verteilt (Dateiname <c>leitstelle_stand.json</c>).
-/// Vollständige Routen/Haltestellen bleiben unverändert.
+/// Wird als <c>leitstelle_stand.json</c> verteilt; Routen/Haltestellen/Snaps gehen parallel
+/// als <c>leitstelle_routes.json</c> mit (nicht <c>routes_update.json</c> – das bleibt für Fahrzeuge).
 /// </summary>
 public static class LeitstelleStandPackage
 {
     public static string BuildJson(EditableRoutePackage package)
     {
+        // PackageRoot inkl. routePathDrafts aktualisieren, sonst sind Karten-Überblicke leer.
+        _ = package.ToJson(indented: false, rebuildEmbeddedMedia: false, includeHeavyMedia: false);
+
         var root = new JsonObject
         {
-            ["version"] = "1.2",
+            ["version"] = "1.3",
             ["exportType"] = "leitstelleStand",
             ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             ["autoImport"] = false,

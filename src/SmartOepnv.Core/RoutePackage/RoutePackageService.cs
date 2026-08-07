@@ -266,6 +266,27 @@ public sealed class RoutePackageService
         }
     }
 
+    /// <summary>
+    /// Schreibt den aktuellen PackageRoot erneut auf Disk, ohne SyncToRoot/Editor-Rebuild
+    /// (z. B. nach erneutem Setzen von routePathDrafts).
+    /// </summary>
+    public void PersistPackageBodyOnly(string source = "persist")
+    {
+        if (Editor is null || !AppServices.IsInitialized)
+        {
+            return;
+        }
+
+        var body = Editor.SerializeCurrentRootWithoutSync(includeHeavyMedia: false);
+        _currentJson = body;
+        AppServices.Workspace.SavePackageBody(
+            body,
+            source,
+            archivePrevious: false,
+            heavyMediaJson: null,
+            updateHeavyMediaSidecar: false);
+    }
+
     /// <summary>Vollständiges Paket inkl. Audio (für Merge/Datei-Export); baut bei Bedarf aus Cache/Sidecar.</summary>
     public string GetFullPackageJson(bool rebuildEmbeddedMedia = false)
     {
@@ -469,9 +490,15 @@ public sealed class RoutePackageService
     }
 
     /// <summary>
-    /// Übernimmt <c>routes_update.json</c> (Lite) in den Editor – neue/geänderte Routen für Fernroute &amp; Karte.
+    /// Übernimmt ein Lite-Routenpaket (ohne Audio) in den Editor – Fernroute &amp; Karte.
     /// </summary>
-    public bool TryMergeLiteRouteUpdateJson(string json, out string message)
+    /// <param name="trackLeitstelleRoutes">
+    /// true = Timestamp von <c>leitstelle_routes.json</c>; false = <c>routes_update.json</c>.
+    /// </param>
+    public bool TryMergeLiteRouteUpdateJson(
+        string json,
+        out string message,
+        bool trackLeitstelleRoutes = false)
     {
         message = string.Empty;
         if (string.IsNullOrWhiteSpace(json))
@@ -482,48 +509,61 @@ public sealed class RoutePackageService
 
         if (!LiteRouteUpdateMerge.IsLiteVehicleUpdate(json))
         {
-            message = "Datei ist kein Lite-Fahrzeugupdate (routes_update.json).";
+            message = "Datei ist kein Lite-Routenpaket (ohne Audio).";
             return false;
         }
 
+        var fileLabel = trackLeitstelleRoutes
+            ? DropboxConstants.LeitstelleRoutesFileName
+            : DropboxConstants.RouteUpdateFileName;
         var updateTimestamp = LocalWorkspaceStore.ExtractPackageTimestamp(json);
         if (AppServices.IsInitialized)
         {
-            var lastMerged = AppServices.Workspace.GetLastMergedRouteUpdateTimestamp();
+            var lastMerged = trackLeitstelleRoutes
+                ? AppServices.Workspace.GetLastMergedLeitstelleRoutesTimestamp()
+                : AppServices.Workspace.GetLastMergedRouteUpdateTimestamp();
             if (updateTimestamp > 0 &&
                 updateTimestamp <= lastMerged &&
                 !LiteRouteUpdateMerge.ContainsRoutesMissingFromEditor(json, Editor))
             {
-                message = $"{DropboxConstants.RouteUpdateFileName} bereits übernommen.";
+                message = $"{fileLabel} bereits übernommen.";
                 return false;
             }
         }
 
         try
         {
+            var source = trackLeitstelleRoutes ? "leitstelle-routes-merge" : "routes-update-merge";
             if (!HasPackage || Editor is null || string.IsNullOrWhiteSpace(_currentJson))
             {
-                LoadFromJson(json, persistLocally: true, source: "routes-update-merge");
+                LoadFromJson(json, persistLocally: true, source: source);
             }
             else
             {
                 var baseJson = GetFullPackageJson(rebuildEmbeddedMedia: false);
                 var merged = LiteRouteUpdateMerge.MergeIntoPackageJson(baseJson, json);
-                LoadFromJson(merged, persistLocally: true, source: "routes-update-merge");
+                LoadFromJson(merged, persistLocally: true, source: source);
             }
 
             if (AppServices.IsInitialized && updateTimestamp > 0)
             {
-                AppServices.Workspace.SaveLastMergedRouteUpdateTimestamp(updateTimestamp);
+                if (trackLeitstelleRoutes)
+                {
+                    AppServices.Workspace.SaveLastMergedLeitstelleRoutesTimestamp(updateTimestamp);
+                }
+                else
+                {
+                    AppServices.Workspace.SaveLastMergedRouteUpdateTimestamp(updateTimestamp);
+                }
             }
 
             message =
-                $"Lite-Update übernommen ({Stats.RouteCount} Routen, {Stats.StopCount} Haltestellen).";
+                $"{fileLabel} übernommen ({Stats.RouteCount} Routen, {Stats.StopCount} Haltestellen).";
             return true;
         }
         catch (Exception ex)
         {
-            message = $"Lite-Update fehlgeschlagen: {ex.Message}";
+            message = $"Lite-Merge fehlgeschlagen: {ex.Message}";
             return false;
         }
     }

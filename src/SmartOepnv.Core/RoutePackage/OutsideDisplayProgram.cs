@@ -37,7 +37,29 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public string Id
     {
         get => _id;
-        set => SetProperty(ref _id, OutsideDisplayId.Ensure(value));
+        set => SetProperty(ref _id, OutsideDisplayId.Ensure(value), nameof(DisplayNumber), nameof(IdEditText));
+    }
+
+    /// <summary>Vierstellige Anzeige-Nummer für Listen (direkt oder aus langer Legacy-ID abgeleitet).</summary>
+    public string DisplayNumber => OutsideDisplayId.ToDisplayNumber(Id);
+
+    /// <summary>Editierbare ID im Formular (immer vorausgefüllt, 0001–9999).</summary>
+    public string IdEditText
+    {
+        get => OutsideDisplayId.IsFourDigit(_id)
+            ? _id
+            : OutsideDisplayId.ToDisplayNumber(_id);
+        set
+        {
+            var next = OutsideDisplayId.TryNormalizeEditableId(value);
+            if (next is null)
+            {
+                OnPropertyChanged(nameof(IdEditText));
+                return;
+            }
+
+            Id = next;
+        }
     }
 
     /// <summary>Wechseltext 1–4 (Front), wie Slider im Handy-Dialog.</summary>
@@ -257,7 +279,10 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         _ => "DS021T"
     };
 
-    /// <summary>DS021T → DS021neu → DS003a, innerhalb der Gruppe Startziel zuerst, dann Name.</summary>
+    /// <summary>
+    /// DS021T → DS021neu → DS003a → …, innerhalb der Gruppe Startziel zuerst,
+    /// dann Name (RE/RB/S + Nummer numerisch: RE4 &lt; RE7 &lt; RE47).
+    /// </summary>
     public static int CompareForZielliste(OutsideDisplayProgram? left, OutsideDisplayProgram? right)
     {
         if (ReferenceEquals(left, right))
@@ -288,7 +313,198 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             return leftStart ? -1 : 1;
         }
 
-        return string.Compare(left.Name, right.Name, StringComparison.CurrentCultureIgnoreCase);
+        return CompareZiellisteNames(left.Name, right.Name);
+    }
+
+    /// <summary>
+    /// Namenssortierung: 1) A–Z, 2) führende Zahlen ab 0, 3) RB/RE/S mit numerischer Liniennummer.
+    /// </summary>
+    public static int CompareZiellisteNames(string? left, string? right)
+    {
+        if (string.Equals(left, right, StringComparison.CurrentCultureIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (left is null)
+        {
+            return 1;
+        }
+
+        if (right is null)
+        {
+            return -1;
+        }
+
+        var leftName = left.Trim();
+        var rightName = right.Trim();
+        if (leftName.Length == 0)
+        {
+            return 1;
+        }
+
+        if (rightName.Length == 0)
+        {
+            return -1;
+        }
+
+        var leftGroup = ClassifyNameGroup(leftName);
+        var rightGroup = ClassifyNameGroup(rightName);
+        var groupOrder = leftGroup.CompareTo(rightGroup);
+        if (groupOrder != 0)
+        {
+            return groupOrder;
+        }
+
+        return leftGroup switch
+        {
+            ZiellisteNameGroup.Rail => CompareRailNames(leftName, rightName),
+            ZiellisteNameGroup.Numbers => CompareLeadingNumberNames(leftName, rightName),
+            _ => string.Compare(leftName, rightName, StringComparison.CurrentCultureIgnoreCase)
+        };
+    }
+
+    private enum ZiellisteNameGroup
+    {
+        Letters = 0,
+        Numbers = 1,
+        Rail = 2
+    }
+
+    private static ZiellisteNameGroup ClassifyNameGroup(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return ZiellisteNameGroup.Letters;
+        }
+
+        if (TryParseRailLinePrefix(name, out _, out _, out _))
+        {
+            return ZiellisteNameGroup.Rail;
+        }
+
+        return char.IsDigit(name[0]) ? ZiellisteNameGroup.Numbers : ZiellisteNameGroup.Letters;
+    }
+
+    private static int CompareRailNames(string left, string right)
+    {
+        if (!TryParseRailLinePrefix(left, out var leftCat, out var leftNum, out var leftRest) ||
+            !TryParseRailLinePrefix(right, out var rightCat, out var rightNum, out var rightRest))
+        {
+            return string.Compare(left, right, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        var categoryOrder = string.Compare(leftCat, rightCat, StringComparison.OrdinalIgnoreCase);
+        if (categoryOrder != 0)
+        {
+            return categoryOrder;
+        }
+
+        var numberOrder = leftNum.CompareTo(rightNum);
+        if (numberOrder != 0)
+        {
+            return numberOrder;
+        }
+
+        return string.Compare(leftRest, rightRest, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private static int CompareLeadingNumberNames(string left, string right)
+    {
+        ParseLeadingNumber(left, out var leftNum, out var leftRest);
+        ParseLeadingNumber(right, out var rightNum, out var rightRest);
+        var numberOrder = leftNum.CompareTo(rightNum);
+        if (numberOrder != 0)
+        {
+            return numberOrder;
+        }
+
+        return string.Compare(leftRest, rightRest, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private static void ParseLeadingNumber(string name, out int number, out string rest)
+    {
+        var i = 0;
+        var value = 0;
+        while (i < name.Length && char.IsDigit(name[i]))
+        {
+            value = (value * 10) + (name[i] - '0');
+            i++;
+        }
+
+        number = value;
+        rest = name[i..];
+    }
+
+    /// <summary>Erkennt führendes RB/RE/S inkl. Nummer (1–99), z. B. „RE47 Express &gt; …“.</summary>
+    private static bool TryParseRailLinePrefix(
+        string name,
+        out string category,
+        out int number,
+        out string rest)
+    {
+        category = string.Empty;
+        number = 0;
+        rest = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        var trimmed = name.TrimStart();
+        ReadOnlySpan<char> span = trimmed.AsSpan();
+
+        // Längere Gattungen zuerst (RE/RB vor S)
+        if (span.Length >= 3 &&
+            (span.StartsWith("RE", StringComparison.OrdinalIgnoreCase) ||
+             span.StartsWith("RB", StringComparison.OrdinalIgnoreCase)))
+        {
+            category = trimmed[..2];
+            span = span[2..];
+        }
+        else if (span.Length >= 2 && span.StartsWith("S", StringComparison.OrdinalIgnoreCase))
+        {
+            // Nur reine S-Bahn: „S28“, nicht „Startziel“ / „Schienenersatz…“
+            category = trimmed[..1];
+            span = span[1..];
+            if (span.IsEmpty || !char.IsDigit(span[0]))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+
+        if (span.IsEmpty || !char.IsDigit(span[0]))
+        {
+            return false;
+        }
+
+        var digits = 0;
+        var value = 0;
+        while (digits < span.Length && digits < 2 && char.IsDigit(span[digits]))
+        {
+            value = (value * 10) + (span[digits] - '0');
+            digits++;
+        }
+
+        // Keine 3+ Ziffern ohne Trennzeichen als Liniennummer (1–99)
+        if (digits == 2 && span.Length > 2 && char.IsDigit(span[2]))
+        {
+            return false;
+        }
+
+        if (value is < 1 or > 99)
+        {
+            return false;
+        }
+
+        number = value;
+        rest = trimmed[(category.Length + digits)..];
+        return true;
     }
 
     private static bool IsStartzielEntry(OutsideDisplayProgram program) =>
@@ -799,5 +1015,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(UsesCycleEditor));
         OnPropertyChanged(nameof(IsKrefeld));
         OnPropertyChanged(nameof(IsListEnabled));
+        OnPropertyChanged(nameof(DisplayNumber));
+        OnPropertyChanged(nameof(IdEditText));
     }
 }

@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
-
-
+using SmartOepnv.Core.RoutePath;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -72,7 +71,10 @@ public static class LiteRouteUpdateMerge
 
         "routePathDrafts",
 
-        "routeOfflineGuidance"
+        "routeOfflineGuidance",
+
+        // Nicht ersetzen: sonst vernichtet Lite (wenige Alt-Overviews) den vollen Stand.
+        LeitstelleRoutePathOverview.OverviewsKey
 
     ];
 

@@ -45,6 +45,8 @@ internal static class EmployeeBriefingManualContent
             • In der Kopfzeile sehen Sie Linie/Kurs, Routenname und Ziel: – ohne hinterlegtes Starthaltestellenziel erscheint „Ziel: Kein Ziel“.
             • Pas.-Info: rot „off“ = Fahrgastinformation und Ansagen aktiv, grün „on“ = deaktiviert – vor Fahrtantritt einschalten, wenn vorgesehen.
             • IBIS-USB in der Statuszeile: rot = nicht verbunden, grün = verbunden, blau blinkend = sendet gerade IBIS-Daten.
+            • Statuszeile – Symbol „Laden“ (weißes Stecker-Symbol neben dem Akkustand): Das Gerät wird am Stromnetz geladen. Ohne Stecker sehen Sie nur den Akkustand in Prozent.
+            • Statuszeile – Symbol „Bluetoothverbindung“ (Bluetooth-Zeichen mit Lautsprecher, weiß): Bluetooth-Audio bzw. Fahrgastraum-Lautsprecher ist verbunden; Ansagen und Durchsagen können darüber ausgegeben werden. Fehlt das Symbol, ist keine Bluetooth-Audioverbindung aktiv.
             • Gelber Kreis neben dem Netz-/Empfangssymbol in der Statuszeile: Synchronisation bzw. Routen-Update läuft (z. B. neues Fahrzeugupdate). Währenddessen die App nicht beenden und warten, bis das Symbol wieder verschwindet.
             • Die aktuelle Haltestelle ist gelb umrandet; ausfallende Haltestellen erscheinen rot mit X.
             • Symbol mit Fragezeichen in der Statuszeile: Route wurde verlassen – fehlt die Linienführung oder gibt es Fehler, diese bitte über Mängelmeldung melden oder an die Planung wenden.
@@ -120,6 +122,7 @@ internal static class EmployeeBriefingManualContent
             • Die Pause aktivieren Sie im Hauptmenü über den roten Button „Pause“ (siehe Abbildung unten).
             • Die App wird sofort gesperrt; oben erscheint der Hinweis „App pausiert – Passwort erforderlich“.
             • Während der Pause bleiben Sie angemeldet – auch wenn der Bildschirm ausgeschaltet wird oder die App in den Hintergrund wechselt.
+            • Schließen Sie die App und öffnen sie erneut, ist die Pause ebenfalls aktiv: Zum Fortfahren müssen Sie die Pause mit Ihrem eigenen Anmeldepasswort entsperren.
             • Zum Fortfahren „Pause beenden“: Ihr Anmeldepasswort über das Ziffernfeld eingeben und „OK“ bestätigen.
             • „Löschen“ entfernt die letzte Eingabe; bei falschem Passwort erneut versuchen.
             • „Zwangsabmelden“ beendet die Anmeldung vollständig – nur nutzen, wenn Sie das Passwort vergessen haben oder den Dienst beenden möchten.

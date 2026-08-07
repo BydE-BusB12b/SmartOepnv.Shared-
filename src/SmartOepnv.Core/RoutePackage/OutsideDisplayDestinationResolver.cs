@@ -225,13 +225,17 @@ public static class OutsideDisplayDestinationResolver
         if (OutsideDisplayId.IsValid(id))
         {
             var currentName = FindNameById(catalog, protocol, id);
-            if (!string.IsNullOrWhiteSpace(currentName) &&
-                !string.Equals(currentName, name, StringComparison.Ordinal))
+            if (!string.IsNullOrWhiteSpace(currentName))
             {
-                set(currentName, id);
+                if (!string.Equals(currentName, name, StringComparison.Ordinal))
+                {
+                    set(currentName, id);
+                }
+
+                return;
             }
 
-            return;
+            // ID nicht mehr im Katalog (z. B. nach Migration auf 4-stellige IDs) → per Name neu.
         }
 
         if (string.IsNullOrWhiteSpace(name) ||
@@ -247,43 +251,37 @@ public static class OutsideDisplayDestinationResolver
         }
     }
 
-    /// <summary>Vergibt fehlende IDs in outsideDisplays und schreibt Einträge zurück.</summary>
+    /// <summary>Vergibt eindeutige 4-stellige IDs in outsideDisplays und schreibt Einträge zurück.</summary>
     public static bool EnsureOutsideDisplayIds(EditableRoutePackage editor)
     {
-        var changed = false;
-        var rewritten = new List<string>();
-        foreach (var entry in editor.OutsideDisplays)
+        var parsed = editor.OutsideDisplays
+            .Select(entry => (Entry: entry, Program: OutsideDisplayProgram.TryParse(entry)))
+            .ToList();
+
+        var assigned = OutsideDisplayId.AssignUniqueFourDigitIds(
+            parsed.Where(x => x.Program is not null).Select(x => x.Program!));
+
+        var rewritten = parsed
+            .Select(x => x.Program?.ToStorageEntry() ?? x.Entry)
+            .ToList();
+
+        var storageChanged = assigned || rewritten.Count != editor.OutsideDisplays.Count;
+        if (!storageChanged)
         {
-            var program = OutsideDisplayProgram.TryParse(entry);
-            if (program is null)
+            for (var i = 0; i < editor.OutsideDisplays.Count; i++)
             {
-                rewritten.Add(entry);
-                continue;
+                if (!string.Equals(editor.OutsideDisplays[i], rewritten[i], StringComparison.Ordinal))
+                {
+                    storageChanged = true;
+                    break;
+                }
             }
-
-            var before = OutsideDisplayId.FromStorageEntry(entry);
-            if (!OutsideDisplayId.IsValid(before))
-            {
-                changed = true;
-            }
-
-            rewritten.Add(program.ToStorageEntry());
         }
 
-        if (changed || rewritten.Count != editor.OutsideDisplays.Count)
+        if (storageChanged)
         {
             editor.ReplaceOutsideDisplays(rewritten);
             return true;
-        }
-
-        // Auch wenn IDs schon da: normalisieren (Encode-Konsistenz)
-        for (var i = 0; i < editor.OutsideDisplays.Count; i++)
-        {
-            if (!string.Equals(editor.OutsideDisplays[i], rewritten[i], StringComparison.Ordinal))
-            {
-                editor.ReplaceOutsideDisplays(rewritten);
-                return true;
-            }
         }
 
         return false;

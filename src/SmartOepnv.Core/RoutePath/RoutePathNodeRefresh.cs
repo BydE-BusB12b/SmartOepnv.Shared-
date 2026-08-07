@@ -3,29 +3,50 @@ using SmartOepnv.Core.RoutePackage;
 namespace SmartOepnv.Core.RoutePath;
 
 /// <summary>
-/// Hält Snap-Daten an Halt-/Ansage-Knoten, wenn sich nur Listen-Indizes ändern
+/// Hält Snap-Daten und Karten-Positionen an Halt-/Ansage-Knoten, wenn sich nur Listen-Indizes ändern
 /// (stop_5 → stop_7 bei gleichem Halt-Namen).
 /// </summary>
 public static class RoutePathNodeRefresh
 {
     /// <summary>
-    /// Ersetzt Index-Knoten aus der aktuellen Halteliste, mapped alte IDs auf neue per
-    /// Typ + SourceStopName, und schreibt Edge-Keys in Segmenten/Snaps um.
-    /// Löscht Snaps nur, wenn kein passender Halt mehr existiert.
+    /// Mapped Index-Knoten auf die aktuelle Halteliste (Typ + SourceStopName), schreibt Edge-Keys um.
+    /// Behält Lat/Lon von Halt-/Ansage-Markern und die relative Knotenreihenfolge (inkl. Manuell-Punkte).
     /// </summary>
     public static void RefreshNodesFromStops(RoutePathDraft draft, IList<RouteStopItem> stops)
     {
-        var oldIndexNodes = draft.Nodes
+        var oldNodes = draft.Nodes.ToList();
+        var oldIndexNodes = oldNodes
             .Where(n => n.Type is RoutePathNodeType.STOP or RoutePathNodeType.ANNOUNCEMENT)
             .ToList();
-        var preservedWaypoints = draft.Nodes
-            .Where(n => n.Type is RoutePathNodeType.AUTO_WAYPOINT or RoutePathNodeType.MANUAL_WAYPOINT)
-            .ToList();
-
         var seeded = RoutePathDraftBuilder.BuildSeedNodes(stops);
         var idMap = BuildIdRemap(oldIndexNodes, seeded);
 
-        draft.Nodes = seeded.Concat(preservedWaypoints).ToList();
+        var oldByNewId = new Dictionary<string, RoutePathNode>(StringComparer.Ordinal);
+        foreach (var old in oldIndexNodes)
+        {
+            if (idMap.TryGetValue(old.Id, out var newId))
+            {
+                oldByNewId[newId] = old;
+            }
+        }
+
+        // Verschobene Halt-/Ansage-Marker auf der Karte behalten – nicht GPS aus Halteliste erzwingen.
+        var seededById = seeded.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        foreach (var (newId, old) in oldByNewId)
+        {
+            if (!seededById.TryGetValue(newId, out var seed))
+            {
+                continue;
+            }
+
+            if (double.IsFinite(old.Lat) && double.IsFinite(old.Lon))
+            {
+                seed.Lat = old.Lat;
+                seed.Lon = old.Lon;
+            }
+        }
+
+        draft.Nodes = MergePreservingOrder(oldNodes, seeded, idMap);
         RemapEdgeKeys(draft, idMap);
 
         var validIds = draft.Nodes.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
@@ -40,10 +61,52 @@ public static class RoutePathNodeRefresh
             })
             .ToList();
 
-        // Nur wirklich verwaiste Keys entfernen – keine Endpunkt-/Drift-Löschung mehr.
         RoutePathDraftMutator.PruneOrphanEdgeSnaps(draft);
         TryAlignPolylineEndpoints(draft);
         RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(draft);
+    }
+
+    /// <summary>
+    /// Alte Reihenfolge behalten (Manuell zwischen Halten), neue Halte ans Ende hängen.
+    /// </summary>
+    private static List<RoutePathNode> MergePreservingOrder(
+        IReadOnlyList<RoutePathNode> oldNodes,
+        IReadOnlyList<RoutePathNode> seeded,
+        IReadOnlyDictionary<string, string> idMap)
+    {
+        var seededById = seeded.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        var usedSeedIds = new HashSet<string>(StringComparer.Ordinal);
+        var merged = new List<RoutePathNode>(oldNodes.Count + seeded.Count);
+
+        foreach (var old in oldNodes)
+        {
+            if (old.Type is RoutePathNodeType.AUTO_WAYPOINT or RoutePathNodeType.MANUAL_WAYPOINT)
+            {
+                merged.Add(old);
+                continue;
+            }
+
+            if (!idMap.TryGetValue(old.Id, out var newId) ||
+                !seededById.TryGetValue(newId, out var seed))
+            {
+                continue;
+            }
+
+            if (usedSeedIds.Add(newId))
+            {
+                merged.Add(seed);
+            }
+        }
+
+        foreach (var seed in seeded)
+        {
+            if (usedSeedIds.Add(seed.Id))
+            {
+                merged.Add(seed);
+            }
+        }
+
+        return merged;
     }
 
     private static Dictionary<string, string> BuildIdRemap(
@@ -53,7 +116,6 @@ public static class RoutePathNodeRefresh
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         var usedNewIds = new HashSet<string>(StringComparer.Ordinal);
 
-        // 1) Gleiche ID + gleicher Name → behalten
         var seededById = seeded.ToDictionary(n => n.Id, StringComparer.Ordinal);
         foreach (var old in oldNodes)
         {
@@ -65,7 +127,6 @@ public static class RoutePathNodeRefresh
             }
         }
 
-        // 2) Rest: gleicher Typ + SourceStopName (erste freie Seed-ID)
         var remainingOld = oldNodes.Where(o => !map.ContainsKey(o.Id)).ToList();
         var remainingNew = seeded.Where(n => !usedNewIds.Contains(n.Id)).ToList();
         foreach (var old in remainingOld)
@@ -82,8 +143,6 @@ public static class RoutePathNodeRefresh
             remainingNew.Remove(match);
         }
 
-        // 3) Fallback: gleiche ID auch bei Namenswechsel (Koordinaten können aktualisiert werden,
-        // Snap bleibt – besser als Massenlöschung)
         foreach (var old in oldNodes)
         {
             if (map.ContainsKey(old.Id))
