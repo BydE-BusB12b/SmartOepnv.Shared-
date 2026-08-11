@@ -154,34 +154,41 @@ public static class RoutePathDraftRepair
             current = next.ToNodeId;
         }
 
-        // Lücken schließen: kurze Restkanten dürfen folgen; lange Zweige (Nav-Müll) nicht.
-        var stopChain = StopChainLengthMeters(draft);
-        var leftoverBudget = Math.Max(800, stopChain * 0.2);
-        foreach (var seg in draft.Segments.OrderBy(s => s.Order))
-        {
-            var key = RoutePathDraft.SegmentEdgeKey(seg.FromNodeId, seg.ToNodeId);
-            if (!used.Add(key))
-            {
-                continue;
-            }
-
-            var len = EstimateEdgeLengthMeters(draft, nodeMap, seg);
-            if (len > leftoverBudget)
-            {
-                used.Remove(key);
-                continue;
-            }
-
-            leftoverBudget -= len;
-            ordered.Add(seg);
-        }
-
+        // Rest-Zweige verwerfen – früher angehängte „kurze“ Leftovers haben das Shape-Ende
+        // kilometerweit neben die letzte Hst. gesetzt, obwohl die Karte (Einzelsegmente) korrekt wirkte.
         for (var i = 0; i < ordered.Count; i++)
         {
             ordered[i].Order = i + 1;
         }
 
         draft.Segments = ordered;
+        PruneSnapDataForMissingSegments(draft);
+    }
+
+    private static void PruneSnapDataForMissingSegments(RoutePathDraft draft)
+    {
+        var keep = new HashSet<string>(
+            draft.Segments.Select(s => RoutePathDraft.SegmentEdgeKey(s.FromNodeId, s.ToNodeId)),
+            StringComparer.Ordinal);
+
+        foreach (var key in draft.RoadSegmentPolylines.Keys.ToList())
+        {
+            if (!keep.Contains(key))
+            {
+                draft.RoadSegmentPolylines.Remove(key);
+            }
+        }
+
+        foreach (var key in draft.RoadSegmentManeuvers.Keys.ToList())
+        {
+            if (!keep.Contains(key))
+            {
+                draft.RoadSegmentManeuvers.Remove(key);
+            }
+        }
+
+        draft.RoadSnappedEdgeKeys.RemoveWhere(k => !keep.Contains(k));
+        draft.RoadBusStraightEdgeKeys.RemoveWhere(k => !keep.Contains(k));
     }
 
     /// <summary>

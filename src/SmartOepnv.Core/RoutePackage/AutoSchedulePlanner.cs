@@ -113,6 +113,12 @@ public static class AutoSchedulePlanner
         // Leeres Set = Vorlage ohne Eintrag = alle Verkehrstage (wie RouteOperatingDaysEditor).
         var templateOperatingDays = RouteOperatingDaysEditor.EffectiveDaySet(
             editor.GetRouteOperatingDays(request.TemplateRouteKey));
+        var templateDateRange = editor.GetRouteDateRange(request.TemplateRouteKey);
+        var templateDateRangeArg = templateDateRange.IsRestricted ? templateDateRange : null;
+        var templateOperatingDates = editor.GetRouteOperatingDates(request.TemplateRouteKey);
+        var templateOperatingDatesArg = RouteOperatingDatesEditor.IsRestricted(templateOperatingDates)
+            ? templateOperatingDates
+            : null;
         var templateTripNumber = RouteDisplayHelper.NormalizeTripNumber(
             RouteDisplayHelper.Parse(request.TemplateRouteKey).TripNumber);
         var templateInteriorDestination = editor.GetRouteInteriorDisplayDestination(request.TemplateRouteKey);
@@ -143,7 +149,9 @@ public static class AutoSchedulePlanner
                     out var displayKey,
                     out var addError,
                     inItcsRouteList: templateInItcsRouteList,
-                    mainDeviceOnly: templateMainDeviceOnly))
+                    mainDeviceOnly: templateMainDeviceOnly,
+                    dateRange: templateDateRangeArg,
+                    operatingDates: templateOperatingDatesArg))
             {
                 throw new InvalidOperationException(addError ?? "Route konnte nicht angelegt werden.");
             }
@@ -240,6 +248,16 @@ public static class AutoSchedulePlanner
         IReadOnlyCollection<DutyOperatingDay> templateOperatingDays = editor is null
             ? RouteOperatingDaysEditor.AllDays
             : RouteOperatingDaysEditor.EffectiveDaySet(editor.GetRouteOperatingDays(templateRouteKey));
+        RouteDateRange? templateDateRange = null;
+        IReadOnlyCollection<DateOnly>? templateOperatingDates = null;
+        if (editor is not null)
+        {
+            var range = editor.GetRouteDateRange(templateRouteKey);
+            templateDateRange = range.IsRestricted ? range : null;
+            var dates = editor.GetRouteOperatingDates(templateRouteKey);
+            templateOperatingDates = RouteOperatingDatesEditor.IsRestricted(dates) ? dates : null;
+        }
+
         for (var i = 0; i < tripNumbers.Count; i++)
         {
             if (!AutoScheduleTripNumber.TryNormalize(tripNumbers[i], out var normalized))
@@ -278,9 +296,9 @@ public static class AutoSchedulePlanner
                     editor.RouteDateRangesByRoute,
                     definition,
                     templateOperatingDays,
-                    null,
+                    templateDateRange,
                     editor.RouteOperatingDatesByRoute,
-                    null))
+                    templateOperatingDates))
             {
                 error = $"Fahrtnummer {normalized} existiert in dieser Linie/Kurs bereits.";
                 return false;

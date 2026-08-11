@@ -5,7 +5,7 @@ namespace SmartOepnv.Core.RoutePackage;
 
 /// <summary>
 /// Verkehrstage pro Route in <c>routes_export.json</c> (<c>routeOperatingDays</c>).
-/// Betriebstag je Verkehrstag: 00:01 bis 03:59 Uhr am Folgetag (Logik in der App, Überschneidungen möglich).
+/// Betriebstag je Verkehrstag: 03:00 bis 02:59 Uhr am Folgetag (Logik in der App; ab 03:00 neuer Tag).
 /// </summary>
 public static class RouteOperatingDaysEditor
 {

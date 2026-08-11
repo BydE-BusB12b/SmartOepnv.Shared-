@@ -57,10 +57,7 @@ public static class RoutePathDraftIntegrity
         if (draft.SnappedShape.Count >= 2 && stops.Count >= 1)
         {
             var lastStop = stops[^1];
-            var end = draft.SnappedShape[^1];
-            var endDist = RoutePathGeo.HaversineMeters(
-                new RoutePathLatLng { Lat = end.Lat, Lon = end.Lon },
-                new RoutePathLatLng { Lat = lastStop.Lat, Lon = lastStop.Lon });
+            var endDist = DistancePathEndToStopMeters(draft, lastStop);
             if (endDist > MaxEndToLastStopMeters)
             {
                 findings.Add(new Finding(
@@ -185,6 +182,61 @@ public static class RoutePathDraftIntegrity
         }
 
         return sum;
+    }
+
+    /// <summary>
+    /// Abstand letzte Halteliste → Fahrwegende.
+    /// Primär Ende der Segmente zur letzten Hst. (Karte zeichnet Segmente) –
+    /// nicht nur SnappedShape[^1], das nach Nav-Übernahme oft Rest-Zweige enthält.
+    /// </summary>
+    private static double DistancePathEndToStopMeters(RoutePathDraft draft, RoutePathNode lastStop)
+    {
+        var stopPt = new RoutePathLatLng { Lat = lastStop.Lat, Lon = lastStop.Lon };
+        var best = double.MaxValue;
+
+        foreach (var seg in draft.Segments)
+        {
+            if (!string.Equals(seg.ToNodeId, lastStop.Id, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var key = RoutePathDraft.SegmentEdgeKey(seg.FromNodeId, seg.ToNodeId);
+            if (draft.RoadSegmentPolylines.TryGetValue(key, out var poly) && poly.Count >= 1)
+            {
+                var end = poly[^1];
+                best = Math.Min(
+                    best,
+                    RoutePathGeo.HaversineMeters(
+                        new RoutePathLatLng { Lat = end.Lat, Lon = end.Lon },
+                        stopPt));
+            }
+            else
+            {
+                // Luftlinie endet am Haltknoten
+                best = 0;
+            }
+        }
+
+        if (best < double.MaxValue)
+        {
+            return best;
+        }
+
+        if (draft.SnappedShape.Count >= 1)
+        {
+            var shapeEnd = draft.SnappedShape[^1];
+            var shapeStart = draft.SnappedShape[0];
+            return Math.Min(
+                RoutePathGeo.HaversineMeters(
+                    new RoutePathLatLng { Lat = shapeEnd.Lat, Lon = shapeEnd.Lon },
+                    stopPt),
+                RoutePathGeo.HaversineMeters(
+                    new RoutePathLatLng { Lat = shapeStart.Lat, Lon = shapeStart.Lon },
+                    stopPt));
+        }
+
+        return double.MaxValue;
     }
 
     private static double StopChainLengthMeters(IReadOnlyList<RoutePathNode> stops)

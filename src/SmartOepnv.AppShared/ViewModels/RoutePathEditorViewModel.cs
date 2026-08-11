@@ -248,6 +248,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
 
             _draft = RoutePathDraftRepository.LoadOrCreate(routeName, stops, editor.PackageRoot);
             RoutePathSegmentOrdering.RenumberContiguous(_draft);
+            // Nav-Übernahme kann Rest-Zweige in der Segmentliste lassen → Shape-Ende falsch
+            RoutePathDraftRepair.ReorderSegmentsAsSinglePath(_draft);
             RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(_draft);
             _draftGeneration = 0;
             _lastAppliedMapEditGeneration = 0;
@@ -285,7 +287,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
         else
         {
-            EnsureStopsOnDraft(stops);
+            // GPS aus Halteliste – nicht Positionen gelöschter Halte am gleichen Index behalten.
+            EnsureStopsOnDraft(stops, preferStopListCoordinates: true);
         }
 
         // Punkt-zu-Punkt wie am Handy: nur Knoten, keine Auto-Kette zwischen allen Haltestellen.
@@ -324,15 +327,16 @@ public partial class RoutePathEditorViewModel : ObservableObject
         double.IsFinite(lat) &&
         double.IsFinite(lon);
 
-    private void EnsureStopsOnDraft(IList<RouteStopItem> stops)
+    private void EnsureStopsOnDraft(IList<RouteStopItem> stops, bool preferStopListCoordinates = false)
     {
         if (_draft is null)
         {
             return;
         }
 
-        // Gleiche Logik wie beim Laden: Positionen und Manuell-Reihenfolge behalten.
-        RoutePathNodeRefresh.RefreshNodesFromStops(_draft, stops);
+        // Gleiche Logik wie beim Laden: Positionen und Manuell-Reihenfolge behalten
+        // (außer preferStopListCoordinates → GPS aus Halteliste, z. B. nach gelöschtem Halt).
+        RoutePathNodeRefresh.RefreshNodesFromStops(_draft, stops, preferStopListCoordinates);
     }
 
     private void ReportDraftStatus()

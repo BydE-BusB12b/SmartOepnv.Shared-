@@ -97,58 +97,62 @@
         <TextBlock Text="Stammdaten" FontWeight="SemiBold" Margin="0,0,0,8" />
         <Grid Margin="0,0,0,12" HorizontalAlignment="Stretch">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="110" />
+                <ColumnDefinition Width="70" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="70" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="60" />
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
+
             <TextBlock Grid.Row="0" Grid.Column="0" Text="ID:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="0" Grid.Column="1" Margin="0,0,0,6"
+            <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="5" Margin="0,0,0,6"
                      Text="{Binding SelectedStop.PlannerStopCode, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
+
             <TextBlock Grid.Row="1" Grid.Column="0" Text="Name:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,0,6"
+            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,8,6"
                      Text="{Binding SelectedStop.Name, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="Anzeige:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,0,0,6" MaxLength="16"
+            <TextBlock Grid.Row="1" Grid.Column="2" Text="Anzeige:" Margin="0,0,8,6" VerticalAlignment="Center" />
+            <TextBox Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="3" Margin="0,0,0,6" MaxLength="16"
                      Text="{Binding SelectedStop.StopDisplay, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-            <TextBlock Grid.Row="3" Grid.Column="0" Text="GPS:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="3" Grid.Column="1" Margin="0,0,0,6"
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="GPS:" Margin="0,0,8,6" VerticalAlignment="Center" />
+            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,0,8,6"
                      Text="{Binding SelectedStop.GpsCoordinates, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-            <TextBlock Grid.Row="4" Grid.Column="0" Text="Hst.-GPS:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="4" Grid.Column="1" Margin="0,0,0,6"
+            <TextBlock Grid.Row="2" Grid.Column="2" Text="Hst.-GPS:" Margin="0,0,8,6" VerticalAlignment="Center" />
+            <TextBox Grid.Row="2" Grid.Column="3" Grid.ColumnSpan="3" Margin="0,0,0,6"
                      Text="{Binding SelectedStop.StopCoordinates, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-            <TextBlock Grid.Row="5" Grid.Column="0" Text="VRR-ID:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <Grid Grid.Row="5" Grid.Column="1" Margin="0,0,0,6">
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="VRR-ID:" Margin="0,0,8,0" VerticalAlignment="Center" />
+            <Grid Grid.Row="3" Grid.Column="1" Margin="0,0,8,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBox Text="{Binding SelectedStopVrrStopId, UpdateSourceTrigger=PropertyChanged}"
                          LostFocus="Field_LostFocus" />
-                <Button Grid.Column="1" Content="VRR suchen…" Command="{Binding PickVrrStopCommand}"
-                        Margin="6,0,0,0" Padding="10,4" MinHeight="32"
+                <Button Grid.Column="1" Content="VRR…" Command="{Binding PickVrrStopCommand}"
+                        Margin="6,0,0,0" Padding="8,4" MinHeight="32"
                         Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5"
                         ToolTip="Haltestelle im VRR-Katalog suchen (wie Android)" />
             </Grid>
-            <TextBlock Grid.Row="6" Grid.Column="0" Text="Radius:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="6" Grid.Column="1" Margin="0,0,0,6"
+            <TextBlock Grid.Row="3" Grid.Column="2" Text="Radius:" Margin="0,0,8,0" VerticalAlignment="Center" />
+            <TextBox Grid.Row="3" Grid.Column="3" Margin="0,0,8,0"
                      Text="{Binding SelectedStop.Radius, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-            <TextBlock Grid.Row="7" Grid.Column="0" Text="Zeit:" Margin="0,0,8,0" VerticalAlignment="Center" />
-            <TextBox x:Name="StopTimeTextBox" Grid.Row="7" Grid.Column="1"
+            <TextBlock Grid.Row="3" Grid.Column="4" Text="Zeit:" Margin="0,0,8,0" VerticalAlignment="Center" />
+            <TextBox x:Name="StopTimeTextBox" Grid.Row="3" Grid.Column="5"
                      Text="{Binding SelectedStop.Time, UpdateSourceTrigger=LostFocus}"
                      ToolTip="z. B. 1424 oder 14:24"
                      LostFocus="StopTime_LostFocus" />
@@ -165,7 +169,22 @@
                     Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5" />
         </StackPanel>
 
-        <CheckBox Content="Starthaltestelle" IsChecked="{Binding IsStartStop, Mode=TwoWay}" Margin="0,0,0,4" />
+        <WrapPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <CheckBox Content="Starthaltestelle" IsChecked="{Binding IsStartStop, Mode=TwoWay}"
+                      Margin="0,0,16,4" VerticalAlignment="Center" />
+            <CheckBox Content="Ansage ausblenden"
+                      IsChecked="{Binding IsAnnouncementHidden, Mode=TwoWay}"
+                      Visibility="{Binding ShowAnnouncementHiddenOption, Converter={StaticResource BoolToVis}}"
+                      ToolTip="Haltestelle ohne GPS-Ansage – in der App durchgestrichen (wie im Handy)"
+                      Margin="0,0,16,4" VerticalAlignment="Center" />
+            <CheckBox Content="Endhaltestelle" IsChecked="{Binding IsEndStop, Mode=TwoWay}"
+                      Margin="0,0,16,4" VerticalAlignment="Center" />
+            <CheckBox Content="Endhaltestellen-Ansage"
+                      IsChecked="{Binding PlayEndStopAnnouncement, Mode=TwoWay}"
+                      Visibility="{Binding ShowEndStopAnnouncementFields, Converter={StaticResource BoolToVis}}"
+                      ToolTip="Hängt die Ansage „Endhaltestelle“ aus der Ansagen-Kartei nach der Haltestellenansage an (unabhängig von Endhaltestelle)"
+                      Margin="0,0,0,4" VerticalAlignment="Center" />
+        </WrapPanel>
         <TextBlock Text="Ohne Ziel/Linie wird die Haltestelle trotzdem als Starthaltestelle geführt (keine GPS-Ansage, nicht durchgestrichen)."
                    FontSize="11"
                    Opacity="0.75"
@@ -173,246 +192,208 @@
                    Margin="0,0,0,8"
                    Visibility="{Binding ShowStartStopFields, Converter={StaticResource BoolToVis}}" />
 
-        <CheckBox Content="Ansage ausblenden"
-                  IsChecked="{Binding IsAnnouncementHidden, Mode=TwoWay}"
-                  Visibility="{Binding ShowAnnouncementHiddenOption, Converter={StaticResource BoolToVis}}"
-                  ToolTip="Haltestelle ohne GPS-Ansage – in der App durchgestrichen (wie im Handy)"
-                  Margin="0,0,0,8" />
-
         <StackPanel Visibility="{Binding ShowStartStopFields, Converter={StaticResource BoolToVis}}"
                     Margin="0,0,0,12"
                     HorizontalAlignment="Stretch">
-            <Grid HorizontalAlignment="Stretch">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="110" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Ziel auswählen (DS021T):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="StartDs021tCombo"
-                              Tag="startDs021t"
-                              ItemsSource="{Binding Ds021tDestinations}"
-                              SelectedItem="{Binding SelectedDestinationDs021t, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedDestinationDs021t}"
-                               ToolTip="{Binding SelectedDestinationDs021t}" />
-                </Grid>
-                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Ziel auswählen (DS003a Krefeld):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="StartDs003aCombo"
-                              Tag="startDs003a"
-                              ItemsSource="{Binding Ds003aDestinations}"
-                              SelectedItem="{Binding SelectedDestinationDs003a, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedDestinationDs003a}"
-                               ToolTip="{Binding SelectedDestinationDs003a}" />
-                </Grid>
-                <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Ziel auswählen (DS021neu):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="StartDs021NeuCombo"
-                              Tag="startDs021Neu"
-                              ItemsSource="{Binding Ds021NeuDestinations}"
-                              SelectedItem="{Binding SelectedDestinationDs021Neu, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedDestinationDs021Neu}"
-                               ToolTip="{Binding SelectedDestinationDs021Neu}" />
-                </Grid>
-                <TextBlock Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Ziel auswählen (FMA-S1):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="StartFmaS1Combo"
-                              Tag="startFmaS1"
-                              ItemsSource="{Binding FmaS1Destinations}"
-                              SelectedItem="{Binding SelectedDestinationFmaS1, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedDestinationFmaS1}"
-                               ToolTip="{Binding SelectedDestinationFmaS1}" />
-                </Grid>
-                <TextBlock Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Ziel auswählen (Zielnummer):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="StartZielnummerCombo"
-                              Tag="startZielnummer"
-                              ItemsSource="{Binding ZielnummerDestinations}"
-                              SelectedItem="{Binding SelectedDestinationZielnummer, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedDestinationZielnummer}"
-                               ToolTip="{Binding SelectedDestinationZielnummer}" />
-                </Grid>
-                <TextBlock Grid.Row="10" Grid.Column="0" Text="Liniennummer (z. B. 28, _28, !28):"
-                           Margin="0,0,8,0" Opacity="0.9" VerticalAlignment="Center" />
-                <TextBox Grid.Row="10" Grid.Column="1"
-                         Text="{Binding SelectedStop.LineNumber, UpdateSourceTrigger=LostFocus}"
-                         MaxLength="4" LostFocus="Field_LostFocus" />
-            </Grid>
+            <UniformGrid Columns="2" HorizontalAlignment="Stretch">
+                <StackPanel Margin="0,0,8,8">
+                    <TextBlock Text="Ziel auswählen (DS021T):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="StartDs021tCombo"
+                                  Tag="startDs021t"
+                                  ItemsSource="{Binding Ds021tDestinations}"
+                                  SelectedItem="{Binding SelectedDestinationDs021t, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedDestinationDs021t}"
+                                   ToolTip="{Binding SelectedDestinationDs021t}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,0,8">
+                    <TextBlock Text="Ziel auswählen (DS003a Krefeld):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="StartDs003aCombo"
+                                  Tag="startDs003a"
+                                  ItemsSource="{Binding Ds003aDestinations}"
+                                  SelectedItem="{Binding SelectedDestinationDs003a, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedDestinationDs003a}"
+                                   ToolTip="{Binding SelectedDestinationDs003a}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,8,8">
+                    <TextBlock Text="Ziel auswählen (DS021neu):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="StartDs021NeuCombo"
+                                  Tag="startDs021Neu"
+                                  ItemsSource="{Binding Ds021NeuDestinations}"
+                                  SelectedItem="{Binding SelectedDestinationDs021Neu, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedDestinationDs021Neu}"
+                                   ToolTip="{Binding SelectedDestinationDs021Neu}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,0,8">
+                    <TextBlock Text="Ziel auswählen (FMA-S1):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="StartFmaS1Combo"
+                                  Tag="startFmaS1"
+                                  ItemsSource="{Binding FmaS1Destinations}"
+                                  SelectedItem="{Binding SelectedDestinationFmaS1, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedDestinationFmaS1}"
+                                   ToolTip="{Binding SelectedDestinationFmaS1}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,8,8">
+                    <TextBlock Text="Ziel auswählen (Zielnummer):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="StartZielnummerCombo"
+                                  Tag="startZielnummer"
+                                  ItemsSource="{Binding ZielnummerDestinations}"
+                                  SelectedItem="{Binding SelectedDestinationZielnummer, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedDestinationZielnummer}"
+                                   ToolTip="{Binding SelectedDestinationZielnummer}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,0,8">
+                    <TextBlock Text="Liniennummer (z. B. 28, _28, !28):" Margin="0,0,0,4" Opacity="0.9" />
+                    <TextBox Text="{Binding SelectedStop.LineNumber, UpdateSourceTrigger=LostFocus}"
+                             MaxLength="4" LostFocus="Field_LostFocus" />
+                </StackPanel>
+            </UniformGrid>
         </StackPanel>
-
-        <CheckBox Content="Endhaltestelle" IsChecked="{Binding IsEndStop, Mode=TwoWay}" Margin="0,0,0,8" />
-
-        <CheckBox Content="Endhaltestellen-Ansage"
-                  IsChecked="{Binding PlayEndStopAnnouncement, Mode=TwoWay}"
-                  Visibility="{Binding ShowEndStopAnnouncementFields, Converter={StaticResource BoolToVis}}"
-                  ToolTip="Hängt die Ansage „Endhaltestelle“ aus der Ansagen-Kartei nach der Haltestellenansage an (unabhängig von Endhaltestelle)"
-                  Margin="0,0,0,8" />
 
         <StackPanel Visibility="{Binding ShowEndDestinationFields, Converter={StaticResource BoolToVis}}"
                     Margin="0,0,0,12"
                     HorizontalAlignment="Stretch">
-            <Grid HorizontalAlignment="Stretch">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="110" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Endziel auswählen (DS021T):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="EndDs021tCombo"
-                              Tag="endDs021t"
-                              ItemsSource="{Binding Ds021tDestinations}"
-                              SelectedItem="{Binding SelectedEndDestinationDs021t, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedEndDestinationDs021t}"
-                               ToolTip="{Binding SelectedEndDestinationDs021t}" />
-                </Grid>
-                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Endziel auswählen (DS003a Krefeld):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="EndDs003aCombo"
-                              Tag="endDs003a"
-                              ItemsSource="{Binding Ds003aDestinations}"
-                              SelectedItem="{Binding SelectedEndDestinationDs003a, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedEndDestinationDs003a}"
-                               ToolTip="{Binding SelectedEndDestinationDs003a}" />
-                </Grid>
-                <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Endziel auswählen (DS021neu):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="EndDs021NeuCombo"
-                              Tag="endDs021Neu"
-                              ItemsSource="{Binding Ds021NeuDestinations}"
-                              SelectedItem="{Binding SelectedEndDestinationDs021Neu, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedEndDestinationDs021Neu}"
-                               ToolTip="{Binding SelectedEndDestinationDs021Neu}" />
-                </Grid>
-                <TextBlock Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Endziel auswählen (FMA-S1):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="EndFmaS1Combo"
-                              Tag="endFmaS1"
-                              ItemsSource="{Binding FmaS1Destinations}"
-                              SelectedItem="{Binding SelectedEndDestinationFmaS1, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedEndDestinationFmaS1}"
-                               ToolTip="{Binding SelectedEndDestinationFmaS1}" />
-                </Grid>
-                <TextBlock Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Endziel auswählen (Zielnummer):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="EndZielnummerCombo"
-                              Tag="endZielnummer"
-                              ItemsSource="{Binding ZielnummerDestinations}"
-                              SelectedItem="{Binding SelectedEndDestinationZielnummer, Mode=OneWay}" />
-                    <TextBlock Grid.Column="1"
-                               Style="{StaticResource RouteStopDestinationValueText}"
-                               Text="{Binding SelectedEndDestinationZielnummer}"
-                               ToolTip="{Binding SelectedEndDestinationZielnummer}" />
-                </Grid>
-                <TextBlock Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="Endziel-GPS (lat, lon):" Margin="0,0,0,4" Opacity="0.9" />
-                <Grid Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8" HorizontalAlignment="Stretch">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox Text="{Binding SelectedStop.EndDestinationCoordinates, UpdateSourceTrigger=LostFocus}"
-                             LostFocus="Field_LostFocus" />
-                    <Button Grid.Column="1" Content="Karte…" Command="{Binding PickEndDestinationCoordinatesOnMapCommand}"
-                            Margin="6,0,0,0" Padding="10,4" MinHeight="32"
-                            Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5"
-                            ToolTip="Endziel-GPS auf der Karte wählen (wie in der App)" />
-                </Grid>
-            </Grid>
+            <UniformGrid Columns="2" HorizontalAlignment="Stretch">
+                <StackPanel Margin="0,0,8,8">
+                    <TextBlock Text="Endziel auswählen (DS021T):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="EndDs021tCombo"
+                                  Tag="endDs021t"
+                                  ItemsSource="{Binding Ds021tDestinations}"
+                                  SelectedItem="{Binding SelectedEndDestinationDs021t, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedEndDestinationDs021t}"
+                                   ToolTip="{Binding SelectedEndDestinationDs021t}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,0,8">
+                    <TextBlock Text="Endziel auswählen (DS003a Krefeld):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="EndDs003aCombo"
+                                  Tag="endDs003a"
+                                  ItemsSource="{Binding Ds003aDestinations}"
+                                  SelectedItem="{Binding SelectedEndDestinationDs003a, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedEndDestinationDs003a}"
+                                   ToolTip="{Binding SelectedEndDestinationDs003a}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,8,8">
+                    <TextBlock Text="Endziel auswählen (DS021neu):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="EndDs021NeuCombo"
+                                  Tag="endDs021Neu"
+                                  ItemsSource="{Binding Ds021NeuDestinations}"
+                                  SelectedItem="{Binding SelectedEndDestinationDs021Neu, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedEndDestinationDs021Neu}"
+                                   ToolTip="{Binding SelectedEndDestinationDs021Neu}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,0,8">
+                    <TextBlock Text="Endziel auswählen (FMA-S1):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="EndFmaS1Combo"
+                                  Tag="endFmaS1"
+                                  ItemsSource="{Binding FmaS1Destinations}"
+                                  SelectedItem="{Binding SelectedEndDestinationFmaS1, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedEndDestinationFmaS1}"
+                                   ToolTip="{Binding SelectedEndDestinationFmaS1}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,8,8">
+                    <TextBlock Text="Endziel auswählen (Zielnummer):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="EndZielnummerCombo"
+                                  Tag="endZielnummer"
+                                  ItemsSource="{Binding ZielnummerDestinations}"
+                                  SelectedItem="{Binding SelectedEndDestinationZielnummer, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedEndDestinationZielnummer}"
+                                   ToolTip="{Binding SelectedEndDestinationZielnummer}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,0,8">
+                    <TextBlock Text="Endziel-GPS (lat, lon):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid HorizontalAlignment="Stretch">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding SelectedStop.EndDestinationCoordinates, UpdateSourceTrigger=LostFocus}"
+                                 LostFocus="Field_LostFocus" />
+                        <Button Grid.Column="1" Content="Karte…" Command="{Binding PickEndDestinationCoordinatesOnMapCommand}"
+                                Margin="6,0,0,0" Padding="10,4" MinHeight="32"
+                                Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5"
+                                ToolTip="Endziel-GPS auf der Karte wählen (wie in der App)" />
+                    </Grid>
+                </StackPanel>
+            </UniformGrid>
         </StackPanel>
 
         <StackPanel Visibility="{Binding ShowRouteChangeOption, Converter={StaticResource BoolToVis}}"
@@ -423,7 +404,7 @@
 
             <StackPanel Visibility="{Binding ShowRouteChangeFields, Converter={StaticResource BoolToVis}}"
                         HorizontalAlignment="Stretch">
-                <TextBlock Text="Linie/Kurs-Fahrt auswählen:" Margin="0,0,0,4" Opacity="0.9" />
+                <TextBlock Text="Standard-Folgefahrt (Tage ohne Ausnahme):" Margin="0,0,0,4" Opacity="0.9" />
                 <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -443,7 +424,7 @@
                             BorderBrush="#42A5F5"
                             ToolTip="Fahrt per Nummer wählen (gleiche Linie/Kurs wie aktuelle Route)" />
                 </Grid>
-                <Grid HorizontalAlignment="Stretch">
+                <Grid HorizontalAlignment="Stretch" Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -457,6 +438,77 @@
                                Text="{Binding SelectedLineCourseTrip}"
                                ToolTip="{Binding SelectedLineCourseTrip}" />
                 </Grid>
+
+                <TextBlock Text="Abweichende Folgefahrt an einzelnen Betriebstagen:"
+                           FontWeight="SemiBold" Margin="0,0,0,4" />
+                <TextBlock Text="Pro Zeile: Datum(e) → Folgefahrt. Mehrere Tage kommagetrennt (z. B. 10.08-14.08, 17.08 oder 20.08). Ohne Eintrag gilt die Standard-Folgefahrt. Mit + weitere Abweichungen anlegen."
+                           FontSize="11" Opacity="0.75" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                <ItemsControl ItemsSource="{Binding RouteChangeDatedTargets}" Margin="0,0,0,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="#42A5F5" BorderThickness="1" CornerRadius="4"
+                                    Padding="10,8" Margin="0,0,0,8" Background="#14233A">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding SummaryText}"
+                                                   FontWeight="SemiBold"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,8,0"
+                                                   Opacity="0.95"
+                                                   VerticalAlignment="Center" />
+                                        <Button Grid.Column="1"
+                                                Content="−"
+                                                Width="36" MinHeight="32" Padding="0"
+                                                Command="{Binding DataContext.RemoveRouteChangeDatedTargetCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Diese Abweichung entfernen"
+                                                Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5" />
+                                    </Grid>
+
+                                    <TextBlock Text="Datum (kommagetrennt):" Margin="0,0,0,4" Opacity="0.9" />
+                                    <TextBox Margin="0,0,0,10"
+                                             MinHeight="34"
+                                             Text="{Binding DatesText, UpdateSourceTrigger=LostFocus}"
+                                             ToolTip="z. B. 20.08 oder 10.08-14.08, 17.08-19.08"
+                                             materialDesign:HintAssist.Hint="z. B. 20.08 oder 10.08-14.08, 17.08" />
+
+                                    <TextBlock Text="Wechsel nach Folgefahrt:" Margin="0,0,0,4" Opacity="0.9" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox ItemsSource="{Binding DataContext.LineCourseTripRoutes, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                  SelectedItem="{Binding SelectedTrip, Mode=TwoWay}"
+                                                  ToolTip="Folgefahrt für diese Tage wählen" />
+                                        <TextBlock Grid.Column="1"
+                                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                                   Text="{Binding SelectedTrip}"
+                                                   ToolTip="{Binding SelectedTrip}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,0,4">
+                    <Button Content="+"
+                            Width="40" MinHeight="34" Padding="0"
+                            FontSize="18" FontWeight="Bold"
+                            Command="{Binding AddRouteChangeDatedTargetCommand}"
+                            ToolTip="Weitere Abweichung (andere Tage / andere Folgefahrt) hinzufügen"
+                            Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5" />
+                    <TextBlock Text="Weitere Abweichung hinzufügen"
+                               VerticalAlignment="Center" Margin="10,0,0,0"
+                               Opacity="0.85" />
+                </StackPanel>
             </StackPanel>
         </StackPanel>
 

@@ -17,6 +17,7 @@ public partial class RoutesViewModel
     public ObservableCollection<string> Ds003aDestinations { get; } = [];
     public ObservableCollection<string> ZielnummerDestinations { get; } = [];
     public ObservableCollection<string> LineCourseTripRoutes { get; } = [];
+    public ObservableCollection<RouteChangeDatedTargetRow> RouteChangeDatedTargets { get; } = [];
 
     private bool _startStopCheckbox;
 
@@ -96,6 +97,12 @@ public partial class RoutesViewModel
             if (value && SelectedStop.Radius <= 0)
             {
                 SelectedStop.Radius = 15;
+            }
+
+            // Ohne Endhaltestelle gibt es keinen Routenwechsel (nur ggf. End-Ansage).
+            if (!value && SelectedStop.RouteChangeEnabled)
+            {
+                SelectedStop.RouteChangeEnabled = false;
             }
 
             NotifyStopEditorStateChanged();
@@ -432,6 +439,96 @@ public partial class RoutesViewModel
     private bool CanApplyLineCourseTripByNumber() =>
         ShowRouteChangeFields && !string.IsNullOrWhiteSpace(LineCourseTripQuickEntry);
 
+    [RelayCommand(CanExecute = nameof(CanAddRouteChangeDatedTarget))]
+    private void AddRouteChangeDatedTarget()
+    {
+        if (SelectedStop is null || !ShowRouteChangeFields)
+        {
+            return;
+        }
+
+        // Leere Zeile anlegen – Datum und Folgefahrt werden in der Zeile gepflegt.
+        RouteChangeDatedTargets.Add(new RouteChangeDatedTargetRow(
+            RouteChangeDatedTargets.Count,
+            string.Empty,
+            RouteStopEditorCatalog.NoLineCourseTripLabel,
+            string.Empty,
+            PersistRouteChangeDatedTargetsFromRows));
+        MarkStopDetailDirty();
+        StatusMessage = "Neue Abweichungszeile hinzugefügt – Datum und Folgefahrt eintragen.";
+    }
+
+    private bool CanAddRouteChangeDatedTarget() => ShowRouteChangeFields;
+
+    [RelayCommand]
+    private void RemoveRouteChangeDatedTarget(RouteChangeDatedTargetRow? row)
+    {
+        if (SelectedStop is null || row is null)
+        {
+            return;
+        }
+
+        RouteChangeDatedTargets.Remove(row);
+        PersistRouteChangeDatedTargetsFromRows();
+        ReloadRouteChangeDatedTargets();
+        MarkStopDetailDirty();
+    }
+
+    public void ReloadRouteChangeDatedTargets()
+    {
+        RouteChangeDatedTargets.Clear();
+        if (SelectedStop is null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < SelectedStop.RouteChangeTargetsByDate.Count; i++)
+        {
+            var entry = SelectedStop.RouteChangeTargetsByDate[i];
+            RouteChangeDatedTargets.Add(new RouteChangeDatedTargetRow(
+                i,
+                RouteOperatingDatesEditor.FormatDisplay(entry.OperatingDates),
+                ToComboLabel(entry.SelectedLineCourseTrip, RouteStopEditorCatalog.NoLineCourseTripLabel),
+                entry.SelectedLineCourseTrip,
+                PersistRouteChangeDatedTargetsFromRows));
+        }
+
+        AddRouteChangeDatedTargetCommand.NotifyCanExecuteChanged();
+    }
+
+    private void PersistRouteChangeDatedTargetsFromRows()
+    {
+        if (SelectedStop is null)
+        {
+            return;
+        }
+
+        var rebuilt = new List<RouteChangeTargetEntry>();
+        foreach (var row in RouteChangeDatedTargets)
+        {
+            if (!RouteOperatingDatesEditor.TryParseDateList(row.DatesText, out var dates, out _) ||
+                dates.Count == 0)
+            {
+                continue;
+            }
+
+            var trip = FromComboLabel(row.SelectedTrip, RouteStopEditorCatalog.NoLineCourseTripLabel);
+            if (string.IsNullOrWhiteSpace(trip))
+            {
+                continue;
+            }
+
+            rebuilt.Add(new RouteChangeTargetEntry
+            {
+                SelectedLineCourseTrip = trip,
+                OperatingDates = dates
+            });
+        }
+
+        SelectedStop.RouteChangeTargetsByDate = rebuilt;
+        MarkStopDetailDirty();
+    }
+
     partial void OnSelectedStopVrrStopIdChanged(string value)
     {
         if (_syncingStopVrrStopId || SelectedStop is null)
@@ -553,6 +650,7 @@ public partial class RoutesViewModel
         RefreshStopEditorCatalogs();
         EnsureCatalogContainsStopSelections(stop);
         SyncSelectedStopVrrStopIdFromStop();
+        ReloadRouteChangeDatedTargets();
     }
 
     private void SyncSelectedStopVrrStopIdFromStop()
@@ -669,6 +767,7 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(SelectedEndDestinationZielnummer));
         OnPropertyChanged(nameof(SelectedLineCourseTrip));
         ApplyLineCourseTripByNumberCommand.NotifyCanExecuteChanged();
+        AddRouteChangeDatedTargetCommand.NotifyCanExecuteChanged();
         RouteChangeDisplayTick++;
     }
 

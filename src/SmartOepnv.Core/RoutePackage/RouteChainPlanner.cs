@@ -105,6 +105,9 @@ public static class RouteChainPlanner
             return [];
         }
 
+        var chainLineCourse = RouteDisplayHelper.NormalizeLineCourse(
+            RouteDisplayHelper.Parse(currentKey).LineCourse);
+
         while (!string.IsNullOrWhiteSpace(currentKey))
         {
             var canonical = RouteDisplayHelper.ToCanonicalRouteKey(currentKey);
@@ -114,7 +117,7 @@ public static class RouteChainPlanner
             }
 
             chain.Add(currentKey);
-            var targetReference = FindRouteChangeTarget(editor, currentKey);
+            var targetReference = FindRouteChangeTarget(editor, currentKey, check);
             if (string.IsNullOrWhiteSpace(targetReference))
             {
                 break;
@@ -130,6 +133,29 @@ public static class RouteChainPlanner
                 break;
             }
 
+            // Routenschnur eines Kurses nicht auf einen anderen Kurs (gleiche Fahrtnr.) ziehen.
+            if (resolvedTarget is not null && !string.IsNullOrEmpty(chainLineCourse))
+            {
+                var targetLine = RouteDisplayHelper.NormalizeLineCourse(
+                    RouteDisplayHelper.Parse(resolvedTarget).LineCourse);
+                if (!string.IsNullOrEmpty(targetLine) &&
+                    !string.Equals(targetLine, chainLineCourse, StringComparison.Ordinal))
+                {
+                    var sameCourse = TryResolveTripOnLineCourse(
+                        editor,
+                        targetReference,
+                        chainLineCourse,
+                        currentKey,
+                        check);
+                    if (sameCourse is null)
+                    {
+                        break;
+                    }
+
+                    resolvedTarget = sameCourse;
+                }
+            }
+
             currentKey = resolvedTarget;
             if (currentKey is null)
             {
@@ -138,6 +164,106 @@ public static class RouteChainPlanner
         }
 
         return chain;
+    }
+
+    /// <summary>
+    /// Biegt Routenwechsel-Verweise auf dem Ziel-Linie/Kurs um, die noch auf einen anderen Kurs
+    /// mit gleicher Fahrtnummer zeigen (typisch nach Schnur-Kopie).
+    /// </summary>
+    public static int RemapRouteChangeLinksOntoLineCourse(
+        EditableRoutePackage editor,
+        string lineCourse)
+    {
+        var targetLine = RouteDisplayHelper.NormalizeLineCourse(lineCourse);
+        if (string.IsNullOrEmpty(targetLine))
+        {
+            return 0;
+        }
+
+        var routesOnCourse = editor.RouteNames
+            .Where(route =>
+                string.Equals(
+                    RouteDisplayHelper.NormalizeLineCourse(RouteDisplayHelper.Parse(route).LineCourse),
+                    targetLine,
+                    StringComparison.Ordinal))
+            .ToList();
+        if (routesOnCourse.Count == 0)
+        {
+            return 0;
+        }
+
+        var byTrip = routesOnCourse
+            .Select(route => (
+                Route: route,
+                Trip: RouteDisplayHelper.NormalizeTripNumber(RouteDisplayHelper.Parse(route).TripNumber)))
+            .Where(x => !string.IsNullOrEmpty(x.Trip))
+            .GroupBy(x => x.Trip, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Route).ToList(), StringComparer.Ordinal);
+
+        var changed = 0;
+        foreach (var routeKey in routesOnCourse)
+        {
+            foreach (var stop in editor.GetStops(routeKey))
+            {
+                if (TryRemapLinkToLineCourse(stop.SelectedLineCourseTrip, targetLine, byTrip, out var mappedDefault))
+                {
+                    stop.SelectedLineCourseTrip = mappedDefault;
+                    changed++;
+                }
+
+                foreach (var entry in stop.RouteChangeTargetsByDate)
+                {
+                    if (TryRemapLinkToLineCourse(
+                            entry.SelectedLineCourseTrip,
+                            targetLine,
+                            byTrip,
+                            out var mappedDated))
+                    {
+                        entry.SelectedLineCourseTrip = mappedDated;
+                        changed++;
+                    }
+                }
+            }
+        }
+
+        return changed;
+    }
+
+    private static bool TryRemapLinkToLineCourse(
+        string? reference,
+        string targetLineCourse,
+        IReadOnlyDictionary<string, List<string>> routesByTripOnTarget,
+        out string mapped)
+    {
+        mapped = string.Empty;
+        var trimmed = reference?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(trimmed) ||
+            string.Equals(trimmed, RouteStopEditorCatalog.NoLineCourseTripLabel, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var parsed = RouteDisplayHelper.Parse(trimmed);
+        var refLine = RouteDisplayHelper.NormalizeLineCourse(parsed.LineCourse);
+        if (string.IsNullOrEmpty(refLine) ||
+            string.Equals(refLine, targetLineCourse, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var trip = RouteDisplayHelper.NormalizeTripNumber(parsed.TripNumber);
+        if (string.IsNullOrEmpty(trip) ||
+            !routesByTripOnTarget.TryGetValue(trip, out var candidates) ||
+            candidates.Count == 0)
+        {
+            return false;
+        }
+
+        mapped = candidates
+            .OrderByDescending(route => RouteDisplayHelper.RouteKeysMatch(route, trimmed))
+            .ThenBy(route => route, StringComparer.OrdinalIgnoreCase)
+            .First();
+        return true;
     }
 
     public static IReadOnlyList<ChainSegment> BuildChainSchedule(
@@ -152,7 +278,7 @@ public static class RouteChainPlanner
             var routeKey = chainKeys[i];
             var stops = editor.GetStops(routeKey).Where(s => !s.IsWaypoint).ToList();
             var startTime = TryGetRouteStartTime(stops);
-            var routeChangeReference = FindRouteChangeTarget(editor, routeKey);
+            var routeChangeReference = FindRouteChangeTarget(editor, routeKey, filter);
             string? routeChangeDisplay = null;
             if (!string.IsNullOrWhiteSpace(routeChangeReference))
             {
@@ -167,8 +293,7 @@ public static class RouteChainPlanner
 
             var rows = stops.Select(stop =>
             {
-                var isChange = stop.RouteChangeEnabled &&
-                               !string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip);
+                var isChange = IsActualRouteChangeStop(stop, filter);
                 var time = string.IsNullOrWhiteSpace(stop.Time) ? "--:--" : stop.Time.Trim();
                 return new StopScheduleRow(stop.Name, time, isChange);
             }).ToList();
@@ -261,15 +386,52 @@ public static class RouteChainPlanner
         return routeKey;
     }
 
-    private static string? FindRouteChangeTarget(EditableRoutePackage editor, string routeKey)
+    private static string? FindRouteChangeTarget(
+        EditableRoutePackage editor,
+        string routeKey,
+        ChainCheckFilter? filter = null)
     {
+        var operatingDate = filter?.ReferenceDate ?? DateOnly.FromDateTime(DateTime.Today);
+        // Nur echte Endhaltestelle mit aktivem Routenwechsel + gültiger Folgefahrt.
+        // Endhaltestellen-Ansage allein (ohne IsEndStop / ohne Ziel) ist kein Wechsel.
         var candidates = editor.GetStops(routeKey)
-            .Where(s => s.RouteChangeEnabled)
-            .Where(s => !string.IsNullOrWhiteSpace(s.SelectedLineCourseTrip))
+            .Where(s => s.IsEndStop && s.RouteChangeEnabled)
             .ToList();
 
-        return candidates.FirstOrDefault(s => s.IsEndStop)?.SelectedLineCourseTrip?.Trim()
-               ?? candidates.FirstOrDefault()?.SelectedLineCourseTrip?.Trim();
+        foreach (var stop in candidates)
+        {
+            var resolved = RouteChangeTargetResolver.Resolve(stop, operatingDate);
+            if (!string.IsNullOrWhiteSpace(resolved) &&
+                !string.Equals(
+                    resolved,
+                    RouteStopEditorCatalog.NoLineCourseTripLabel,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return resolved;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// True nur bei Endhaltestelle mit aktivem Routenwechsel und auflösbarer Folgefahrt.
+    /// Reine Endhaltestellen-Ansage ohne Wechsel zählt nicht.
+    /// </summary>
+    private static bool IsActualRouteChangeStop(RouteStopItem stop, ChainCheckFilter? filter)
+    {
+        if (!stop.IsEndStop || !stop.RouteChangeEnabled)
+        {
+            return false;
+        }
+
+        var operatingDate = filter?.ReferenceDate ?? DateOnly.FromDateTime(DateTime.Today);
+        var resolved = RouteChangeTargetResolver.Resolve(stop, operatingDate);
+        return !string.IsNullOrWhiteSpace(resolved) &&
+               !string.Equals(
+                   resolved,
+                   RouteStopEditorCatalog.NoLineCourseTripLabel,
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ResolveRouteKey(
@@ -280,6 +442,28 @@ public static class RouteChainPlanner
     {
         var check = filter ?? ChainCheckFilter.None;
         var trimmed = routeReference.Trim();
+        var contextLineCourse = string.IsNullOrWhiteSpace(contextRouteKey)
+            ? string.Empty
+            : RouteDisplayHelper.NormalizeLineCourse(
+                RouteDisplayHelper.Parse(contextRouteKey).LineCourse);
+
+        // Nach Schnur-Kopie zeigen Verweise oft noch auf den Quell-Kurs (gleiche Fahrtnummer).
+        // Bei bekanntem Kontext-Kurs zuerst dieselbe Fahrt auf diesem Kurs nehmen –
+        // sonst springt die Schnur auf 128/01 und „Gültigkeit ändern“ überschreibt beide Kurse.
+        if (!string.IsNullOrEmpty(contextLineCourse))
+        {
+            var preferredOnContext = TryResolveTripOnLineCourse(
+                editor,
+                trimmed,
+                contextLineCourse,
+                contextRouteKey,
+                check);
+            if (preferredOnContext is not null)
+            {
+                return preferredOnContext;
+            }
+        }
+
         var exact = editor.RouteNames.FirstOrDefault(r => string.Equals(r, trimmed, StringComparison.Ordinal));
         if (exact is not null)
         {
@@ -314,23 +498,18 @@ public static class RouteChainPlanner
                         StringComparison.Ordinal))
                 .ToList();
 
-            if (!string.IsNullOrWhiteSpace(contextRouteKey))
+            if (!string.IsNullOrEmpty(contextLineCourse))
             {
-                var contextLineCourse = RouteDisplayHelper.NormalizeLineCourse(
-                    RouteDisplayHelper.Parse(contextRouteKey).LineCourse);
-                if (!string.IsNullOrEmpty(contextLineCourse))
+                var sameLine = tripMatches
+                    .Where(route =>
+                        string.Equals(
+                            RouteDisplayHelper.NormalizeLineCourse(RouteDisplayHelper.Parse(route).LineCourse),
+                            contextLineCourse,
+                            StringComparison.Ordinal))
+                    .ToList();
+                if (sameLine.Count > 0)
                 {
-                    var sameLine = tripMatches
-                        .Where(route =>
-                            string.Equals(
-                                RouteDisplayHelper.NormalizeLineCourse(RouteDisplayHelper.Parse(route).LineCourse),
-                                contextLineCourse,
-                                StringComparison.Ordinal))
-                        .ToList();
-                    if (sameLine.Count > 0)
-                    {
-                        tripMatches = sameLine;
-                    }
+                    tripMatches = sameLine;
                 }
             }
 
@@ -377,6 +556,56 @@ public static class RouteChainPlanner
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Gleiche Fahrtnummer auf dem Kontext-Linie/Kurs – unabhängig vom Kurs im Verweistext.
+    /// </summary>
+    private static string? TryResolveTripOnLineCourse(
+        EditableRoutePackage editor,
+        string routeReference,
+        string normalizedLineCourse,
+        string? contextRouteKey,
+        ChainCheckFilter filter)
+    {
+        var tripNumber = RouteDisplayHelper.NormalizeTripNumber(
+            RouteDisplayHelper.Parse(routeReference).TripNumber);
+        if (string.IsNullOrEmpty(tripNumber))
+        {
+            return null;
+        }
+
+        var matches = editor.RouteNames
+            .Where(route =>
+            {
+                var definition = RouteDisplayHelper.Parse(route);
+                return string.Equals(
+                           RouteDisplayHelper.NormalizeLineCourse(definition.LineCourse),
+                           normalizedLineCourse,
+                           StringComparison.Ordinal) &&
+                       string.Equals(
+                           RouteDisplayHelper.NormalizeTripNumber(definition.TripNumber),
+                           tripNumber,
+                           StringComparison.Ordinal);
+            })
+            .ToList();
+
+        var resolved = DisambiguateCandidates(editor, matches, contextRouteKey, filter);
+        if (resolved is not null)
+        {
+            return resolved;
+        }
+
+        // Mehrere Varianten (z. B. andere Verkehrstage): lieber eine auf diesem Kurs
+        // als auf den Quell-Kurs zurückzufallen.
+        if (matches.Count == 0)
+        {
+            return null;
+        }
+
+        var filtered = FilterCandidatesByCheck(editor, matches, filter);
+        var pool = filtered.Count > 0 ? filtered : matches;
+        return TryResolveNextScheduledRoute(editor, contextRouteKey, pool) ?? pool[0];
     }
 
     private static string? DisambiguateCandidates(

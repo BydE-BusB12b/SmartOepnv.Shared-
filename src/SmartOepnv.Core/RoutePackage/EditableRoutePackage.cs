@@ -910,7 +910,16 @@ public sealed class EditableRoutePackage
         var index = RouteNames.IndexOf(oldKey);
         if (index >= 0)
         {
-            RouteNames[index] = newKey;
+            // Zielname schon vergeben (z. B. gleiche Fahrt mit neuem Verkehrstags-Text):
+            // alten Eintrag entfernen und Daten auf bestehenden Schlüssel migrieren.
+            if (RouteNames.Contains(newKey))
+            {
+                RouteNames.RemoveAt(index);
+            }
+            else
+            {
+                RouteNames[index] = newKey;
+            }
         }
         else if (!RouteNames.Contains(newKey))
         {
@@ -1003,14 +1012,24 @@ public sealed class EditableRoutePackage
         var newReference = RouteDisplayHelper.ToDisplayString(RouteDisplayHelper.Parse(newKey));
         foreach (var stop in StopsByRoute.Values.SelectMany(stops => stops))
         {
-            if (!stop.RouteChangeEnabled || string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip))
+            if (!stop.RouteChangeEnabled)
             {
                 continue;
             }
 
-            if (RouteDisplayHelper.RouteKeysMatch(stop.SelectedLineCourseTrip, oldKey))
+            if (!string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip) &&
+                RouteDisplayHelper.RouteKeysMatch(stop.SelectedLineCourseTrip, oldKey))
             {
                 stop.SelectedLineCourseTrip = newReference;
+            }
+
+            foreach (var entry in stop.RouteChangeTargetsByDate)
+            {
+                if (!string.IsNullOrWhiteSpace(entry.SelectedLineCourseTrip) &&
+                    RouteDisplayHelper.RouteKeysMatch(entry.SelectedLineCourseTrip, oldKey))
+                {
+                    entry.SelectedLineCourseTrip = newReference;
+                }
             }
         }
     }

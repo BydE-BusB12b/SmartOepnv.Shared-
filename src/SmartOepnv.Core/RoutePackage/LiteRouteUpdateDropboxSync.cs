@@ -4,14 +4,16 @@ using SmartOepnv.Core.Dropbox;
 namespace SmartOepnv.Core.RoutePackage;
 
 /// <summary>
-/// Leitstelle: <c>routes_update.json</c> aus Dropbox in den lokalen Editor mergen
-/// (Fernroute-Liste, Karte – ohne Voll-Export mit Audio).
+/// Leitstelle-Fallback: <c>routes_update.json</c> nur wenn kein <c>leitstelle_routes.json</c>
+/// vorliegt. Sonst würden ältere Fahrzeug-Updates die Planer-Fahrwege überschreiben.
 /// </summary>
 public static class LiteRouteUpdateDropboxSync
 {
     public sealed record ImportResult(bool Imported, string Message);
 
-    public static async Task<ImportResult> TryMergeFromDropboxAsync(CancellationToken ct = default)
+    public static async Task<ImportResult> TryMergeFromDropboxAsync(
+        CancellationToken ct = default,
+        bool skipWhenLeitstelleRoutesPresent = false)
     {
         if (!AppServices.IsInitialized)
         {
@@ -25,6 +27,21 @@ public static class LiteRouteUpdateDropboxSync
 
         try
         {
+            if (skipWhenLeitstelleRoutesPresent)
+            {
+                var leitstelleRoutesJson = await AppServices.Dropbox
+                    .TryDownloadNamedFileAsync(DropboxConstants.LeitstelleRoutesFileName, ct)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(leitstelleRoutesJson) &&
+                    LiteRouteUpdateMerge.IsLiteVehicleUpdate(leitstelleRoutesJson))
+                {
+                    return new ImportResult(
+                        false,
+                        $"{DropboxConstants.RouteUpdateFileName} übersprungen – " +
+                        $"{DropboxConstants.LeitstelleRoutesFileName} ist maßgeblich.");
+                }
+            }
+
             var updateJson = await AppServices.Dropbox
                 .TryDownloadNamedFileAsync(DropboxConstants.RouteUpdateFileName, ct)
                 .ConfigureAwait(false);

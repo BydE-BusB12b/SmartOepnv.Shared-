@@ -313,6 +313,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var timeFromPanel = new StackPanel();
         timeFromPanel.Children.Add(MakeLabel("Uhrzeit von"));
         _timeFromBox = MakeInput("HH:mm", startLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_timeFromBox);
         timeFromPanel.Children.Add(_timeFromBox);
         Grid.SetColumn(timeFromPanel, 0);
         timeRow.Children.Add(timeFromPanel);
@@ -320,6 +321,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var timeToPanel = new StackPanel();
         timeToPanel.Children.Add(MakeLabel("Uhrzeit bis"));
         _timeToBox = MakeInput("HH:mm", endLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_timeToBox);
         timeToPanel.Children.Add(_timeToBox);
         Grid.SetColumn(timeToPanel, 2);
         timeRow.Children.Add(timeToPanel);
@@ -338,12 +340,14 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var part1FromPanel = new StackPanel();
         part1FromPanel.Children.Add(MakeLabel("Teil 1 von"));
         _part1FromBox = MakeInput("HH:mm", startLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_part1FromBox);
         part1FromPanel.Children.Add(_part1FromBox);
         Grid.SetColumn(part1FromPanel, 0);
         part1Row.Children.Add(part1FromPanel);
         var part1ToPanel = new StackPanel();
         part1ToPanel.Children.Add(MakeLabel("Teil 1 bis"));
         _part1ToBox = MakeInput("HH:mm", part1EndLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_part1ToBox);
         part1ToPanel.Children.Add(_part1ToBox);
         Grid.SetColumn(part1ToPanel, 2);
         part1Row.Children.Add(part1ToPanel);
@@ -356,12 +360,14 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var part2FromPanel = new StackPanel();
         part2FromPanel.Children.Add(MakeLabel("Teil 2 von"));
         _part2FromBox = MakeInput("HH:mm", part2StartLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_part2FromBox);
         part2FromPanel.Children.Add(_part2FromBox);
         Grid.SetColumn(part2FromPanel, 0);
         part2Row.Children.Add(part2FromPanel);
         var part2ToPanel = new StackPanel();
         part2ToPanel.Children.Add(MakeLabel("Teil 2 bis"));
         _part2ToBox = MakeInput("HH:mm", part2EndLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_part2ToBox);
         part2ToPanel.Children.Add(_part2ToBox);
         Grid.SetColumn(part2ToPanel, 2);
         part2Row.Children.Add(part2ToPanel);
@@ -1209,13 +1215,26 @@ public sealed class FahrerdispoNewShiftDialog : Window
     private static bool TryParseTime(string text, out TimeSpan time)
     {
         time = default;
-        var trimmed = text.Trim();
-        if (TimeSpan.TryParseExact(trimmed, "hh\\:mm", CultureInfo.InvariantCulture, out time))
+        var normalized = RouteScheduleTimeCalculator.NormalizeTimeInput(text);
+        if (!RouteScheduleTimeCalculator.TryParseTime(normalized, out var timeOnly))
         {
-            return true;
+            return false;
         }
 
-        return TimeSpan.TryParseExact(trimmed, "h\\:mm", CultureInfo.InvariantCulture, out time);
+        time = timeOnly.ToTimeSpan();
+        return true;
+    }
+
+    private static void AttachTimeNormalization(TextBox box)
+    {
+        box.LostFocus += (_, _) =>
+        {
+            var normalized = RouteScheduleTimeCalculator.NormalizeTimeInput(box.Text);
+            if (!string.Equals(box.Text, normalized, StringComparison.Ordinal))
+            {
+                box.Text = normalized;
+            }
+        };
     }
 
     private static string BuildEmployeeLabel(EmployeeRosterItem employee)

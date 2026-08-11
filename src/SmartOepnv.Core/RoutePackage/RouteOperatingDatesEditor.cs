@@ -190,6 +190,39 @@ public static class RouteOperatingDatesEditor
         return ordered.Count == 0 ? string.Empty : string.Join(", ", ordered);
     }
 
+    /// <summary>
+    /// Kurze Anzeige für UI-Zeilen: ein Tag, zusammenhängender Bereich oder Spanne mit Anzahl.
+    /// </summary>
+    public static string FormatSummary(IReadOnlyCollection<DateOnly>? dates)
+    {
+        if (!IsRestricted(dates))
+        {
+            return string.Empty;
+        }
+
+        var ordered = dates!.OrderBy(d => d).ToList();
+        if (ordered.Count == 1)
+        {
+            return RouteDateRange.FormatDate(ordered[0]);
+        }
+
+        var from = RouteDateRange.FormatDate(ordered[0]);
+        var to = RouteDateRange.FormatDate(ordered[^1]);
+        var contiguous = true;
+        for (var i = 1; i < ordered.Count; i++)
+        {
+            if (ordered[i] != ordered[i - 1].AddDays(1))
+            {
+                contiguous = false;
+                break;
+            }
+        }
+
+        return contiguous
+            ? $"{from} – {to}"
+            : $"{from} – {to} ({ordered.Count} Betriebstage)";
+    }
+
     public static bool TryParseDate(string? raw, out DateOnly date)
     {
         date = default;
@@ -218,7 +251,10 @@ public static class RouteOperatingDatesEditor
         return DateOnly.TryParse(trimmed, GermanCulture, DateTimeStyles.None, out date);
     }
 
-    /// <summary>Parst kommagetrennte / zeilenweise Datumsliste (z. B. „28.07, 30.07.2026“).</summary>
+    /// <summary>
+    /// Parst kommagetrennte / zeilenweise Datumsliste inkl. Bereiche
+    /// (z. B. „28.07, 30.07.2026“ oder „10.08-14.08, 17.08-19.08, 20.08“).
+    /// </summary>
     public static bool TryParseDateList(string? raw, out List<DateOnly> dates, out string? error)
     {
         dates = [];
@@ -229,20 +265,58 @@ public static class RouteOperatingDatesEditor
         }
 
         var parts = raw
-            .Split([',', ';', '\n', '\r', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var set = new HashSet<DateOnly>();
         foreach (var part in parts)
         {
-            if (!TryParseDate(part, out var date))
+            if (!TryParseDateOrRange(part, set, out error))
             {
-                error = $"Ungültiges Datum „{part}“ – bitte TT.MM oder TT.MM.JJJJ.";
                 return false;
             }
-
-            set.Add(date);
         }
 
         dates = set.OrderBy(d => d).ToList();
+        return true;
+    }
+
+    private static bool TryParseDateOrRange(string part, HashSet<DateOnly> set, out string? error)
+    {
+        error = null;
+        var trimmed = part.Trim();
+        if (trimmed.Length == 0)
+        {
+            return true;
+        }
+
+        // Bereich: „10.08-14.08“ / „10.08.2026-14.08.2026“
+        var dash = trimmed.IndexOf('-');
+        if (dash > 0 && dash < trimmed.Length - 1 && trimmed.Contains('.', StringComparison.Ordinal))
+        {
+            var fromRaw = trimmed[..dash].Trim();
+            var toRaw = trimmed[(dash + 1)..].Trim();
+            if (TryParseDate(fromRaw, out var from) && TryParseDate(toRaw, out var to))
+            {
+                if (to < from)
+                {
+                    (from, to) = (to, from);
+                }
+
+                for (var d = from; d <= to; d = d.AddDays(1))
+                {
+                    set.Add(d);
+                }
+
+                return true;
+            }
+        }
+
+        if (!TryParseDate(trimmed, out var date))
+        {
+            error = $"Ungültiges Datum „{trimmed}“ – bitte TT.MM, TT.MM.JJJJ oder Bereich TT.MM-TT.MM.";
+            return false;
+        }
+
+        set.Add(date);
         return true;
     }
 }

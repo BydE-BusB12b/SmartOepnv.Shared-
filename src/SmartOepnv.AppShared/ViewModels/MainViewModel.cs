@@ -791,7 +791,9 @@ public partial class MainViewModel : ObservableObject
                     : $"{_dataTransferViewModel.LastActionMessage} {leitstelleRoutesResult.Message}";
             }
 
-            var liteResult = await LiteRouteUpdateDropboxSync.TryMergeFromDropboxAsync().ConfigureAwait(true);
+            var liteResult = await LiteRouteUpdateDropboxSync
+                .TryMergeFromDropboxAsync(skipWhenLeitstelleRoutesPresent: true)
+                .ConfigureAwait(true);
             if (liteResult.Imported)
             {
                 OnRoutePackageLoaded();

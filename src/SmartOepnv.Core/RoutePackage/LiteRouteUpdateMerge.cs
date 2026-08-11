@@ -182,6 +182,138 @@ public static class LiteRouteUpdateMerge
 
 
 
+    /// <summary>
+    /// true, wenn gesnapte Fahrwege im Lite-Paket von Drafts/Overviews im Editor abweichen
+    /// (Punktzahl) – z. B. nach routes_export-Reload trotz gespeichertem Merge-Timestamp.
+    /// </summary>
+    public static bool HasStaleRoutePathGeometry(string liteJson, EditableRoutePackage? editor)
+    {
+        if (editor is null)
+        {
+            return true;
+        }
+
+        JsonObject? liteRoot;
+        try
+        {
+            liteRoot = JsonNode.Parse(liteJson)?.AsObject();
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (liteRoot is null)
+        {
+            return false;
+        }
+
+        var liteDrafts = liteRoot["routePathDrafts"] as JsonObject;
+        var liteOverviews = liteRoot[LeitstelleRoutePathOverview.OverviewsKey] as JsonObject;
+        if ((liteDrafts is null || liteDrafts.Count == 0) &&
+            (liteOverviews is null || liteOverviews.Count == 0))
+        {
+            return false;
+        }
+
+        var editorDrafts = editor.PackageRoot["routePathDrafts"] as JsonObject;
+        var editorOverviews = editor.PackageRoot[LeitstelleRoutePathOverview.OverviewsKey] as JsonObject;
+
+        foreach (var key in CollectRoutePathKeys(liteDrafts, liteOverviews))
+        {
+            var incomingCount = CountSnappedShapePoints(ResolveRoutePathNode(liteDrafts, liteOverviews, key));
+            if (incomingCount < 2)
+            {
+                continue;
+            }
+
+            var editorCount = CountSnappedShapePoints(ResolveRoutePathNode(editorDrafts, editorOverviews, key));
+            if (editorCount != incomingCount)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> CollectRoutePathKeys(JsonObject? drafts, JsonObject? overviews)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        if (drafts is not null)
+        {
+            foreach (var (key, _) in drafts)
+            {
+                if (!string.IsNullOrWhiteSpace(key))
+                {
+                    keys.Add(key);
+                }
+            }
+        }
+
+        if (overviews is not null)
+        {
+            foreach (var (key, _) in overviews)
+            {
+                if (!string.IsNullOrWhiteSpace(key))
+                {
+                    keys.Add(key);
+                }
+            }
+        }
+
+        return keys;
+    }
+
+    private static JsonNode? ResolveRoutePathNode(JsonObject? drafts, JsonObject? overviews, string key)
+    {
+        if (drafts is not null && drafts[key] is { } draftNode)
+        {
+            return draftNode;
+        }
+
+        if (overviews is not null && overviews[key] is { } overviewNode)
+        {
+            return overviewNode;
+        }
+
+        return null;
+    }
+
+    private static int CountSnappedShapePoints(JsonNode? node)
+    {
+        if (node is null)
+        {
+            return 0;
+        }
+
+        try
+        {
+            JsonObject? obj = node as JsonObject;
+            if (obj is null)
+            {
+                var text = node.GetValue<string>();
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    return 0;
+                }
+
+                obj = JsonNode.Parse(text)?.AsObject();
+            }
+
+            if (obj?["snappedShape"] is JsonArray shape)
+            {
+                return shape.Count;
+            }
+        }
+        catch
+        {
+            // defekte Einträge ignorieren
+        }
+
+        return 0;
+    }
+
     public static string MergeIntoPackageJson(string baseJson, string liteJson)
 
     {

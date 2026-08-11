@@ -13,13 +13,52 @@ public static class RouteChangeDisplayHelper
             return null;
         }
 
-        var targetRef = stop.SelectedLineCourseTrip?.Trim();
-        if (string.IsNullOrWhiteSpace(targetRef) ||
-            string.Equals(targetRef, RouteStopEditorCatalog.NoLineCourseTripLabel, StringComparison.OrdinalIgnoreCase))
+        var defaultRef = stop.SelectedLineCourseTrip?.Trim();
+        var hasDefault = !string.IsNullOrWhiteSpace(defaultRef) &&
+            !string.Equals(defaultRef, RouteStopEditorCatalog.NoLineCourseTripLabel, StringComparison.OrdinalIgnoreCase);
+        var dated = stop.RouteChangeTargetsByDate
+            .Where(e => e.OperatingDates.Count > 0 && !string.IsNullOrWhiteSpace(e.SelectedLineCourseTrip))
+            .ToList();
+
+        if (!hasDefault && dated.Count == 0)
         {
             return null;
         }
 
+        var fromName = ResolveFromName(stop);
+        if (dated.Count == 0)
+        {
+            return FormatSingle(defaultRef!, fromName);
+        }
+
+        var parts = new List<string>();
+        if (hasDefault)
+        {
+            parts.Add(FormatSingle(defaultRef!, fromName));
+        }
+
+        foreach (var entry in dated)
+        {
+            var datesText = RouteOperatingDatesEditor.FormatDisplay(entry.OperatingDates);
+            parts.Add($"{FormatSingle(entry.SelectedLineCourseTrip.Trim(), fromName)} ({datesText})");
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private static string ResolveFromName(RouteStopItem stop)
+    {
+        var fromName = (stop.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(fromName))
+        {
+            fromName = (stop.StopDisplay ?? string.Empty).Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(fromName) ? "Endhaltestelle" : fromName;
+    }
+
+    private static string FormatSingle(string targetRef, string fromName)
+    {
         var parsed = RouteDisplayHelper.Parse(targetRef);
         var lineCourse = (parsed.LineCourse ?? string.Empty).Trim();
         var trip = RouteDisplayHelper.NormalizeTripNumber(parsed.TripNumber ?? string.Empty);
@@ -27,17 +66,6 @@ public static class RouteChangeDisplayHelper
         if (string.IsNullOrWhiteSpace(targetName))
         {
             targetName = targetRef;
-        }
-
-        var fromName = (stop.Name ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(fromName))
-        {
-            fromName = (stop.StopDisplay ?? string.Empty).Trim();
-        }
-
-        if (string.IsNullOrWhiteSpace(fromName))
-        {
-            fromName = "Endhaltestelle";
         }
 
         var segments = new List<string> { "weiter als:" };

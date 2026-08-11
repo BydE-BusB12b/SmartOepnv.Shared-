@@ -50,6 +50,7 @@ public static class GpsAnsagenStopJson
                 : JsonNodeReading.GetBoolean(obj["isEndStop"]),
             RouteChangeEnabled = JsonNodeReading.GetBoolean(obj["routeChangeEnabled"]),
             SelectedLineCourseTrip = JsonNodeReading.GetString(obj["selectedLineCourseTrip"]),
+            RouteChangeTargetsByDate = ReadRouteChangeTargetsByDate(obj["routeChangeTargetsByDate"]),
             EndDestinationCoordinates = JsonNodeReading.GetString(obj["endDestinationCoordinates"]),
             IsDisplayEnabled = JsonNodeReading.GetBoolean(obj["isDisplayEnabled"]),
             DisplayText = JsonNodeReading.GetString(obj["displayText"]),
@@ -116,6 +117,8 @@ public static class GpsAnsagenStopJson
             ["endDestinationCoordinates"] = stop.EndDestinationCoordinates
         };
 
+        WriteRouteChangeTargetsByDate(obj, stop.RouteChangeTargetsByDate);
+
         var plannerCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
         if (!string.IsNullOrEmpty(plannerCode))
         {
@@ -135,5 +138,83 @@ public static class GpsAnsagenStopJson
         }
 
         return JsonNodeReading.GetString(obj[key]);
+    }
+
+    private static List<RouteChangeTargetEntry> ReadRouteChangeTargetsByDate(JsonNode? node)
+    {
+        var result = new List<RouteChangeTargetEntry>();
+        if (node is not JsonArray arr)
+        {
+            return result;
+        }
+
+        foreach (var item in arr)
+        {
+            if (item is not JsonObject entryObj)
+            {
+                continue;
+            }
+
+            var trip = JsonNodeReading.GetString(entryObj["selectedLineCourseTrip"]);
+            var dates = new List<DateOnly>();
+            if (entryObj["operatingDates"] is JsonArray datesArr)
+            {
+                foreach (var dateNode in datesArr)
+                {
+                    var raw = dateNode?.GetValue<string>();
+                    if (RouteOperatingDatesEditor.TryParseDate(raw, out var date))
+                    {
+                        dates.Add(date);
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(trip) || dates.Count == 0)
+            {
+                continue;
+            }
+
+            result.Add(new RouteChangeTargetEntry
+            {
+                SelectedLineCourseTrip = trip.Trim(),
+                OperatingDates = dates.Distinct().OrderBy(d => d).ToList()
+            });
+        }
+
+        return result;
+    }
+
+    private static void WriteRouteChangeTargetsByDate(JsonObject obj, IReadOnlyList<RouteChangeTargetEntry> entries)
+    {
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        var arr = new JsonArray();
+        foreach (var entry in entries)
+        {
+            if (string.IsNullOrWhiteSpace(entry.SelectedLineCourseTrip) || entry.OperatingDates.Count == 0)
+            {
+                continue;
+            }
+
+            var datesArr = new JsonArray();
+            foreach (var date in entry.OperatingDates.Distinct().OrderBy(d => d))
+            {
+                datesArr.Add(RouteDateRange.FormatDate(date));
+            }
+
+            arr.Add(new JsonObject
+            {
+                ["selectedLineCourseTrip"] = entry.SelectedLineCourseTrip.Trim(),
+                ["operatingDates"] = datesArr
+            });
+        }
+
+        if (arr.Count > 0)
+        {
+            obj["routeChangeTargetsByDate"] = arr;
+        }
     }
 }

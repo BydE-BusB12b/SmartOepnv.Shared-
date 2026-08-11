@@ -151,7 +151,7 @@ public sealed class AddRouteDialog : Window
         form.Children.Add(MakeLabel("Verkehrstage"));
         form.Children.Add(new TextBlock
         {
-            Text = "Gleiche Linie/Kurs + Fahrt nur einmal pro Tag · Betriebstag 00:01–03:59 Folgetag",
+            Text = "Gleiche Linie/Kurs + Fahrt nur einmal pro Tag · Betriebstag 03:00–02:59 Folgetag",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
             FontSize = 11,
@@ -201,7 +201,7 @@ public sealed class AddRouteDialog : Window
         form.Children.Add(MakeLabel("Einzelne Betriebstage (optional)"));
         form.Children.Add(new TextBlock
         {
-            Text = "Mehrere Tage kommagetrennt, z. B. 28.07, 30.07, 31.07, 07.08 – " +
+            Text = "Mehrere Tage kommagetrennt, z. B. 28.07, 30.07 oder 10.08-14.08, 17.08-19.08 – " +
                    "Route nur an diesen Tagen sichtbar (zusätzlich zu Verkehrstagen und von/bis). Leer = alle Tage im Zeitraum.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
@@ -295,6 +295,7 @@ public sealed class AddRouteDialog : Window
         };
         var grid = new Grid { Margin = new Thickness(20) };
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
@@ -303,14 +304,55 @@ public sealed class AddRouteDialog : Window
             Text = "Quellroute wählen – Haltestellen werden in die neue Route übernommen.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = LabelForeground,
-            Margin = new Thickness(0, 0, 0, 12)
+            Margin = new Thickness(0, 0, 0, 8)
         };
         Grid.SetRow(hint, 0);
         grid.Children.Add(hint);
 
+        var searchBox = new TextBox
+        {
+            Margin = new Thickness(0, 0, 0, 10),
+            MinHeight = 32,
+            Padding = new Thickness(8, 4, 8, 4),
+            Background = InputBackground,
+            Foreground = InputForeground,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5)),
+            BorderThickness = new Thickness(1),
+            ToolTip = "Suche (Name, Linie/Kurs, Fahrt…)"
+        };
+        // Platzhalter über Tag + leeren Start – sichtbarer Hinweis als Label darüber
+        var searchLabel = new TextBlock
+        {
+            Text = "Suche (Name, Linie/Kurs, Fahrt…)",
+            Foreground = LabelForeground,
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+        var searchPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 0) };
+        searchPanel.Children.Add(searchLabel);
+        searchPanel.Children.Add(searchBox);
+        Grid.SetRow(searchPanel, 1);
+        grid.Children.Add(searchPanel);
+
         var list = new ListBox { ItemsSource = routes };
-        Grid.SetRow(list, 1);
+        Grid.SetRow(list, 2);
         grid.Children.Add(list);
+
+        void ApplyRouteFilter()
+        {
+            var query = (searchBox.Text ?? string.Empty).Trim();
+            if (query.Length == 0)
+            {
+                list.ItemsSource = routes;
+                return;
+            }
+
+            list.ItemsSource = routes
+                .Where(route => route.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        searchBox.TextChanged += (_, _) => ApplyRouteFilter();
 
         var btns = new StackPanel
         {
@@ -324,9 +366,10 @@ public sealed class AddRouteDialog : Window
         ok.Click += (_, _) => picker.DialogResult = true;
         btns.Children.Add(cancel);
         btns.Children.Add(ok);
-        Grid.SetRow(btns, 2);
+        Grid.SetRow(btns, 3);
         grid.Children.Add(btns);
         picker.Content = grid;
+        picker.Loaded += (_, _) => searchBox.Focus();
 
         if (picker.ShowDialog() != true || list.SelectedItem is not string selected)
         {

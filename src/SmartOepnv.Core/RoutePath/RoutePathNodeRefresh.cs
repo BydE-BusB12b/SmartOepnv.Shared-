@@ -10,9 +10,17 @@ public static class RoutePathNodeRefresh
 {
     /// <summary>
     /// Mapped Index-Knoten auf die aktuelle Halteliste (Typ + SourceStopName), schreibt Edge-Keys um.
-    /// Behält Lat/Lon von Halt-/Ansage-Markern und die relative Knotenreihenfolge (inkl. Manuell-Punkte).
+    /// Behält Lat/Lon nur bei gleichem Haltnamen (verschobene Marker). Gelöschte Halte dürfen
+    /// ihre Position nicht an den neuen Index-Inhaber vererben.
     /// </summary>
-    public static void RefreshNodesFromStops(RoutePathDraft draft, IList<RouteStopItem> stops)
+    /// <param name="preferStopListCoordinates">
+    /// true = GPS/Hst.-GPS aus der Halteliste verwenden (z. B. „Haltestellen laden“),
+    /// false = bei Namensgleichheit Kartenposition behalten.
+    /// </param>
+    public static void RefreshNodesFromStops(
+        RoutePathDraft draft,
+        IList<RouteStopItem> stops,
+        bool preferStopListCoordinates = false)
     {
         var oldNodes = draft.Nodes.ToList();
         var oldIndexNodes = oldNodes
@@ -21,28 +29,24 @@ public static class RoutePathNodeRefresh
         var seeded = RoutePathDraftBuilder.BuildSeedNodes(stops);
         var idMap = BuildIdRemap(oldIndexNodes, seeded);
 
-        var oldByNewId = new Dictionary<string, RoutePathNode>(StringComparer.Ordinal);
-        foreach (var old in oldIndexNodes)
+        if (!preferStopListCoordinates)
         {
-            if (idMap.TryGetValue(old.Id, out var newId))
+            // Verschobene Marker behalten – aber nur wenn derselbe Halt (Name) gemappt wurde.
+            var seededById = seeded.ToDictionary(n => n.Id, StringComparer.Ordinal);
+            foreach (var old in oldIndexNodes)
             {
-                oldByNewId[newId] = old;
-            }
-        }
+                if (!idMap.TryGetValue(old.Id, out var newId) ||
+                    !seededById.TryGetValue(newId, out var seed) ||
+                    !NamesMatch(old, seed))
+                {
+                    continue;
+                }
 
-        // Verschobene Halt-/Ansage-Marker auf der Karte behalten – nicht GPS aus Halteliste erzwingen.
-        var seededById = seeded.ToDictionary(n => n.Id, StringComparer.Ordinal);
-        foreach (var (newId, old) in oldByNewId)
-        {
-            if (!seededById.TryGetValue(newId, out var seed))
-            {
-                continue;
-            }
-
-            if (double.IsFinite(old.Lat) && double.IsFinite(old.Lon))
-            {
-                seed.Lat = old.Lat;
-                seed.Lon = old.Lon;
+                if (double.IsFinite(old.Lat) && double.IsFinite(old.Lon))
+                {
+                    seed.Lat = old.Lat;
+                    seed.Lon = old.Lon;
+                }
             }
         }
 
@@ -119,6 +123,8 @@ public static class RoutePathNodeRefresh
         var seededById = seeded.ToDictionary(n => n.Id, StringComparer.Ordinal);
         foreach (var old in oldNodes)
         {
+            // Gleicher Index-Id nur bei gleichem Haltnamen – sonst erbt z. B. der neue stop_0
+            // (Wuppertal Hbf) die Kartenposition des gelöschten stop_0 (Wendeplatz Vohwinkel).
             if (seededById.TryGetValue(old.Id, out var sameId) &&
                 NamesMatch(old, sameId) &&
                 usedNewIds.Add(sameId.Id))
@@ -141,19 +147,6 @@ public static class RoutePathNodeRefresh
             map[old.Id] = match.Id;
             usedNewIds.Add(match.Id);
             remainingNew.Remove(match);
-        }
-
-        foreach (var old in oldNodes)
-        {
-            if (map.ContainsKey(old.Id))
-            {
-                continue;
-            }
-
-            if (seededById.ContainsKey(old.Id) && usedNewIds.Add(old.Id))
-            {
-                map[old.Id] = old.Id;
-            }
         }
 
         return map;

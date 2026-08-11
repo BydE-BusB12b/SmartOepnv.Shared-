@@ -54,7 +54,10 @@ public sealed class RouteStopItem
     public bool IsEndStop { get; set; }
     public bool PlayEndStopAnnouncement { get; set; }
     public bool RouteChangeEnabled { get; set; }
+    /// <summary>Standard-Routenwechselziel (Tage ohne datierte Ausnahme).</summary>
     public string SelectedLineCourseTrip { get; set; } = string.Empty;
+    /// <summary>Abweichende Routenwechselziele an einzelnen Betriebstagen.</summary>
+    public List<RouteChangeTargetEntry> RouteChangeTargetsByDate { get; set; } = [];
     public string EndDestinationCoordinates { get; set; } = string.Empty;
     public bool IsDisplayEnabled { get; set; }
     public string DisplayText { get; set; } = string.Empty;
@@ -106,6 +109,7 @@ public sealed class RouteStopItem
         PlayEndStopAnnouncement = PlayEndStopAnnouncement,
         RouteChangeEnabled = RouteChangeEnabled,
         SelectedLineCourseTrip = SelectedLineCourseTrip,
+        RouteChangeTargetsByDate = RouteChangeTargetsByDate.Select(e => e.Clone()).ToList(),
         EndDestinationCoordinates = EndDestinationCoordinates,
         IsDisplayEnabled = IsDisplayEnabled,
         DisplayText = DisplayText,
@@ -158,6 +162,7 @@ public sealed class RouteStopItem
         PlayEndStopAnnouncement = other.PlayEndStopAnnouncement;
         RouteChangeEnabled = other.RouteChangeEnabled;
         SelectedLineCourseTrip = other.SelectedLineCourseTrip;
+        RouteChangeTargetsByDate = other.RouteChangeTargetsByDate.Select(e => e.Clone()).ToList();
         EndDestinationCoordinates = other.EndDestinationCoordinates;
         IsDisplayEnabled = other.IsDisplayEnabled;
         DisplayText = other.DisplayText;

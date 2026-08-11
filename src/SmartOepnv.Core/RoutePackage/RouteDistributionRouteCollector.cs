@@ -38,18 +38,34 @@ public static class RouteDistributionRouteCollector
                     continue;
                 }
 
-                var targetRoute = stop.SelectedLineCourseTrip?.Trim();
-                if (string.IsNullOrEmpty(targetRoute) || collected.Contains(targetRoute))
+                var targets = new List<string>();
+                if (!string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip))
                 {
-                    continue;
+                    targets.Add(stop.SelectedLineCourseTrip.Trim());
                 }
 
-                if (string.Equals(targetRoute, firstInitial, StringComparison.Ordinal))
+                foreach (var entry in stop.RouteChangeTargetsByDate)
                 {
-                    continue;
+                    if (!string.IsNullOrWhiteSpace(entry.SelectedLineCourseTrip))
+                    {
+                        targets.Add(entry.SelectedLineCourseTrip.Trim());
+                    }
                 }
 
-                CollectRecursive([targetRoute], allStops, collected);
+                foreach (var targetRoute in targets.Distinct(StringComparer.Ordinal))
+                {
+                    if (collected.Contains(targetRoute))
+                    {
+                        continue;
+                    }
+
+                    if (string.Equals(targetRoute, firstInitial, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    CollectRecursive([targetRoute], allStops, collected);
+                }
             }
         }
     }

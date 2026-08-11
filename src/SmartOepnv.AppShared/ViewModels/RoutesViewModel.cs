@@ -251,6 +251,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
         RefreshStopTimeOrderWarnings(showDialog: false);
         RemoveSelectedStopCommand.NotifyCanExecuteChanged();
+        ShiftAllStopTimesEarlierCommand.NotifyCanExecuteChanged();
+        ShiftAllStopTimesLaterCommand.NotifyCanExecuteChanged();
         NotifyMoveStopCommandsCanExecute();
     }
 
@@ -368,12 +370,18 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         if (string.IsNullOrWhiteSpace(value))
         {
             RemoveSelectedStopCommand.NotifyCanExecuteChanged();
+            ShiftAllStopTimesEarlierCommand.NotifyCanExecuteChanged();
+            ShiftAllStopTimesLaterCommand.NotifyCanExecuteChanged();
             return;
         }
 
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
+            RemoveSelectedStopCommand.NotifyCanExecuteChanged();
+            ShiftAllStopTimesEarlierCommand.NotifyCanExecuteChanged();
+            ShiftAllStopTimesLaterCommand.NotifyCanExecuteChanged();
+            NotifyMoveStopCommandsCanExecute();
             return;
         }
 
@@ -383,6 +391,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         }
 
         RemoveSelectedStopCommand.NotifyCanExecuteChanged();
+        ShiftAllStopTimesEarlierCommand.NotifyCanExecuteChanged();
+        ShiftAllStopTimesLaterCommand.NotifyCanExecuteChanged();
         NotifyMoveStopCommandsCanExecute();
     }
 
@@ -391,6 +401,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         RemoveSelectedStopCommand.NotifyCanExecuteChanged();
         NotifyMoveStopCommandsCanExecute();
         SyncSelectedStopVrrStopIdFromStop();
+        ReloadRouteChangeDatedTargets();
         NotifyStopEditorStateChanged();
     }
 
@@ -882,6 +893,53 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         RefreshStopTimeOrderWarnings(showDialog);
     }
 
+    [RelayCommand(CanExecute = nameof(CanShiftAllStopTimes))]
+    private void ShiftAllStopTimesEarlier() => ShiftAllStopTimesByMinutes(-1);
+
+    [RelayCommand(CanExecute = nameof(CanShiftAllStopTimes))]
+    private void ShiftAllStopTimesLater() => ShiftAllStopTimesByMinutes(1);
+
+    private bool CanShiftAllStopTimes() =>
+        !string.IsNullOrWhiteSpace(SelectedRoute) &&
+        Stops.Any(s => !s.IsWaypoint && !string.IsNullOrWhiteSpace(s.Time));
+
+    private void ShiftAllStopTimesByMinutes(int deltaMinutes)
+    {
+        if (!CanShiftAllStopTimes())
+        {
+            return;
+        }
+
+        var changed = RouteScheduleTimeCalculator.ShiftAllStopTimes(Stops, deltaMinutes);
+        if (changed == 0)
+        {
+            StatusMessage = "Keine gültigen Haltestellenzeiten zum Verschieben.";
+            return;
+        }
+
+        // ObservableCollection-Items: Time-Property ändert sich – Liste neu binden.
+        var selected = SelectedStop;
+        var snapshot = Stops.ToList();
+        Stops.Clear();
+        foreach (var stop in snapshot)
+        {
+            Stops.Add(stop);
+        }
+
+        if (selected is not null && Stops.Contains(selected))
+        {
+            SelectedStop = selected;
+        }
+
+        _sync.MarkDirty();
+        RefreshStopTimeOrderWarnings(showDialog: false);
+        ShiftAllStopTimesEarlierCommand.NotifyCanExecuteChanged();
+        ShiftAllStopTimesLaterCommand.NotifyCanExecuteChanged();
+        var direction = deltaMinutes < 0 ? "früher" : "später";
+        StatusMessage =
+            $"{changed} Haltestellenzeit(en) um {Math.Abs(deltaMinutes)} Min. {direction} – bitte „Speichern“.";
+    }
+
     [RelayCommand]
     private void ShowAutoSchedule()
     {
@@ -1000,16 +1058,49 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             var dialog = new RouteChainDialog(
                 editor,
                 initialLineCourse,
-                onPackageChanged: () =>
+                onPackageChanged: selectRouteKey =>
                 {
                     _sync.MarkDirty();
-                    LoadRouteOperatingDaysForSelection(SelectedRoute);
-                    LoadRouteDateRangeForSelection(SelectedRoute);
+                    if (!string.IsNullOrWhiteSpace(selectRouteKey))
+                    {
+                        // Suche so setzen, dass die neuen Fahrten in der Routenliste sichtbar sind.
+                        var parsed = RouteDisplayHelper.Parse(selectRouteKey);
+                        if (!string.IsNullOrWhiteSpace(parsed.LineCourse))
+                        {
+                            SearchQuery = parsed.LineCourse;
+                        }
+
+                        ReloadRoutesList(selectRouteKey);
+                        if (SelectedRoute is null ||
+                            !RouteDisplayHelper.RouteKeysMatch(SelectedRoute, selectRouteKey))
+                        {
+                            // Exakter Key ggf. durch Filter/Sortierung – per Tripnummer nachziehen.
+                            var match = FilteredRoutes.FirstOrDefault(r =>
+                                RouteDisplayHelper.RouteKeysMatch(r, selectRouteKey));
+                            if (match is not null)
+                            {
+                                SelectedRoute = match;
+                            }
+                        }
+
+                        StatusMessage =
+                            $"Routenschnur kopiert – neue Fahrten sind in der Routenliste " +
+                            $"(Suche: {SearchQuery}). Bitte „Speichern“.";
+                    }
+                    else
+                    {
+                        ReloadRoutesList(SelectedRoute);
+                        LoadRouteOperatingDaysForSelection(SelectedRoute);
+                        LoadRouteDateRangeForSelection(SelectedRoute);
+                        LoadRouteOperatingDatesForSelection(SelectedRoute);
+                    }
                 })
             {
                 Owner = owner
             };
             dialog.ShowDialog();
+            // Nach Schließen erneut laden (Gültigkeit ändern / Kopieren während Dialog).
+            ReloadRoutesList(SelectedRoute);
         }
         catch (Exception ex)
         {

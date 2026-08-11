@@ -9,6 +9,38 @@ public static class RouteScheduleTimeCalculator
     private const string TimeFormat = "HH:mm";
     private static readonly Regex CompactTimeRegex = new(@"^\d{1,4}$", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Verschiebt alle parsebaren Haltestellenzeiten um <paramref name="deltaMinutes"/>
+    /// (Abstände bleiben gleich). Leere/ungültige Zeiten bleiben unverändert.
+    /// </summary>
+    /// <returns>Anzahl geänderter Haltestellen.</returns>
+    public static int ShiftAllStopTimes(IEnumerable<RouteStopItem> stops, int deltaMinutes)
+    {
+        if (deltaMinutes == 0)
+        {
+            return 0;
+        }
+
+        var changed = 0;
+        foreach (var stop in stops)
+        {
+            if (stop.IsWaypoint || string.IsNullOrWhiteSpace(stop.Time))
+            {
+                continue;
+            }
+
+            if (!TryParseTime(stop.Time, out var time))
+            {
+                continue;
+            }
+
+            stop.Time = time.AddMinutes(deltaMinutes).ToString(TimeFormat, CultureInfo.InvariantCulture);
+            changed++;
+        }
+
+        return changed;
+    }
+
     public static string CalculateTripStartTime(string baseTime, int intervalMinutes)
     {
         if (!TryParseTime(baseTime, out var start))

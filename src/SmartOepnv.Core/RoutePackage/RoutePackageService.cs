@@ -524,7 +524,8 @@ public sealed class RoutePackageService
                 : AppServices.Workspace.GetLastMergedRouteUpdateTimestamp();
             if (updateTimestamp > 0 &&
                 updateTimestamp <= lastMerged &&
-                !LiteRouteUpdateMerge.ContainsRoutesMissingFromEditor(json, Editor))
+                !LiteRouteUpdateMerge.ContainsRoutesMissingFromEditor(json, Editor) &&
+                !LiteRouteUpdateMerge.HasStaleRoutePathGeometry(json, Editor))
             {
                 message = $"{fileLabel} bereits übernommen.";
                 return false;

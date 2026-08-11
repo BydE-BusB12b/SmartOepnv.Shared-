@@ -666,6 +666,13 @@ public partial class DataTransferViewModel : ObservableObject
         AppServices.Routes.LoadFromJson(json, persistLocally: true, source: "dropbox-import");
         if (_isLeitstelleProfile)
         {
+            // Vollpaket ersetzt Workspace – sonst bleibt Merge von leitstelle_routes „bereits übernommen“.
+            if (AppServices.IsInitialized)
+            {
+                AppServices.Workspace.SaveLastMergedLeitstelleRoutesTimestamp(0);
+                AppServices.Workspace.SaveLastMergedRouteUpdateTimestamp(0);
+            }
+
             var standResult = await LeitstelleStandDropboxSync.TryMergeFromDropboxAsync(cancellationToken)
                 .ConfigureAwait(false);
             if (standResult.Imported)
@@ -680,7 +687,8 @@ public partial class DataTransferViewModel : ObservableObject
                 LastActionMessage += $" {leitstelleRoutesResult.Message}";
             }
 
-            var liteResult = await LiteRouteUpdateDropboxSync.TryMergeFromDropboxAsync(cancellationToken)
+            var liteResult = await LiteRouteUpdateDropboxSync
+                .TryMergeFromDropboxAsync(cancellationToken, skipWhenLeitstelleRoutesPresent: true)
                 .ConfigureAwait(false);
             if (liteResult.Imported)
             {
@@ -688,6 +696,7 @@ public partial class DataTransferViewModel : ObservableObject
             }
             else if (!string.IsNullOrWhiteSpace(liteResult.Message) &&
                      !liteResult.Message.Contains("bereits übernommen", StringComparison.OrdinalIgnoreCase) &&
+                     !liteResult.Message.Contains("übersprungen", StringComparison.OrdinalIgnoreCase) &&
                      !liteResult.Message.Contains("Keine routes_update", StringComparison.OrdinalIgnoreCase))
             {
                 LastActionMessage += $" ({liteResult.Message})";

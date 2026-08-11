@@ -107,7 +107,7 @@
                                        FontWeight="SemiBold"
                                        FontSize="12"
                                        Margin="0,0,0,4" />
-                            <TextBlock Text="Betriebstag je Tag: 00:01 bis 03:59 Uhr am Folgetag (Überschneidungen möglich) · alle Tage = täglich in der App"
+                            <TextBlock Text="Betriebstag je Tag: 03:00 bis 02:59 Uhr am Folgetag · ab 03:00 neuer Tag · alle Tage = täglich in der App"
                                        Opacity="0.7"
                                        FontSize="10"
                                        TextWrapping="Wrap"
@@ -258,6 +258,12 @@
                             <Button Content="Routenschnur" Command="{Binding ShowRouteChainCommand}" Margin="0,0,8,8"
                                     Style="{StaticResource MaterialDesignRaisedButton}"
                                     ToolTip="Linie/Kurs-Fahrten und verbundene Routenschnur mit Fahrplan prüfen" />
+                            <Button Content="−1 Min" Command="{Binding ShiftAllStopTimesEarlierCommand}" Margin="0,0,4,8"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    ToolTip="Alle Haltestellenzeiten 1 Minute früher (Abstände bleiben)" />
+                            <Button Content="+1 Min" Command="{Binding ShiftAllStopTimesLaterCommand}" Margin="0,0,8,8"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    ToolTip="Alle Haltestellenzeiten 1 Minute später (Abstände bleiben)" />
                         </WrapPanel>
                     </StackPanel>
 
