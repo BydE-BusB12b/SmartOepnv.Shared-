@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -50,6 +51,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string devicePassword = string.Empty;
     [ObservableProperty] private string unlockPassword = string.Empty;
     [ObservableProperty] private string briefingPasswordsStatus = string.Empty;
+    [ObservableProperty] private string sondergongFileLabel = "—";
+    [ObservableProperty] private string sondergongStatus = string.Empty;
     [ObservableProperty] private string voipStatusMessage = "—";
     [ObservableProperty] private string voipPublishStatus = string.Empty;
     [ObservableProperty] private string operatorManualExportStatus = string.Empty;
@@ -92,6 +95,7 @@ public partial class SettingsViewModel : ObservableObject
         ActiveBetriebLabel = BuildActiveBetriebLabel();
         ReloadBranding();
         ReloadBriefingPasswords();
+        ReloadSondergong();
         RefreshVoipStatus();
     }
 
@@ -182,6 +186,101 @@ public partial class SettingsViewModel : ObservableObject
         DevicePassword = settings.DevicePassword;
         UnlockPassword = settings.UnlockPassword;
         BriefingPasswordsStatus = string.Empty;
+    }
+
+    private void ReloadSondergong()
+    {
+        if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)
+        {
+            SondergongFileLabel = "—";
+            SondergongStatus = string.Empty;
+            return;
+        }
+
+        var settings = AppServices.PlanerAppSettings.Load();
+        var name = settings.SondergongFileName?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            SondergongFileLabel = "Keine Datei gewählt";
+            SondergongStatus = "Unter Ansagen → Sondergong wird diese Tondatei vor die Sequenz gesetzt.";
+            return;
+        }
+
+        var path = PlanerSondergongSoundStore.TryGetLocalFilePath(AppServices.SettingsSubfolder, name);
+        SondergongFileLabel = name;
+        SondergongStatus = path is not null
+            ? "Sondergong-Datei gespeichert – in Ansagen per Checkbox nutzbar."
+            : "Dateiname hinterlegt, lokale Datei fehlt – bitte erneut wählen.";
+    }
+
+    [RelayCommand]
+    private void ChooseSondergongSound()
+    {
+        if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Sondergong-Tondatei wählen",
+            Filter = "Audiodateien (*.wav;*.mp3)|*.wav;*.mp3|Alle Dateien (*.*)|*.*"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var fileName = PlanerSondergongSoundStore.SaveFromFile(
+                AppServices.SettingsSubfolder,
+                dialog.FileName);
+            var stored = AppServices.PlanerAppSettings.Load();
+            stored.SondergongFileName = fileName;
+            AppServices.PlanerAppSettings.Save(stored);
+            ReloadSondergong();
+        }
+        catch (Exception ex)
+        {
+            SondergongStatus = $"Sondergong konnte nicht gespeichert werden: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void ClearSondergongSound()
+    {
+        if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var stored = AppServices.PlanerAppSettings.Load();
+        var previous = stored.SondergongFileName?.Trim() ?? string.Empty;
+        stored.SondergongFileName = string.Empty;
+        AppServices.PlanerAppSettings.Save(stored);
+
+        if (!string.IsNullOrWhiteSpace(previous))
+        {
+            try
+            {
+                var path = PlanerSondergongSoundStore.TryGetLocalFilePath(
+                    AppServices.SettingsSubfolder,
+                    previous);
+                if (path is not null)
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+                // Datei kann fehlen
+            }
+        }
+
+        ReloadSondergong();
+        SondergongStatus = "Sondergong-Zuordnung entfernt.";
     }
 
     private void ReloadBranding()

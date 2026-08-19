@@ -25,6 +25,12 @@ public static class ManagedAnnouncementTemplateEditor
         var arr = new JsonArray();
         foreach (var t in templates)
         {
+            // Endhaltestellen-Ansage gehört nicht in die ITCS-/Handy-Sonderansagenliste.
+            if (EndStopAnnouncementResolver.MatchesTemplate(t))
+            {
+                t.IncludeInSpecialAnnouncements = false;
+            }
+
             NormalizeSpecialCategory(t);
             arr.Add(Write(t));
         }
@@ -45,6 +51,13 @@ public static class ManagedAnnouncementTemplateEditor
 
         foreach (var template in templates)
         {
+            // Endhaltestellen-Ansage nie als Sonderansage markieren (auch bei Alt-Exporten).
+            if (EndStopAnnouncementResolver.MatchesTemplate(template))
+            {
+                template.IncludeInSpecialAnnouncements = false;
+                continue;
+            }
+
             if (MatchesSpecialAnnouncementEntry(specialObj, template))
             {
                 template.IncludeInSpecialAnnouncements = true;
@@ -108,7 +121,7 @@ public static class ManagedAnnouncementTemplateEditor
         var code = ManagedAnnouncementTemplateItem.NormalizeCode(
             obj["announcementCode"]?.GetValue<string>() ?? obj["code"]?.GetValue<string>());
 
-        return new ManagedAnnouncementTemplateItem
+        var item = new ManagedAnnouncementTemplateItem
         {
             Id = string.IsNullOrWhiteSpace(id) ? Guid.NewGuid().ToString("N") : id,
             StopTemplateId = obj["stopTemplateId"]?.GetValue<string>()?.Trim() ?? string.Empty,
@@ -120,6 +133,13 @@ public static class ManagedAnnouncementTemplateEditor
             EmbeddedSoundFileName = obj["embeddedSoundFileName"]?.GetValue<string>() ?? string.Empty,
             IncludeInSpecialAnnouncements = obj["includeInSpecialAnnouncements"]?.GetValue<bool>() ?? false
         };
+
+        if (EndStopAnnouncementResolver.MatchesTemplate(item))
+        {
+            item.IncludeInSpecialAnnouncements = false;
+        }
+
+        return item;
     }
 
     private static JsonObject Write(ManagedAnnouncementTemplateItem t) => new()

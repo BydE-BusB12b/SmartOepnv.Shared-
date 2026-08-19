@@ -22,7 +22,8 @@ public static class SpecialAnnouncementsEditor
         AnnouncementSoundFileResolver.ApplyResolvedFileNames(templates, root, workspace);
 
         var active = templates
-            .Where(t => t.IncludeInSpecialAnnouncements)
+            .Where(t => t.IncludeInSpecialAnnouncements &&
+                        !EndStopAnnouncementResolver.MatchesTemplate(t))
             .ToList();
 
         if (active.Count == 0)

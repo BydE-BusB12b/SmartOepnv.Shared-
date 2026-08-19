@@ -271,10 +271,9 @@ public sealed class AddRouteDialog : Window
         IReadOnlyList<string> existingRoutes,
         IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute)
     {
-        var routes = existingRoutes
-            .Where(r => !string.IsNullOrWhiteSpace(r))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(r => r, StringComparer.OrdinalIgnoreCase)
+        var routes = RouteDisplayHelper.SortRoutesByLineCourseAndTrip(
+                existingRoutes.Where(r => !string.IsNullOrWhiteSpace(r)))
+            .Select(key => new RouteCopyPickItem(key))
             .ToList();
         if (routes.Count == 0)
         {
@@ -334,7 +333,11 @@ public sealed class AddRouteDialog : Window
         Grid.SetRow(searchPanel, 1);
         grid.Children.Add(searchPanel);
 
-        var list = new ListBox { ItemsSource = routes };
+        var list = new ListBox
+        {
+            ItemsSource = routes,
+            DisplayMemberPath = nameof(RouteCopyPickItem.Display)
+        };
         Grid.SetRow(list, 2);
         grid.Children.Add(list);
 
@@ -348,7 +351,9 @@ public sealed class AddRouteDialog : Window
             }
 
             list.ItemsSource = routes
-                .Where(route => route.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Where(item =>
+                    item.Display.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    item.Key.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
 
@@ -371,11 +376,12 @@ public sealed class AddRouteDialog : Window
         picker.Content = grid;
         picker.Loaded += (_, _) => searchBox.Focus();
 
-        if (picker.ShowDialog() != true || list.SelectedItem is not string selected)
+        if (picker.ShowDialog() != true || list.SelectedItem is not RouteCopyPickItem selectedItem)
         {
             return;
         }
 
+        var selected = selectedItem.Key;
         CopyStopsFromRouteKey = selected;
         var parsed = RouteDisplayHelper.Parse(selected);
         _routeNameBox.Text = parsed.Name;
@@ -386,7 +392,13 @@ public sealed class AddRouteDialog : Window
             RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, selected));
         ApplyDateRangeToFields(RouteDateRangeEditor.GetRangeForRoute(_dateRangesByRoute, selected));
         ApplyOperatingDatesToField(RouteOperatingDatesEditor.GetDatesForRoute(_operatingDatesByRoute, selected));
-        ShowError($"Haltestellen werden von „{selected}“ kopiert – bitte neue Fahrtnummer, Verkehrstage und Gültigkeit setzen.");
+        ShowError($"Haltestellen werden von „{selectedItem.Display}“ kopiert – bitte neue Fahrtnummer, Verkehrstage und Gültigkeit setzen.");
+    }
+
+    private sealed class RouteCopyPickItem(string key)
+    {
+        public string Key { get; } = key;
+        public string Display { get; } = RouteDisplayHelper.ToLineCourseTripFirstDisplayString(key);
     }
 
     private void ConfirmSave(

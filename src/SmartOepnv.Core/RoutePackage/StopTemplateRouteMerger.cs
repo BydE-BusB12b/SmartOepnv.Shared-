@@ -23,6 +23,8 @@ public static class StopTemplateRouteMerger
                 .Where(c => c.Length == PlannerStopCode.DigitCount),
             StringComparer.Ordinal);
 
+        var index = TemplateIndex.Build(templates);
+
         var routeNames = string.IsNullOrWhiteSpace(onlyRouteName)
             ? editor.RouteNames
             : editor.RouteNames.Where(r =>
@@ -39,10 +41,17 @@ public static class StopTemplateRouteMerger
 
                 routeStopCount++;
 
-                if (TryFindMatch(templates, stop, out var existing))
+                if (index.TryFind(stop, out var existing) && existing is not null)
                 {
-                    if (EnrichFromRouteStop(existing!, stop))
+                    var hadCode = PlannerStopCode.IsValid(PlannerStopCode.Normalize(existing.StopCode));
+                    var hadVrr = !string.IsNullOrWhiteSpace(existing.VrrStopId);
+                    if (EnrichFromRouteStop(existing, stop))
                     {
+                        if (!hadCode || !hadVrr)
+                        {
+                            index.Index(existing);
+                        }
+
                         enriched++;
                     }
 
@@ -62,6 +71,7 @@ public static class StopTemplateRouteMerger
                 usedCodes.Add(code);
 
                 templates.Add(tpl);
+                index.Index(tpl);
                 added++;
             }
         }
@@ -77,32 +87,54 @@ public static class StopTemplateRouteMerger
         EditableRoutePackage editor,
         IEnumerable<ManagedStopTemplateItem> templates)
     {
-        var updated = 0;
-        foreach (var template in templates)
+        var persistable = templates.Where(static t => !t.IsEmptyDraft()).ToList();
+        if (persistable.Count == 0)
         {
-            if (template.IsEmptyDraft())
-            {
-                continue;
-            }
+            return 0;
+        }
 
-            foreach (var routeName in editor.RouteNames)
+        var index = TemplateIndex.Build(persistable);
+        var updated = 0;
+        foreach (var routeName in editor.RouteNames)
+        {
+            foreach (var stop in editor.GetStops(routeName))
             {
-                foreach (var stop in editor.GetStops(routeName))
+                if (stop.IsWaypoint || !index.TryFind(stop, out var template) || template is null)
                 {
-                    if (stop.IsWaypoint || !MatchesRouteStop(template, stop))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    if (ApplySharedFieldsFromTemplate(stop, template, routeName))
-                    {
-                        updated++;
-                    }
+                if (ApplySharedFieldsFromTemplate(stop, template, routeName))
+                {
+                    updated++;
                 }
             }
         }
 
         return updated;
+    }
+
+    /// <summary>Fingerprint der Felder, die auf Routen-Haltestellen übertragen werden.</summary>
+    public static string ComputeApplyFingerprint(IEnumerable<ManagedStopTemplateItem> templates)
+    {
+        var parts = templates
+            .Where(static t => !t.IsEmptyDraft())
+            .OrderBy(static t => t.Id, StringComparer.Ordinal)
+            .Select(static t =>
+                string.Join(
+                    '\u001f',
+                    t.Id,
+                    PlannerStopCode.Normalize(t.StopCode),
+                    t.StopNameItcs.Trim(),
+                    t.StopDisplay.Trim(),
+                    t.VrrStopId.Trim(),
+                    t.AnnouncementLat.Trim(),
+                    t.AnnouncementLng.Trim(),
+                    t.StopLat.Trim(),
+                    t.StopLng.Trim(),
+                    t.RadiusMeters.ToString(),
+                    t.EmbeddedSoundFileName.Trim()));
+        return string.Join('\n', parts);
     }
 
     private static bool ApplySharedFieldsFromTemplate(
@@ -181,55 +213,97 @@ public static class StopTemplateRouteMerger
         return changed;
     }
 
-    private static bool TryFindMatch(
-        IEnumerable<ManagedStopTemplateItem> templates,
-        RouteStopItem stop,
-        out ManagedStopTemplateItem? match)
+    private sealed class TemplateIndex
     {
-        foreach (var template in templates)
+        private readonly Dictionary<string, ManagedStopTemplateItem> _byCode =
+            new(StringComparer.Ordinal);
+        private readonly Dictionary<string, ManagedStopTemplateItem> _byVrr =
+            new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<ManagedStopTemplateItem>> _byName =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public static TemplateIndex Build(IEnumerable<ManagedStopTemplateItem> templates)
         {
-            if (MatchesRouteStop(template, stop))
+            var index = new TemplateIndex();
+            foreach (var template in templates)
             {
-                match = template;
-                return true;
+                if (!template.IsEmptyDraft())
+                {
+                    index.Index(template);
+                }
+            }
+
+            return index;
+        }
+
+        public void Index(ManagedStopTemplateItem template)
+        {
+            var code = PlannerStopCode.Normalize(template.StopCode);
+            if (PlannerStopCode.IsValid(code))
+            {
+                _byCode.TryAdd(code, template);
+            }
+
+            var vrr = template.VrrStopId.Trim();
+            if (vrr.Length > 0)
+            {
+                _byVrr.TryAdd(vrr, template);
+            }
+
+            var name = template.StopNameItcs.Trim();
+            if (name.Length == 0)
+            {
+                return;
+            }
+
+            if (!_byName.TryGetValue(name, out var list))
+            {
+                list = [];
+                _byName[name] = list;
+            }
+
+            if (!list.Contains(template))
+            {
+                list.Add(template);
             }
         }
 
-        match = null;
-        return false;
-    }
-
-    private static bool MatchesRouteStop(ManagedStopTemplateItem template, RouteStopItem stop)
-    {
-        var routeCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
-        var templateCode = PlannerStopCode.Normalize(template.StopCode);
-
-        // Route hat bereits eine Kartei-ID (z. B. nach „In Route einfügen“) –
-        // nur dieselbe Vorlage darf synchronisieren (Hin-/Rückfahrt teilen oft VRR/Name).
-        if (PlannerStopCode.IsValid(routeCode))
+        public bool TryFind(RouteStopItem stop, out ManagedStopTemplateItem? match)
         {
-            return PlannerStopCode.IsValid(templateCode) &&
-                   string.Equals(routeCode, templateCode, StringComparison.Ordinal);
-        }
+            var routeCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
+            if (PlannerStopCode.IsValid(routeCode))
+            {
+                if (_byCode.TryGetValue(routeCode, out match))
+                {
+                    return true;
+                }
 
-        var vrrRoute = stop.VrrStopId.Trim();
-        var vrrTemplate = template.VrrStopId.Trim();
-        if (vrrRoute.Length > 0 &&
-            vrrTemplate.Length > 0 &&
-            string.Equals(vrrRoute, vrrTemplate, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
+                match = null;
+                return false;
+            }
 
-        if (!string.Equals(
-                template.StopNameItcs.Trim(),
-                stop.Name.Trim(),
-                StringComparison.OrdinalIgnoreCase))
-        {
+            var vrr = stop.VrrStopId.Trim();
+            if (vrr.Length > 0 && _byVrr.TryGetValue(vrr, out match))
+            {
+                return true;
+            }
+
+            var name = stop.Name.Trim();
+            if (name.Length > 0 && _byName.TryGetValue(name, out var named))
+            {
+                foreach (var template in named)
+                {
+                    if (AnnouncementCoordinatesMatch(template, stop))
+                    {
+                        match = template;
+                        return true;
+                    }
+                }
+            }
+
+            match = null;
             return false;
         }
-
-        return AnnouncementCoordinatesMatch(template, stop);
     }
 
     private static bool AnnouncementCoordinatesMatch(ManagedStopTemplateItem template, RouteStopItem stop)

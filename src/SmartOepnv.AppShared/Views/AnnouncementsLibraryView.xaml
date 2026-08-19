@@ -478,6 +478,16 @@
 
                                           ToolTip="Hambloch Gong.wav vor die Sequenz setzen" />
 
+                                <CheckBox Content="Sondergong"
+
+                                          IsChecked="{Binding IncludeSondergongInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+
+                                          Foreground="White"
+
+                                          Margin="0,0,0,8"
+
+                                          ToolTip="Sondergong aus den Einstellungen vor die Sequenz setzen (nach Gong)" />
+
                                 <CheckBox Content="Nächste Haltestelle einfügen"
 
                                           IsChecked="{Binding IncludeNextStopInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"

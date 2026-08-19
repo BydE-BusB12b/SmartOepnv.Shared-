@@ -13,6 +13,7 @@ public static class AppServices
     private static DropboxSettingsStore? _dropboxSettingsStore;
     private static DropboxApiClient? _dropbox;
     private static VehicleTrackingService? _vehicleTracking;
+    private static GpsTripTraceService? _gpsTripTraces;
     private static LocalWorkspaceStore? _workspace;
     private static bool _initialized;
 
@@ -29,6 +30,9 @@ public static class AppServices
 
     public static VehicleTrackingService VehicleTracking =>
         _vehicleTracking ?? throw new InvalidOperationException("AppServices.Initialize wurde nicht aufgerufen.");
+
+    public static GpsTripTraceService GpsTripTraces =>
+        _gpsTripTraces ?? throw new InvalidOperationException("AppServices.Initialize wurde nicht aufgerufen.");
 
     public static string SettingsSubfolder { get; private set; } = "Planer";
 
@@ -120,6 +124,7 @@ public static class AppServices
         _dropboxSettingsStore = new DropboxSettingsStore(settingsSubfolder);
         _dropbox = new DropboxApiClient(_dropboxSettingsStore);
         _vehicleTracking = new VehicleTrackingService(_dropbox);
+        _gpsTripTraces = new GpsTripTraceService(_dropbox);
         _workspace = new LocalWorkspaceStore(settingsSubfolder);
         if (IsPlannerApp)
         {

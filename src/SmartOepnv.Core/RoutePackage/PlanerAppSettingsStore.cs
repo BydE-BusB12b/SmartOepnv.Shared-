@@ -49,7 +49,10 @@ public sealed class PlanerAppSettingsStore
             companyLogoFileName = settings.CompanyLogoFileName,
             companyLogos = settings.CompanyLogos,
             devicePassword = settings.DevicePassword,
-            unlockPassword = settings.UnlockPassword
+            unlockPassword = settings.UnlockPassword,
+            sondergongFileName = settings.SondergongFileName,
+            lastRoutesExportPackageVersion = settings.LastRoutesExportPackageVersion,
+            lastRoutesUpdatePackageVersion = settings.LastRoutesUpdatePackageVersion
         };
         SafeDataFileStore.WriteAllText(_settingsPath, JsonSerializer.Serialize(document, JsonOptions));
     }

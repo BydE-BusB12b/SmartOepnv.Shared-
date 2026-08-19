@@ -96,7 +96,7 @@ public sealed class DeviceRegistrationDropboxService
         if (added.Count > 0)
         {
             AppServices.PlannerLocal?.PersistFromEditor(editor);
-            AppServices.Routes.ApplyEditorChanges("device-register-dropbox");
+            AppServices.Routes.ApplyEditorChanges("device-register-dropbox", rebuildEmbeddedMedia: false);
         }
 
         SaveProcessed();

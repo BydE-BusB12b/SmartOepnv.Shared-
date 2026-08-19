@@ -68,6 +68,7 @@ internal static class LeitstelleOperatorManualContent
             • Fernroute: Route remote aktivieren (Pas.Info bleibt erhalten).
             • Fern-Fahreranmeldung: Fahrer aus dem Roster am Gerät an-/abmelden (ohne PIN am Tablet).
             • Gerät sperren / entsperren: Vollflächige Bedienungssperre auf dem Fahrzeuggerät (kein System-PIN).
+            • App beenden: Fahrer abmelden und GPSAnsagen schließen (Tablet kann in Standby).
             • Fahrgastraum-Durchsage: Mikrofon oder Text-to-Speech (max. 3 Min.).
             • Meldung: Einzelnachricht an Fahrzeug senden.
             • Jede Aktion wird per Dropbox-KOM an das Tablet gesendet; Bestätigung im Status.

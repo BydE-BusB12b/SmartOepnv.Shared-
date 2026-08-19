@@ -3,8 +3,8 @@ using System.Text.Json.Nodes;
 namespace SmartOepnv.Core.RoutePackage;
 
 /// <summary>
-/// Setzt <c>timestamp</c> im JSON auf die aktuelle Zeit – wie Android <c>jsonWithUploadTimestamp</c>
-/// (Empfänger erkennen neue Pakete u. a. über Dropbox-Dateizeit und JSON-Zeitstempel).
+/// Setzt <c>timestamp</c> im JSON auf die aktuelle Zeit – wie Android <c>jsonWithUploadTimestamp</c>.
+/// Für Planer-Uploads bitte [RoutePackageVersionStamp] nutzen (enthält Timestamp + packageVersion).
 /// </summary>
 public static class RoutePackageTimestamp
 {

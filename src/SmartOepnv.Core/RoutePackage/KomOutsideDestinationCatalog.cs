@@ -16,7 +16,7 @@ public static class KomOutsideDestinationCatalog
             .Select(OutsideDisplayProgram.TryParse)
             .Where(p => p is not null && p.IsListEnabled && !string.IsNullOrWhiteSpace(p.Name))
             .Select(p => new ListItem(p!.Name.Trim(), p.ProtocolLabel))
-            .OrderBy(i => i.Name, StringComparer.Ordinal)
+            .OrderBy(i => i.Name, Comparer<string>.Create(OutsideDisplayProgram.CompareZiellisteNames))
             .ThenBy(i => i.ProtocolLabel, StringComparer.Ordinal)
             .ToList();
     }

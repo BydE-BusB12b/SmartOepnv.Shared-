@@ -318,6 +318,18 @@ public sealed class DropboxApiClient
             .ToList();
     }
 
+    public async Task<IReadOnlyList<string>> ListGpsTraceFilesAsync(CancellationToken ct = default)
+    {
+        var folder = ActiveFolderPath;
+        var token = await GetValidAccessTokenAsync(ct);
+        var names = await ListFileNamesAsync(folder, token, ct);
+        return names
+            .Where(n => n.StartsWith(DropboxConstants.GpsTraceFilePrefix, StringComparison.OrdinalIgnoreCase) &&
+                        n.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<string>> ListZblMessageFilesAsync(CancellationToken ct = default)
     {
         var folder = ActiveFolderPath;

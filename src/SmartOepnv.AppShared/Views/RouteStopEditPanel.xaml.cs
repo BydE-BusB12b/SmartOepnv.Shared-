@@ -1,18 +1,28 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using SmartOepnv.AppShared.ViewModels;
 using SmartOepnv.Core.RoutePackage;
+
 namespace SmartOepnv.AppShared.Views;
 
 public partial class RouteStopEditPanel : UserControl
 {
     private bool _suppressDestinationComboSync;
+    private readonly HashSet<ComboBox> _privateDestinationViews = [];
 
     public RouteStopEditPanel()
     {
         InitializeComponent();
         foreach (var combo in EnumerateDestinationCombos())
         {
+            combo.DropDownOpened += DestinationCombo_DropDownOpened;
             combo.DropDownClosed += DestinationCombo_DropDownClosed;
         }
 
@@ -32,8 +42,39 @@ public partial class RouteStopEditPanel : UserControl
             newVm.PropertyChanged += ViewModel_PropertyChanged;
         }
 
+        RestoreDestinationItemsSources();
         SyncComboSelectionsFromViewModel();
     }
+
+    private void RestoreDestinationItemsSources()
+    {
+        foreach (var combo in EnumerateDestinationCombos())
+        {
+            _privateDestinationViews.Remove(combo);
+            var path = ResolveItemsSourcePath(combo);
+            if (path is null)
+            {
+                continue;
+            }
+
+            BindingOperations.SetBinding(
+                combo,
+                ItemsControl.ItemsSourceProperty,
+                new Binding(path));
+        }
+    }
+
+    private static string? ResolveItemsSourcePath(ComboBox combo) =>
+        combo.Tag switch
+        {
+            "startDs021t" or "endDs021t" => nameof(RoutesViewModel.Ds021tDestinations),
+            "startDs003a" or "endDs003a" => nameof(RoutesViewModel.Ds003aDestinations),
+            "startDs021Neu" or "endDs021Neu" => nameof(RoutesViewModel.Ds021NeuDestinations),
+            "startFmaS1" or "endFmaS1" => nameof(RoutesViewModel.FmaS1Destinations),
+            "startZielnummer" or "endZielnummer" => nameof(RoutesViewModel.ZielnummerDestinations),
+            "lineCourseTrip" => nameof(RoutesViewModel.LineCourseTripRoutes),
+            _ => null
+        };
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -390,11 +431,58 @@ public partial class RouteStopEditPanel : UserControl
         }
     }
 
-    private void DestinationCombo_DropDownClosed(object sender, EventArgs e)
+    private void DestinationCombo_DropDownOpened(object? sender, EventArgs e)
     {
-        if (_suppressDestinationComboSync ||
-            sender is not ComboBox combo ||
-            combo.Tag is not string fieldKey)
+        if (sender is not ComboBox combo)
+        {
+            return;
+        }
+
+        combo.Dispatcher.BeginInvoke(() =>
+        {
+            if (!combo.IsDropDownOpen)
+            {
+                return;
+            }
+
+            var searchBox = FindDestinationSearchBox(combo);
+            if (searchBox is null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(searchBox.Text))
+            {
+                searchBox.Text = string.Empty;
+            }
+            else
+            {
+                ClearDestinationFilter(combo);
+            }
+
+            Keyboard.Focus(searchBox);
+            searchBox.CaretIndex = searchBox.Text?.Length ?? 0;
+        }, DispatcherPriority.Input);
+    }
+
+    private void DestinationCombo_DropDownClosed(object? sender, EventArgs e)
+    {
+        if (sender is not ComboBox combo)
+        {
+            return;
+        }
+
+        var searchBox = FindDestinationSearchBox(combo);
+        if (searchBox is not null && !string.IsNullOrEmpty(searchBox.Text))
+        {
+            searchBox.Text = string.Empty;
+        }
+        else
+        {
+            ClearDestinationFilter(combo);
+        }
+
+        if (_suppressDestinationComboSync || combo.Tag is not string fieldKey)
         {
             return;
         }
@@ -406,5 +494,186 @@ public partial class RouteStopEditPanel : UserControl
             vm.NotifyStopEditorStateChanged();
             vm.StopDetailEditedCommand.Execute(null);
         }
+    }
+
+    private void DestinationSearchBox_OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox box)
+        {
+            return;
+        }
+
+        box.TextChanged -= DestinationSearchBox_OnTextChanged;
+        box.TextChanged += DestinationSearchBox_OnTextChanged;
+    }
+
+    private void DestinationSearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is not TextBox box)
+        {
+            return;
+        }
+
+        var combo = ResolveOwnerCombo(box);
+        if (combo is null)
+        {
+            return;
+        }
+
+        ApplyDestinationFilter(combo, box.Text);
+
+        // Nach Filter-Refresh Fokus zurück ins Suchfeld (sonst muss man jeden Buchstaben neu anklicken).
+        box.Dispatcher.BeginInvoke(() =>
+        {
+            if (box.IsKeyboardFocusWithin)
+            {
+                return;
+            }
+
+            if (!combo.IsDropDownOpen)
+            {
+                return;
+            }
+
+            Keyboard.Focus(box);
+            box.CaretIndex = box.Text?.Length ?? 0;
+        }, DispatcherPriority.Input);
+    }
+
+    private void ApplyDestinationFilter(ComboBox combo, string? query)
+    {
+        var view = EnsurePrivateDestinationView(combo);
+        if (view is null)
+        {
+            return;
+        }
+
+        var trimmed = query?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            view.Filter = null;
+            view.Refresh();
+            return;
+        }
+
+        var selected = ExtractComboItemText(combo.SelectedItem);
+        view.Filter = item => MatchesDestinationFilter(item, trimmed, selected);
+        view.Refresh();
+    }
+
+    private void ClearDestinationFilter(ComboBox combo)
+    {
+        if (combo.ItemsSource is not ICollectionView view ||
+            !_privateDestinationViews.Contains(combo))
+        {
+            return;
+        }
+
+        if (view.Filter is null)
+        {
+            return;
+        }
+
+        view.Filter = null;
+        view.Refresh();
+    }
+
+    private ICollectionView? EnsurePrivateDestinationView(ComboBox combo)
+    {
+        if (combo.ItemsSource is ICollectionView existing &&
+            _privateDestinationViews.Contains(combo))
+        {
+            return existing;
+        }
+
+        var source = combo.ItemsSource;
+        if (source is ICollectionView sharedView)
+        {
+            source = sharedView.SourceCollection;
+        }
+
+        if (source is not IList list)
+        {
+            return CollectionViewSource.GetDefaultView(combo.ItemsSource);
+        }
+
+        var privateView = new ListCollectionView(list);
+        BindingOperations.ClearBinding(combo, ItemsControl.ItemsSourceProperty);
+        combo.ItemsSource = privateView;
+        _privateDestinationViews.Add(combo);
+        return privateView;
+    }
+
+    private static bool MatchesDestinationFilter(object? item, string query, string? selected)
+    {
+        var text = ExtractComboItemText(item) ?? string.Empty;
+        if (string.Equals(text, RouteStopEditorCatalog.NoDestinationLabel, StringComparison.Ordinal) ||
+            string.Equals(text, RouteStopEditorCatalog.NoLineCourseTripLabel, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(selected) &&
+            string.Equals(text, selected, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return text.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static TextBox? FindDestinationSearchBox(ComboBox combo)
+    {
+        combo.ApplyTemplate();
+        if (combo.Template?.FindName("DestinationSearchBox", combo) is TextBox fromTemplate)
+        {
+            return fromTemplate;
+        }
+
+        return FindVisualChild<TextBox>(combo, "DestinationSearchBox");
+    }
+
+    private static ComboBox? ResolveOwnerCombo(TextBox box) =>
+        box.TemplatedParent as ComboBox ?? FindVisualParent<ComboBox>(box);
+
+    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child is not null)
+        {
+            if (child is T match)
+            {
+                return match;
+            }
+
+            child = VisualTreeHelper.GetParent(child);
+        }
+
+        return null;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject? parent, string name) where T : FrameworkElement
+    {
+        if (parent is null)
+        {
+            return null;
+        }
+
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match && string.Equals(match.Name, name, StringComparison.Ordinal))
+            {
+                return match;
+            }
+
+            var nested = FindVisualChild<T>(child, name);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 }

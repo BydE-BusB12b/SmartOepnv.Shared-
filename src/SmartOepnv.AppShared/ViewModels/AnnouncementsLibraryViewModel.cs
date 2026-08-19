@@ -44,6 +44,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     private string? _loadedFingerprint;
 
+    private string? _lastAppliedStopTemplatesFingerprint;
+
     private const int SuccessFeedbackMs = 5000;
 
     private CancellationTokenSource? _saveButtonFeedbackCts;
@@ -80,6 +82,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
     [ObservableProperty] private string announcementMergePauseSeconds = "0,5";
 
     [ObservableProperty] private bool includeGongInAnnouncementMerge;
+
+    [ObservableProperty] private bool includeSondergongInAnnouncementMerge;
 
     [ObservableProperty] private bool includeNextStopInAnnouncementMerge;
 
@@ -156,11 +160,15 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _gongByAnnouncementId.Clear();
 
+        _sondergongByAnnouncementId.Clear();
+
         _nextStopByAnnouncementId.Clear();
 
         _nextStopMp3ByAnnouncementId.Clear();
 
         _announcementsNeedingAudioMaterialization.Clear();
+
+        _lastAppliedStopTemplatesFingerprint = null;
 
         _sequenceLoadedForAnnouncementId = null;
 
@@ -342,6 +350,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             GongFlags = _gongByAnnouncementId,
 
+            SondergongFlags = _sondergongByAnnouncementId,
+
             NextStopFlags = _nextStopByAnnouncementId,
 
             NextStopMp3Flags = _nextStopMp3ByAnnouncementId
@@ -450,17 +460,43 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         editor.ReplaceStopTemplates(stopClones);
 
-        var routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, stopClones);
+        var stopFingerprint = StopTemplateRouteMerger.ComputeApplyFingerprint(stopClones);
+
+        var routeStopsUpdated = 0;
+
+        if (!string.Equals(stopFingerprint, _lastAppliedStopTemplatesFingerprint, StringComparison.Ordinal))
+
+        {
+
+            routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, stopClones);
+
+            _lastAppliedStopTemplatesFingerprint = stopFingerprint;
+
+        }
 
         var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
 
-        editor.SyncEmbeddedSoundsFromStopTemplates(stopClones, workspace);
+        var needsAudio = _announcementsNeedingAudioMaterialization.Count > 0 ||
 
-        editor.SyncEmbeddedSoundsFromTemplates(announcementClones, workspace);
+            editor.NeedsEmbeddedSoundMaterialization(stopClones, workspace) ||
+
+            editor.NeedsEmbeddedSoundMaterialization(announcementClones, workspace);
+
+        if (needsAudio)
+
+        {
+
+            editor.SyncEmbeddedSoundsFromStopTemplates(stopClones, workspace);
+
+            editor.SyncEmbeddedSoundsFromTemplates(announcementClones, workspace);
+
+        }
 
         editor.ReplaceAnnouncementTemplates(announcementClones);
 
-        AppServices.Routes.ApplyEditorChanges("ansagen");
+        // Audio-Rebuild nur wenn ein Ton neu eingebettet werden muss (sonst Sidecar belassen).
+
+        AppServices.Routes.ApplyEditorChanges("ansagen", rebuildEmbeddedMedia: needsAudio);
 
 
 
@@ -495,6 +531,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         _sequenceByAnnouncementId.Clear();
 
         _gongByAnnouncementId.Clear();
+
+        _sondergongByAnnouncementId.Clear();
 
         _nextStopByAnnouncementId.Clear();
 
@@ -698,6 +736,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _gongByAnnouncementId.Remove(announcementId);
 
+        _sondergongByAnnouncementId.Remove(announcementId);
+
         _nextStopByAnnouncementId.Remove(announcementId);
 
         _nextStopMp3ByAnnouncementId.Remove(announcementId);
@@ -790,6 +830,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _sequenceByAnnouncementId.Remove(id);
         _gongByAnnouncementId.Remove(id);
+        _sondergongByAnnouncementId.Remove(id);
         _nextStopByAnnouncementId.Remove(id);
         _nextStopMp3ByAnnouncementId.Remove(id);
         _announcementsNeedingAudioMaterialization.Remove(id);
@@ -797,6 +838,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         AnnouncementSequence.Clear();
         _sequenceLoadedForAnnouncementId = id;
         IncludeGongInAnnouncementMerge = false;
+        IncludeSondergongInAnnouncementMerge = false;
         IncludeNextStopInAnnouncementMerge = false;
         IncludeNextStopMp3InAnnouncementMerge = false;
 
@@ -1531,8 +1573,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        if (AnnouncementSequence.Count > 0)
-
+        if (AnnouncementSequence.Count > 0 ||
+            IncludeGongInAnnouncementMerge ||
+            IncludeSondergongInAnnouncementMerge ||
+            IncludeNextStopInAnnouncementMerge ||
+            IncludeNextStopMp3InAnnouncementMerge)
         {
 
             var audioCount = AnnouncementSequence.Count(i => i.Kind == AnnouncementSequenceEntryKind.Audio);
@@ -1542,6 +1587,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
             var prefixPart = BuildPrefixSequenceLabel(
 
                 IncludeGongInAnnouncementMerge,
+
+                IncludeSondergongInAnnouncementMerge,
 
                 IncludeNextStopInAnnouncementMerge,
 

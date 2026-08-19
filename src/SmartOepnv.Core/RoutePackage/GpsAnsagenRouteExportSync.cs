@@ -47,9 +47,11 @@ public static class GpsAnsagenRouteExportSync
         bool rebuildEmbeddedMedia)
     {
         var allStops = package.StopsByRoute.Values.SelectMany(s => s).ToList();
+        // Nur noch vorhandene Routen folgen – gelöschte Routenwechsel-Ziele sonst als leere Hüllen.
         var collectedRoutes = RouteDistributionRouteCollector.CollectAllRoutesForDistribution(
             package.RouteNames,
-            allStops);
+            allStops,
+            package.RouteNames);
 
         var packageRoutes = RoutePackageRouteKeyHelper
             .DistinctCanonicalKeys(
@@ -368,7 +370,8 @@ public static class GpsAnsagenRouteExportSync
         var allStops = package.StopsByRoute.Values.SelectMany(s => s).ToList();
         var routesToExport = RouteDistributionRouteCollector.CollectAllRoutesForDistribution(
             selectedRouteNames,
-            allStops);
+            allStops,
+            package.RouteNames);
 
         var root = JsonNode.Parse(package.ToJson()) as JsonObject
             ?? throw new InvalidOperationException("Route-Paket konnte nicht gelesen werden.");

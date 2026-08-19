@@ -100,7 +100,7 @@ public static class RouteStopEditorCatalog
             return [];
         }
 
-        return editor.RouteNames
+        var displays = editor.RouteNames
             .Select(route => RouteDisplayHelper.Parse(route))
             .Where(def =>
                 !string.IsNullOrWhiteSpace(def.LineCourse) ||
@@ -110,9 +110,9 @@ public static class RouteStopEditorCatalog
                 !string.IsNullOrWhiteSpace(display) &&
                 display != "()" &&
                 display != " (Linie: , Fahrt: )")
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        return RouteDisplayHelper.SortRoutesByLineCourseAndTrip(displays);
     }
 
     public static bool TryResolveLineCourseTripByTripNumber(
@@ -199,7 +199,7 @@ public static class RouteStopEditorCatalog
             .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Name) && p.Protocol == protocol)
             .Select(p => p!.Name.Trim())
             .Distinct(StringComparer.Ordinal)
-            .OrderBy(n => n, StringComparer.Ordinal)
+            .OrderBy(n => n, Comparer<string>.Create(OutsideDisplayProgram.CompareZiellisteNames))
             .ToList();
     }
 }

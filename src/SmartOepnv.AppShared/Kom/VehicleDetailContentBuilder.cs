@@ -22,7 +22,10 @@ internal static class VehicleDetailContentBuilder
         AddRow(root, "Akku", vehicle.BatteryDisplay);
         AddRow(root, "Straße", vehicle.StreetDisplay);
         AddRow(root, "Position", vehicle.PositionDisplay);
-        AddRow(root, "Genauigkeit", vehicle.AccuracyDisplay, isLast: true);
+        AddRow(root, "Genauigkeit", vehicle.AccuracyDisplay);
+        AddRow(root, "Appversion", vehicle.AppVersionDisplay);
+        AddRow(root, "routes_export Version", vehicle.RoutesExportVersionDisplay);
+        AddRow(root, "routes_update Version", vehicle.RoutesUpdateVersionDisplay, isLast: true);
     }
 
     public static string BuildTitle(VehicleListItemViewModel vehicle) => $"🚌 {vehicle.DisplayName}";

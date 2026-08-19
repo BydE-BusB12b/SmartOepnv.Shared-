@@ -13,6 +13,7 @@ public partial class AnnouncementsLibraryViewModel
 {
     private readonly Dictionary<string, List<AnnouncementAudioSequenceItem>> _sequenceByAnnouncementId = new();
     private readonly Dictionary<string, bool> _gongByAnnouncementId = new();
+    private readonly Dictionary<string, bool> _sondergongByAnnouncementId = new();
     private readonly Dictionary<string, bool> _nextStopByAnnouncementId = new();
     private readonly Dictionary<string, bool> _nextStopMp3ByAnnouncementId = new();
     private string? _sequenceLoadedForAnnouncementId;
@@ -31,6 +32,18 @@ public partial class AnnouncementsLibraryViewModel
         if (SelectedAnnouncement is not null)
         {
             _gongByAnnouncementId[SelectedAnnouncement.Id] = value;
+            MarkAnnouncementAudioDirty(SelectedAnnouncement.Id);
+        }
+
+        MarkDirty();
+        UpdateSelectedAudioHint();
+    }
+
+    partial void OnIncludeSondergongInAnnouncementMergeChanged(bool value)
+    {
+        if (SelectedAnnouncement is not null)
+        {
+            _sondergongByAnnouncementId[SelectedAnnouncement.Id] = value;
             MarkAnnouncementAudioDirty(SelectedAnnouncement.Id);
         }
 
@@ -72,6 +85,7 @@ public partial class AnnouncementsLibraryViewModel
         _sequenceByAnnouncementId[_sequenceLoadedForAnnouncementId] =
             AnnouncementSequence.Select(i => i.Clone()).ToList();
         _gongByAnnouncementId[_sequenceLoadedForAnnouncementId] = IncludeGongInAnnouncementMerge;
+        _sondergongByAnnouncementId[_sequenceLoadedForAnnouncementId] = IncludeSondergongInAnnouncementMerge;
         _nextStopByAnnouncementId[_sequenceLoadedForAnnouncementId] = IncludeNextStopInAnnouncementMerge;
         _nextStopMp3ByAnnouncementId[_sequenceLoadedForAnnouncementId] = IncludeNextStopMp3InAnnouncementMerge;
     }
@@ -85,6 +99,7 @@ public partial class AnnouncementsLibraryViewModel
         if (SelectedAnnouncement is null)
         {
             IncludeGongInAnnouncementMerge = false;
+            IncludeSondergongInAnnouncementMerge = false;
             IncludeNextStopInAnnouncementMerge = false;
             IncludeNextStopMp3InAnnouncementMerge = false;
             return;
@@ -104,6 +119,8 @@ public partial class AnnouncementsLibraryViewModel
 
         IncludeGongInAnnouncementMerge =
             _gongByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
+        IncludeSondergongInAnnouncementMerge =
+            _sondergongByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
         IncludeNextStopInAnnouncementMerge =
             _nextStopByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
         IncludeNextStopMp3InAnnouncementMerge =
@@ -112,6 +129,7 @@ public partial class AnnouncementsLibraryViewModel
 
     private static string BuildPrefixSequenceLabel(
         bool includeGong,
+        bool includeSondergong,
         bool includeNextStopGerman,
         bool includeNextStopMp3)
     {
@@ -121,7 +139,18 @@ public partial class AnnouncementsLibraryViewModel
             segments.Add("Gong");
         }
 
-        if (includeGong && includeNextStopGerman)
+        if (includeGong && includeSondergong)
+        {
+            segments.Add("1 s");
+        }
+
+        if (includeSondergong)
+        {
+            segments.Add("Sondergong");
+        }
+
+        var lastWasChime = includeGong || includeSondergong;
+        if (lastWasChime && includeNextStopGerman)
         {
             segments.Add("1 s");
         }
@@ -419,9 +448,10 @@ public partial class AnnouncementsLibraryViewModel
             sequence ??= [];
 
             var includeGong = _gongByAnnouncementId.GetValueOrDefault(announcement.Id, false);
+            var includeSondergong = _sondergongByAnnouncementId.GetValueOrDefault(announcement.Id, false);
             var includeNextStopGerman = _nextStopByAnnouncementId.GetValueOrDefault(announcement.Id, false);
             var includeNextStopMp3 = _nextStopMp3ByAnnouncementId.GetValueOrDefault(announcement.Id, false);
-            if (sequence.Count == 0 && !includeGong && !includeNextStopGerman &&
+            if (sequence.Count == 0 && !includeGong && !includeSondergong && !includeNextStopGerman &&
                 !includeNextStopMp3)
             {
                 continue;
@@ -430,6 +460,7 @@ public partial class AnnouncementsLibraryViewModel
             if (!TryBuildSequenceParts(
                     sequence,
                     includeGong,
+                    includeSondergong,
                     includeNextStopGerman,
                     includeNextStopMp3,
                     out var parts,
@@ -523,6 +554,7 @@ public partial class AnnouncementsLibraryViewModel
     private bool TryBuildSequenceParts(
         IReadOnlyList<AnnouncementAudioSequenceItem> sequence,
         bool includeGong,
+        bool includeSondergong,
         bool includeNextStopGerman,
         bool includeNextStopMp3,
         out List<EmbeddedSoundSequencePart> parts,
@@ -531,7 +563,7 @@ public partial class AnnouncementsLibraryViewModel
         parts = [];
         error = null;
 
-        if (includeGong || includeNextStopGerman || includeNextStopMp3)
+        if (includeGong || includeSondergong || includeNextStopGerman || includeNextStopMp3)
         {
             if (!AppServices.IsInitialized)
             {
@@ -552,7 +584,36 @@ public partial class AnnouncementsLibraryViewModel
             }
         }
 
-        if (includeGong && includeNextStopGerman)
+        if (includeGong && includeSondergong)
+        {
+            AddStandardPause(parts);
+        }
+
+        if (includeSondergong)
+        {
+            var settings = AppServices.PlanerAppSettings?.Load();
+            var fileName = PlanerSondergongSoundResolver.ConfiguredFileName(settings);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                error = "Sondergong aktiv, aber keine Datei unter Einstellungen hinterlegt.";
+                return false;
+            }
+
+            if (!TryAddStandardAudio(
+                    PlanerSondergongSoundResolver.TryResolve(
+                        AppServices.Workspace,
+                        settings,
+                        AppServices.SettingsSubfolder),
+                    fileName,
+                    parts,
+                    out error))
+            {
+                return false;
+            }
+        }
+
+        var lastWasChime = includeGong || includeSondergong;
+        if (lastWasChime && includeNextStopGerman)
         {
             AddStandardPause(parts);
         }
@@ -698,9 +759,10 @@ public partial class AnnouncementsLibraryViewModel
         sequence ??= [];
 
         var includeGong = _gongByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
+        var includeSondergong = _sondergongByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
         var includeNextStopGerman = _nextStopByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
         var includeNextStopMp3 = _nextStopMp3ByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
-        if (sequence.Count == 0 && !includeGong && !includeNextStopGerman &&
+        if (sequence.Count == 0 && !includeGong && !includeSondergong && !includeNextStopGerman &&
             !includeNextStopMp3)
         {
             error = "Keine Tondateien in der Sequenz – bitte Tondatei hinzufügen.";
@@ -710,6 +772,7 @@ public partial class AnnouncementsLibraryViewModel
         return TryBuildSequenceParts(
             sequence,
             includeGong,
+            includeSondergong,
             includeNextStopGerman,
             includeNextStopMp3,
             out parts,

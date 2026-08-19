@@ -77,6 +77,9 @@ public static class LocationChatParser
                 DriverPersonnelNumber = ReadOptionalString(loc, "driverPersonnelNumber"),
                 BatteryLevel = loc.TryGetProperty("batteryLevel", out var bat) && bat.TryGetInt32(out var b) && b >= 0 ? b : null,
                 DelaySeconds = loc.TryGetProperty("delaySeconds", out var delay) && delay.TryGetInt32(out var d) ? d : null,
+                AppVersion = ReadOptionalString(loc, "appVersion"),
+                RoutesExportPackageVersion = ReadOptionalLong(loc, "routesExportPackageVersion"),
+                RoutesUpdatePackageVersion = ReadOptionalLong(loc, "routesUpdatePackageVersion"),
                 TimestampEpochMs = timestamp,
                 FileTimestampEpochMs = fileTimestamp,
                 Status = status
@@ -207,6 +210,25 @@ public static class LocationChatParser
 
         var s = prop.GetString()?.Trim();
         return string.IsNullOrWhiteSpace(s) ? null : s;
+    }
+
+    private static long? ReadOptionalLong(JsonElement obj, string property)
+    {
+        if (!obj.TryGetProperty(property, out var prop))
+        {
+            return null;
+        }
+
+        return prop.ValueKind switch
+        {
+            JsonValueKind.Number when prop.TryGetInt64(out var n) => n,
+            JsonValueKind.String when long.TryParse(
+                prop.GetString(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var parsed) => parsed,
+            _ => null
+        };
     }
 
     private static double ReadDouble(JsonElement obj, string property)

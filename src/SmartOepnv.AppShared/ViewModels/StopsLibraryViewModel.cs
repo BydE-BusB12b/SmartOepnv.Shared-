@@ -25,6 +25,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     private readonly SearchQueryDebouncer _searchDebouncer;
     private readonly SearchQueryDebouncer _routeAssignSearchDebouncer;
     private string? _loadedFingerprint;
+    private string? _lastAppliedStopTemplatesFingerprint;
     private CancellationTokenSource? _saveButtonFeedbackCts;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
@@ -74,6 +75,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     private void RefreshFromEditorCore()
     {
         _allTemplates.Clear();
+        _lastAppliedStopTemplatesFingerprint = null;
         FilteredTemplates.Clear();
         _allRoutes.Clear();
         AvailableRoutes.Clear();
@@ -214,7 +216,13 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
         var persistable = _allTemplates.Where(t => !t.IsEmptyDraft()).Select(Clone).ToList();
         editor.ReplaceStopTemplates(persistable);
-        var routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, persistable);
+        var stopFingerprint = StopTemplateRouteMerger.ComputeApplyFingerprint(persistable);
+        var routeStopsUpdated = 0;
+        if (!string.Equals(stopFingerprint, _lastAppliedStopTemplatesFingerprint, StringComparison.Ordinal))
+        {
+            routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, persistable);
+            _lastAppliedStopTemplatesFingerprint = stopFingerprint;
+        }
         var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
         // Ton aus der Soundbibliothek: nur Dateiname verknüpfen. Neu einbetten nur bei LocalAudioPath
         // oder wenn die Datei noch nicht in embeddedSounds liegt.

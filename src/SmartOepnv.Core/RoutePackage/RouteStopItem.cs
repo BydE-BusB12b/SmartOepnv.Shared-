@@ -59,6 +59,15 @@ public sealed class RouteStopItem
     /// <summary>Abweichende Routenwechselziele an einzelnen Betriebstagen.</summary>
     public List<RouteChangeTargetEntry> RouteChangeTargetsByDate { get; set; } = [];
     public string EndDestinationCoordinates { get; set; } = string.Empty;
+
+    /// <summary>Haltestellengesteuerter Hinweis (nur diese Fahrt).</summary>
+    public bool StopHintEnabled { get; set; }
+    public string StopHintText { get; set; } = string.Empty;
+    /// <summary><c>withAnnouncement</c> oder <c>ownGps</c>.</summary>
+    public string StopHintTriggerMode { get; set; } = RouteStopHintTrigger.WithAnnouncement;
+    public string StopHintGpsCoordinates { get; set; } = string.Empty;
+    public int StopHintRadius { get; set; } = 40;
+
     public bool IsDisplayEnabled { get; set; }
     public string DisplayText { get; set; } = string.Empty;
     public string DisplayText2 { get; set; } = string.Empty;
@@ -110,8 +119,13 @@ public sealed class RouteStopItem
         RouteChangeEnabled = RouteChangeEnabled,
         SelectedLineCourseTrip = SelectedLineCourseTrip,
         RouteChangeTargetsByDate = RouteChangeTargetsByDate.Select(e => e.Clone()).ToList(),
-        EndDestinationCoordinates = EndDestinationCoordinates,
-        IsDisplayEnabled = IsDisplayEnabled,
+            EndDestinationCoordinates = EndDestinationCoordinates,
+            StopHintEnabled = StopHintEnabled,
+            StopHintText = StopHintText,
+            StopHintTriggerMode = StopHintTriggerMode,
+            StopHintGpsCoordinates = StopHintGpsCoordinates,
+            StopHintRadius = StopHintRadius,
+            IsDisplayEnabled = IsDisplayEnabled,
         DisplayText = DisplayText,
         DisplayText2 = DisplayText2,
         DisplayText3 = DisplayText3,
@@ -164,6 +178,11 @@ public sealed class RouteStopItem
         SelectedLineCourseTrip = other.SelectedLineCourseTrip;
         RouteChangeTargetsByDate = other.RouteChangeTargetsByDate.Select(e => e.Clone()).ToList();
         EndDestinationCoordinates = other.EndDestinationCoordinates;
+        StopHintEnabled = other.StopHintEnabled;
+        StopHintText = other.StopHintText;
+        StopHintTriggerMode = other.StopHintTriggerMode;
+        StopHintGpsCoordinates = other.StopHintGpsCoordinates;
+        StopHintRadius = other.StopHintRadius;
         IsDisplayEnabled = other.IsDisplayEnabled;
         DisplayText = other.DisplayText;
         DisplayText2 = other.DisplayText2;

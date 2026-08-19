@@ -39,21 +39,39 @@
                        PopupAnimation="Slide"
                        Focusable="False">
                     <Grid MinWidth="360"
-                          MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                          MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                          FocusManager.IsFocusScope="True">
                         <Border Background="{StaticResource SmartPrimaryDarkBrush}"
                                 BorderBrush="{StaticResource SmartAccentBrush}"
                                 BorderThickness="1"
                                 CornerRadius="0,0,2,2" />
-                        <ScrollViewer Margin="1"
-                                      SnapsToDevicePixels="True"
-                                      HorizontalScrollBarVisibility="Disabled"
-                                      VerticalScrollBarVisibility="Visible"
-                                      CanContentScroll="False">
-                            <ScrollViewer.Resources>
-                                <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
-                            </ScrollViewer.Resources>
-                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
-                        </ScrollViewer>
+                        <DockPanel Margin="1">
+                            <TextBox x:Name="DestinationSearchBox"
+                                     DockPanel.Dock="Top"
+                                     Margin="6,6,6,4"
+                                     Padding="6,4"
+                                     Background="#FF0D47A1"
+                                     Foreground="White"
+                                     CaretBrush="White"
+                                     BorderBrush="{StaticResource SmartAccentBrush}"
+                                     BorderThickness="1"
+                                     Focusable="True"
+                                     materialDesign:HintAssist.Hint="Suchen (Zielname)"
+                                     materialDesign:HintAssist.Foreground="#BBDEFB"
+                                     materialDesign:TextFieldAssist.UnderlineBrush="{StaticResource SmartAccentBrush}"
+                                     Loaded="DestinationSearchBox_OnLoaded" />
+                            <ScrollViewer SnapsToDevicePixels="True"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          VerticalScrollBarVisibility="Visible"
+                                          CanContentScroll="False"
+                                          Focusable="False">
+                                <ScrollViewer.Resources>
+                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
+                                </ScrollViewer.Resources>
+                                <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"
+                                                Focusable="False" />
+                            </ScrollViewer>
+                        </DockPanel>
                     </Grid>
                 </Popup>
             </Grid>
@@ -70,6 +88,7 @@
             <Setter Property="Width" Value="44" />
             <Setter Property="MinWidth" Value="44" />
             <Setter Property="MaxWidth" Value="44" />
+            <Setter Property="MaxDropDownHeight" Value="360" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="HorizontalAlignment" Value="Left" />
             <Setter Property="Template" Value="{StaticResource RouteStopDestinationPickerComboTemplate}" />
@@ -191,6 +210,51 @@
                    TextWrapping="Wrap"
                    Margin="0,0,0,8"
                    Visibility="{Binding ShowStartStopFields, Converter={StaticResource BoolToVis}}" />
+
+        <StackPanel Margin="0,0,0,12"
+                    Visibility="{Binding HasSelectedStop, Converter={StaticResource BoolToVis}}">
+            <CheckBox Content="Haltestellengesteuerter Hinweis"
+                      IsChecked="{Binding StopHintEnabled, Mode=TwoWay}"
+                      Margin="0,0,0,6"
+                      VerticalAlignment="Center"
+                      ToolTip="Hinweis nur in dieser Fahrt – nach der Haltestellenansage oder an einem eigenen GPS-Punkt" />
+            <StackPanel Visibility="{Binding ShowStopHintFields, Converter={StaticResource BoolToVis}}"
+                        Margin="16,0,0,0">
+                <TextBox materialDesign:HintAssist.Hint="Hinweistext"
+                         Text="{Binding SelectedStop.StopHintText, UpdateSourceTrigger=LostFocus}"
+                         TextWrapping="Wrap"
+                         AcceptsReturn="True"
+                         MinHeight="48"
+                         Margin="0,0,0,8"
+                         LostFocus="Field_LostFocus" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <RadioButton Content="Nach Haltestellenansage"
+                                 GroupName="StopHintTrigger"
+                                 IsChecked="{Binding IsStopHintWithAnnouncement, Mode=TwoWay}"
+                                 Margin="0,0,16,0"
+                                 VerticalAlignment="Center" />
+                    <RadioButton Content="Eigener GPS-Punkt"
+                                 GroupName="StopHintTrigger"
+                                 IsChecked="{Binding IsStopHintOwnGps, Mode=TwoWay}"
+                                 VerticalAlignment="Center" />
+                </StackPanel>
+                <Grid Visibility="{Binding ShowStopHintOwnGpsFields, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="80" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             materialDesign:HintAssist.Hint="Hinweis-GPS (lat,lon)"
+                             Text="{Binding SelectedStop.StopHintGpsCoordinates, UpdateSourceTrigger=LostFocus}"
+                             LostFocus="Field_LostFocus" />
+                    <TextBox Grid.Column="2"
+                             materialDesign:HintAssist.Hint="Radius m"
+                             Text="{Binding SelectedStop.StopHintRadius, UpdateSourceTrigger=LostFocus}"
+                             LostFocus="Field_LostFocus" />
+                </Grid>
+            </StackPanel>
+        </StackPanel>
 
         <StackPanel Visibility="{Binding ShowStartStopFields, Converter={StaticResource BoolToVis}}"
                     Margin="0,0,0,12"
@@ -486,6 +550,8 @@
                                         </Grid.ColumnDefinitions>
                                         <ComboBox ItemsSource="{Binding DataContext.LineCourseTripRoutes, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                   SelectedItem="{Binding SelectedTrip, Mode=TwoWay}"
+                                                  DropDownOpened="DestinationCombo_DropDownOpened"
+                                                  DropDownClosed="DestinationCombo_DropDownClosed"
                                                   ToolTip="Folgefahrt für diese Tage wählen" />
                                         <TextBlock Grid.Column="1"
                                                    Style="{StaticResource RouteStopDestinationValueText}"

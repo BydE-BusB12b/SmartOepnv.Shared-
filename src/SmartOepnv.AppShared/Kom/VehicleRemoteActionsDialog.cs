@@ -52,6 +52,10 @@ public sealed class VehicleRemoteActionsDialog : Window
         {
             new KomRemoteLockDialog(vehicle, this, locked: false).ShowDialog();
         }));
+        root.Children.Add(VehicleKomUi.MakeActionButton("App beenden", () =>
+        {
+            new KomRemoteAppExitDialog(vehicle, this).ShowDialog();
+        }));
         root.Children.Add(VehicleKomUi.MakeActionButton("Fahrgastraum-Durchsage", () =>
         {
             new KomLeitstelleDurchsageDialog(vehicle, this).ShowDialog();

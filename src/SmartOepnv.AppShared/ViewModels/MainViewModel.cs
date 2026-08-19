@@ -23,6 +23,7 @@ public partial class MainViewModel : ObservableObject
     private readonly SettingsViewModel _settingsViewModel = new();
     private RoutesViewModel? _routesViewModel;
     private RoutePathEditorViewModel? _routePathEditorViewModel;
+    private BildfahrplanViewModel? _bildfahrplanViewModel;
     private readonly EmployeesViewModel _employeesViewModel = new();
     private StopsLibraryViewModel? _stopsLibraryViewModel;
     private AnnouncementsLibraryViewModel? _announcementsLibraryViewModel;
@@ -32,6 +33,7 @@ public partial class MainViewModel : ObservableObject
     private readonly LeitstelleMessagesInboxViewModel _leitstelleMessagesInboxViewModel = new();
     private DisplaysOperationsViewModel? _displaysOperationsViewModel;
     private readonly VehicleTrackingViewModel _vehicleTrackingViewModel = new();
+    private readonly TripInspectionViewModel _tripInspectionViewModel = new();
     private ZeitwirtschaftPlannerViewModel? _zeitwirtschaftPlannerViewModel;
     private SevSignEditorViewModel? _sevSignEditorViewModel;
     private FahrerdispoViewModel? _fahrerdispoViewModel;
@@ -42,6 +44,7 @@ public partial class MainViewModel : ObservableObject
 
     private RoutesViewModel RoutesViewModel => _routesViewModel ??= new();
     private RoutePathEditorViewModel RoutePathEditorViewModel => _routePathEditorViewModel ??= new();
+    private BildfahrplanViewModel BildfahrplanViewModel => _bildfahrplanViewModel ??= new();
     private StopsLibraryViewModel StopsLibraryViewModel => _stopsLibraryViewModel ??= new();
     private AnnouncementsLibraryViewModel AnnouncementsLibraryViewModel => _announcementsLibraryViewModel ??= new();
     private MessagesViewModel MessagesViewModel => _messagesViewModel ??= new();
@@ -94,6 +97,7 @@ public partial class MainViewModel : ObservableObject
         if (!profile.IsLeitstelle)
         {
             FahrerdispoViewModel.NavigateToEmployeeManagementRequested += OnNavigateToEmployeeManagementFromDispoRequested;
+            BildfahrplanViewModel.OpenRouteRequested += OnBildfahrplanOpenRouteRequested;
         }
         _leitstelleMessagesInboxViewModel.SosAlertRaised += OnLeitstelleSosAlertRaised;
         _leitstelleMessagesInboxViewModel.OpenVehicleOnMapRequested += OnLeitstelleOpenVehicleOnMapRequested;
@@ -368,6 +372,10 @@ public partial class MainViewModel : ObservableObject
         {
             RoutePathEditorViewModel.RefreshRoutes();
         }
+        else if (value.Title == "Bildfahrplan")
+        {
+            BildfahrplanViewModel.RefreshFromEditorIfNeeded();
+        }
         else if (value.Title == "Personalverwaltung")
         {
             _employeesViewModel.RefreshFromEditorIfNeeded();
@@ -419,6 +427,10 @@ public partial class MainViewModel : ObservableObject
         else if (value.Title == "Fahrzeuge")
         {
             _vehicleTrackingViewModel.OnViewActivated();
+        }
+        else if (value.Title == "Fahrtenprüfung")
+        {
+            _tripInspectionViewModel.OnViewActivated();
         }
         else if (value.Title == "Zeitwirtschaft")
         {
@@ -889,6 +901,18 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    private void OnBildfahrplanOpenRouteRequested(string routeKey)
+    {
+        var navItem = NavigationItems.FirstOrDefault(i => i.Title == "Routen");
+        if (navItem is null)
+        {
+            return;
+        }
+
+        SelectedNavigationItem = navItem;
+        RoutesViewModel.TrySelectRoute(routeKey);
+    }
+
     private void OnRoutePackageLoaded()
     {
         var dispatcher = Application.Current?.Dispatcher;
@@ -1005,6 +1029,13 @@ public partial class MainViewModel : ObservableObject
                 Description = "Live-Karte – Wagennummer und Linie/Kurs aus Dropbox",
                 CreateContent = () => new VehicleTrackingView { DataContext = _vehicleTrackingViewModel }
             });
+            AddLeaf(new NavigationItem
+            {
+                Title = "Fahrtenprüfung",
+                Icon = PackIconKind.MapClock,
+                Description = "GPS-Spur je Fahrzeug (7 Tage) – Zeiten und Karte",
+                CreateContent = () => new TripInspectionView { DataContext = _tripInspectionViewModel }
+            });
             AddLeaf(_personalverwaltungNavItem);
             AddLeaf(_fahrzeugverwaltungNavItem);
             _leitstelleMessagesNavItem = new NavigationItem
@@ -1067,6 +1098,13 @@ public partial class MainViewModel : ObservableObject
                 Description = "Fahrweg auf Karte planen (Handy-kompatibel)",
                 CreateContent = () => new RoutePathEditorView { DataContext = RoutePathEditorViewModel }
             };
+            var bildfahrplan = new NavigationItem
+            {
+                Title = "Bildfahrplan",
+                Icon = PackIconKind.ChartTimelineVariant,
+                Description = "Zeit-Weg-Diagramm – Y-Achse aus gesnapptem Fahrweg",
+                CreateContent = () => new BildfahrplanView { DataContext = BildfahrplanViewModel }
+            };
             var anzeigen = new NavigationItem
             {
                 Title = "Anzeigen & Hinweise",
@@ -1110,6 +1148,7 @@ public partial class MainViewModel : ObservableObject
                 haltestellen,
                 ansagen,
                 navidaten,
+                bildfahrplan,
                 anzeigen,
                 nachrichten));
 

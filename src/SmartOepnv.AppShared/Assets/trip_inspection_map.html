@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; background: #0a1628; }
+    .leaflet-container { background: #0a1628; font: 13px/1.35 Segoe UI, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    const map = L.map('map', { zoomControl: true }).setView([51.45, 7.01], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    let layer = L.layerGroup().addTo(map);
+
+    function clearTrace() {
+      layer.clearLayers();
+    }
+
+    function loadTrace(payload) {
+      clearTrace();
+      const pts = (payload && payload.points) || [];
+      const latlngs = pts
+        .filter(p => Array.isArray(p) && p.length >= 2 && isFinite(Number(p[0])) && isFinite(Number(p[1])))
+        .map(p => [Number(p[0]), Number(p[1])]);
+      if (latlngs.length === 0) {
+        return;
+      }
+      const line = L.polyline(latlngs, { color: '#FFEB3B', weight: 5, opacity: 0.92 }).addTo(layer);
+      L.circleMarker(latlngs[0], { radius: 7, color: '#43a047', fillColor: '#66bb6a', fillOpacity: 1, weight: 2 })
+        .bindTooltip('Start', { permanent: false })
+        .addTo(layer);
+      L.circleMarker(latlngs[latlngs.length - 1], { radius: 7, color: '#e53935', fillColor: '#ef5350', fillOpacity: 1, weight: 2 })
+        .bindTooltip('Ende', { permanent: false })
+        .addTo(layer);
+      map.fitBounds(line.getBounds().pad(0.12));
+      setTimeout(function () { map.invalidateSize(); }, 50);
+    }
+
+    function applyTracePayload(payload) {
+      loadTrace(payload || {});
+    }
+
+    function invalidateMapSize() {
+      setTimeout(function () { map.invalidateSize(); }, 50);
+    }
+
+    window.applyTracePayload = applyTracePayload;
+    window.invalidateMapSize = invalidateMapSize;
+    window.loadTrace = loadTrace;
+
+    if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.addEventListener('message', function (event) {
+        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (!msg) return;
+        if (msg.type === 'loadTrace') loadTrace(msg.payload || msg || {});
+        if (msg.type === 'invalidateSize') invalidateMapSize();
+      });
+    }
+  </script>
+</body>
+</html>

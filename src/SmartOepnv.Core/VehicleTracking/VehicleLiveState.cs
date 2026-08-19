@@ -25,6 +25,12 @@ public sealed class VehicleLiveState
     public string? DriverPersonnelNumber { get; init; }
     public int? BatteryLevel { get; init; }
     public int? DelaySeconds { get; init; }
+    /// <summary>App-Versionslabel, z. B. V8.2 #371.</summary>
+    public string? AppVersion { get; init; }
+    /// <summary>Zuletzt installierte packageVersion von routes_export.json.</summary>
+    public long? RoutesExportPackageVersion { get; init; }
+    /// <summary>Zuletzt installierte packageVersion von routes_update.json.</summary>
+    public long? RoutesUpdatePackageVersion { get; init; }
     public long TimestampEpochMs { get; init; }
     public long FileTimestampEpochMs { get; init; }
     public VehicleOnlineStatus Status { get; init; }

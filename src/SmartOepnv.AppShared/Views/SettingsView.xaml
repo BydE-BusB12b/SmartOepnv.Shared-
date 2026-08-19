@@ -97,6 +97,29 @@
                 </StackPanel>
             </materialDesign:Card>
 
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
+                                 Visibility="{Binding ShowBrandingSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Ansagen – Sondergong" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Tondatei für die Checkbox „Sondergong“ unter Ansagen → Ton &amp; Import. Wird vor die Zusammenfüge-Sequenz gesetzt (nach dem normalen Gong, falls aktiv)." />
+                    <TextBlock Text="{Binding SondergongFileLabel}" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding SondergongStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Sondergong wählen…"
+                                Command="{Binding ChooseSondergongSoundCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="Entfernen"
+                                Command="{Binding ClearSondergongSoundCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                    </StackPanel>
+                </StackPanel>
+            </materialDesign:Card>
+
             <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16"
                                  Visibility="{Binding ShowVoipSection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <StackPanel>

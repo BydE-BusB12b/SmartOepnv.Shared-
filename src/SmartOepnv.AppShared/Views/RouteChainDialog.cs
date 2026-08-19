@@ -1,9 +1,13 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.Win32;
 using SmartOepnv.AppShared.Helpers;
+using SmartOepnv.AppShared.Pdf;
 using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.RoutePackage;
 
@@ -27,6 +31,7 @@ public sealed class RouteChainDialog : Window
     private readonly TextBlock _validityText;
     private readonly Button _changeValidityButton;
     private readonly Button _copyChainButton;
+    private readonly Button _exportPdfButton;
     private readonly ListBox _tripList;
     private readonly TextBlock _errorText;
     private readonly StackPanel _chainPanel;
@@ -136,12 +141,24 @@ public sealed class RouteChainDialog : Window
         {
             Content = "Routenschnur kopieren",
             Padding = new Thickness(10, 6, 10, 6),
+            Margin = new Thickness(0, 0, 8, 0),
             Cursor = Cursors.Hand,
             VerticalAlignment = VerticalAlignment.Center,
             Visibility = Visibility.Collapsed,
             ToolTip = "Komplette Routenschnur mit neuer Linie/Kurs, Verkehrstagen und Datum kopieren"
         };
         _copyChainButton.Click += (_, _) => CopySelectedChain();
+
+        _exportPdfButton = new Button
+        {
+            Content = "PDF",
+            Padding = new Thickness(10, 6, 10, 6),
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Collapsed,
+            ToolTip = "Routenschnur als PDF speichern (Darstellung wie in diesem Dialog)"
+        };
+        _exportPdfButton.Click += (_, _) => ExportSelectedChainPdf();
 
         var searchGrid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
         searchGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.1, GridUnitType.Star) });
@@ -190,6 +207,7 @@ public sealed class RouteChainDialog : Window
         actionColumn.Children.Add(searchButton);
         actionColumn.Children.Add(_changeValidityButton);
         actionColumn.Children.Add(_copyChainButton);
+        actionColumn.Children.Add(_exportPdfButton);
         Grid.SetRow(actionColumn, 1);
         Grid.SetColumn(actionColumn, 5);
         searchGrid.Children.Add(actionColumn);
@@ -402,6 +420,7 @@ public sealed class RouteChainDialog : Window
         _validityText.Text = string.Empty;
         _changeValidityButton.Visibility = Visibility.Collapsed;
         _copyChainButton.Visibility = Visibility.Collapsed;
+        _exportPdfButton.Visibility = Visibility.Collapsed;
     }
 
     private IReadOnlyList<string> GetSelectedChainRouteKeys()
@@ -428,6 +447,8 @@ public sealed class RouteChainDialog : Window
         _changeValidityButton.IsEnabled = true;
         _copyChainButton.Visibility = Visibility.Visible;
         _copyChainButton.IsEnabled = true;
+        _exportPdfButton.Visibility = Visibility.Visible;
+        _exportPdfButton.IsEnabled = true;
 
         var dateLabels = chainKeys
             .Select(FormatRouteValidityDate)
@@ -745,6 +766,105 @@ public sealed class RouteChainDialog : Window
             UpdateValiditySummary();
             UpdateChainPreview();
         }
+    }
+
+    private void ExportSelectedChainPdf()
+    {
+        _errorText.Visibility = Visibility.Collapsed;
+        if (_tripList.SelectedIndex < 0 || _tripList.SelectedIndex >= _trips.Count)
+        {
+            ShowError("Bitte zuerst eine Fahrt mit Routenschnur auswählen.");
+            return;
+        }
+
+        var selected = _trips[_tripList.SelectedIndex];
+        var segments = RouteChainPlanner.BuildChainSchedule(_editor, selected.RouteKey, _activeFilter);
+        if (segments.Count == 0)
+        {
+            ShowError("Keine Fahrplandaten für diese Fahrt.");
+            return;
+        }
+
+        var lineCourse = RouteDisplayHelper.NormalizeLineCourse(selected.Definition.LineCourse);
+        var pdfSegments = segments.Select(BuildPdfSegment).ToList();
+        var model = new RouteChainPdfGenerator.Model(
+            LineCourse: lineCourse,
+            FilterSummary: _activeFilter.HasDates ? FormatFilterSummary(_activeFilter) : null,
+            ValiditySummary: string.IsNullOrWhiteSpace(_validityText.Text) ? null : _validityText.Text,
+            Segments: pdfSegments);
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Routenschnur als PDF speichern",
+            Filter = "PDF-Datei (*.pdf)|*.pdf",
+            FileName = RouteChainPdfGenerator.BuildDefaultFileName(lineCourse),
+            AddExtension = true,
+            DefaultExt = ".pdf"
+        };
+
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FileName))
+        {
+            return;
+        }
+
+        try
+        {
+            RouteChainPdfGenerator.Generate(dialog.FileName, model);
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = dialog.FileName,
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+                // Öffnen optional
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"PDF fehlgeschlagen: {ex.Message}");
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "Routenschnur PDF",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private RouteChainPdfGenerator.Segment BuildPdfSegment(RouteChainPlanner.ChainSegment segment)
+    {
+        var meta = new List<string>();
+        if (!string.IsNullOrWhiteSpace(segment.StartTimeDisplay))
+        {
+            meta.Add($"Start {segment.StartTimeDisplay}");
+        }
+
+        meta.Add($"Gültig: {FormatRouteValidityDate(segment.RouteKey)}");
+
+        if (!string.IsNullOrWhiteSpace(segment.OperatingDaysDisplay))
+        {
+            meta.Add($"Verkehr: {segment.OperatingDaysDisplay}");
+        }
+        else
+        {
+            meta.Add($"Verkehr: {FormatRouteValidityDays(segment.RouteKey)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(segment.RouteChangeTo))
+        {
+            meta.Add($"Routenwechsel → {segment.RouteChangeTo}");
+        }
+
+        return new RouteChainPdfGenerator.Segment(
+            Title: $"{segment.Index}. {segment.RouteLabel}",
+            MetaLine: string.Join("  ·  ", meta),
+            Stops: segment.Stops
+                .Select(s => new RouteChainPdfGenerator.StopRow(s.Name, s.TimeDisplay, s.IsRouteChangeStop))
+                .ToList());
     }
 
     private void CopySelectedChain()

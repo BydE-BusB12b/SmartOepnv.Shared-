@@ -507,6 +507,9 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
     private string? _driverPersonnelNumber;
     private int? _batteryLevel;
     private int? _delaySeconds;
+    private string? _appVersion;
+    private long? _routesExportPackageVersion;
+    private long? _routesUpdatePackageVersion;
     private int _speedKmh;
     private double _latitude;
     private double _longitude;
@@ -577,6 +580,24 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
     {
         get => _delaySeconds;
         private set => SetField(ref _delaySeconds, value);
+    }
+
+    public string? AppVersion
+    {
+        get => _appVersion;
+        private set => SetField(ref _appVersion, value, nameof(AppVersionDisplay));
+    }
+
+    public long? RoutesExportPackageVersion
+    {
+        get => _routesExportPackageVersion;
+        private set => SetField(ref _routesExportPackageVersion, value, nameof(RoutesExportVersionDisplay));
+    }
+
+    public long? RoutesUpdatePackageVersion
+    {
+        get => _routesUpdatePackageVersion;
+        private set => SetField(ref _routesUpdatePackageVersion, value, nameof(RoutesUpdateVersionDisplay));
     }
 
     public int SpeedKmh
@@ -691,6 +712,9 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
         DriverPersonnelNumber = v.DriverPersonnelNumber;
         BatteryLevel = v.BatteryLevel;
         DelaySeconds = v.DelaySeconds;
+        AppVersion = v.AppVersion;
+        RoutesExportPackageVersion = v.RoutesExportPackageVersion;
+        RoutesUpdatePackageVersion = v.RoutesUpdatePackageVersion;
         SpeedKmh = v.SpeedKmh;
         Latitude = v.Latitude;
         Longitude = v.Longitude;
@@ -779,6 +803,14 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
     }
 
     public string BatteryDisplay => BatteryLevel is >= 0 and <= 100 ? $"{BatteryLevel} %" : "–";
+
+    public string AppVersionDisplay => string.IsNullOrWhiteSpace(AppVersion) ? "–" : AppVersion;
+
+    public string RoutesExportVersionDisplay =>
+        RoutesExportPackageVersion is > 0 ? RoutesExportPackageVersion.Value.ToString() : "–";
+
+    public string RoutesUpdateVersionDisplay =>
+        RoutesUpdatePackageVersion is > 0 ? RoutesUpdatePackageVersion.Value.ToString() : "–";
 
     public string? StreetAddress
     {

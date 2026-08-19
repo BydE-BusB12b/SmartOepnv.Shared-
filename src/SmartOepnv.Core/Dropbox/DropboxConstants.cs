@@ -60,6 +60,9 @@ public static class DropboxConstants
     public const string LeitstelleRoutesFileName = "leitstelle_routes.json";
 
     public const string LeitstelleStandFileName = "leitstelle_stand.json";
+
+    /// <summary>GPS-Fahrtenprüfung: eine Datei je Fahrzeug, 7-Tage-Loop (<c>gps_trace_{telefon}.json</c>).</summary>
+    public const string GpsTraceFilePrefix = "gps_trace_";
     public const string MaengelkarteFileName = "maengelkarte.json";
     public const string PlanerSessionFileName = "planer_session.json";
     /// <summary>Vollständiger Planer-Arbeitsstand (nicht routes_export.json – die lesen die Apps).</summary>

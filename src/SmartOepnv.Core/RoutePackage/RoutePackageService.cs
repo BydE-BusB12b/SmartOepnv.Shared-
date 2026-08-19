@@ -114,7 +114,7 @@ public sealed class RoutePackageService
                 AppServices.Workspace.SavePackage(_currentJson, "export", archivePrevious: true);
             }
 
-            return _currentJson;
+            return RoutePackageVersionStamp.Stamp(_currentJson, RoutePackageVersionStamp.Kind.Export);
         }
 
         if (string.IsNullOrWhiteSpace(_currentJson))
@@ -129,19 +129,14 @@ public sealed class RoutePackageService
             writer.WriteStartObject();
             foreach (var prop in doc.RootElement.EnumerateObject())
             {
-                if (prop.NameEquals("timestamp"))
+                if (prop.NameEquals("timestamp") ||
+                    prop.NameEquals("packageVersion") ||
+                    prop.NameEquals("packageKind"))
                 {
-                    writer.WriteNumber("timestamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                    continue;
                 }
-                else
-                {
-                    prop.WriteTo(writer);
-                }
-            }
 
-            if (!doc.RootElement.TryGetProperty("timestamp", out _))
-            {
-                writer.WriteNumber("timestamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                prop.WriteTo(writer);
             }
 
             if (!doc.RootElement.TryGetProperty("exportType", out _))
@@ -164,7 +159,7 @@ public sealed class RoutePackageService
 
         _currentJson = System.Text.Encoding.UTF8.GetString(stream.ToArray());
         Stats = ParseStats(_currentJson);
-        return _currentJson;
+        return RoutePackageVersionStamp.Stamp(_currentJson, RoutePackageVersionStamp.Kind.Export);
     }
 
     /// <summary>Teil-Export für Fahrzeuge (ausgewählte Routen per Update oder Senden).</summary>
@@ -201,7 +196,11 @@ public sealed class RoutePackageService
             json = StripPlannerSecretsFromExportJson(json);
         }
 
-        return json;
+        return RoutePackageVersionStamp.Stamp(
+            json,
+            liteVehicleUpdate
+                ? RoutePackageVersionStamp.Kind.Update
+                : RoutePackageVersionStamp.Kind.Export);
     }
 
     /// <summary>Alle Routen ohne Audio – für routes_update.json (Merge auf dem Gerät).</summary>
@@ -225,7 +224,7 @@ public sealed class RoutePackageService
             json = StripPlannerSecretsFromExportJson(json);
         }
 
-        return json;
+        return RoutePackageVersionStamp.Stamp(json, RoutePackageVersionStamp.Kind.Update);
     }
 
     public void ApplyEditorChanges(
@@ -238,8 +237,8 @@ public sealed class RoutePackageService
             return;
         }
 
-        // Lokale Edits ohne Audio-Rebuild: schlanker Body (~Routen/Haltestellen), Audio im Sidecar.
-        // Vollexport / Ansagen: Audio neu aufbauen und Sidecar aktualisieren.
+        // Lokale Edits: kein Versions-Backup (nur Export/Import archiviert).
+        // Audio-Rebuild nur wenn der Aufrufer es anfordert (Ansagen mit neuem Ton).
         var body = Editor.ToJson(
             indented: false,
             rebuildEmbeddedMedia: rebuildEmbeddedMedia,
@@ -486,7 +485,7 @@ public sealed class RoutePackageService
         }
 
         LeitstelleStandPackage.ApplyToEditor(Editor, node);
-        ApplyEditorChanges("leitstelle-stand-merge");
+        ApplyEditorChanges("leitstelle-stand-merge", rebuildEmbeddedMedia: false);
     }
 
     /// <summary>

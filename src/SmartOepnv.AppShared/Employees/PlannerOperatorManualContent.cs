@@ -112,7 +112,7 @@ internal static class PlannerOperatorManualContent
             """
             • Tab Fahrzeuge: KOM-Name, Telefon, Typ, VIN, HU/SP, Gurte, Klima, Dispo-Farbe.
             • Registrierte Fahrzeuge erscheinen in der Leitstelle und für Fernsteuerung.
-            • In der Fahrzeugkarte (wie Leitstelle): Fernziel, Fernroute, Fern-Fahreranmeldung, Gerät sperren/entsperren, Durchsage, Meldungen.
+            • In der Fahrzeugkarte (wie Leitstelle): Fernziel, Fernroute, Fern-Fahreranmeldung, Gerät sperren/entsperren, App beenden, Durchsage, Meldungen.
             • Tab Mängelkarte: Meldungen aus der App laden, Status setzen (Neu / In Bearbeitung / Erledigt).
             • Badge bei neuen Mängeln in der Navigation.
             """,

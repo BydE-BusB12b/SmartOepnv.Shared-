@@ -52,6 +52,12 @@ public static class GpsAnsagenStopJson
             SelectedLineCourseTrip = JsonNodeReading.GetString(obj["selectedLineCourseTrip"]),
             RouteChangeTargetsByDate = ReadRouteChangeTargetsByDate(obj["routeChangeTargetsByDate"]),
             EndDestinationCoordinates = JsonNodeReading.GetString(obj["endDestinationCoordinates"]),
+            StopHintEnabled = JsonNodeReading.GetBoolean(obj["stopHintEnabled"]),
+            StopHintText = JsonNodeReading.GetString(obj["stopHintText"]),
+            StopHintTriggerMode = RouteStopHintTrigger.Normalize(
+                JsonNodeReading.GetString(obj["stopHintTriggerMode"])),
+            StopHintGpsCoordinates = JsonNodeReading.GetString(obj["stopHintGpsCoordinates"]),
+            StopHintRadius = JsonNodeReading.GetInt32(obj["stopHintRadius"], 40),
             IsDisplayEnabled = JsonNodeReading.GetBoolean(obj["isDisplayEnabled"]),
             DisplayText = JsonNodeReading.GetString(obj["displayText"]),
             DisplayText2 = JsonNodeReading.GetString(obj["displayText2"]),
@@ -116,6 +122,15 @@ public static class GpsAnsagenStopJson
             ["selectedLineCourseTrip"] = stop.SelectedLineCourseTrip,
             ["endDestinationCoordinates"] = stop.EndDestinationCoordinates
         };
+
+        if (stop.StopHintEnabled || !string.IsNullOrWhiteSpace(stop.StopHintText))
+        {
+            obj["stopHintEnabled"] = stop.StopHintEnabled;
+            obj["stopHintText"] = stop.StopHintText;
+            obj["stopHintTriggerMode"] = RouteStopHintTrigger.Normalize(stop.StopHintTriggerMode);
+            obj["stopHintGpsCoordinates"] = stop.StopHintGpsCoordinates;
+            obj["stopHintRadius"] = stop.StopHintRadius > 0 ? stop.StopHintRadius : 40;
+        }
 
         WriteRouteChangeTargetsByDate(obj, stop.RouteChangeTargetsByDate);
 

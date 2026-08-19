@@ -445,7 +445,10 @@ public sealed class EditableRoutePackage
         }
 
         var allStops = StopsByRoute.Values.SelectMany(s => s).ToList();
-        var exportedRoutes = RouteDistributionRouteCollector.CollectAllRoutesForDistribution(RouteNames, allStops);
+        var exportedRoutes = RouteDistributionRouteCollector.CollectAllRoutesForDistribution(
+            RouteNames,
+            allStops,
+            RouteNames);
         foreach (var extra in RoutePackagePhoneMetadata.LoadAdditionalAllowedRoutes(_root, exportedRoutes))
         {
             AdditionalAllowedRoutes.Add(extra);
@@ -819,6 +822,11 @@ public sealed class EditableRoutePackage
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
+        // Vor dem Entfernen: eingehende Routenwechsel-Verweise leeren,
+        // sonst schreibt ApplyToPackage die gelöschte Fahrt als leere Hülle zurück.
+        ClearRouteChangeReferencesToRoutes(keysToRemove);
+        ClearAdditionalAllowedRoutesMatching(keysToRemove);
+
         foreach (var key in keysToRemove)
         {
             RouteNames.Remove(key);
@@ -840,6 +848,62 @@ public sealed class EditableRoutePackage
 
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, routeName);
         RemoveSimpleRouteNameFromRoot(routeName);
+    }
+
+    private void ClearRouteChangeReferencesToRoutes(IReadOnlyList<string> deletedKeys)
+    {
+        if (deletedKeys.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var stop in StopsByRoute.Values.SelectMany(static stops => stops))
+        {
+            var changed = false;
+            if (!string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip) &&
+                deletedKeys.Any(key => RouteDisplayHelper.RouteKeysMatch(stop.SelectedLineCourseTrip, key)))
+            {
+                stop.SelectedLineCourseTrip = string.Empty;
+                changed = true;
+            }
+
+            for (var i = stop.RouteChangeTargetsByDate.Count - 1; i >= 0; i--)
+            {
+                var entry = stop.RouteChangeTargetsByDate[i];
+                if (string.IsNullOrWhiteSpace(entry.SelectedLineCourseTrip) ||
+                    !deletedKeys.Any(key => RouteDisplayHelper.RouteKeysMatch(entry.SelectedLineCourseTrip, key)))
+                {
+                    continue;
+                }
+
+                stop.RouteChangeTargetsByDate.RemoveAt(i);
+                changed = true;
+            }
+
+            if (changed &&
+                string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip) &&
+                stop.RouteChangeTargetsByDate.Count == 0)
+            {
+                stop.RouteChangeEnabled = false;
+            }
+        }
+    }
+
+    private void ClearAdditionalAllowedRoutesMatching(IReadOnlyList<string> deletedKeys)
+    {
+        if (deletedKeys.Count == 0 || AdditionalAllowedRoutes.Count == 0)
+        {
+            return;
+        }
+
+        for (var i = AdditionalAllowedRoutes.Count - 1; i >= 0; i--)
+        {
+            var allowed = AdditionalAllowedRoutes[i];
+            if (deletedKeys.Any(key => RouteDisplayHelper.RouteKeysMatch(allowed, key)))
+            {
+                AdditionalAllowedRoutes.RemoveAt(i);
+            }
+        }
     }
 
     private void RemoveSimpleRouteNameFromRoot(string routeName)
@@ -1404,6 +1468,13 @@ public sealed class EditableRoutePackage
 
     public bool NeedsEmbeddedSoundMaterialization(
         IEnumerable<ManagedStopTemplateItem> templates,
+        LocalWorkspaceStore? workspace = null) =>
+        NeedsEmbeddedSoundMaterialization(
+            templates.Select(t => ((string?)t.EmbeddedSoundFileName, t.LocalAudioPath)),
+            workspace);
+
+    public bool NeedsEmbeddedSoundMaterialization(
+        IEnumerable<ManagedAnnouncementTemplateItem> templates,
         LocalWorkspaceStore? workspace = null) =>
         NeedsEmbeddedSoundMaterialization(
             templates.Select(t => ((string?)t.EmbeddedSoundFileName, t.LocalAudioPath)),

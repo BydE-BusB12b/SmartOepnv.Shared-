@@ -82,6 +82,89 @@ public partial class RoutesViewModel
 
     public bool ShowAnnouncementHiddenOption => HasSelectedStop && !IsStartStop;
 
+    public bool StopHintEnabled
+    {
+        get => SelectedStop?.StopHintEnabled ?? false;
+        set
+        {
+            if (SelectedStop is null || SelectedStop.StopHintEnabled == value)
+            {
+                return;
+            }
+
+            SelectedStop.StopHintEnabled = value;
+            if (value && SelectedStop.StopHintRadius <= 0)
+            {
+                SelectedStop.StopHintRadius = 40;
+            }
+
+            if (string.IsNullOrWhiteSpace(SelectedStop.StopHintTriggerMode))
+            {
+                SelectedStop.StopHintTriggerMode = RouteStopHintTrigger.WithAnnouncement;
+            }
+
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public bool ShowStopHintFields => HasSelectedStop && StopHintEnabled;
+
+    public bool IsStopHintWithAnnouncement
+    {
+        get => SelectedStop is null ||
+               RouteStopHintTrigger.Normalize(SelectedStop.StopHintTriggerMode) ==
+               RouteStopHintTrigger.WithAnnouncement;
+        set
+        {
+            if (SelectedStop is null || !value)
+            {
+                return;
+            }
+
+            if (RouteStopHintTrigger.Normalize(SelectedStop.StopHintTriggerMode) ==
+                RouteStopHintTrigger.WithAnnouncement)
+            {
+                return;
+            }
+
+            SelectedStop.StopHintTriggerMode = RouteStopHintTrigger.WithAnnouncement;
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public bool IsStopHintOwnGps
+    {
+        get => SelectedStop is not null &&
+               RouteStopHintTrigger.Normalize(SelectedStop.StopHintTriggerMode) ==
+               RouteStopHintTrigger.OwnGps;
+        set
+        {
+            if (SelectedStop is null || !value)
+            {
+                return;
+            }
+
+            if (RouteStopHintTrigger.Normalize(SelectedStop.StopHintTriggerMode) ==
+                RouteStopHintTrigger.OwnGps)
+            {
+                return;
+            }
+
+            SelectedStop.StopHintTriggerMode = RouteStopHintTrigger.OwnGps;
+            if (SelectedStop.StopHintRadius <= 0)
+            {
+                SelectedStop.StopHintRadius = 40;
+            }
+
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public bool ShowStopHintOwnGpsFields => ShowStopHintFields && IsStopHintOwnGps;
+
     public bool IsEndStop
     {
         get => SelectedStop?.IsEndStop ?? false;
@@ -746,6 +829,11 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(IsStartStop));
         OnPropertyChanged(nameof(IsAnnouncementHidden));
         OnPropertyChanged(nameof(ShowAnnouncementHiddenOption));
+        OnPropertyChanged(nameof(StopHintEnabled));
+        OnPropertyChanged(nameof(ShowStopHintFields));
+        OnPropertyChanged(nameof(IsStopHintWithAnnouncement));
+        OnPropertyChanged(nameof(IsStopHintOwnGps));
+        OnPropertyChanged(nameof(ShowStopHintOwnGpsFields));
         OnPropertyChanged(nameof(IsEndStop));
         OnPropertyChanged(nameof(PlayEndStopAnnouncement));
         OnPropertyChanged(nameof(RouteChangeEnabled));
@@ -776,6 +864,7 @@ public partial class RoutesViewModel
         CancelSaveButtonSuccessFeedback();
         MaintainStartStopMarkerIfNeeded();
         _sync.MarkDirty();
+        _needsStopTemplateEnrich = true;
         if (!RefreshStopTimeOrderWarnings(showDialog: false))
         {
             StatusMessage = "Haltestellen-Änderungen – bitte „Speichern“.";
