@@ -23,7 +23,7 @@ public static class SpecialAnnouncementsEditor
 
         var active = templates
             .Where(t => t.IncludeInSpecialAnnouncements &&
-                        !EndStopAnnouncementResolver.MatchesTemplate(t))
+                        !StartStopGreetingResolver.MatchesAnyGreetingTemplate(t))
             .ToList();
 
         if (active.Count == 0)

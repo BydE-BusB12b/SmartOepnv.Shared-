@@ -47,6 +47,77 @@ public static class RoutePackageVersionStamp
         }
     }
 
+    /// <summary>
+    /// Stellt sicher, dass Fahrzeug-Pakete (<c>routes_export</c> / <c>routes_update</c>)
+    /// eine aufsteigende <c>packageVersion</c> haben. Fehlt sie, wird gestempelt;
+    /// vorhandene Versionen bleiben unverändert (kein Doppelzählen).
+    /// </summary>
+    public static string EnsureStamped(string json, Kind kind)
+    {
+        if (string.IsNullOrWhiteSpace(json) ||
+            !AppServices.IsPlannerApp ||
+            AppServices.PlanerAppSettings is null)
+        {
+            return json;
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(json);
+            if (node is not JsonObject root)
+            {
+                return json;
+            }
+
+            if (TryReadPackageVersion(root) > 0)
+            {
+                return json;
+            }
+
+            Stamp(root, kind);
+            return root.ToJsonString();
+        }
+        catch
+        {
+            return json;
+        }
+    }
+
+    public static long TryReadPackageVersion(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return 0;
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(json);
+            return node is JsonObject root ? TryReadPackageVersion(root) : 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public static long TryReadPackageVersion(JsonObject root)
+    {
+        if (root[JsonKey] is null)
+        {
+            return 0;
+        }
+
+        try
+        {
+            return root[JsonKey]!.GetValue<long>();
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
     public static void Stamp(JsonObject root, Kind kind)
     {
         if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)

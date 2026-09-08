@@ -5,7 +5,10 @@ namespace SmartOepnv.AppShared.Models;
 public enum AnnouncementSequenceEntryKind
 {
     Audio,
-    Pause
+    Pause,
+    Line,
+    Nach,
+    RouteEndDestination
 }
 
 public partial class AnnouncementAudioSequenceItem : ObservableObject
@@ -23,6 +26,9 @@ public partial class AnnouncementAudioSequenceItem : ObservableObject
     public string ListLabel => Kind switch
     {
         AnnouncementSequenceEntryKind.Pause => $"Pause {PauseSeconds:0.###} s",
+        AnnouncementSequenceEntryKind.Line => "Linie (aus Route)",
+        AnnouncementSequenceEntryKind.Nach => "Nach",
+        AnnouncementSequenceEntryKind.RouteEndDestination => "Endhaltestelle (Ziel)",
         _ => string.IsNullOrWhiteSpace(DisplayName) ? "Tondatei" : DisplayName
     };
 

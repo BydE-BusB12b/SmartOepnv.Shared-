@@ -43,11 +43,25 @@ public static class DropboxPlanerFolderValidator
             };
         }
 
-        if (!await dropbox.FolderExistsAsync(ct).ConfigureAwait(false))
+        try
+        {
+            if (!await dropbox.FolderExistsAsync(ct).ConfigureAwait(false))
+            {
+                return new ValidationResult
+                {
+                    Message =
+                        $"Dropbox-Ordner nicht gefunden: {folderPath}\n\n" +
+                        "Lokal sichtbarer Dropbox-Ordner reicht nicht – der Planer prüft den Pfad über die Dropbox-API " +
+                        "(gleicher Account wie unter „Dropbox einrichten“).\n" +
+                        "Bitte „Dropbox einrichten“ öffnen, Pfad prüfen und Verbindungstest ausführen."
+                };
+            }
+        }
+        catch (Exception ex)
         {
             return new ValidationResult
             {
-                Message = $"Dropbox-Ordner nicht gefunden: {folderPath}"
+                Message = ex.Message
             };
         }
 

@@ -114,7 +114,8 @@ public sealed class RemoteSettingsSendDialog : Window
 
         root.Children.Add(Section("Einstellungen"));
         _buttonSounds = Check("Tastentöne aktivieren", true);
-        _autoOpenRoute = Check("Automatische Routen-Öffnung", false);
+        // Default an: Boards sollen im Endhalt-Radius automatisch wechseln (Doppelklick umgeht Prefs).
+        _autoOpenRoute = Check("Automatische Routen-Öffnung", true);
         _nightMode = Check("Nachtmodus", false);
         root.Children.Add(_buttonSounds);
         root.Children.Add(_autoOpenRoute);

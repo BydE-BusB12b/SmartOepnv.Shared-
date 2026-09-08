@@ -140,7 +140,7 @@
                      Text="{Binding SelectedStop.Name, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
             <TextBlock Grid.Row="1" Grid.Column="2" Text="Anzeige:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="3" Margin="0,0,0,6" MaxLength="16"
+            <TextBox Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="3" Margin="0,0,0,6" MaxLength="20"
                      Text="{Binding SelectedStop.StopDisplay, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
 
@@ -198,12 +198,53 @@
                       Margin="0,0,16,4" VerticalAlignment="Center" />
             <CheckBox Content="Endhaltestelle" IsChecked="{Binding IsEndStop, Mode=TwoWay}"
                       Margin="0,0,16,4" VerticalAlignment="Center" />
-            <CheckBox Content="Endhaltestellen-Ansage"
-                      IsChecked="{Binding PlayEndStopAnnouncement, Mode=TwoWay}"
-                      Visibility="{Binding ShowEndStopAnnouncementFields, Converter={StaticResource BoolToVis}}"
-                      ToolTip="Hängt die Ansage „Endhaltestelle“ aus der Ansagen-Kartei nach der Haltestellenansage an (unabhängig von Endhaltestelle)"
-                      Margin="0,0,0,4" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal"
+                        Visibility="{Binding ShowEndStopAnnouncementFields, Converter={StaticResource BoolToVis}}"
+                        Margin="0,0,0,4" VerticalAlignment="Center">
+                <TextBlock Text="Endhaltestellen-Ansage"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"
+                           Opacity="0.9"
+                           ToolTip="Hängt die Endansage aus der Ansagen-Kartei nach der Haltestellenansage an (unabhängig von Endhaltestelle)" />
+                <CheckBox Content="EN"
+                          IsChecked="{Binding PlayEndStopAnnouncementEn, Mode=TwoWay}"
+                          Margin="0,0,8,0"
+                          VerticalAlignment="Center"
+                          ToolTip="Englische Endansage (Kartei „Endhaltestelle“)" />
+                <CheckBox Content="NL"
+                          IsChecked="{Binding PlayEndStopAnnouncementNl, Mode=TwoWay}"
+                          VerticalAlignment="Center"
+                          ToolTip="Niederländische Endansage (Kartei „Eindhalteplaats“ / Endhaltestelle NL – Datei wie EN zuordenbar)" />
+            </StackPanel>
         </WrapPanel>
+        <CheckBox Content="Starthaltestellen-Begrüßung"
+                  IsChecked="{Binding PlayStartStopGreeting, Mode=TwoWay}"
+                  Visibility="{Binding ShowStartStopGreetingFields, Converter={StaticResource BoolToVis}}"
+                  ToolTip="Unabhängig von Starthaltestelle – typisch am Einstiegshalt. Aufzählung „fährt über“ beginnt danach. App: Dreifach-Tipp = Begrüßung; Doppel = Zielversand, Begrüßung nur am GPS-Punkt."
+                  Margin="0,0,0,8" VerticalAlignment="Center" />
+        <StackPanel Margin="16,0,0,8"
+                    Visibility="{Binding ShowStartStopGreetingCoordinatesFields, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="Begrüßungs-GPS (optional)"
+                       Opacity="0.85"
+                       FontSize="12"
+                       Margin="0,0,0,4" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Text="{Binding SelectedStop.StartStopGreetingCoordinates, UpdateSourceTrigger=LostFocus}"
+                         LostFocus="Field_LostFocus" />
+                <Button Grid.Column="2" Content="Karte…" Command="{Binding PickStartStopGreetingCoordinatesOnMapCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}" />
+            </Grid>
+            <TextBlock Text="Mit GPS: Doppel-Tipp schaltet scharf, Auslösung am Punkt (wie Endziel). Ohne GPS: Begrüßung nur per Dreifach-Tipp."
+                       FontSize="11"
+                       Opacity="0.75"
+                       TextWrapping="Wrap"
+                       Margin="0,4,0,0" />
+        </StackPanel>
         <TextBlock Text="Ohne Ziel/Linie wird die Haltestelle trotzdem als Starthaltestelle geführt (keine GPS-Ansage, nicht durchgestrichen)."
                    FontSize="11"
                    Opacity="0.75"

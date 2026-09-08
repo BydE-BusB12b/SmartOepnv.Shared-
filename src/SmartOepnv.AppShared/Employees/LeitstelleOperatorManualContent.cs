@@ -130,11 +130,10 @@ internal static class LeitstelleOperatorManualContent
         Section(
             "12. Versand und Datenabgleich",
             """
-            • routes_export.json laden/senden – Vollbackup mit Audio.
+            • Von Dropbox laden: routes_export.json / Leitstellen-Stand vom Planer übernehmen.
             • leitstelle_routes.json – Routen/Fahrwege vom Planer (ohne Audio, nur Leitstelle).
-            • routes_update.json – leichtes Fahrzeugupdate ohne Tondateien (nur bei bewusstem Versand).
-            • Senden + Fernupdate: Dialog mit Wahl Vollbackup oder Update, dann Fahrzeug auswählen.
-            • Routen an Fahrzeuge: Update (Merge) oder Senden (mit Löschung nicht ausgewählter Routen).
+            • Senden + Fernupdate: Update auf einem gewählten Fahrzeug auslösen (Inhalt kommt aus dem Planer).
+            • Routen-Versand (Auswahl, Nach Dropbox senden, Kleines Fahrzeugupdate, Testupload) nur im Planer.
             • Kein Planer-Workspace – nur Fahrzeug- und Leitstellen-relevante Dateien.
             """,
             "leitstelle_data_transfer.png", "Versand Leitstelle"),

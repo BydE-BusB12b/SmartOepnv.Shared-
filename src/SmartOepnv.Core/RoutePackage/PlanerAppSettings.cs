@@ -2,7 +2,7 @@ namespace SmartOepnv.Core.RoutePackage;
 
 public sealed class PlanerAppSettings
 {
-    public const int FileVersion = 5;
+    public const int FileVersion = 8;
 
     /// <summary>Legacy: einzelnes Logo vor Mehrfach-Verwaltung.</summary>
     public string CompanyLogoFileName { get; set; } = string.Empty;
@@ -20,6 +20,23 @@ public sealed class PlanerAppSettings
     /// Leer = noch nicht konfiguriert.
     /// </summary>
     public string SondergongFileName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Zusätzliche Linien-Bausteine für die Spezialbausteine-Bibliothek
+    /// (z. B. S28, RE10) – unabhängig von Routen und Haltestellenansagen.
+    /// </summary>
+    public List<string> SpecialBuildingBlockLines { get; set; } = [];
+
+    /// <summary>
+    /// Aus der Spezialbausteine-Liste ausgeblendete Linien (auch wenn sie aus Routen kommen),
+    /// z. B. Kursnummern wie 001/01.
+    /// </summary>
+    public List<string> SpecialBuildingBlockLinesHidden { get; set; } = [];
+
+    /// <summary>
+    /// Tondatei-/Namens-Schlüssel: nicht wieder automatisch aus Haltestellenvorlagen in die Kartei übernehmen.
+    /// </summary>
+    public List<string> SuppressedStopAnnouncementSoundKeys { get; set; } = [];
 
     /// <summary>Zuletzt vergebene packageVersion für routes_export.json.</summary>
     public long LastRoutesExportPackageVersion { get; set; }

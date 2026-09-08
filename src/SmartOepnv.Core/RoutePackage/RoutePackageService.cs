@@ -83,7 +83,8 @@ public sealed class RoutePackageService
 
     public async Task SaveToFileAsync(string filePath)
     {
-        var json = GetFullPackageJson(rebuildEmbeddedMedia: false);
+        // Immer mit packageVersion stempeln – sonst bleibt die Zielanzeige auf dem Gerät stehen.
+        var json = PrepareExportJson();
         var dir = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrEmpty(dir))
         {

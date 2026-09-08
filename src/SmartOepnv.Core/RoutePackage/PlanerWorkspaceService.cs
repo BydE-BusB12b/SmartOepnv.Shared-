@@ -839,7 +839,8 @@ public sealed class PlanerWorkspaceService
         ShowSmartOepnvLogo = draft.ShowSmartOepnvLogo,
         CompanyLogoId = draft.CompanyLogoId,
         SignerNameAndDate = draft.SignerNameAndDate,
-        SignatureId = draft.SignatureId
+        SignatureId = draft.SignatureId,
+        ImageIds = draft.ImageIds?.Where(id => !string.IsNullOrWhiteSpace(id)).ToList() ?? []
     };
 
     private static DutyTemplate CloneDutyTemplate(DutyTemplate template) => template.Clone();

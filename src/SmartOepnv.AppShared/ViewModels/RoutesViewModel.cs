@@ -433,6 +433,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
         EditRouteCommand.NotifyCanExecuteChanged();
         CopyNavigationDataCommand.NotifyCanExecuteChanged();
+        LinkRouteChangeCommand.NotifyCanExecuteChanged();
         Stops.Clear();
         SelectedStop = null;
         LoadRouteOperatingDaysForSelection(value);
@@ -467,6 +468,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         RemoveSelectedStopCommand.NotifyCanExecuteChanged();
         ShiftAllStopTimesEarlierCommand.NotifyCanExecuteChanged();
         ShiftAllStopTimesLaterCommand.NotifyCanExecuteChanged();
+        LinkRouteChangeCommand.NotifyCanExecuteChanged();
         NotifyMoveStopCommandsCanExecute();
     }
 
@@ -1112,6 +1114,51 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         var editor = AppServices.Routes.Editor;
         return editor is not null &&
                !string.IsNullOrWhiteSpace(editor.GetAutoScheduleSourceRoute(SelectedRoute));
+    }
+
+    [RelayCommand(CanExecute = nameof(CanLinkRouteChange))]
+    private void LinkRouteChange()
+    {
+        var editor = AppServices.Routes.Editor;
+        if (editor is null || string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            StatusMessage = "Kein Route-Paket geladen bzw. keine Route ausgewählt.";
+            return;
+        }
+
+        try
+        {
+            PrepareEditorForAutoSchedule(editor);
+            var owner = Application.Current?.MainWindow;
+            if (!RouteChangeLinkDialog.TryShow(owner, editor, SelectedRoute, out var error))
+            {
+                if (!string.IsNullOrWhiteSpace(error))
+                {
+                    StatusMessage = error;
+                }
+
+                return;
+            }
+
+            _sync.MarkDirty();
+            _needsStopTemplateEnrich = true;
+            ReloadStopsForSelectedRoute();
+            StatusMessage = "Routenwechsel verknüpft – bitte „Speichern“.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Routenwechsel konnte nicht verknüpft werden: {ex.Message}";
+        }
+    }
+
+    private bool CanLinkRouteChange()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoute) || AppServices.Routes.Editor is null)
+        {
+            return false;
+        }
+
+        return RouteChangeLinkDialog.ResolveEndStop(AppServices.Routes.Editor, SelectedRoute) is not null;
     }
 
     [RelayCommand]

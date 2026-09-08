@@ -45,9 +45,10 @@ public static class GpsAnsagenStopJson
             ZielnummerEndDestination = ReadProtocolDestination(obj, "zielnummerEndDestination", "endDestination"),
             ZielnummerEndDestinationId = OutsideDisplayId.Normalize(JsonNodeReading.GetString(obj["zielnummerEndDestinationId"])),
             IsEndStop = JsonNodeReading.GetBoolean(obj["isEndStop"]),
-            PlayEndStopAnnouncement = obj["playEndStopAnnouncement"] is not null
-                ? JsonNodeReading.GetBoolean(obj["playEndStopAnnouncement"])
-                : JsonNodeReading.GetBoolean(obj["isEndStop"]),
+            PlayEndStopAnnouncementEn = ReadPlayEndStopAnnouncementEn(obj),
+            PlayEndStopAnnouncementNl = JsonNodeReading.GetBoolean(obj["playEndStopAnnouncementNl"]),
+            PlayStartStopGreeting = JsonNodeReading.GetBoolean(obj["playStartStopGreeting"]),
+            StartStopGreetingCoordinates = JsonNodeReading.GetString(obj["startStopGreetingCoordinates"]),
             RouteChangeEnabled = JsonNodeReading.GetBoolean(obj["routeChangeEnabled"]),
             SelectedLineCourseTrip = JsonNodeReading.GetString(obj["selectedLineCourseTrip"]),
             RouteChangeTargetsByDate = ReadRouteChangeTargetsByDate(obj["routeChangeTargetsByDate"]),
@@ -118,6 +119,10 @@ public static class GpsAnsagenStopJson
             ["zielnummerEndDestinationId"] = stop.ZielnummerEndDestinationId,
             ["isEndStop"] = stop.IsEndStop,
             ["playEndStopAnnouncement"] = stop.PlayEndStopAnnouncement,
+            ["playEndStopAnnouncementEn"] = stop.PlayEndStopAnnouncementEn,
+            ["playEndStopAnnouncementNl"] = stop.PlayEndStopAnnouncementNl,
+            ["playStartStopGreeting"] = stop.PlayStartStopGreeting,
+            ["startStopGreetingCoordinates"] = stop.StartStopGreetingCoordinates,
             ["routeChangeEnabled"] = stop.RouteChangeEnabled,
             ["selectedLineCourseTrip"] = stop.SelectedLineCourseTrip,
             ["endDestinationCoordinates"] = stop.EndDestinationCoordinates
@@ -142,6 +147,31 @@ public static class GpsAnsagenStopJson
         }
 
         return obj;
+    }
+
+    /// <summary>
+    /// EN-Flag; fehlende neuen Felder → bisherige Endansage zählt als Englisch
+    /// (alle bestehenden Endhaltestellen-Ansagen sind EN).
+    /// </summary>
+    private static bool ReadPlayEndStopAnnouncementEn(JsonObject obj)
+    {
+        if (obj["playEndStopAnnouncementEn"] is not null)
+        {
+            return JsonNodeReading.GetBoolean(obj["playEndStopAnnouncementEn"]);
+        }
+
+        var legacy = obj["playEndStopAnnouncement"] is not null
+            ? JsonNodeReading.GetBoolean(obj["playEndStopAnnouncement"])
+            : JsonNodeReading.GetBoolean(obj["isEndStop"]);
+        // Nur migrieren, wenn kein NL-Feld gesetzt ist (sonst reine NL-Ansage).
+        if (obj["playEndStopAnnouncementNl"] is not null &&
+            JsonNodeReading.GetBoolean(obj["playEndStopAnnouncementNl"]) &&
+            !legacy)
+        {
+            return false;
+        }
+
+        return legacy;
     }
 
     /// <summary>Protokoll-Ziel aus JSON; fehlender Schlüssel fällt auf das Legacy-Feld zurück.</summary>

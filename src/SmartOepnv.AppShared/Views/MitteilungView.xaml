@@ -170,6 +170,35 @@
                                    Opacity="0.88" />
                     </StackPanel>
 
+                    <TextBlock Text="Bilddateien (für PDF)"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,6" />
+                    <TextBlock Text="PNG, JPG oder WEBP – erscheinen unter dem Mitteilungstext in der PDF."
+                               Opacity="0.65"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8" />
+                    <ListBox ItemsSource="{Binding AttachedImages}"
+                             SelectedItem="{Binding SelectedAttachedImage}"
+                             MinHeight="48"
+                             MaxHeight="120"
+                             BorderThickness="1"
+                             BorderBrush="#334155"
+                             Background="Transparent"
+                             Margin="0,0,0,8"
+                             DisplayMemberPath="Name" />
+                    <UniformGrid Columns="2" Margin="0,0,0,16">
+                        <Button Content="Bild hinzufügen…"
+                                Command="{Binding AddImageCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,4,0"
+                                Padding="8,4" />
+                        <Button Content="Bild entfernen"
+                                Command="{Binding RemoveSelectedImageCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Padding="8,4" />
+                    </UniformGrid>
+
                     <StackPanel Orientation="Horizontal">
                         <Button Content="PDF erstellen"
                                 Command="{Binding CreatePdfCommand}"

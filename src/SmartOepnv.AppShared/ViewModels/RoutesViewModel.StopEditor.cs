@@ -193,6 +193,38 @@ public partial class RoutesViewModel
         }
     }
 
+    public bool PlayEndStopAnnouncementEn
+    {
+        get => SelectedStop?.PlayEndStopAnnouncementEn ?? false;
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.PlayEndStopAnnouncementEn = value;
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public bool PlayEndStopAnnouncementNl
+    {
+        get => SelectedStop?.PlayEndStopAnnouncementNl ?? false;
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.PlayEndStopAnnouncementNl = value;
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
     public bool PlayEndStopAnnouncement
     {
         get => SelectedStop?.PlayEndStopAnnouncement ?? false;
@@ -204,6 +236,22 @@ public partial class RoutesViewModel
             }
 
             SelectedStop.PlayEndStopAnnouncement = value;
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public bool PlayStartStopGreeting
+    {
+        get => SelectedStop?.PlayStartStopGreeting ?? false;
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.PlayStartStopGreeting = value;
             NotifyStopEditorStateChanged();
             MarkStopDetailDirty();
         }
@@ -226,6 +274,10 @@ public partial class RoutesViewModel
     }
 
     public bool ShowStartStopFields => HasSelectedStop && IsStartStop;
+    /** Begrüßung wie Endhaltestellen-Ansage: an jedem Halt möglich (Einstieg ≠ Starthaltestelle). */
+    public bool ShowStartStopGreetingFields => HasSelectedStop;
+    public bool ShowStartStopGreetingCoordinatesFields =>
+        HasSelectedStop && PlayStartStopGreeting;
     /** Endziel-Felder: bei Endhaltestelle oder Endhaltestellen-Ansage (ohne Routenwechsel). */
     public bool ShowEndDestinationFields =>
         HasSelectedStop && (IsEndStop || PlayEndStopAnnouncement);
@@ -633,6 +685,50 @@ public partial class RoutesViewModel
     private void StopDetailEdited() => MarkStopDetailDirty();
 
     [RelayCommand]
+    private void PickStartStopGreetingCoordinatesOnMap()
+    {
+        if (SelectedStop is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var owner = Application.Current?.MainWindow;
+            if (owner is not null && !owner.IsLoaded)
+            {
+                owner = null;
+            }
+
+            var initial = string.IsNullOrWhiteSpace(SelectedStop.StartStopGreetingCoordinates)
+                ? SelectedStop.GpsCoordinates
+                : SelectedStop.StartStopGreetingCoordinates;
+            var dialog = new GpsMapPickerDialog(
+                "Begrüßungs-GPS",
+                initial,
+                SelectedStop.GpsCoordinates,
+                "Haltestelle",
+                radiusMeters: SelectedStop.Radius > 0 ? SelectedStop.Radius : 50)
+            {
+                Owner = owner
+            };
+            if (dialog.ShowDialog() != true || !dialog.HasSelection)
+            {
+                return;
+            }
+
+            SelectedStop.StartStopGreetingCoordinates = dialog.SelectedCoordinates;
+            OnPropertyChanged(nameof(SelectedStop));
+            MarkStopDetailDirty();
+            StatusMessage = "Begrüßungs-GPS auf der Karte gesetzt.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Karte: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
     private void PickEndDestinationCoordinatesOnMap()
     {
         if (SelectedStop is null)
@@ -836,8 +932,13 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(ShowStopHintOwnGpsFields));
         OnPropertyChanged(nameof(IsEndStop));
         OnPropertyChanged(nameof(PlayEndStopAnnouncement));
+        OnPropertyChanged(nameof(PlayEndStopAnnouncementEn));
+        OnPropertyChanged(nameof(PlayEndStopAnnouncementNl));
+        OnPropertyChanged(nameof(PlayStartStopGreeting));
         OnPropertyChanged(nameof(RouteChangeEnabled));
         OnPropertyChanged(nameof(ShowStartStopFields));
+        OnPropertyChanged(nameof(ShowStartStopGreetingFields));
+        OnPropertyChanged(nameof(ShowStartStopGreetingCoordinatesFields));
         OnPropertyChanged(nameof(ShowEndDestinationFields));
         OnPropertyChanged(nameof(ShowEndStopFields));
         OnPropertyChanged(nameof(ShowEndStopAnnouncementFields));

@@ -52,7 +52,32 @@ public sealed class RouteStopItem
     public string ZielnummerEndDestinationId { get; set; } = string.Empty;
 
     public bool IsEndStop { get; set; }
-    public bool PlayEndStopAnnouncement { get; set; }
+    /// <summary>Englische Endhaltestellen-Ansage (aktueller Kartei-Eintrag „Endhaltestelle“).</summary>
+    public bool PlayEndStopAnnouncementEn { get; set; }
+    /// <summary>Niederländische Endhaltestellen-Ansage (Kartei „Eindhalteplaats“ / Endhaltestelle NL).</summary>
+    public bool PlayEndStopAnnouncementNl { get; set; }
+    /// <summary>True wenn EN und/oder NL aktiv (App-/JSON-Kompatibilität).</summary>
+    public bool PlayEndStopAnnouncement
+    {
+        get => PlayEndStopAnnouncementEn || PlayEndStopAnnouncementNl;
+        set
+        {
+            if (value)
+            {
+                if (!PlayEndStopAnnouncementEn && !PlayEndStopAnnouncementNl)
+                {
+                    PlayEndStopAnnouncementEn = true;
+                }
+            }
+            else
+            {
+                PlayEndStopAnnouncementEn = false;
+                PlayEndStopAnnouncementNl = false;
+            }
+        }
+    }
+    public bool PlayStartStopGreeting { get; set; }
+    public string StartStopGreetingCoordinates { get; set; } = string.Empty;
     public bool RouteChangeEnabled { get; set; }
     /// <summary>Standard-Routenwechselziel (Tage ohne datierte Ausnahme).</summary>
     public string SelectedLineCourseTrip { get; set; } = string.Empty;
@@ -115,7 +140,10 @@ public sealed class RouteStopItem
         ZielnummerEndDestination = ZielnummerEndDestination,
         ZielnummerEndDestinationId = ZielnummerEndDestinationId,
         IsEndStop = IsEndStop,
-        PlayEndStopAnnouncement = PlayEndStopAnnouncement,
+        PlayEndStopAnnouncementEn = PlayEndStopAnnouncementEn,
+        PlayEndStopAnnouncementNl = PlayEndStopAnnouncementNl,
+        PlayStartStopGreeting = PlayStartStopGreeting,
+        StartStopGreetingCoordinates = StartStopGreetingCoordinates,
         RouteChangeEnabled = RouteChangeEnabled,
         SelectedLineCourseTrip = SelectedLineCourseTrip,
         RouteChangeTargetsByDate = RouteChangeTargetsByDate.Select(e => e.Clone()).ToList(),
@@ -173,7 +201,10 @@ public sealed class RouteStopItem
         ZielnummerEndDestination = other.ZielnummerEndDestination;
         ZielnummerEndDestinationId = other.ZielnummerEndDestinationId;
         IsEndStop = other.IsEndStop;
-        PlayEndStopAnnouncement = other.PlayEndStopAnnouncement;
+        PlayEndStopAnnouncementEn = other.PlayEndStopAnnouncementEn;
+        PlayEndStopAnnouncementNl = other.PlayEndStopAnnouncementNl;
+        PlayStartStopGreeting = other.PlayStartStopGreeting;
+        StartStopGreetingCoordinates = other.StartStopGreetingCoordinates;
         RouteChangeEnabled = other.RouteChangeEnabled;
         SelectedLineCourseTrip = other.SelectedLineCourseTrip;
         RouteChangeTargetsByDate = other.RouteChangeTargetsByDate.Select(e => e.Clone()).ToList();

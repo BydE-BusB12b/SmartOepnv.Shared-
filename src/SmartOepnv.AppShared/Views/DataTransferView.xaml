@@ -85,6 +85,16 @@
         <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
                              Background="{StaticResource SmartSurfaceBrush}"
                              Margin="0,0,0,8">
+            <materialDesign:Card.Style>
+                <Style TargetType="materialDesign:Card">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowPlanerVehicleSend}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </materialDesign:Card.Style>
             <StackPanel>
                 <TextBlock Text="Routen an Fahrzeuge senden"
                            FontWeight="SemiBold"
@@ -196,6 +206,12 @@
                                     Margin="0,0,6,0"
                                     Padding="12,4"
                                     ToolTip="routes_update.json – alle Routen/Haltestellen ohne embeddedSounds (bestehende Ansagen bleiben)" />
+                            <Button Content="Testupload"
+                                    Command="{Binding ExportTestUploadToDropboxCommand}"
+                                    Style="{StaticResource DropboxExportTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="routes_test.json – Inhalt wie routes_export.json, nur für manuelles Testupdate auf einem Tablet (kein Auto-Download)" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Button Content="Senden + Fernupdate"
@@ -226,7 +242,37 @@
                            FontSize="11"
                            LineHeight="15"
                            TextWrapping="Wrap"
-                           Text="routes_export.json = Vollbackup mit Audio. routes_update.json = leichtes Update ohne Tondateien. Jedes Kommando lädt nur die gewählte Datei hoch. Das Fahrzeug importiert nur geänderte Dateien (nicht automatisch beide)." />
+                           Text="routes_export.json = Vollbackup mit Audio. routes_update.json = leichtes Update ohne Tondateien. routes_test.json = Testkanal (wie Export, nur manuell auf dem Tablet). Jedes Kommando lädt nur die gewählte Datei hoch. Das Fahrzeug importiert Export/Update nur bei Änderung; Test nie automatisch.">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowPlanerVehicleSend}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Grid.Row="1"
+                           Foreground="White"
+                           Opacity="0.82"
+                           Margin="0,4,0,2"
+                           FontSize="11"
+                           LineHeight="15"
+                           TextWrapping="Wrap"
+                           Text="Von Dropbox laden übernimmt den aktuellen Stand. Senden + Fernupdate löst das Update auf dem gewählten Fahrzeug aus. Vollständiger Routen-Versand (Export, kleines Update, Testupload, Routenauswahl) erfolgt im Planer.">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowPlanerVehicleSend}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
 
                 <TextBlock Grid.Row="2"
                            Text="{Binding LastActionMessage}"

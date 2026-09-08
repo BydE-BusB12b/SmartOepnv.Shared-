@@ -31,6 +31,9 @@ public sealed class MitteilungDraft
 
     public string? SignatureId { get; set; }
 
+    /// <summary>IDs der Bildanhänge (workspace/mitteilung-images) in Anzeigereihenfolge.</summary>
+    public List<string> ImageIds { get; set; } = [];
+
     [JsonIgnore]
     public string Summary => BuildSummary();
 

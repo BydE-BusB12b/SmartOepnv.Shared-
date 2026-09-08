@@ -109,6 +109,8 @@ public static class RoutePathDraftRepair
     /// <summary>
     /// Ordnet Segmente als eine Kette ab dem Startknoten; Rest-Zweige werden verworfen
     /// (früher angehängt → Shape verdoppelt sich).
+    /// Wählt an Gabelungen den Ast, der die <b>letzten Haltestellen</b> noch erreicht –
+    /// nicht den kürzesten (der hat die Route vor Aachen Hbf abgeschnitten).
     /// </summary>
     public static void ReorderSegmentsAsSinglePath(RoutePathDraft draft)
     {
@@ -128,6 +130,12 @@ public static class RoutePathDraftRepair
         }
 
         var nodeMap = draft.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        var lastStopId = draft.Nodes
+            .Where(n => n.Type == RoutePathNodeType.STOP)
+            .OrderBy(StopListIndex)
+            .LastOrDefault()?.Id;
+        var previousStopCoverage = CountStopNodesCovered(draft.Segments, draft.Nodes);
+
         var ordered = new List<RoutePathSegment>();
         var used = new HashSet<string>(StringComparer.Ordinal);
         var current = start;
@@ -147,15 +155,23 @@ public static class RoutePathDraftRepair
                 break;
             }
 
-            var next = PickShortestContinuation(draft, nodeMap, candidates);
+            var next = PickBestContinuation(draft, nodeMap, outgoing, used, candidates, lastStopId);
             var key = RoutePathDraft.SegmentEdgeKey(next.FromNodeId, next.ToNodeId);
             used.Add(key);
             ordered.Add(next);
             current = next.ToNodeId;
         }
 
-        // Rest-Zweige verwerfen – früher angehängte „kurze“ Leftovers haben das Shape-Ende
-        // kilometerweit neben die letzte Hst. gesetzt, obwohl die Karte (Einzelsegmente) korrekt wirkte.
+        // Nie eine kürzere Kette übernehmen, die weniger Halte abdeckt als vorher
+        // (sonst verschwinden Segmente bis Endhaltestelle nach „Bereinigen“ / Reload).
+        var newStopCoverage = CountStopNodesCovered(ordered, draft.Nodes);
+        if (previousStopCoverage > 0 &&
+            newStopCoverage < previousStopCoverage &&
+            !PathReachesNode(ordered, lastStopId))
+        {
+            return;
+        }
+
         for (var i = 0; i < ordered.Count; i++)
         {
             ordered[i].Order = i + 1;
@@ -163,6 +179,55 @@ public static class RoutePathDraftRepair
 
         draft.Segments = ordered;
         PruneSnapDataForMissingSegments(draft);
+    }
+
+    private static int StopListIndex(RoutePathNode node)
+    {
+        const string prefix = "stop_";
+        if (node.Id.StartsWith(prefix, StringComparison.Ordinal) &&
+            int.TryParse(node.Id.AsSpan(prefix.Length), out var idx))
+        {
+            return idx;
+        }
+
+        return int.MaxValue;
+    }
+
+    private static int CountStopNodesCovered(
+        IEnumerable<RoutePathSegment> segments,
+        IEnumerable<RoutePathNode> nodes)
+    {
+        var stopIds = nodes
+            .Where(n => n.Type == RoutePathNodeType.STOP)
+            .Select(n => n.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var covered = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var s in segments)
+        {
+            if (stopIds.Contains(s.FromNodeId))
+            {
+                covered.Add(s.FromNodeId);
+            }
+
+            if (stopIds.Contains(s.ToNodeId))
+            {
+                covered.Add(s.ToNodeId);
+            }
+        }
+
+        return covered.Count;
+    }
+
+    private static bool PathReachesNode(IReadOnlyList<RoutePathSegment> segments, string? nodeId)
+    {
+        if (string.IsNullOrEmpty(nodeId) || segments.Count == 0)
+        {
+            return false;
+        }
+
+        return segments.Any(s =>
+            string.Equals(s.FromNodeId, nodeId, StringComparison.Ordinal) ||
+            string.Equals(s.ToNodeId, nodeId, StringComparison.Ordinal));
     }
 
     private static void PruneSnapDataForMissingSegments(RoutePathDraft draft)
@@ -410,10 +475,13 @@ public static class RoutePathDraftRepair
         return sum;
     }
 
-    private static RoutePathSegment PickShortestContinuation(
+    private static RoutePathSegment PickBestContinuation(
         RoutePathDraft draft,
         IReadOnlyDictionary<string, RoutePathNode> nodeMap,
-        List<RoutePathSegment> candidates)
+        IReadOnlyDictionary<string, List<RoutePathSegment>> outgoing,
+        HashSet<string> used,
+        List<RoutePathSegment> candidates,
+        string? lastStopId)
     {
         if (candidates.Count == 1)
         {
@@ -421,9 +489,64 @@ public static class RoutePathDraftRepair
         }
 
         return candidates
-            .OrderBy(s => EstimateEdgeLengthMeters(draft, nodeMap, s))
+            .OrderByDescending(s => ReachabilityScore(s.ToNodeId, outgoing, used, lastStopId))
+            .ThenBy(s => EstimateEdgeLengthMeters(draft, nodeMap, s))
             .ThenBy(s => TargetProgressIndex(s.ToNodeId))
             .First();
+    }
+
+    /// <summary>
+    /// Höher = besser: Endhaltestelle erreichbar, dann höchster Halt-Index, dann mehr Knoten.
+    /// </summary>
+    private static (int ReachesLast, int MaxStopIndex, int NodeCount) ReachabilityScore(
+        string fromNodeId,
+        IReadOnlyDictionary<string, List<RoutePathSegment>> outgoing,
+        HashSet<string> used,
+        string? lastStopId)
+    {
+        var visited = new HashSet<string>(StringComparer.Ordinal) { fromNodeId };
+        var queue = new Queue<string>();
+        queue.Enqueue(fromNodeId);
+        var maxStop = TargetProgressIndex(fromNodeId);
+        if (maxStop == int.MaxValue / 2)
+        {
+            maxStop = -1;
+        }
+
+        var reachesLast = 0;
+        while (queue.Count > 0)
+        {
+            var cur = queue.Dequeue();
+            if (!string.IsNullOrEmpty(lastStopId) &&
+                string.Equals(cur, lastStopId, StringComparison.Ordinal))
+            {
+                reachesLast = 1;
+            }
+
+            var stopIdx = TargetProgressIndex(cur);
+            if (stopIdx < int.MaxValue / 2)
+            {
+                maxStop = Math.Max(maxStop, stopIdx);
+            }
+
+            if (!outgoing.TryGetValue(cur, out var outs))
+            {
+                continue;
+            }
+
+            foreach (var seg in outs)
+            {
+                var key = RoutePathDraft.SegmentEdgeKey(seg.FromNodeId, seg.ToNodeId);
+                if (used.Contains(key) || !visited.Add(seg.ToNodeId))
+                {
+                    continue;
+                }
+
+                queue.Enqueue(seg.ToNodeId);
+            }
+        }
+
+        return (reachesLast, maxStop, visited.Count);
     }
 
     private static double EstimateEdgeLengthMeters(

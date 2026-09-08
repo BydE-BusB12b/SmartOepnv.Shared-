@@ -74,6 +74,7 @@ public sealed class EmbeddedSoundPickerDialog : Window
             BorderThickness = new Thickness(1),
             Margin = new Thickness(0, 0, 0, 12)
         };
+        MergedAnnouncementUiHighlight.ApplyToListBox(list);
         list.MouseDoubleClick += (_, _) => ConfirmSelection(list);
         Grid.SetRow(list, 3);
         root.Children.Add(list);

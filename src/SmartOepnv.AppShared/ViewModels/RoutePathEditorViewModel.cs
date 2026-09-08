@@ -201,18 +201,28 @@ public partial class RoutePathEditorViewModel : ObservableObject
     public void RefreshRoutes()
     {
         OnPropertyChanged(nameof(AvailableRoutes));
+        var routes = AvailableRoutes;
         if (string.IsNullOrWhiteSpace(SelectedRoute))
         {
-            SelectedRoute = AvailableRoutes.FirstOrDefault();
+            SelectedRoute = routes.FirstOrDefault();
+            return;
         }
-        else if (!AvailableRoutes.Contains(SelectedRoute))
+
+        var match = routes.FirstOrDefault(r => RouteDisplayHelper.RouteKeysMatch(r, SelectedRoute));
+        if (match is null)
         {
-            SelectedRoute = AvailableRoutes.FirstOrDefault();
+            SelectedRoute = routes.FirstOrDefault();
+            return;
         }
-        else
+
+        // Kanonischen Key aus der Liste behalten (Contains war zu streng → falsche Fahrt).
+        if (!string.Equals(match, SelectedRoute, StringComparison.Ordinal))
         {
-            LoadDraftForRoute(SelectedRoute);
+            SelectedRoute = match;
+            return;
         }
+
+        LoadDraftForRoute(SelectedRoute);
     }
 
     partial void OnSelectedRouteLineColorChanged(string value)
@@ -238,6 +248,12 @@ public partial class RoutePathEditorViewModel : ObservableObject
             return;
         }
 
+        // Sofort Karten-Updates sperren und Generation hochzählen – sonst kann die WebView
+        // (noch alter Stand nach Routen↔Navi) den frisch geladenen Fahrweg wieder überschreiben
+        // und die Integritätswarnung zurückbringen.
+        _awaitingMapLoadAfterPlannerPush = true;
+        _draftGeneration++;
+
         _suppressDirtyTracking = true;
         try
         {
@@ -248,11 +264,10 @@ public partial class RoutePathEditorViewModel : ObservableObject
 
             _draft = RoutePathDraftRepository.LoadOrCreate(routeName, stops, editor.PackageRoot);
             RoutePathSegmentOrdering.RenumberContiguous(_draft);
-            // Nav-Übernahme kann Rest-Zweige in der Segmentliste lassen → Shape-Ende falsch
-            RoutePathDraftRepair.ReorderSegmentsAsSinglePath(_draft);
+            // Kein ReorderSegmentsAsSinglePath beim Laden: das hat an Gabelungen die Kette
+            // vor der Endhaltestelle abgeschnitten und den Snap „weggespeichert“.
             RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(_draft);
-            _draftGeneration = 0;
-            _lastAppliedMapEditGeneration = 0;
+            // Generation NICHT auf 0 setzen – sonst gelten alte draftChanged-Meldungen wieder als aktuell.
             _activeEditSegmentOrder = PickDefaultEditSegmentOrder();
             // Kein EnsureStopsOnDraft hier: das würde Halt-/Ansage-Positionen aus der
             // Halteliste neu setzen und gespeicherte Karten-Verschiebungen verwerfen.
@@ -369,7 +384,29 @@ public partial class RoutePathEditorViewModel : ObservableObject
             RoutePathDraftIntegrity.Evaluate(_draft));
     }
 
-    public bool ApplyDraftJsonFromMap(string json, bool recordUndo = false, bool forceFromMap = false)
+    /// <summary>
+    /// true, wenn der eingehende Karten-Entwurf Integritätsfehler neu einführt
+    /// (z. B. Shape-Ende km neben letzter Hst.), der aktuelle Planer-Stand aber ok ist.
+    /// </summary>
+    private static bool WouldRegressPathIntegrity(RoutePathDraft current, RoutePathDraft incoming)
+    {
+        var currentFindings = RoutePathDraftIntegrity.Evaluate(current);
+        if (currentFindings.Count > 0)
+        {
+            return false;
+        }
+
+        RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(incoming);
+        var incomingFindings = RoutePathDraftIntegrity.Evaluate(incoming);
+        return incomingFindings.Any(f =>
+            f.Code is "SHAPE_END_MISMATCH" or "SHAPE_TOO_LONG" or "DUPLICATE_SEGMENTS");
+    }
+
+    public bool ApplyDraftJsonFromMap(
+        string json,
+        bool recordUndo = false,
+        bool forceFromMap = false,
+        bool rejectIntegrityRegression = false)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -490,6 +527,18 @@ public partial class RoutePathEditorViewModel : ObservableObject
                     .ToList();
             }
 
+            // Veralteter Kartenstand darf einen bereinigten/gespeicherten Fahrweg nicht wieder „aufblasen“.
+            // Auch beim Speichern (forceFromMap + rejectIntegrityRegression): Planer-Stand behalten.
+            if ((!forceFromMap || rejectIntegrityRegression) &&
+                !forceApplyFromMap &&
+                _draft is not null &&
+                WouldRegressPathIntegrity(_draft, parsed))
+            {
+                StatusMessage =
+                    "Karten-Update verworfen – älterer Kartenstand würde den bereinigten Fahrweg wieder verschlechtern.";
+                return false;
+            }
+
             _draft = parsed;
             if (incomingGeneration > 0)
             {
@@ -510,6 +559,12 @@ public partial class RoutePathEditorViewModel : ObservableObject
             RemapSelectedNavMarkerKeyAfterManeuverDedupe(selectedDistanceBeforeDedupe);
             MarkDraftDirty();
 
+            var stopCoordsSynced = 0;
+            if (movedNodeIds.Count > 0)
+            {
+                stopCoordsSynced = SyncMovedMapNodesToRouteStops(movedNodeIds);
+            }
+
             if (movedNodeIds.Count > 0 && !forceApplyFromMap)
             {
                 var touched = _draft.Segments
@@ -529,7 +584,10 @@ public partial class RoutePathEditorViewModel : ObservableObject
                     _selectedSegmentTo = focus.ToNodeId;
                     PrepareSegmentForResnap(focus);
                     StatusMessage =
-                        $"Punkt verschoben – Segment #{focus.Order} ({focus.FromNodeId} → {focus.ToNodeId}): Luftlinie, „Straße snappen“.";
+                        $"Punkt verschoben – Segment #{focus.Order} ({focus.FromNodeId} → {focus.ToNodeId}): Luftlinie, „Straße snappen“." +
+                        (stopCoordsSynced > 0
+                            ? $" Fahrt-GPS/Hst.-GPS aktualisiert ({stopCoordsSynced})."
+                            : string.Empty);
                     PushDraftToMap();
                     return true;
                 }
@@ -565,6 +623,12 @@ public partial class RoutePathEditorViewModel : ObservableObject
             RefreshNavManeuverList(_selectedNavMarkerKey);
             // Nach Dedup/Index-Shift: Karten-Badges an die Listen-Nummern koppeln.
             PushDraftToMap(skipNavListRefresh: true);
+            // Doppelklick-Navi-Symbol: sofort speichern, ohne extra „Speichern“-Klick.
+            if (navForwardProgress && !forceFromMap)
+            {
+                PersistDraftOverwrite(" – Navi-Symbol lokal gespeichert.");
+            }
+
             return true;
         }
         catch (Exception ex)
@@ -907,6 +971,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             : $"Bereinigung ausgeführt – bitte prüfen: {IntegrityWarning ?? RoutePathDraftIntegrity.FormatLengthSummary(_draft)}";
         MarkDraftDirty();
         PushDraftToMap();
+        PersistDraftOverwrite(ok ? " – lokal gespeichert." : " – Stand gespeichert (bitte Fahrweg prüfen).");
     }
 
     [RelayCommand]
@@ -1612,8 +1677,42 @@ public partial class RoutePathEditorViewModel : ObservableObject
 
     public void OnNodeMovedFromMap(string? nodeId)
     {
-        // Snap-Löschen + Karte: erfolgt in ApplyDraftJsonFromMap (draftChanged nach dragend).
+        // Snap-Löschen + GPS-Übernahme: ApplyDraftJsonFromMap (draftChanged nach dragend).
         _ = nodeId;
+    }
+
+    /// <summary>
+    /// Verschobene A-/H-Marker → Fahrt-Haltestelle (GPS bzw. Hst.-GPS).
+    /// </summary>
+    private int SyncMovedMapNodesToRouteStops(IReadOnlyCollection<string> movedNodeIds)
+    {
+        if (_draft is null || movedNodeIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var stops = CollectStopsForSelectedRoute();
+        if (stops.Count == 0)
+        {
+            return 0;
+        }
+
+        var changed = RoutePathStopCoordinateSync.ApplyMovedNodesToStops(_draft, stops, movedNodeIds);
+        if (changed <= 0)
+        {
+            return 0;
+        }
+
+        try
+        {
+            AppServices.Routes.ApplyEditorChanges("navidaten-stop-coords", rebuildEmbeddedMedia: false);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Haltestellen-GPS übernommen, Speichern fehlgeschlagen: {ex.Message}";
+        }
+
+        return changed;
     }
 
     public void SchedulePreviewSnapForNode(string? nodeId)
@@ -1996,6 +2095,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             MarkDraftDirty();
             RefreshNavManeuverList(_selectedNavMarkerKey);
             PushDraftToMap(skipNavListRefresh: true);
+            PersistDraftOverwrite(" – lokal gespeichert.");
         }
         catch (Exception ex)
         {
@@ -2057,6 +2157,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             MarkDraftDirty();
             RefreshNavManeuverList();
             PushDraftToMap(skipNavListRefresh: true);
+            PersistDraftOverwrite(" – lokal gespeichert.");
         }
         catch (Exception ex)
         {
@@ -2151,18 +2252,31 @@ public partial class RoutePathEditorViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            if (!await TrySyncDraftFromMapAsync())
+            // Karte mergen, aber Speichern nie abbrechen – Planer-Stand überschreibt immer
+            // den gespeicherten Fahrweg (inkl. Alias-Keys / alten routePathDrafts-Einträgen).
+            if (PullMapDraftJsonAsync is not null)
             {
-                MarkDraftDirty();
-                StatusMessage =
-                    "Speichern abgebrochen – Kartenstand konnte nicht übernommen werden. Bitte kurz warten und erneut speichern.";
-                return;
+                try
+                {
+                    var mapJson = await PullMapDraftJsonAsync();
+                    if (!string.IsNullOrWhiteSpace(mapJson))
+                    {
+                        ApplyDraftJsonFromMap(
+                            mapJson,
+                            recordUndo: false,
+                            forceFromMap: true,
+                            rejectIntegrityRegression: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    StatusMessage = $"Karten-Sync vor Speichern übersprungen: {ex.Message}";
+                }
             }
 
             NavManeuverHelper.NormalizeManualManeuverInstructions(_draft!);
             RoutePathDraftMutator.EnsureBusStraightEdgeKeys(_draft!);
             await Task.Yield();
-            // Auf UI-Thread speichern – _draft darf nicht parallel zu Karten-Events geändert werden.
             var ok = CommitDraftToWorkspace();
             if (!ok)
             {
@@ -2173,9 +2287,11 @@ public partial class RoutePathEditorViewModel : ObservableObject
 
             MarkDraftSaved();
             RefreshIntegrityWarning();
+            // Karte an den gespeicherten Stand angleichen (verhindert Rücksprung auf Altversion).
+            PushDraftToMap(resetMapView: false, restoreMapView: HasSavedMapView(_draft!));
             StatusMessage = IntegrityWarning is null
-                ? $"Fahrweg lokal gespeichert (routePathDrafts[\"{_draft!.RouteName}\"]) – für Fahrzeuge über Dropbox senden · {RoutePathDraftIntegrity.FormatLengthSummary(_draft)}."
-                : $"Fahrweg gespeichert – bitte prüfen: {IntegrityWarning}";
+                ? $"Fahrweg gespeichert – alter Stand überschrieben (routePathDrafts[\"{_draft!.RouteName}\"]) · {RoutePathDraftIntegrity.FormatLengthSummary(_draft)}."
+                : $"Fahrweg gespeichert (überschrieben) – bitte prüfen: {IntegrityWarning}";
         }
         catch (Exception ex)
         {
@@ -2188,6 +2304,35 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
     }
 
+    /// <summary>Schreibt den aktuellen Entwurf fest ins Paket und markiert Speichern als erledigt.</summary>
+    private void PersistDraftOverwrite(string? statusSuffix = null)
+    {
+        if (_draft is null || string.IsNullOrWhiteSpace(SelectedRoute ?? _draft.RouteName))
+        {
+            return;
+        }
+
+        if (!CommitDraftToWorkspace())
+        {
+            return;
+        }
+
+        MarkDraftSaved();
+        RefreshIntegrityWarning();
+        if (!string.IsNullOrEmpty(statusSuffix))
+        {
+            var baseMsg = (StatusMessage ?? string.Empty).TrimEnd();
+            if (baseMsg.EndsWith(statusSuffix.Trim(), StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            StatusMessage = string.IsNullOrEmpty(baseMsg)
+                ? statusSuffix.TrimStart(' ', '–', '-')
+                : baseMsg + statusSuffix;
+        }
+    }
+
     public bool HasPendingDraftChanges =>
         SaveButtonState == RoutePathSaveButtonState.Unsaved;
 
@@ -2196,6 +2341,20 @@ public partial class RoutePathEditorViewModel : ObservableObject
         if (HasPendingDraftChanges)
         {
             CommitDraftToWorkspace();
+        }
+    }
+
+    /// <summary>Schreibt den aktuellen Navi-Entwurf immer ins Paket (Seitenwechsel / Abmeldung).</summary>
+    public void FlushDraftToWorkspace()
+    {
+        if (_draft is null)
+        {
+            return;
+        }
+
+        if (CommitDraftToWorkspace())
+        {
+            MarkDraftSaved();
         }
     }
 
@@ -2215,6 +2374,13 @@ public partial class RoutePathEditorViewModel : ObservableObject
             }
 
             _draft.RouteName = SelectedRoute;
+        }
+
+        // Karten-A/H → Fahrt-Stammdaten, bevor Draft/Paket geschrieben wird
+        var routeStops = CollectStopsForSelectedRoute();
+        if (routeStops.Count > 0)
+        {
+            RoutePathStopCoordinateSync.ApplyAllStopNodesToStops(_draft, routeStops);
         }
 
         // 1) Draft in PackageRoot

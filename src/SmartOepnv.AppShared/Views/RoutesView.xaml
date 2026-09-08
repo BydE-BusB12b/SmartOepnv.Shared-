@@ -98,7 +98,7 @@
                         <TextBox Grid.Column="2"
                                  materialDesign:HintAssist.Hint="Haltestellenanzeige Zieltext"
                                  Text="{Binding RouteInteriorDisplayDestination, UpdateSourceTrigger=PropertyChanged}"
-                                 MaxLength="16"
+                                 MaxLength="20"
                                  VerticalAlignment="Center" />
                     </Grid>
                 </StackPanel>
@@ -248,6 +248,9 @@
                             <Button Content="Routenschnur" Command="{Binding ShowRouteChainCommand}" Margin="0,0,8,8"
                                     Style="{StaticResource MaterialDesignRaisedButton}"
                                     ToolTip="Linie/Kurs-Fahrten und verbundene Routenschnur mit Fahrplan prüfen" />
+                            <Button Content="Verknüpfen" Command="{Binding LinkRouteChangeCommand}" Margin="0,0,8,8"
+                                    Style="{StaticResource MaterialDesignRaisedButton}"
+                                    ToolTip="Routenwechsel an der Endhaltestelle schnell setzen (Standard + Datum-Abweichungen)" />
                             <Button Content="−1 Min" Command="{Binding ShiftAllStopTimesEarlierCommand}" Margin="0,0,4,8"
                                     Style="{StaticResource MaterialDesignOutlinedButton}"
                                     ToolTip="Alle Haltestellenzeiten 1 Minute früher (Abstände bleiben)" />

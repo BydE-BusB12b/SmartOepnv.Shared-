@@ -19,6 +19,9 @@ public sealed class MitteilungPdfModel
     public string? CompanyLogoId { get; init; }
     public string SignerNameAndDate { get; init; } = string.Empty;
     public string? SignatureId { get; init; }
+
+    /// <summary>Absolute Pfade zu Bildanhängen (PNG/JPG/JPEG/WEBP) in Anzeigereihenfolge.</summary>
+    public IReadOnlyList<string> ImagePaths { get; init; } = [];
 }
 
 public static class MitteilungPdfGenerator
@@ -29,6 +32,7 @@ public static class MitteilungPdfGenerator
     private const float SignatureMaxHeight = 56f;
     private const float CompanyLogoWidth = 150f;
     private const float CompanyLogoHeight = 54f;
+    private const float AttachmentMaxHeight = 280f;
 
     static MitteilungPdfGenerator() =>
         QuestPDF.Settings.License = LicenseType.Community;
@@ -40,6 +44,10 @@ public static class MitteilungPdfGenerator
         var signaturePath = ResolveSignaturePath(model.SignatureId);
         var validityText = BuildValidityText(model);
         var body = model.Body.Trim().IfEmpty("");
+        var imagePaths = model.ImagePaths
+            .Where(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p))
+            .ToList();
+        var hasImages = imagePaths.Count > 0;
 
         Document.Create(document =>
         {
@@ -68,7 +76,7 @@ public static class MitteilungPdfGenerator
                                 .FontColor(PrimaryBlue);
                         })));
 
-                // Mitte: Gültigkeit oben, Hinweistext vertikal mittig in der Restfläche
+                // Mitte: Gültigkeit, Hinweistext, optional Bildanhänge
                 page.Content().PaddingTop(18).Column(column =>
                 {
                     column.Item().Text(validityText)
@@ -76,11 +84,29 @@ public static class MitteilungPdfGenerator
                         .FontSize(10)
                         .FontColor(TextMuted);
 
-                    column.Item().ExtendVertical().AlignMiddle().Text(body)
-                        .FontFamily(PlanerPdfTextStyles.BahnschriftLight)
-                        .FontSize(11)
-                        .LineHeight(1.45f)
-                        .AlignLeft();
+                    if (hasImages)
+                    {
+                        column.Item().PaddingTop(10).Text(body)
+                            .FontFamily(PlanerPdfTextStyles.BahnschriftLight)
+                            .FontSize(11)
+                            .LineHeight(1.45f)
+                            .AlignLeft();
+
+                        foreach (var imagePath in imagePaths)
+                        {
+                            column.Item().PaddingTop(14)
+                                .MaxHeight(AttachmentMaxHeight)
+                                .Element(c => PlanerPdfBranding.DrawImage(c, imagePath));
+                        }
+                    }
+                    else
+                    {
+                        column.Item().ExtendVertical().AlignMiddle().Text(body)
+                            .FontFamily(PlanerPdfTextStyles.BahnschriftLight)
+                            .FontSize(11)
+                            .LineHeight(1.45f)
+                            .AlignLeft();
+                    }
                 });
 
                 // Unten (Footer = immer Seitenende, kein Umbruch): Unterschrift | Firmenlogo, darunter Zeitstempel

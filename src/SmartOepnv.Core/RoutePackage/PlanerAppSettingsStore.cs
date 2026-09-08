@@ -51,6 +51,9 @@ public sealed class PlanerAppSettingsStore
             devicePassword = settings.DevicePassword,
             unlockPassword = settings.UnlockPassword,
             sondergongFileName = settings.SondergongFileName,
+            specialBuildingBlockLines = settings.SpecialBuildingBlockLines,
+            specialBuildingBlockLinesHidden = settings.SpecialBuildingBlockLinesHidden,
+            suppressedStopAnnouncementSoundKeys = settings.SuppressedStopAnnouncementSoundKeys,
             lastRoutesExportPackageVersion = settings.LastRoutesExportPackageVersion,
             lastRoutesUpdatePackageVersion = settings.LastRoutesUpdatePackageVersion
         };

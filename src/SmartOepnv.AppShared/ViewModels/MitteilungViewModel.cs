@@ -39,6 +39,18 @@ public sealed class MitteilungSignatureOption
     public static MitteilungSignatureOption None { get; } = new(string.Empty, "(Keine Unterschrift)");
 }
 
+public sealed class MitteilungImageAttachment
+{
+    public MitteilungImageAttachment(string id, string name)
+    {
+        Id = id;
+        Name = name;
+    }
+
+    public string Id { get; }
+    public string Name { get; }
+}
+
 public partial class MitteilungViewModel : ObservableObject
 {
     private string? _loadedDraftId;
@@ -47,6 +59,7 @@ public partial class MitteilungViewModel : ObservableObject
     {
         ReloadCompanyLogos();
         ReloadSignatures();
+        AttachedImages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAttachedImages));
         ReloadDraftList();
         ValidFromText = DateTime.Today.ToString("dd.MM.yyyy");
         SignerNameAndDate = DateTime.Today.ToString("dd.MM.yyyy");
@@ -56,8 +69,11 @@ public partial class MitteilungViewModel : ObservableObject
     public ObservableCollection<MitteilungLogoOption> CompanyLogoOptions { get; } = [];
     public ObservableCollection<MitteilungSignatureOption> SignatureOptions { get; } = [];
     public ObservableCollection<MitteilungDraft> SavedDrafts { get; } = [];
+    public ObservableCollection<MitteilungImageAttachment> AttachedImages { get; } = [];
 
     public bool CanUpdateLoadedDraft => !string.IsNullOrEmpty(_loadedDraftId);
+
+    public bool HasAttachedImages => AttachedImages.Count > 0;
 
     [ObservableProperty] private string draftName = string.Empty;
     [ObservableProperty] private MitteilungDraft? selectedDraft;
@@ -71,6 +87,7 @@ public partial class MitteilungViewModel : ObservableObject
     [ObservableProperty] private string signerNameAndDate = string.Empty;
     [ObservableProperty] private string selectedSignatureId = string.Empty;
     [ObservableProperty] private string selectedSignatureName = "(Keine Unterschrift)";
+    [ObservableProperty] private MitteilungImageAttachment? selectedAttachedImage;
     [ObservableProperty] private string statusMessage = string.Empty;
 
     public bool IsValidToEnabled => !UntilRevoked;
@@ -260,7 +277,8 @@ public partial class MitteilungViewModel : ObservableObject
         ShowSmartOepnvLogo = ShowSmartOepnvLogo,
         CompanyLogoId = string.IsNullOrWhiteSpace(SelectedCompanyLogoId) ? null : SelectedCompanyLogoId,
         SignerNameAndDate = SignerNameAndDate.Trim(),
-        SignatureId = string.IsNullOrWhiteSpace(SelectedSignatureId) ? null : SelectedSignatureId
+        SignatureId = string.IsNullOrWhiteSpace(SelectedSignatureId) ? null : SelectedSignatureId,
+        ImageIds = AttachedImages.Select(i => i.Id).ToList()
     };
 
     [RelayCommand]
@@ -294,6 +312,29 @@ public partial class MitteilungViewModel : ObservableObject
             SignatureOptions.All(s => !string.Equals(s.Id, SelectedSignatureId, StringComparison.Ordinal)))
         {
             SelectedSignatureId = string.Empty;
+        }
+
+        ReplaceAttachedImages(draft.ImageIds);
+    }
+
+    private void ReplaceAttachedImages(IEnumerable<string>? imageIds)
+    {
+        AttachedImages.Clear();
+        SelectedAttachedImage = null;
+        if (!AppServices.IsInitialized || imageIds is null)
+        {
+            return;
+        }
+
+        foreach (var id in imageIds.Where(i => !string.IsNullOrWhiteSpace(i)))
+        {
+            var entry = PlanerMitteilungImagesWorkspace.TryGetEntry(AppServices.SettingsSubfolder, id);
+            if (entry is null)
+            {
+                continue;
+            }
+
+            AttachedImages.Add(new MitteilungImageAttachment(entry.Id, entry.Name));
         }
     }
 
@@ -341,8 +382,75 @@ public partial class MitteilungViewModel : ObservableObject
         SelectedCompanyLogoId = CompanyLogoOptions.FirstOrDefault()?.Id ?? string.Empty;
         SignerNameAndDate = DateTime.Today.ToString("dd.MM.yyyy");
         SelectedSignatureId = string.Empty;
+        AttachedImages.Clear();
+        SelectedAttachedImage = null;
         NotifyDraftCommands();
         StatusMessage = "Neue Mitteilung.";
+    }
+
+    [RelayCommand]
+    private void AddImage()
+    {
+        if (!AppServices.IsInitialized)
+        {
+            StatusMessage = "Bilder können nur im Planer hinzugefügt werden.";
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Bilddatei für Mitteilung wählen",
+            Filter = "Bilddateien|*.png;*.jpg;*.jpeg;*.webp|PNG (*.png)|*.png|JPEG (*.jpg;*.jpeg)|*.jpg;*.jpeg|WEBP (*.webp)|*.webp",
+            Multiselect = true,
+            CheckFileExists = true
+        };
+
+        if (dialog.ShowDialog() != true || dialog.FileNames.Length == 0)
+        {
+            return;
+        }
+
+        var added = 0;
+        try
+        {
+            foreach (var path in dialog.FileNames)
+            {
+                var entry = PlanerMitteilungImagesWorkspace.AddFromFile(
+                    AppServices.SettingsSubfolder,
+                    path);
+                AttachedImages.Add(new MitteilungImageAttachment(entry.Id, entry.Name));
+                added++;
+            }
+
+            StatusMessage = added == 1
+                ? $"Bild „{AttachedImages[^1].Name}“ hinzugefügt."
+                : $"{added} Bilder hinzugefügt.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Bild konnte nicht hinzugefügt werden: {ex.Message}";
+            MessageBox.Show(
+                Application.Current?.MainWindow,
+                ex.Message,
+                "Mitteilung",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    [RelayCommand]
+    private void RemoveSelectedImage()
+    {
+        if (SelectedAttachedImage is null)
+        {
+            StatusMessage = "Bitte zuerst ein Bild in der Liste auswählen.";
+            return;
+        }
+
+        var item = SelectedAttachedImage;
+        AttachedImages.Remove(item);
+        SelectedAttachedImage = null;
+        StatusMessage = $"Bild „{item.Name}“ aus der Mitteilung entfernt.";
     }
 
     [RelayCommand]
@@ -395,7 +503,8 @@ public partial class MitteilungViewModel : ObservableObject
                 ShowSmartOepnvLogo = ShowSmartOepnvLogo,
                 CompanyLogoId = string.IsNullOrWhiteSpace(SelectedCompanyLogoId) ? null : SelectedCompanyLogoId,
                 SignerNameAndDate = SignerNameAndDate.Trim(),
-                SignatureId = string.IsNullOrWhiteSpace(SelectedSignatureId) ? null : SelectedSignatureId
+                SignatureId = string.IsNullOrWhiteSpace(SelectedSignatureId) ? null : SelectedSignatureId,
+                ImagePaths = ResolveAttachedImagePaths()
             });
             StatusMessage = $"PDF gespeichert: {Path.GetFileName(dialog.FileName)}";
         }
@@ -409,6 +518,28 @@ public partial class MitteilungViewModel : ObservableObject
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
+    }
+
+    private IReadOnlyList<string> ResolveAttachedImagePaths()
+    {
+        if (!AppServices.IsInitialized || AttachedImages.Count == 0)
+        {
+            return [];
+        }
+
+        var paths = new List<string>(AttachedImages.Count);
+        foreach (var image in AttachedImages)
+        {
+            var path = PlanerMitteilungImagesWorkspace.TryGetImagePath(
+                AppServices.SettingsSubfolder,
+                image.Id);
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                paths.Add(path);
+            }
+        }
+
+        return paths;
     }
 
     private string BuildDefaultFileName()

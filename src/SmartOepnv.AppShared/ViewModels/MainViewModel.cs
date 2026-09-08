@@ -486,7 +486,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         RoutesViewModel.CommitChangesIfDirty();
-        RoutePathEditorViewModel.CommitDraftIfDirty();
+        RoutePathEditorViewModel.FlushDraftToWorkspace();
         _employeesViewModel.CommitChangesIfDirty();
         StopsLibraryViewModel.CommitChangesIfDirty();
         AnnouncementsLibraryViewModel.CommitChangesIfDirty();
@@ -562,7 +562,8 @@ public partial class MainViewModel : ObservableObject
                 RoutesViewModel.CommitChangesIfDirty();
                 break;
             case "Navidaten":
-                RoutePathEditorViewModel.CommitDraftIfDirty();
+                // Immer aktuellen Entwurf schreiben – sonst gehen Snaps nach Seitenwechsel verloren.
+                RoutePathEditorViewModel.FlushDraftToWorkspace();
                 break;
             case "Personalverwaltung":
                 _employeesViewModel.CommitChangesIfDirty();

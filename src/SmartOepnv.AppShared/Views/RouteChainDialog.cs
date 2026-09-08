@@ -1235,14 +1235,41 @@ public sealed class RouteChainDialog : Window
         };
 
         var content = new StackPanel();
-        content.Children.Add(new TextBlock
+
+        var titleRow = new Grid();
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titleBlock = new TextBlock
         {
             Text = $"{segment.Index}. {segment.RouteLabel}",
             Foreground = Brushes.White,
             FontWeight = FontWeights.SemiBold,
             FontSize = 14,
-            TextWrapping = TextWrapping.Wrap
-        });
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(titleBlock, 0);
+        titleRow.Children.Add(titleBlock);
+
+        var linkButton = new Button
+        {
+            Content = "Verknüpfen",
+            Padding = new Thickness(10, 4, 10, 4),
+            Margin = new Thickness(8, 0, 0, 0),
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x5A, 0x9E)),
+            Foreground = Brushes.White,
+            BorderBrush = AccentBrush,
+            ToolTip = "Routenwechsel an der Endhaltestelle setzen (Standard + Datum-Abweichungen)"
+        };
+        var routeKey = segment.RouteKey;
+        linkButton.Click += (_, _) => LinkRouteChangeForSegment(routeKey);
+        Grid.SetColumn(linkButton, 1);
+        titleRow.Children.Add(linkButton);
+
+        content.Children.Add(titleRow);
 
         var meta = new List<string>();
         if (!string.IsNullOrWhiteSpace(segment.StartTimeDisplay))
@@ -1332,6 +1359,23 @@ public sealed class RouteChainDialog : Window
         content.Children.Add(grid);
         card.Child = content;
         return card;
+    }
+
+
+    private void LinkRouteChangeForSegment(string routeKey)
+    {
+        if (!RouteChangeLinkDialog.TryShow(this, _editor, routeKey, out var error))
+        {
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                ShowError(error);
+            }
+
+            return;
+        }
+
+        _onPackageChanged?.Invoke(null);
+        UpdateChainPreview();
     }
 
     private void ShowError(string message)

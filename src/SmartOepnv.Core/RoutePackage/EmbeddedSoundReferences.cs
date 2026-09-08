@@ -18,6 +18,12 @@ public static class EmbeddedSoundReferences
             .Select(s => s.EmbeddedSoundFileName)
             .Concat(package.StopTemplates.Select(t => t.EmbeddedSoundFileName))
             .Concat(package.AnnouncementTemplates.Select(t => t.EmbeddedSoundFileName))
+            .Concat(AnnouncementSequenceExport.CollectReferencedFileNames(
+                package.AnnouncementTemplates,
+                PlanerSondergongSoundResolver.ConfiguredFileName(
+                    workspace is not null && AppServices.IsInitialized
+                        ? AppServices.PlanerAppSettings?.Load()
+                        : null)))
             .Concat(package.AnnouncementTemplates
                 .Where(t => t.IncludeInSpecialAnnouncements)
                 .Select(t => t.EmbeddedSoundFileName))
@@ -25,16 +31,80 @@ public static class EmbeddedSoundReferences
             .Select(n => n.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        if (stops.Any(s => s.PlayEndStopAnnouncement) && root is not null)
+        if (root is not null)
         {
-            var endStopFile = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
+            var stopList = stops.ToList();
+            if (stopList.Any(s => s.PlayEndStopAnnouncementEn))
+            {
+                var endStopFile = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
+                    package.AnnouncementTemplates,
+                    root,
+                    workspace,
+                    EndStopAnnouncementResolver.Language.English);
+                if (!string.IsNullOrWhiteSpace(endStopFile))
+                {
+                    names.Add(endStopFile.Trim());
+                }
+            }
+
+            if (stopList.Any(s => s.PlayEndStopAnnouncementNl))
+            {
+                var endStopFileNl = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
+                    package.AnnouncementTemplates,
+                    root,
+                    workspace,
+                    EndStopAnnouncementResolver.Language.Dutch);
+                if (!string.IsNullOrWhiteSpace(endStopFileNl))
+                {
+                    names.Add(endStopFileNl.Trim());
+                }
+            }
+        }
+
+        if (stops.Any(s => s.PlayStartStopGreeting))
+        {
+            if (StartStopGreetingResolver.Part1UsesSequencePlayback(package.AnnouncementTemplates))
+            {
+                foreach (var name in StartStopGreetingResolver.CollectPart1SequenceEmbeddedSoundNames(
+                             package.AnnouncementTemplates,
+                             package,
+                             workspace))
+                {
+                    names.Add(name);
+                }
+            }
+            else
+            {
+                var part1 = StartStopGreetingResolver.TryResolvePart1FileName(
+                    package.AnnouncementTemplates,
+                    root,
+                    workspace);
+                if (!string.IsNullOrWhiteSpace(part1))
+                {
+                    names.Add(part1.Trim());
+                }
+            }
+
+            var part2 = StartStopGreetingResolver.TryResolvePart2FileName(
                 package.AnnouncementTemplates,
                 root,
                 workspace);
-            if (!string.IsNullOrWhiteSpace(endStopFile))
+            if (!string.IsNullOrWhiteSpace(part2))
             {
-                names.Add(endStopFile.Trim());
+                names.Add(part2.Trim());
             }
+
+            var sondergong = StartStopGreetingResolver.TryResolveSondergongFileName(
+                workspace is not null && AppServices.IsInitialized
+                    ? AppServices.PlanerAppSettings?.Load()
+                    : null);
+            if (!string.IsNullOrWhiteSpace(sondergong))
+            {
+                names.Add(sondergong.Trim());
+            }
+
+            names.Add(PlanerBusDrivesViaSoundResolver.FileName);
+            names.Add(PlanerUndSoundResolver.FileName);
         }
 
         return names;

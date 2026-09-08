@@ -91,6 +91,7 @@ public static class GpsAnsagenRouteExportSync
             EnsureAnnouncementSoundsFromWorkspace(root, package, workspace);
             SyncEmbeddedSounds(package, root, workspace);
             SyncEndStopAnnouncementMetadata(package, root, workspace);
+            SyncStartStopGreetingMetadata(package, root, workspace);
             SpecialAnnouncementsEditor.SyncToRootFromTemplates(root, package.AnnouncementTemplates, workspace);
         }
 
@@ -111,28 +112,118 @@ public static class GpsAnsagenRouteExportSync
         JsonObject root,
         LocalWorkspaceStore? workspace)
     {
-        var needsEndStopAudio = package.StopsByRoute.Values
-            .SelectMany(stops => stops)
-            .Any(s => s.PlayEndStopAnnouncement);
+        var stops = package.StopsByRoute.Values.SelectMany(s => s).ToList();
+        var needsEn = stops.Any(s => s.PlayEndStopAnnouncementEn);
+        var needsNl = stops.Any(s => s.PlayEndStopAnnouncementNl);
 
-        if (!needsEndStopAudio)
+        if (!needsEn)
         {
             root.Remove(EndStopAnnouncementResolver.RootJsonFieldName);
+        }
+        else
+        {
+            var fileName = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
+                package.AnnouncementTemplates,
+                root,
+                workspace,
+                EndStopAnnouncementResolver.Language.English);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                root.Remove(EndStopAnnouncementResolver.RootJsonFieldName);
+            }
+            else
+            {
+                root[EndStopAnnouncementResolver.RootJsonFieldName] = fileName;
+            }
+        }
+
+        if (!needsNl)
+        {
+            root.Remove(EndStopAnnouncementResolver.RootJsonFieldNameNl);
+        }
+        else
+        {
+            var fileNameNl = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
+                package.AnnouncementTemplates,
+                root,
+                workspace,
+                EndStopAnnouncementResolver.Language.Dutch);
+            if (string.IsNullOrWhiteSpace(fileNameNl))
+            {
+                root.Remove(EndStopAnnouncementResolver.RootJsonFieldNameNl);
+            }
+            else
+            {
+                root[EndStopAnnouncementResolver.RootJsonFieldNameNl] = fileNameNl;
+            }
+        }
+    }
+
+    private static void SyncStartStopGreetingMetadata(
+        EditableRoutePackage package,
+        JsonObject root,
+        LocalWorkspaceStore? workspace)
+    {
+        var needsGreeting = package.StopsByRoute.Values
+            .SelectMany(stops => stops)
+            .Any(s => s.PlayStartStopGreeting);
+
+        if (!needsGreeting)
+        {
+            root.Remove(StartStopGreetingResolver.Part1RootJsonFieldName);
+            root.Remove(StartStopGreetingResolver.Part1SequenceRootJsonFieldName);
+            root.Remove(StartStopGreetingResolver.Part2RootJsonFieldName);
+            root.Remove(StartStopGreetingResolver.SondergongRootJsonFieldName);
             return;
         }
 
-        var fileName = EndStopAnnouncementResolver.TryResolveEmbeddedFileName(
+        if (StartStopGreetingResolver.Part1UsesSequencePlayback(package.AnnouncementTemplates))
+        {
+            var sequence = StartStopGreetingResolver.TryGetPart1Sequence(package.AnnouncementTemplates);
+            root[StartStopGreetingResolver.Part1SequenceRootJsonFieldName] =
+                AnnouncementSequenceExport.WriteSequenceJson(sequence);
+            root.Remove(StartStopGreetingResolver.Part1RootJsonFieldName);
+        }
+        else
+        {
+            root.Remove(StartStopGreetingResolver.Part1SequenceRootJsonFieldName);
+            var part1 = StartStopGreetingResolver.TryResolvePart1FileName(
+                package.AnnouncementTemplates,
+                root,
+                workspace);
+            if (string.IsNullOrWhiteSpace(part1))
+            {
+                root.Remove(StartStopGreetingResolver.Part1RootJsonFieldName);
+            }
+            else
+            {
+                root[StartStopGreetingResolver.Part1RootJsonFieldName] = part1;
+            }
+        }
+
+        var part2 = StartStopGreetingResolver.TryResolvePart2FileName(
             package.AnnouncementTemplates,
             root,
             workspace);
-
-        if (string.IsNullOrWhiteSpace(fileName))
+        if (string.IsNullOrWhiteSpace(part2))
         {
-            root.Remove(EndStopAnnouncementResolver.RootJsonFieldName);
-            return;
+            root.Remove(StartStopGreetingResolver.Part2RootJsonFieldName);
+        }
+        else
+        {
+            root[StartStopGreetingResolver.Part2RootJsonFieldName] = part2;
         }
 
-        root[EndStopAnnouncementResolver.RootJsonFieldName] = fileName;
+        var sondergong = StartStopGreetingResolver.TryResolveSondergongFileName(
+            AppServices.IsInitialized ? AppServices.PlanerAppSettings?.Load() : null);
+        if (string.IsNullOrWhiteSpace(sondergong))
+        {
+            root.Remove(StartStopGreetingResolver.SondergongRootJsonFieldName);
+        }
+        else
+        {
+            root[StartStopGreetingResolver.SondergongRootJsonFieldName] = sondergong.Trim();
+        }
     }
 
     /// <summary>
@@ -457,6 +548,8 @@ public static class GpsAnsagenRouteExportSync
         RouteMainDeviceOnlyEditor.SaveToRoot(root, packageRoutes, package.RoutesMainDeviceOnly);
         AutoScheduleSourceRouteEditor.SaveToRoot(root, packageRoutes, package.AutoScheduleSourceByRoute);
         SyncLiteVehiclePhoneMetadata(package, root);
+        SyncStartStopGreetingMetadata(package, root, workspace);
+        SyncEndStopAnnouncementMetadata(package, root, workspace);
     }
 
     private static void SyncLiteVehiclePhoneMetadata(EditableRoutePackage package, JsonObject root)

@@ -1412,8 +1412,27 @@ public sealed class EditableRoutePackage
         IEnumerable<ManagedAnnouncementTemplateItem> templates,
         LocalWorkspaceStore? workspace = null)
     {
+        // LocalAudioPath gilt nur für die Hauptdatei – Sequenz-Bausteine (z. B. Final Stop)
+        // dürfen nicht mit demselben Pfad unter fremdem Namen überschrieben werden.
         SyncEmbeddedSoundsFromFileNames(
-            templates.Select(t => ((string?)t.EmbeddedSoundFileName, t.LocalAudioPath)),
+            templates.SelectMany(t =>
+            {
+                var sondergong = PlanerSondergongSoundResolver.ConfiguredFileName(
+                    AppServices.IsInitialized ? AppServices.PlanerAppSettings?.Load() : null);
+                var names = AnnouncementSequenceExport
+                    .CollectReferencedFileNames(t, sondergong)
+                    .ToList();
+                if (names.Count == 0 && !string.IsNullOrWhiteSpace(t.EmbeddedSoundFileName))
+                {
+                    names.Add(t.EmbeddedSoundFileName.Trim());
+                }
+
+                return names.Select(name => (
+                    (string?)name,
+                    string.Equals(name, t.EmbeddedSoundFileName, StringComparison.OrdinalIgnoreCase)
+                        ? t.LocalAudioPath
+                        : null));
+            }),
             workspace);
     }
 
@@ -1477,7 +1496,18 @@ public sealed class EditableRoutePackage
         IEnumerable<ManagedAnnouncementTemplateItem> templates,
         LocalWorkspaceStore? workspace = null) =>
         NeedsEmbeddedSoundMaterialization(
-            templates.Select(t => ((string?)t.EmbeddedSoundFileName, t.LocalAudioPath)),
+            templates.SelectMany(t => AnnouncementSequenceExport
+                .CollectReferencedFileNames(
+                    t,
+                    PlanerSondergongSoundResolver.ConfiguredFileName(
+                        AppServices.IsInitialized ? AppServices.PlanerAppSettings?.Load() : null))
+                .Select(name => (
+                    (string?)name,
+                    // Nur die Hauptdatei darf LocalAudioPath nutzen – sonst landet z. B.
+                    // Final-Stop-Inhalt unter 0091_Fahrtende.wav.
+                    string.Equals(name, t.EmbeddedSoundFileName, StringComparison.OrdinalIgnoreCase)
+                        ? t.LocalAudioPath
+                        : null))),
             workspace);
 
     private void SyncEmbeddedSoundsFromFileNames(
@@ -1538,6 +1568,13 @@ public sealed class EditableRoutePackage
         try
         {
             var target = Path.Combine(PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(workspace), fileName);
+            var sourceFullPath = Path.GetFullPath(sourcePath);
+            var targetFullPath = Path.GetFullPath(target);
+            if (string.Equals(sourceFullPath, targetFullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             File.Copy(sourcePath, target, overwrite: true);
         }
         catch

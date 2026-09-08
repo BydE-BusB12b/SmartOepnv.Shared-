@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace SmartOepnv.Core.Dropbox;
 
 public static class DropboxConstants
@@ -21,7 +23,7 @@ public static class DropboxConstants
             return DefaultFolderPath;
         }
 
-        var trimmed = path.Trim();
+        var trimmed = path.Trim().Normalize(NormalizationForm.FormC);
         if (!trimmed.StartsWith('/'))
         {
             trimmed = $"/{trimmed}";
@@ -38,6 +40,12 @@ public static class DropboxConstants
         return trimmed;
     }
     public const string RouteFileName = "routes_export.json";
+
+    /// <summary>
+    /// Test-Kanal für ein einzelnes Tablet: Inhalt wie <see cref="RouteFileName"/>,
+    /// aber ohne Auto-Download auf den Fahrzeugen (nur manueller App-Button).
+    /// </summary>
+    public const string RouteTestFileName = "routes_test.json";
 
     /// <summary>
     /// Lokaler Planer-/Leitstelle-Arbeitscache (nicht Dropbox-App-Export).

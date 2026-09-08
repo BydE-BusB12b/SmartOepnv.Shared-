@@ -72,10 +72,8 @@ public static class DropboxSyncFolderLocator
     /// </summary>
     public static string? TryResolveHamblochExportFolder()
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        foreach (var dropboxRoot in GetDropboxRoots(home))
+        foreach (var path in EnumerateHamblochSubfolderPaths("Export"))
         {
-            var path = Path.Combine(dropboxRoot, "Verkehrsbetrieb Hambloch", "Export");
             if (Directory.Exists(path))
             {
                 return path;
@@ -83,6 +81,31 @@ public static class DropboxSyncFolderLocator
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Lokal synchronisierter Ordner „Verkehrsbetrieb Hambloch/Ansagen“ (Standard-Töne wie Nach.wav).
+    /// </summary>
+    public static string? TryResolveHamblochAnsagenFolder()
+    {
+        foreach (var path in EnumerateHamblochSubfolderPaths("Ansagen"))
+        {
+            if (Directory.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> EnumerateHamblochSubfolderPaths(string subfolder)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        foreach (var dropboxRoot in GetDropboxRoots(home))
+        {
+            yield return Path.Combine(dropboxRoot, "Verkehrsbetrieb Hambloch", subfolder);
+        }
     }
 
     private static string NormalizeRelativeFolder(string? configuredApiFolderPath)

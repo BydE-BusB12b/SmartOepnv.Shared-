@@ -19,10 +19,26 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="MergedAnnouncementListBoxItemStyle" TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Margin" Value="0,0,0,2" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMergedAnnouncement}" Value="True">
+                    <Setter Property="Background" Value="#4DFFEB3B" />
+                    <Setter Property="BorderBrush" Value="#99FFEB3B" />
+                    <Setter Property="BorderThickness" Value="1" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
+    <TabControl Margin="0,2,0,4" VerticalAlignment="Stretch"
+                SelectedIndex="{Binding SelectedLibraryTabIndex}">
+        <TabItem Header="Kartei">
     <!-- Kein äußerer ScrollViewer: Kartei-Liste scrollt separat in der linken Spalte -->
-    <Grid Margin="0,2,0,4" VerticalAlignment="Stretch">
+    <Grid Margin="0" VerticalAlignment="Stretch">
 
         <Grid.ColumnDefinitions>
 
@@ -46,17 +62,19 @@
 
                     <TextBlock Text="Ansagen-Kartei"
 
-                               FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
-
-                    <TextBlock Text="Jede Ansage hat eine 4-stellige ID. Beschreibung z. B. „Endhaltestelle“.&#10;✓ Ton zugeordnet   ·   ⚠ noch keine Tondatei"
-
-                               Opacity="0.65" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
+                               FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8" />
 
                     <TextBox materialDesign:HintAssist.Hint="Suchen (Ansagen-ID, Bezeichnung, Beschreibung, Linie)"
 
                              Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
 
-                             Margin="0,0,0,10" />
+                             Margin="0,0,0,6" />
+
+                    <TextBlock Text="✓ Ton zugeordnet   ·   ⚠ keine Tondatei   ·   Gelb = Zusammenfüge-Ansage (_zusammen)"
+                               Opacity="0.65"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6" />
 
                 </StackPanel>
 
@@ -72,71 +90,59 @@
 
                             Margin="0,0,0,6"
 
-                            Padding="10,6"
+                            Padding="10,6" />
 
-                            ToolTip="Fügt Tonsequenz zusammen und schreibt Ansagen ins routes_export.json" />
+                    <Button Content="Sounddatei Update"
 
-                    <Button Content="Ordner Rohdateien öffnen"
-
-                            Command="{Binding OpenRawSoundsFolderCommand}"
+                            Command="{Binding SoundFileUpdateCommand}"
 
                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
                             Margin="0,0,0,4"
 
-                            Padding="10,4"
+                            Padding="10,4" />
 
-                            ToolTip="Workspace-Ordner ansagen_roh – Binärdateien werden über planer_ansagen_roh/ in Dropbox synchronisiert (nicht routes_export.json)" />
+                    <Button Content="Duplikate prüfen"
 
-                    <Button Content="Aus Rohdateien übernehmen"
-
-                            Command="{Binding ImportFromRawSoundsFolderCommand}"
+                            Command="{Binding CheckDuplicateAnnouncementsCommand}"
 
                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
                             Margin="0,0,0,4"
 
-                            Padding="10,4"
+                            Padding="10,4" />
 
-                            ToolTip="Legt für jede neue MP3/WAV/OGG im Rohdateien-Ordner eine Ansage an" />
+                    <Grid Margin="0,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
 
-                    <Button Content="Neue Ansage mit Tondatei"
+                    <Button Grid.Column="0"
+
+                            Content="Neue Ansage"
 
                             Command="{Binding AddAnnouncementWithAudioCommand}"
 
                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
-                            Margin="0,0,0,4"
+                            Margin="0,0,4,0"
 
                             Padding="10,4" />
 
-                    <Button Content="Neue Ansage (ohne Ton)"
+                    <Button Grid.Column="1"
 
-                            Command="{Binding AddAnnouncementCommand}"
-
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-
-                            Margin="0,0,0,4"
-
-                            Padding="10,4" />
-
-                    <Button Content="Ansage duplizieren"
-
-                            Command="{Binding DuplicateAnnouncementCommand}"
-
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-
-                            Margin="0,0,0,4"
-
-                            Padding="10,4" />
-
-                    <Button Content="Ansage löschen"
+                            Content="Ansage löschen"
 
                             Command="{Binding RemoveAnnouncementCommand}"
 
                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
+                            Margin="4,0,0,0"
+
                             Padding="10,4" />
+
+                    </Grid>
 
                 </StackPanel>
 
@@ -145,6 +151,8 @@
                 <ListBox ItemsSource="{Binding FilteredAnnouncements}"
 
                          SelectedItem="{Binding SelectedAnnouncement}"
+
+                         ItemContainerStyle="{StaticResource MergedAnnouncementListBoxItemStyle}"
 
                          BorderThickness="1"
 
@@ -163,22 +171,6 @@
                          VirtualizingPanel.IsVirtualizing="True"
 
                          VirtualizingPanel.VirtualizationMode="Recycling">
-
-                    <ListBox.ItemContainerStyle>
-
-                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
-
-                            <Setter Property="Padding" Value="8,3" />
-
-                            <Setter Property="Margin" Value="0,0,0,2" />
-
-                            <Setter Property="MinHeight" Value="0" />
-
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-
-                        </Style>
-
-                    </ListBox.ItemContainerStyle>
 
                     <ListBox.ItemTemplate>
 
@@ -298,93 +290,112 @@
 
                                 <RowDefinition Height="Auto" />
 
-                                <RowDefinition Height="Auto" />
-
-                                <RowDefinition Height="Auto" />
-
-                                <RowDefinition Height="Auto" />
-
-                                <RowDefinition Height="Auto" />
-
                             </Grid.RowDefinitions>
 
 
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Ansagen-ID (4 Ziffern):"
+                            <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,10">
 
-                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" MinWidth="180" />
+                                <Grid.ColumnDefinitions>
 
-                            <TextBox Grid.Row="0" Grid.Column="1"
+                                    <ColumnDefinition Width="Auto" />
 
-                                     Text="{Binding AnnouncementCode, UpdateSourceTrigger=PropertyChanged}"
+                                    <ColumnDefinition Width="72" />
 
-                                     MaxLength="4" Margin="0,0,0,10" />
+                                    <ColumnDefinition Width="Auto" />
+
+                                    <ColumnDefinition Width="*" MinWidth="100" />
+
+                                    <ColumnDefinition Width="Auto" />
+
+                                    <ColumnDefinition Width="Auto" MinWidth="110" />
+
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Ansagen-ID:"
+
+                                           VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.9" />
+
+                                <TextBox Grid.Column="1"
+
+                                         Text="{Binding AnnouncementCode, UpdateSourceTrigger=PropertyChanged}"
+
+                                         MaxLength="4" Margin="0,0,12,0" />
+
+                                <TextBlock Grid.Column="2" Text="Bezeichnung:"
+
+                                           VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.9" />
+
+                                <TextBox Grid.Column="3"
+
+                                         Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
+
+                                         Margin="0,0,12,0" />
+
+                                <TextBlock Grid.Column="4" Text="Kategorie:"
+
+                                           VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.9" />
+
+                                <ComboBox Grid.Column="5"
+
+                                          ItemsSource="{Binding DataContext.Categories, RelativeSource={RelativeSource AncestorType=UserControl}}"
+
+                                          SelectedItem="{Binding Category, UpdateSourceTrigger=PropertyChanged}"
+
+                                          MinWidth="110" />
+
+                            </Grid>
 
 
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Bezeichnung:"
+                            <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,10">
+
+                                <Grid.ColumnDefinitions>
+
+                                    <ColumnDefinition Width="Auto" />
+
+                                    <ColumnDefinition Width="*" MinWidth="120" />
+
+                                    <ColumnDefinition Width="12" />
+
+                                    <ColumnDefinition Width="Auto" />
+
+                                    <ColumnDefinition Width="*" MinWidth="160" />
+
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Beschreibung:"
+
+                                           VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.9" />
+
+                                <TextBox Grid.Column="1"
+
+                                         Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+
+                                         VerticalAlignment="Center" />
+
+                                <TextBlock Grid.Column="3" Text="Linien:"
+
+                                           VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.9" />
+
+                                <TextBox Grid.Column="4"
+
+                                         Text="{Binding Lines, UpdateSourceTrigger=PropertyChanged}"
+
+                                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40"
+
+                                         materialDesign:HintAssist.Hint="z. B. SB19, NE4, 682 (kommagetrennt)"
+                                         VerticalAlignment="Center" />
+
+                            </Grid>
+
+
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Sonderansagen:"
 
                                        VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
 
-                            <TextBox Grid.Row="1" Grid.Column="1"
-
-                                     Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
-
-                                     Margin="0,0,0,10" />
-
-
-
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Kategorie:"
-
-                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
-
-                            <ComboBox Grid.Row="2" Grid.Column="1"
-
-                                      ItemsSource="{Binding DataContext.Categories, RelativeSource={RelativeSource AncestorType=UserControl}}"
-
-                                      SelectedItem="{Binding Category, UpdateSourceTrigger=PropertyChanged}"
-
-                                      Margin="0,0,0,10" />
-
-
-
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Beschreibung:"
-
-                                       VerticalAlignment="Top" Margin="0,4,12,10" Opacity="0.9" />
-
-                            <TextBox Grid.Row="3" Grid.Column="1"
-
-                                     Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
-
-                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"
-
-                                     Margin="0,0,0,10" />
-
-
-
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Linien:"
-
-                                       VerticalAlignment="Top" Margin="0,4,12,10" Opacity="0.9" />
-
-                            <TextBox Grid.Row="4" Grid.Column="1"
-
-                                     Text="{Binding Lines, UpdateSourceTrigger=PropertyChanged}"
-
-                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40"
-
-                                     materialDesign:HintAssist.Hint="z. B. SB19, NE4, 682 (kommagetrennt)"
-
-                                     ToolTip="Linien, die diese Ansage nutzen könnten – nur in der Suche, nicht in der Kartei-Liste"
-
-                                     Margin="0,0,0,10" />
-
-
-
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Sonderansagen:"
-
-                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
-
-                            <CheckBox Grid.Row="5" Grid.Column="1"
+                            <CheckBox Grid.Row="2" Grid.Column="1"
 
                                       Content="In Sonderansagen anzeigen (ITCS / Handy-Liste)"
 
@@ -394,11 +405,11 @@
 
 
 
-                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Eingebetteter Ton:"
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Eingebetteter Ton:"
 
                                        VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.9" />
 
-                            <Grid Grid.Row="6" Grid.Column="1">
+                            <Grid Grid.Row="3" Grid.Column="1">
 
                                 <Grid.ColumnDefinitions>
 
@@ -412,9 +423,7 @@
 
                                          Text="{Binding DataContext.SelectedEmbeddedSoundFileName, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=OneWay}"
 
-                                         IsReadOnly="True" Opacity="0.85"
-
-                                         ToolTip="Wird beim Speichern aus der Sequenz erzeugt" />
+                                         IsReadOnly="True" Opacity="0.85" />
 
                                 <Button Grid.Column="1"
 
@@ -429,9 +438,6 @@
                                         Height="28"
 
                                         Margin="6,0,0,0"
-
-                                        ToolTip="Eingebettete Tondatei entfernen"
-
                                         VerticalAlignment="Center" />
 
                             </Grid>
@@ -456,65 +462,79 @@
 
                                 <TextBlock Text="Ton &amp; Import" Foreground="White" FontWeight="SemiBold" Margin="0,0,0,8" />
 
-                                <Button Content="Speichern &amp; JSON"
+                                <Grid Margin="0,0,0,8">
 
-                                        Command="{Binding SaveChangesCommand}"
+                                    <Grid.ColumnDefinitions>
 
-                                        Style="{StaticResource AnnouncementSaveJsonButtonStyle}"
+                                        <ColumnDefinition Width="*" />
 
-                                        Margin="0,0,0,10"
+                                        <ColumnDefinition Width="12" />
 
-                                        Padding="12,6"
+                                        <ColumnDefinition Width="*" />
 
-                                        ToolTip="Sequenz zusammenfügen und ins routes_export.json schreiben" />
+                                    </Grid.ColumnDefinitions>
 
-                                <CheckBox Content="Gong"
+                                    <CheckBox Grid.Column="0"
 
-                                          IsChecked="{Binding IncludeGongInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+                                              Content="Gong"
 
-                                          Foreground="White"
+                                              IsChecked="{Binding IncludeGongInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
 
-                                          Margin="0,0,0,8"
+                                              Foreground="White" />
 
-                                          ToolTip="Hambloch Gong.wav vor die Sequenz setzen" />
+                                    <CheckBox Grid.Column="2"
 
-                                <CheckBox Content="Sondergong"
+                                              Content="Sondergong"
 
-                                          IsChecked="{Binding IncludeSondergongInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+                                              IsChecked="{Binding IncludeSondergongInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
 
-                                          Foreground="White"
+                                              Foreground="White" />
 
-                                          Margin="0,0,0,8"
+                                </Grid>
 
-                                          ToolTip="Sondergong aus den Einstellungen vor die Sequenz setzen (nach Gong)" />
+                                <Grid Margin="0,0,0,8">
 
-                                <CheckBox Content="Nächste Haltestelle einfügen"
+                                    <Grid.ColumnDefinitions>
 
-                                          IsChecked="{Binding IncludeNextStopInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+                                        <ColumnDefinition Width="*" />
 
-                                          Foreground="White"
+                                        <ColumnDefinition Width="12" />
 
-                                          Margin="0,0,0,8"
+                                        <ColumnDefinition Width="*" />
 
-                                          ToolTip="Nächste Haltestelle.wav nach dem Gong (1 s Pause dazwischen)" />
+                                        <ColumnDefinition Width="12" />
 
-                                <CheckBox Content="Next Stop einfügen"
+                                        <ColumnDefinition Width="*" />
 
-                                          IsChecked="{Binding IncludeNextStopMp3InAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+                                    </Grid.ColumnDefinitions>
 
-                                          Foreground="White"
+                                    <CheckBox Grid.Column="0"
 
-                                          Margin="0,0,0,8"
+                                              Content="Nächste Haltestelle einfügen"
 
-                                          ToolTip="Next Stop.mp3 nach Nächste Haltestelle (1 s Pause dazwischen)" />
+                                              IsChecked="{Binding IncludeNextStopInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
 
-                                <TextBlock Text="Endhaltestelle-Ansage: an der gewünschten Haltestelle „Endhaltestellen-Ansage“ aktivieren (unabhängig von Endhaltestelle) – Ton aus dem Kartei-Eintrag „Endhaltestelle“."
-                                           Foreground="White"
-                                           Opacity="0.85"
-                                           TextWrapping="Wrap"
-                                           Margin="0,0,0,8" />
+                                              Foreground="White" />
 
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <CheckBox Grid.Column="2"
+
+                                              Content="Next Stop einfügen"
+
+                                              IsChecked="{Binding IncludeNextStopMp3InAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+
+                                              Foreground="White" />
+
+                                    <CheckBox Grid.Column="4"
+
+                                              Content="Folgende Halte einfügen"
+
+                                              IsChecked="{Binding IncludeFollowingStopsInAnnouncementMerge, UpdateSourceTrigger=PropertyChanged}"
+
+                                              Foreground="White" />
+
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
 
                                     <TextBlock Text="Standard-Pause (Sek.):"
 
@@ -538,29 +558,99 @@
 
                                               Padding="6,4"
 
-                                              VerticalContentAlignment="Center"
-
-                                              ToolTip="Wird beim Hinzufügen weiterer Tondateien automatisch eingefügt" />
+                                              VerticalContentAlignment="Center" />
 
                                 </StackPanel>
 
-                                <Button Content="{Binding PickAudioButtonLabel}"
+                                <StackPanel Margin="0,0,0,10">
 
-                                        Command="{Binding PickAudioFileCommand}"
+                                    <Grid Margin="0,0,0,8">
 
-                                        Style="{StaticResource MaterialDesignRaisedLightButton}"
+                                        <Grid.ColumnDefinitions>
 
-                                        Margin="0,0,0,8" />
+                                            <ColumnDefinition Width="*" />
 
-                                <Button Content="Pause einfügen"
+                                            <ColumnDefinition Width="8" />
 
-                                        Command="{Binding AddPauseToSequenceCommand}"
+                                            <ColumnDefinition Width="*" />
 
-                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                            <ColumnDefinition Width="8" />
 
-                                        Foreground="White"
+                                            <ColumnDefinition Width="*" />
 
-                                        Margin="0,0,0,8" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Button Grid.Column="0"
+
+                                                Content="Speichern &amp; JSON"
+
+                                                Command="{Binding SaveChangesCommand}"
+
+                                                Style="{StaticResource AnnouncementSaveJsonButtonStyle}"
+
+                                                Padding="8,6" />
+
+                                        <Button Grid.Column="2"
+
+                                                Content="Pause einfügen"
+
+                                                Command="{Binding AddPauseToSequenceCommand}"
+
+                                                Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                                Foreground="White"
+
+                                                Padding="8,6" />
+
+                                        <Button Grid.Column="4"
+
+                                                Content="Begrüßung Linie/Ziel"
+
+                                                Command="{Binding AddGreetingLineDestinationPackageCommand}"
+
+                                                Style="{StaticResource MaterialDesignOutlinedButton}"
+
+                                                Foreground="White"
+
+                                                Padding="8,6" />
+
+                                    </Grid>
+
+                                    <Grid>
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*" />
+
+                                            <ColumnDefinition Width="8" />
+
+                                            <ColumnDefinition Width="*" />
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <Button Grid.Column="0"
+
+                                                Content="{Binding PickAudioButtonLabel}"
+
+                                                Command="{Binding PickAudioFileCommand}"
+
+                                                Style="{StaticResource MaterialDesignRaisedLightButton}"
+
+                                                Padding="8,6" />
+
+                                        <Button Grid.Column="2"
+
+                                                Content="Vorschau abspielen"
+
+                                                Command="{Binding PlayAnnouncementPreviewCommand}"
+
+                                                Style="{StaticResource MaterialDesignRaisedLightButton}"
+
+                                                Padding="8,6" />
+
+                                    </Grid>
+
+                                </StackPanel>
 
                                 <TextBlock Text="Tonsequenz (Reihenfolge)"
 
@@ -602,9 +692,7 @@
 
                                             MinWidth="36"
 
-                                            Margin="0,0,6,0"
-
-                                            ToolTip="Nach oben" />
+                                            Margin="0,0,6,0" />
 
                                     <Button Content="↓"
 
@@ -616,9 +704,7 @@
 
                                             MinWidth="36"
 
-                                            Margin="0,0,6,0"
-
-                                            ToolTip="Nach unten" />
+                                            Margin="0,0,6,0" />
 
                                     <Button Content="Ersetzen"
 
@@ -630,9 +716,7 @@
 
                                             MinWidth="72"
 
-                                            Margin="0,0,6,0"
-
-                                            ToolTip="Tondatei ersetzen" />
+                                            Margin="0,0,6,0" />
 
                                     <Button Content="Löschen"
 
@@ -642,9 +726,7 @@
 
                                             Foreground="White"
 
-                                            MinWidth="72"
-
-                                            ToolTip="Eintrag entfernen" />
+                                            MinWidth="72" />
 
                                 </StackPanel>
 
@@ -682,30 +764,6 @@
 
                                 </StackPanel>
 
-                                <Button Content="Vorschau abspielen"
-
-                                        Command="{Binding PlayAnnouncementPreviewCommand}"
-
-                                        Style="{StaticResource MaterialDesignRaisedLightButton}"
-
-                                        Margin="0,0,0,8"
-
-                                        ToolTip="Gong + Sequenz anhören – ohne Speichern" />
-
-                                <Button Content="Aus Routen importieren"
-
-                                        Command="{Binding ImportFromRoutesCommand}"
-
-                                        Style="{StaticResource MaterialDesignOutlinedButton}"
-
-                                        Margin="0,0,0,6" />
-
-                                <Button Content="Aus embeddedSounds importieren"
-
-                                        Command="{Binding ImportFromEmbeddedSoundsListCommand}"
-
-                                        Style="{StaticResource MaterialDesignOutlinedButton}" />
-
                             </StackPanel>
 
                         </materialDesign:Card>
@@ -719,5 +777,91 @@
         </materialDesign:Card>
 
         </Grid>
+        </TabItem>
+
+        <TabItem Header="Spezialbausteine">
+            <Grid Margin="0,4,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="380" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <materialDesign:Card Grid.Column="0" Margin="0,0,12,0" Padding="16" UniformCornerRadius="12"
+                                     Background="{StaticResource SmartSurfaceBrush}" VerticalAlignment="Stretch">
+                    <DockPanel LastChildFill="True">
+                        <StackPanel DockPanel.Dock="Top">
+                            <TextBlock Text="Spezialbausteine" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
+                            <TextBlock Text="Feste Bausteine + Linien aus Routen. Fehlende Töne über „Ton hinzufügen…“ – ohne Haltestellenansage."
+                                       Opacity="0.65" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding SpecialBuildingBlocksSummary}" Opacity="0.85" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                            <Button Content="Ton hinzufügen…" Command="{Binding AddLineSpecialBuildingBlockCommand}"
+                                    Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,0,4" Padding="10,4" />
+                            <Button Content="Aus Liste entfernen" Command="{Binding RemoveSelectedSpecialBuildingBlockCommand}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,0,4" Padding="10,4"
+                                    IsEnabled="{Binding CanRemoveSelectedSpecialBuildingBlock}" />
+                            <Button Content="Liste aktualisieren" Command="{Binding RefreshSpecialBuildingBlocksListCommand}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,0,4" Padding="10,4" />
+                            <Button Content="Vorhandene in embeddedSounds übernehmen" Command="{Binding StageAllPresentSpecialBuildingBlocksCommand}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,0,4" Padding="10,4" />
+                            <Button Content="Ordner Rohdateien öffnen" Command="{Binding OpenRawSoundsFolderCommand}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}" Padding="10,4" />
+                        </StackPanel>
+                        <ListBox ItemsSource="{Binding SpecialBuildingBlocks}" SelectedItem="{Binding SelectedSpecialBuildingBlock}"
+                                 BorderThickness="1" BorderBrush="#334155" Background="Transparent"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+                                    <Setter Property="Padding" Value="8,4" />
+                                    <Setter Property="Margin" Value="0,0,0,2" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding DisplayLabel}" FontSize="12" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Description}" FontSize="10" Opacity="0.6" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </materialDesign:Card>
+                <materialDesign:Card Grid.Column="1" Padding="16" UniformCornerRadius="12"
+                                     Background="{StaticResource SmartSurfaceBrush}" VerticalAlignment="Stretch">
+                    <StackPanel DataContext="{Binding SelectedSpecialBuildingBlock}">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Baustein bearbeiten" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,12" />
+                        <TextBlock Text="Bezeichnung" Opacity="0.7" FontSize="11" />
+                        <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" />
+                        <TextBlock Text="Dateiname (fest)" Opacity="0.7" FontSize="11" />
+                        <TextBlock Text="{Binding FileName}" FontSize="14" Margin="0,0,0,10" />
+                        <TextBlock Text="Status" Opacity="0.7" FontSize="11" />
+                        <TextBlock Text="{Binding StatusLabel}" FontSize="14" Margin="0,0,0,10" />
+                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,16" />
+                        <Button Content="Tondatei zuweisen…"
+                                Command="{Binding DataContext.AssignSpecialBuildingBlockFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,0,8" Padding="10,6" />
+                        <Button Content="Anhören"
+                                Command="{Binding DataContext.PlaySpecialBuildingBlockCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,0,8" Padding="10,6" />
+                        <Button Content="Im Explorer zeigen"
+                                Command="{Binding DataContext.RevealSpecialBuildingBlockCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" Padding="10,6" />
+                    </StackPanel>
+                </materialDesign:Card>
+            </Grid>
+        </TabItem>
+
+    </TabControl>
 
 </UserControl>

@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using SmartOepnv.Core;
+using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.Core.Dropbox;
 
@@ -153,7 +154,9 @@ public sealed class DropboxApiClient
             if (folderMeta is null)
             {
                 result.Success = false;
-                result.Message = $"Ordner nicht gefunden: {folderPath}";
+                result.Message =
+                    $"Ordner nicht gefunden: {folderPath}\n" +
+                    "Bitte Pfad und verbundenen Dropbox-Account prüfen („Dropbox einrichten“).";
                 return result;
             }
 
@@ -673,6 +676,7 @@ public sealed class DropboxApiClient
         CancellationToken ct,
         IProgress<DropboxTransferProgress>? progress = null)
     {
+        jsonContent = EnsureVehiclePackageVersionStamp(fileName, jsonContent);
         Exception? lastError = null;
         for (var attempt = 1; attempt <= DropboxConstants.UploadMaxAttempts; attempt++)
         {
@@ -698,6 +702,33 @@ public sealed class DropboxApiClient
         {
             throw lastError;
         }
+    }
+
+    /// <summary>
+    /// routes_export / routes_update ohne packageVersion nachträglich stempeln
+    /// (z. B. alter Datei-Export). Vorhandene Versionen bleiben unverändert.
+    /// </summary>
+    private static string EnsureVehiclePackageVersionStamp(string fileName, string jsonContent)
+    {
+        if (string.IsNullOrWhiteSpace(jsonContent) || string.IsNullOrWhiteSpace(fileName))
+        {
+            return jsonContent;
+        }
+
+        RoutePackageVersionStamp.Kind? kind = null;
+        if (string.Equals(fileName, DropboxConstants.RouteFileName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(fileName, DropboxConstants.RouteTestFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            kind = RoutePackageVersionStamp.Kind.Export;
+        }
+        else if (string.Equals(fileName, DropboxConstants.RouteUpdateFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            kind = RoutePackageVersionStamp.Kind.Update;
+        }
+
+        return kind is null
+            ? jsonContent
+            : RoutePackageVersionStamp.EnsureStamped(jsonContent, kind.Value);
     }
 
     private async Task UploadNamedFileInternalOnceAsync(
@@ -1397,15 +1428,45 @@ public sealed class DropboxApiClient
 
     private async Task<DropboxFileMetadata?> GetMetadataAsync(string path, string token, CancellationToken ct)
     {
-        using var request = CreateJsonPost(DropboxConstants.GetMetadataUrl,
-            JsonSerializer.Serialize(new { path }), token);
-        using var response = await _http.SendAsync(request, ct);
-        if (!response.IsSuccessStatusCode)
+        return await GetMetadataCoreAsync(path, token, ct, allowTokenRefresh: true).ConfigureAwait(false);
+    }
+
+    private async Task<DropboxFileMetadata?> GetMetadataCoreAsync(
+        string path,
+        string token,
+        CancellationToken ct,
+        bool allowTokenRefresh)
+    {
+        using var request = CreateJsonPost(
+            DropboxConstants.GetMetadataUrl,
+            JsonSerializer.Serialize(new { path }),
+            token);
+        using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
-            return null;
+            if (allowTokenRefresh && await RefreshAccessTokenAsync(ct).ConfigureAwait(false))
+            {
+                return await GetMetadataCoreAsync(path, Settings.AccessToken!, ct, allowTokenRefresh: false)
+                    .ConfigureAwait(false);
+            }
+
+            throw new InvalidOperationException(
+                "Dropbox-Zugriff abgelaufen – bitte unter „Dropbox einrichten“ erneut verbinden.");
         }
 
-        var json = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            if (IsDropboxPathNotFound(errorBody))
+            {
+                return null;
+            }
+
+            throw new InvalidOperationException(FormatDropboxApiError(path, response.StatusCode, errorBody));
+        }
+
+        var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
         DateTime? modified = null;
@@ -1424,6 +1485,30 @@ public sealed class DropboxApiClient
         }
 
         return new DropboxFileMetadata(modified, size, contentHash);
+    }
+
+    private static bool IsDropboxPathNotFound(string errorBody)
+    {
+        if (string.IsNullOrWhiteSpace(errorBody))
+        {
+            return false;
+        }
+
+        return errorBody.Contains("path/not_found", StringComparison.OrdinalIgnoreCase) ||
+               errorBody.Contains("\"not_found\"", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatDropboxApiError(
+        string path,
+        System.Net.HttpStatusCode statusCode,
+        string errorBody)
+    {
+        var detail = string.IsNullOrWhiteSpace(errorBody)
+            ? statusCode.ToString()
+            : errorBody.Length <= 240
+                ? errorBody
+                : errorBody[..240] + "…";
+        return $"Dropbox-API-Fehler ({(int)statusCode}) für „{path}“: {detail}";
     }
 
     private async Task<IReadOnlyList<string>> ListFileNamesAsync(string folderPath, string token, CancellationToken ct)
