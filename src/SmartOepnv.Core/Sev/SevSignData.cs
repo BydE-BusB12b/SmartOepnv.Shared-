@@ -6,6 +6,11 @@ public sealed class SevSignData
 
     public required string Destination { get; init; }
 
+    /// <summary>Nur Variante 2; leer = erste Haltestelle.</summary>
+    public string StartStation { get; init; } = string.Empty;
+
+    public SevDestinationVariant DestinationVariant { get; init; } = SevDestinationVariant.DestinationOnly;
+
     public required IReadOnlyList<string> Stops { get; init; }
 
     public IReadOnlyList<SevOperatorKind> Operators { get; init; } = [SevOperatorKind.RegioBahn];
@@ -17,6 +22,23 @@ public sealed class SevSignData
     public (string Line1, string Line2) DestinationLines => SplitDestination(Destination);
 
     public SevDestinationLayout DestinationLayout => SevDestinationLayout.FromDestination(Destination);
+
+    public bool IsStartDestinationVariant =>
+        DestinationVariant == SevDestinationVariant.StartAndDestination;
+
+    public string ResolveStartStation()
+    {
+        var explicitStart = StartStation.Trim();
+        if (explicitStart.Length > 0)
+        {
+            return explicitStart;
+        }
+
+        return Stops
+            .Select(s => s.Trim())
+            .FirstOrDefault(s => s.Length > 0)
+            ?? string.Empty;
+    }
 
     public static string FormatLine(string raw)
     {

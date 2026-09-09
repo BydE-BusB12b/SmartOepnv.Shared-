@@ -820,6 +820,8 @@ public sealed class PlanerWorkspaceService
         UpdatedAtUtcMs = draft.UpdatedAtUtcMs,
         Line = draft.Line,
         Destination = draft.Destination,
+        StartStation = draft.StartStation,
+        DestinationVariant = draft.DestinationVariant,
         Stops = draft.Stops.ToList(),
         Operators = draft.Operators.ToList(),
         SourceRoute = draft.SourceRoute,
