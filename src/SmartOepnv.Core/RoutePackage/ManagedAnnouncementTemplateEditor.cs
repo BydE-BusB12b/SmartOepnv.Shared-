@@ -129,6 +129,7 @@ public static class ManagedAnnouncementTemplateEditor
             Lines = obj["lines"]?.GetValue<string>() ?? string.Empty,
             Category = obj["category"]?.GetValue<string>() ?? "haltestelle",
             EmbeddedSoundFileName = obj["embeddedSoundFileName"]?.GetValue<string>() ?? string.Empty,
+            AudioOutput = AnnouncementAudioOutput.Normalize(obj["audioOutput"]?.GetValue<string>()),
             IncludeInSpecialAnnouncements = obj["includeInSpecialAnnouncements"]?.GetValue<bool>() ?? false,
             IncludeGong = obj["includeGong"]?.GetValue<bool>() ?? false,
             IncludeSondergong = obj["includeSondergong"]?.GetValue<bool>() ?? false,
@@ -262,6 +263,7 @@ public static class ManagedAnnouncementTemplateEditor
             ["lines"] = t.Lines,
             ["category"] = string.IsNullOrWhiteSpace(t.Category) ? "haltestelle" : t.Category,
             ["embeddedSoundFileName"] = t.EmbeddedSoundFileName,
+            ["audioOutput"] = AnnouncementAudioOutput.Normalize(t.AudioOutput),
             ["includeInSpecialAnnouncements"] = t.IncludeInSpecialAnnouncements
         };
 

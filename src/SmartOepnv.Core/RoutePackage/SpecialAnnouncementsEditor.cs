@@ -59,7 +59,8 @@ public static class SpecialAnnouncementsEditor
                 ["id"] = t.Id,
                 ["name"] = name,
                 ["isEmbedded"] = true,
-                ["fileName"] = fileName
+                ["fileName"] = fileName,
+                ["audioOutput"] = AnnouncementAudioOutput.Normalize(t.AudioOutput)
             };
 
             if (sounds.TryGetValue(fileName, out var audio))

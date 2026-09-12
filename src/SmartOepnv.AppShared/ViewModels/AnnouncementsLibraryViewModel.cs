@@ -334,6 +334,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
                 a.EmbeddedSoundFileName,
 
+                a.AudioOutput,
+
                 a.IncludeInSpecialAnnouncements,
 
                 a.LocalAudioPath
@@ -383,6 +385,9 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
             SaveJsonButtonIsSuccess = false;
         }
     }
+
+    /// <summary>UI-Aktionen (z. B. Lautsprecher-Zyklus), die nicht über Binding laufen.</summary>
+    internal void MarkDirtyFromUi() => MarkDirty();
 
     private async Task ShowSaveSuccessFeedbackAsync()
     {
@@ -2125,6 +2130,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         Category = source.Category,
 
         EmbeddedSoundFileName = source.EmbeddedSoundFileName,
+
+        AudioOutput = AnnouncementAudioOutput.Normalize(source.AudioOutput),
 
         IncludeInSpecialAnnouncements = source.IncludeInSpecialAnnouncements,
 

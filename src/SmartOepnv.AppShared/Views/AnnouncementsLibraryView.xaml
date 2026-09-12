@@ -290,6 +290,8 @@
 
                                 <RowDefinition Height="Auto" />
 
+                                <RowDefinition Height="Auto" />
+
                             </Grid.RowDefinitions>
 
 
@@ -405,11 +407,41 @@
 
 
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Eingebetteter Ton:"
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Lautsprecher:"
+
+                                       VerticalAlignment="Center" Margin="0,0,12,10" Opacity="0.9" />
+
+                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+
+                                <Button MinWidth="100"
+
+                                        Padding="12,4"
+
+                                        Content="{Binding AudioOutputLabel}"
+
+                                        ToolTip="Klick: Innen → Außen → Beide (Stereo L/R am Tablet)"
+
+                                        Click="CycleAudioOutput_OnClick" />
+
+                                <TextBlock Text="Klick wechselt Innen / Außen / Beide"
+
+                                           VerticalAlignment="Center"
+
+                                           Margin="12,0,0,0"
+
+                                           Opacity="0.7"
+
+                                           FontSize="12" />
+
+                            </StackPanel>
+
+
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Eingebetteter Ton:"
 
                                        VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.9" />
 
-                            <Grid Grid.Row="3" Grid.Column="1">
+                            <Grid Grid.Row="4" Grid.Column="1">
 
                                 <Grid.ColumnDefinitions>
 

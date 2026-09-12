@@ -30,6 +30,35 @@ public sealed class ManagedAnnouncementTemplateItem : INotifyPropertyChanged
 
     public string EmbeddedSoundFileName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Stereo-Zone Tablet: innen | aussen | beide (Default innen).
+    /// Wirksam nur wenn auf dem Gerät „Stereo-Zonen“ aktiv ist.
+    /// </summary>
+    private string _audioOutput = AnnouncementAudioOutput.Inside;
+
+    public string AudioOutput
+    {
+        get => _audioOutput;
+        set
+        {
+            var normalized = AnnouncementAudioOutput.Normalize(value);
+            if (_audioOutput == normalized)
+            {
+                return;
+            }
+
+            _audioOutput = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AudioOutputLabel));
+            OnPropertyChanged(nameof(DisplayLabel));
+        }
+    }
+
+    public string AudioOutputLabel => AnnouncementAudioOutput.ToLabel(AudioOutput);
+
+    public void CycleAudioOutput() =>
+        AudioOutput = AnnouncementAudioOutput.Next(AudioOutput);
+
     /// <summary>In Sonderansagen-Listen (ITCS) anzeigen – entspricht Android-Slider.</summary>
     public bool IncludeInSpecialAnnouncements { get; set; }
 
@@ -74,7 +103,9 @@ public sealed class ManagedAnnouncementTemplateItem : INotifyPropertyChanged
         var desc = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim();
         var prefix = hasAudio ? "✓ " : "⚠ ";
         var title = desc is null ? name : $"{name} – {desc}";
-        return string.IsNullOrEmpty(code) ? $"{prefix}{title}" : $"{prefix}{code} – {title}";
+        var zone = AudioOutputLabel;
+        var baseLabel = string.IsNullOrEmpty(code) ? $"{prefix}{title}" : $"{prefix}{code} – {title}";
+        return $"{baseLabel} · {zone}";
     }
 
     public static string NormalizeCode(string? raw)
