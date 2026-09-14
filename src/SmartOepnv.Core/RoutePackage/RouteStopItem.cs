@@ -34,6 +34,9 @@ public sealed class RouteStopItem
     public string ZielnummerDestination { get; set; } = string.Empty;
     public string ZielnummerDestinationId { get; set; } = string.Empty;
 
+    public string MobitecDestination { get; set; } = string.Empty;
+    public string MobitecDestinationId { get; set; } = string.Empty;
+
     public string LineNumber { get; set; } = string.Empty;
 
     public string EndDestination { get; set; } = string.Empty;
@@ -50,6 +53,9 @@ public sealed class RouteStopItem
 
     public string ZielnummerEndDestination { get; set; } = string.Empty;
     public string ZielnummerEndDestinationId { get; set; } = string.Empty;
+
+    public string MobitecEndDestination { get; set; } = string.Empty;
+    public string MobitecEndDestinationId { get; set; } = string.Empty;
 
     public bool IsEndStop { get; set; }
     /// <summary>Englische Endhaltestellen-Ansage (aktueller Kartei-Eintrag „Endhaltestelle“).</summary>
@@ -128,6 +134,8 @@ public sealed class RouteStopItem
         Ds003aDestinationId = Ds003aDestinationId,
         ZielnummerDestination = ZielnummerDestination,
         ZielnummerDestinationId = ZielnummerDestinationId,
+        MobitecDestination = MobitecDestination,
+        MobitecDestinationId = MobitecDestinationId,
         LineNumber = LineNumber,
         EndDestination = EndDestination,
         EndDestinationId = EndDestinationId,
@@ -139,6 +147,8 @@ public sealed class RouteStopItem
         Ds003aEndDestinationId = Ds003aEndDestinationId,
         ZielnummerEndDestination = ZielnummerEndDestination,
         ZielnummerEndDestinationId = ZielnummerEndDestinationId,
+        MobitecEndDestination = MobitecEndDestination,
+        MobitecEndDestinationId = MobitecEndDestinationId,
         IsEndStop = IsEndStop,
         PlayEndStopAnnouncementEn = PlayEndStopAnnouncementEn,
         PlayEndStopAnnouncementNl = PlayEndStopAnnouncementNl,
@@ -189,6 +199,8 @@ public sealed class RouteStopItem
         Ds003aDestinationId = other.Ds003aDestinationId;
         ZielnummerDestination = other.ZielnummerDestination;
         ZielnummerDestinationId = other.ZielnummerDestinationId;
+        MobitecDestination = other.MobitecDestination;
+        MobitecDestinationId = other.MobitecDestinationId;
         LineNumber = other.LineNumber;
         EndDestination = other.EndDestination;
         EndDestinationId = other.EndDestinationId;
@@ -200,6 +212,8 @@ public sealed class RouteStopItem
         Ds003aEndDestinationId = other.Ds003aEndDestinationId;
         ZielnummerEndDestination = other.ZielnummerEndDestination;
         ZielnummerEndDestinationId = other.ZielnummerEndDestinationId;
+        MobitecEndDestination = other.MobitecEndDestination;
+        MobitecEndDestinationId = other.MobitecEndDestinationId;
         IsEndStop = other.IsEndStop;
         PlayEndStopAnnouncementEn = other.PlayEndStopAnnouncementEn;
         PlayEndStopAnnouncementNl = other.PlayEndStopAnnouncementNl;

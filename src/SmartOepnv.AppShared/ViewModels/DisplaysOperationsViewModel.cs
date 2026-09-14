@@ -598,6 +598,90 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         StatusMessage = "Neue Zielanzeige (Zielnummer) – Zielnummer/Linie/Sonderzeichen anpassen und speichern.";
     }
 
+    [RelayCommand]
+    private void AddOutsideProgramMobitec()
+    {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
+        var program = OutsideDisplayProgram.CreateMobitec($"Ziel {OutsidePrograms.Count + 1}");
+        program.Id = OutsideDisplayId.NewUniqueId(OutsidePrograms.Select(p => p.Id));
+        OutsidePrograms.Add(program);
+        SortOutsidePrograms();
+        SelectedOutsideProgram = program;
+        MarkDirty();
+        StatusMessage = "Neue Zielanzeige (Mobitec) – Linie und Zieltext setzen, speichern, exportieren.";
+    }
+
+    [RelayCommand]
+    private void AddOutsideProgramMobitecSmile()
+    {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
+        var program = OutsideDisplayProgram.CreateMobitecSmile();
+        program.Id = OutsideDisplayId.NewUniqueId(OutsidePrograms.Select(p => p.Id));
+        OutsidePrograms.Add(program);
+        SortOutsidePrograms();
+        SelectedOutsideProgram = program;
+        MarkDirty();
+        StatusMessage = "Mobitec Danke/Smile angelegt – Tablet sendet Smile-Bitmap (wie Verspätungs-Danke).";
+    }
+
+    [RelayCommand]
+    private void ImportMobitecOut()
+    {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "ZEdit / Mobitec OUT importieren",
+            Filter = "ZEdit OUT (*.out)|*.out|Alle Dateien (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var bytes = File.ReadAllBytes(dialog.FileName);
+            var imported = MobitecTransOutImporter.Parse(bytes);
+            if (imported.Count == 0)
+            {
+                StatusMessage = "Keine Mobitec-Ziele in der OUT-Datei gefunden.";
+                return;
+            }
+
+            var programs = MobitecTransOutImporter.ToPrograms(
+                imported,
+                OutsidePrograms.Select(p => p.Id));
+            foreach (var program in programs)
+            {
+                OutsidePrograms.Add(program);
+            }
+
+            SortOutsidePrograms();
+            SelectedOutsideProgram = programs[^1];
+            MarkDirty();
+            StatusMessage =
+                $"{programs.Count} Mobitec-Ziel(e) aus „{Path.GetFileName(dialog.FileName)}“ importiert – bitte prüfen und speichern.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"OUT-Import fehlgeschlagen: {ex.Message}";
+        }
+    }
+
     private bool EnsurePackageForOutsidePrograms()
     {
         if (!AppServices.Routes.EnsureEmptyPackageIfNeeded())

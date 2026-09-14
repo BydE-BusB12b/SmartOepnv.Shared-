@@ -7,5 +7,7 @@ public enum OutsideDisplayProtocolKind
     Ds021Neu = 1,
     Ds003aKrefeld = 2,
     FmaS1 = 3,
-    Zielnummer = 4
+    Zielnummer = 4,
+    /** Mobitec ICU402-Ersatz über USB-RS485 (4800 8N1). */
+    Mobitec = 5
 }

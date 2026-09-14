@@ -17,6 +17,7 @@ public static class RouteStopEditorCatalog
             !string.IsNullOrWhiteSpace(stop.FmaS1Destination) ||
             !string.IsNullOrWhiteSpace(stop.Ds003aDestination) ||
             !string.IsNullOrWhiteSpace(stop.ZielnummerDestination) ||
+            !string.IsNullOrWhiteSpace(stop.MobitecDestination) ||
             !string.IsNullOrWhiteSpace(stop.LineNumber));
 
     public static bool IsStartStopPlaceholder(string? destination) =>
@@ -36,6 +37,7 @@ public static class RouteStopEditorCatalog
             HasStartStopDestination(stop.FmaS1Destination) ||
             !string.IsNullOrWhiteSpace(stop.Ds003aDestination) ||
             !string.IsNullOrWhiteSpace(stop.ZielnummerDestination) ||
+            !string.IsNullOrWhiteSpace(stop.MobitecDestination) ||
             !string.IsNullOrWhiteSpace(stop.LineNumber))
         {
             return;
@@ -56,6 +58,8 @@ public static class RouteStopEditorCatalog
         stop.Ds003aDestinationId = string.Empty;
         stop.ZielnummerDestination = string.Empty;
         stop.ZielnummerDestinationId = string.Empty;
+        stop.MobitecDestination = string.Empty;
+        stop.MobitecDestinationId = string.Empty;
         stop.LineNumber = string.Empty;
     }
 
@@ -92,6 +96,9 @@ public static class RouteStopEditorCatalog
 
     public static IReadOnlyList<string> LoadZielnummerNames(EditableRoutePackage? editor) =>
         LoadProtocolNames(editor, OutsideDisplayProtocolKind.Zielnummer);
+
+    public static IReadOnlyList<string> LoadMobitecNames(EditableRoutePackage? editor) =>
+        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Mobitec);
 
     public static IReadOnlyList<string> LoadLineCourseTripRoutes(EditableRoutePackage? editor)
     {

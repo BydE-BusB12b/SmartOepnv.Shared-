@@ -185,11 +185,69 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0"
-                                       Text="Zielanzeige bearbeiten"
-                                       FontWeight="SemiBold"
-                                       FontSize="15"
-                                       Margin="0,0,0,6" />
+                            <DockPanel Grid.Row="0" Margin="0,0,0,6" LastChildFill="True">
+                                <StackPanel DockPanel.Dock="Right"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center"
+                                            Margin="12,0,0,0">
+                                    <Button Content="PDF aller Ziele"
+                                            Command="{Binding ExportDestinationsPdfCommand}"
+                                            Style="{StaticResource MaterialDesignRaisedButton}"
+                                            Padding="12,4"
+                                            Margin="0,0,12,0"
+                                            VerticalAlignment="Center"
+                                            ToolTip="PDF mit allen Zielen der Zielliste (Name, Linie, Front/Seite, Wechsel)" />
+                                    <StackPanel Orientation="Horizontal"
+                                                VerticalAlignment="Center">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedOutsideProgram}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="Liste"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0" />
+                                        <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                      IsChecked="{Binding SelectedOutsideProgram.IsListEnabled, UpdateSourceTrigger=PropertyChanged}"
+                                                      VerticalAlignment="Center" />
+                                        <TextBlock Text="In ITCS-Anzeigenliste"
+                                                   VerticalAlignment="Center"
+                                                   Margin="10,0,0,0"
+                                                   Opacity="0.75"
+                                                   FontSize="11" />
+                                        <StackPanel Orientation="Horizontal" Margin="20,0,0,0" VerticalAlignment="Center">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedOutsideProgram.IsMobitec}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
+                                            <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                          IsChecked="{Binding SelectedOutsideProgram.AutoFitFonts, UpdateSourceTrigger=PropertyChanged}"
+                                                          VerticalAlignment="Center"
+                                                          ToolTip="Font automatisch nach Displaybreite wählen (darf von ZEdit abweichen)" />
+                                            <TextBlock Text="Autoanpassung"
+                                                       VerticalAlignment="Center"
+                                                       Margin="10,0,0,0"
+                                                       Opacity="0.75"
+                                                       FontSize="11" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                                <TextBlock Text="Zielanzeige bearbeiten"
+                                           FontWeight="SemiBold"
+                                           FontSize="15"
+                                           VerticalAlignment="Center" />
+                            </DockPanel>
 
                             <ScrollViewer Grid.Row="1"
                                           VerticalScrollBarVisibility="Auto"
@@ -268,7 +326,7 @@
                                         </Grid>
 
                                         <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
-                                                   Text="Wechseltext (DS021T / FMA-S1) – Ziel 1 bis 4:"
+                                                   Text="Wechseltext (DS021T / FMA-S1 / Mobitec) – Ziel 1 bis 4:"
                                                    FontWeight="SemiBold"
                                                    Margin="0,4,0,8">
                                             <TextBlock.Style>
@@ -315,11 +373,35 @@
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="Front Zeile 1" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Front Zeile 1" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Text" Value="Zieltext" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBox Grid.Column="1" Margin="0,0,12,0"
+                                                     ToolTip="Nur Ziel (z. B. Aachen Hbf). Die Linie kommt aus dem Feld Linie und erscheint auf der Front davor."
                                                      Text="{Binding DataContext.ActiveFrontLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
-                                            <TextBlock Grid.Column="2" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Front Zeile 2" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Text" Value="Ziel Zeile 2" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBox Grid.Column="3"
+                                                     ToolTip="Optional zweite Zeile (z. B. bei Ersatzverkehr / Stadt)."
                                                      Text="{Binding DataContext.ActiveFrontLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
                                         </Grid>
 
@@ -421,19 +503,51 @@
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="DS001 Linie" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="DS001 Linie" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Text" Value="Linie" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBox Grid.Column="1" Margin="0,0,12,0"
-                                                     materialDesign:HintAssist.Hint="z. B. 001"
+                                                     materialDesign:HintAssist.Hint="z. B. RE13 / S8"
+                                                     ToolTip="Mobitec: erscheint auf Linienanzeige und vor dem Zieltext auf der Front"
                                                      Text="{Binding Ds001Value, UpdateSourceTrigger=PropertyChanged}" />
-                                            <TextBlock Grid.Column="2" Text="DS001 Sonderz." VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBlock Grid.Column="2" Text="DS001 Sonderz." VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBox Grid.Column="3" Margin="0,0,12,0"
                                                      materialDesign:HintAssist.Hint="z. B. E00"
-                                                     Text="{Binding Ds001Spec, UpdateSourceTrigger=PropertyChanged}" />
+                                                     Text="{Binding Ds001Spec, UpdateSourceTrigger=PropertyChanged}">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
                                             <TextBlock Grid.Column="4" Text="Intervall (Sek.)" VerticalAlignment="Center" Margin="0,0,8,0">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsDs021T}" Value="False">
+                                                            <DataTrigger Binding="{Binding UsesIntervalSeconds}" Value="False">
                                                                 <Setter Property="Visibility" Value="Collapsed" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
@@ -441,11 +555,12 @@
                                                 </TextBlock.Style>
                                             </TextBlock>
                                             <TextBox Grid.Column="5"
-                                                     Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}">
+                                                     Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="DS021T-Wechselintervall bzw. Mobitec B0-Takt (z. B. 3 oder 6 Sekunden)">
                                                 <TextBox.Style>
                                                     <Style TargetType="TextBox">
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsDs021T}" Value="False">
+                                                            <DataTrigger Binding="{Binding UsesIntervalSeconds}" Value="False">
                                                                 <Setter Property="Visibility" Value="Collapsed" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
@@ -592,6 +707,20 @@
                                         Command="{Binding AddOutsideProgramZielnummerCommand}"
                                         Style="{StaticResource MaterialDesignRaisedButton}"
                                         Margin="0,0,8,6" />
+                                <Button Content="+ Mobitec"
+                                        Command="{Binding AddOutsideProgramMobitecCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ Mobitec Danke/Smile"
+                                        Command="{Binding AddOutsideProgramMobitecSmileCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6"
+                                        ToolTip="Mobitec-Smile wie DS021T-Danke (Verspätungsanzeigen-Klick)" />
+                                <Button Content="Mobitec OUT importieren"
+                                        Command="{Binding ImportMobitecOutCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,6"
+                                        ToolTip="ZEdit32 TRANS.OUT / *.out einlesen und als Mobitec-Ziele in die Anzeigenliste übernehmen" />
                                 <Button Content="Auswahl löschen"
                                         Command="{Binding RemoveOutsideProgramCommand}"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
@@ -600,36 +729,6 @@
                                         Command="{Binding EnableAllInItcsListCommand}"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
                                         Margin="0,0,8,6" />
-                                <Button Content="PDF aller Ziele"
-                                        Command="{Binding ExportDestinationsPdfCommand}"
-                                        Style="{StaticResource MaterialDesignRaisedButton}"
-                                        Margin="0,0,8,6"
-                                        ToolTip="PDF mit allen Zielen der Zielliste (Name, Linie, Front/Seite, Wechsel)" />
-                                <StackPanel Orientation="Horizontal"
-                                            VerticalAlignment="Center"
-                                            Margin="4,0,8,6">
-                                    <StackPanel.Style>
-                                        <Style TargetType="StackPanel">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedOutsideProgram}" Value="{x:Null}">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </StackPanel.Style>
-                                    <TextBlock Text="Liste"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,8,0" />
-                                    <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                                                  IsChecked="{Binding SelectedOutsideProgram.IsListEnabled, UpdateSourceTrigger=PropertyChanged}"
-                                                  VerticalAlignment="Center" />
-                                    <TextBlock Text="In ITCS-Anzeigenliste"
-                                               VerticalAlignment="Center"
-                                               Margin="10,0,0,0"
-                                               Opacity="0.75"
-                                               FontSize="11" />
-                                </StackPanel>
                             </WrapPanel>
                         </Grid>
                     </materialDesign:Card>

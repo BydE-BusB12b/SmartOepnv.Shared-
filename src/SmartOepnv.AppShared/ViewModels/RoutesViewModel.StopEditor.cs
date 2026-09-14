@@ -16,6 +16,7 @@ public partial class RoutesViewModel
     public ObservableCollection<string> FmaS1Destinations { get; } = [];
     public ObservableCollection<string> Ds003aDestinations { get; } = [];
     public ObservableCollection<string> ZielnummerDestinations { get; } = [];
+    public ObservableCollection<string> MobitecDestinations { get; } = [];
     public ObservableCollection<string> LineCourseTripRoutes { get; } = [];
     public ObservableCollection<RouteChangeDatedTargetRow> RouteChangeDatedTargets { get; } = [];
 
@@ -394,6 +395,26 @@ public partial class RoutesViewModel
         }
     }
 
+    public string? SelectedDestinationMobitec
+    {
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Mobitec,
+            SelectedStop?.MobitecDestinationId,
+            SelectedStop?.MobitecDestination);
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Mobitec, isEnd: false, value);
+            MaintainStartStopMarkerIfNeeded();
+            OnPropertyChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
     public string? SelectedEndDestinationDs021t
     {
         get => ResolveComboLabel(
@@ -484,6 +505,25 @@ public partial class RoutesViewModel
             }
 
             ApplyDestinationSelection(OutsideDisplayProtocolKind.Zielnummer, isEnd: true, value);
+            OnPropertyChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public string? SelectedEndDestinationMobitec
+    {
+        get => ResolveComboLabel(
+            OutsideDisplayProtocolKind.Mobitec,
+            SelectedStop?.MobitecEndDestinationId,
+            SelectedStop?.MobitecEndDestination);
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Mobitec, isEnd: true, value);
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
@@ -846,11 +886,13 @@ public partial class RoutesViewModel
         EnsureComboValue(FmaS1Destinations, ToComboLabel(stop.FmaS1Destination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds003aDestinations, ToComboLabel(stop.Ds003aDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(ZielnummerDestinations, ToComboLabel(stop.ZielnummerDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(MobitecDestinations, ToComboLabel(stop.MobitecDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds021tDestinations, ToComboLabel(stop.EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds021NeuDestinations, ToComboLabel(stop.Ds021NeuEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(FmaS1Destinations, ToComboLabel(stop.FmaS1EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds003aDestinations, ToComboLabel(stop.Ds003aEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(ZielnummerDestinations, ToComboLabel(stop.ZielnummerEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(MobitecDestinations, ToComboLabel(stop.MobitecEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(
             LineCourseTripRoutes,
             ToComboLabel(stop.SelectedLineCourseTrip, RouteStopEditorCatalog.NoLineCourseTripLabel));
@@ -873,6 +915,7 @@ public partial class RoutesViewModel
         FmaS1Destinations.Clear();
         Ds003aDestinations.Clear();
         ZielnummerDestinations.Clear();
+        MobitecDestinations.Clear();
         LineCourseTripRoutes.Clear();
 
         Ds021tDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
@@ -880,6 +923,7 @@ public partial class RoutesViewModel
         FmaS1Destinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         Ds003aDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         ZielnummerDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
+        MobitecDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         LineCourseTripRoutes.Add(RouteStopEditorCatalog.NoLineCourseTripLabel);
 
         var editor = AppServices.Routes.Editor;
@@ -911,6 +955,11 @@ public partial class RoutesViewModel
         foreach (var name in RouteStopEditorCatalog.LoadZielnummerNames(editor))
         {
             ZielnummerDestinations.Add(name);
+        }
+
+        foreach (var name in RouteStopEditorCatalog.LoadMobitecNames(editor))
+        {
+            MobitecDestinations.Add(name);
         }
 
         foreach (var route in RouteStopEditorCatalog.LoadLineCourseTripRoutes(editor))
@@ -949,11 +998,13 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(SelectedDestinationFmaS1));
         OnPropertyChanged(nameof(SelectedDestinationDs003a));
         OnPropertyChanged(nameof(SelectedDestinationZielnummer));
+        OnPropertyChanged(nameof(SelectedDestinationMobitec));
         OnPropertyChanged(nameof(SelectedEndDestinationDs021t));
         OnPropertyChanged(nameof(SelectedEndDestinationDs021Neu));
         OnPropertyChanged(nameof(SelectedEndDestinationFmaS1));
         OnPropertyChanged(nameof(SelectedEndDestinationDs003a));
         OnPropertyChanged(nameof(SelectedEndDestinationZielnummer));
+        OnPropertyChanged(nameof(SelectedEndDestinationMobitec));
         OnPropertyChanged(nameof(SelectedLineCourseTrip));
         ApplyLineCourseTripByNumberCommand.NotifyCanExecuteChanged();
         AddRouteChangeDatedTargetCommand.NotifyCanExecuteChanged();
@@ -984,7 +1035,8 @@ public partial class RoutesViewModel
             RouteStopEditorCatalog.HasStartStopDestination(SelectedStop.Ds021NeuDestination) ||
             RouteStopEditorCatalog.HasStartStopDestination(SelectedStop.FmaS1Destination) ||
             !string.IsNullOrWhiteSpace(SelectedStop.Ds003aDestination) ||
-            !string.IsNullOrWhiteSpace(SelectedStop.ZielnummerDestination))
+            !string.IsNullOrWhiteSpace(SelectedStop.ZielnummerDestination) ||
+            !string.IsNullOrWhiteSpace(SelectedStop.MobitecDestination))
         {
             SelectedStop.LineNumber = string.Empty;
         }
@@ -1018,6 +1070,9 @@ public partial class RoutesViewModel
             case "startZielnummer":
                 SelectedDestinationZielnummer = comboLabel;
                 break;
+            case "startMobitec":
+                SelectedDestinationMobitec = comboLabel;
+                break;
             case "endDs021t":
                 SelectedEndDestinationDs021t = comboLabel;
                 break;
@@ -1032,6 +1087,9 @@ public partial class RoutesViewModel
                 break;
             case "endZielnummer":
                 SelectedEndDestinationZielnummer = comboLabel;
+                break;
+            case "endMobitec":
+                SelectedEndDestinationMobitec = comboLabel;
                 break;
             case "lineCourseTrip":
                 SelectedLineCourseTrip = comboLabel;

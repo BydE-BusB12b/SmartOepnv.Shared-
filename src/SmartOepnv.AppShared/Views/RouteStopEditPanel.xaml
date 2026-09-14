@@ -387,6 +387,23 @@
                     </Grid>
                 </StackPanel>
                 <StackPanel Margin="0,0,0,8">
+                    <TextBlock Text="Ziel auswählen (Mobitec):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="StartMobitecCombo"
+                                  Tag="startMobitec"
+                                  ItemsSource="{Binding MobitecDestinations}"
+                                  SelectedItem="{Binding SelectedDestinationMobitec, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedDestinationMobitec}"
+                                   ToolTip="{Binding SelectedDestinationMobitec}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,8,8">
                     <TextBlock Text="Liniennummer (z. B. 28, _28, !28):" Margin="0,0,0,4" Opacity="0.9" />
                     <TextBox Text="{Binding SelectedStop.LineNumber, UpdateSourceTrigger=LostFocus}"
                              MaxLength="4" LostFocus="Field_LostFocus" />
@@ -484,6 +501,23 @@
                     </Grid>
                 </StackPanel>
                 <StackPanel Margin="0,0,0,8">
+                    <TextBlock Text="Endziel auswählen (Mobitec):" Margin="0,0,0,4" Opacity="0.9" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="EndMobitecCombo"
+                                  Tag="endMobitec"
+                                  ItemsSource="{Binding MobitecDestinations}"
+                                  SelectedItem="{Binding SelectedEndDestinationMobitec, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource RouteStopDestinationValueText}"
+                                   Text="{Binding SelectedEndDestinationMobitec}"
+                                   ToolTip="{Binding SelectedEndDestinationMobitec}" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Margin="0,0,8,8">
                     <TextBlock Text="Endziel-GPS (lat, lon):" Margin="0,0,0,4" Opacity="0.9" />
                     <Grid HorizontalAlignment="Stretch">
                         <Grid.ColumnDefinitions>

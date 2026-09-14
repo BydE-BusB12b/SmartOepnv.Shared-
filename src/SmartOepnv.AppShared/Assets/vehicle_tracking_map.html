@@ -270,10 +270,10 @@
 
       routePathLayer = L.layerGroup().addTo(map);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-
-        maxZoom: 19, attribution: '&copy; OpenStreetMap'
-
+      // OSM.de: Carto-Stil mit ÖPNV-Haltestellen; nicht tile.openstreetmap.org (403 in WebView2).
+      L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
 
       map.on('zoomend dragend', function() {

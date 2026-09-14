@@ -79,7 +79,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(WechseltextCount));
     }
 
-    private void SyncLegacyLinesFromCycles()
+    internal void SyncLegacyLinesFromCycles()
     {
         var firstFront = FrontCycles.FirstOrDefault();
         var firstSide = SideCycles.FirstOrDefault();
@@ -132,7 +132,30 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     public int IntervalSeconds { get; set; } = 3;
     public string Ds001Type { get; set; } = "line";
-    public string Ds001Value { get; set; } = "001";
+
+    private string _ds001Value = "001";
+
+    /// <summary>Liniennummer bzw. Mobitec-Linienkürzel (z. B. RE13) – gehört an der Front zum Zieltext.</summary>
+    public string Ds001Value
+    {
+        get => _ds001Value;
+        set
+        {
+            if (_ds001Value == value)
+            {
+                return;
+            }
+
+            _ds001Value = value;
+            OnPropertyChanged();
+            if (Protocol == OutsideDisplayProtocolKind.Mobitec)
+            {
+                OnPropertyChanged(nameof(FrontPreview));
+                OnPropertyChanged(nameof(WechseltextPreview));
+            }
+        }
+    }
+
     public string Ds001Spec { get; set; } = "E00";
     public string ControlCodes { get; set; } = string.Empty;
     public bool UseZa4 { get; set; } = true;
@@ -148,6 +171,27 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             }
 
             _isListEnabled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _autoFitFonts;
+
+    /// <summary>
+    /// Mobitec: Font-Leiter nach Displaybreite (darf von ZEdit-Profilen abweichen).
+    /// Speicherung: Pipe-Index 15.
+    /// </summary>
+    public bool AutoFitFonts
+    {
+        get => _autoFitFonts;
+        set
+        {
+            if (_autoFitFonts == value)
+            {
+                return;
+            }
+
+            _autoFitFonts = value;
             OnPropertyChanged();
         }
     }
@@ -190,11 +234,23 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         set => SetProtocol(value ? OutsideDisplayProtocolKind.Zielnummer : OutsideDisplayProtocolKind.Ds021T);
     }
 
+    public bool IsMobitec
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Mobitec;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Mobitec : OutsideDisplayProtocolKind.Ds021T);
+    }
+
     public bool IsDs021T => Protocol == OutsideDisplayProtocolKind.Ds021T;
 
-    /// <summary>DS021T und FMA-S1: bis zu 4 Wechseltexte; DS021neu/Krefeld: ein Ziel.</summary>
+    /// <summary>DS021T, FMA-S1 und Mobitec: bis zu 4 Wechseltexte; DS021neu/Krefeld: ein Ziel.</summary>
     public bool UsesCycleEditor =>
-        Protocol is OutsideDisplayProtocolKind.Ds021T or OutsideDisplayProtocolKind.FmaS1;
+        Protocol is OutsideDisplayProtocolKind.Ds021T
+            or OutsideDisplayProtocolKind.FmaS1
+            or OutsideDisplayProtocolKind.Mobitec;
+
+    /// <summary>Wechsel-Takt in Sekunden (DS021T-Intervall bzw. Mobitec B0 xx).</summary>
+    public bool UsesIntervalSeconds =>
+        Protocol is OutsideDisplayProtocolKind.Ds021T or OutsideDisplayProtocolKind.Mobitec;
 
     private void SetProtocol(OutsideDisplayProtocolKind value)
     {
@@ -209,10 +265,14 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsDs021Neu));
         OnPropertyChanged(nameof(IsFmaS1));
         OnPropertyChanged(nameof(IsZielnummer));
+        OnPropertyChanged(nameof(IsMobitec));
         OnPropertyChanged(nameof(IsDs021T));
         OnPropertyChanged(nameof(UsesCycleEditor));
+        OnPropertyChanged(nameof(UsesIntervalSeconds));
         OnPropertyChanged(nameof(ProtocolLabel));
         OnPropertyChanged(nameof(DisplayLabel));
+        OnPropertyChanged(nameof(FrontPreview));
+        OnPropertyChanged(nameof(WechseltextPreview));
     }
 
     public Ds021NeuFontControl FontControl { get; set; } = Ds021NeuFontControl.Default;
@@ -267,6 +327,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OutsideDisplayProtocolKind.Ds021Neu => $"{Name} (DS021neu)",
         OutsideDisplayProtocolKind.FmaS1 => $"{Name} (FMA-S1)",
         OutsideDisplayProtocolKind.Zielnummer => $"{Name} (Zielnummer)",
+        OutsideDisplayProtocolKind.Mobitec => $"{Name} (Mobitec)",
         _ => $"{Name} (DS021T)"
     };
 
@@ -276,6 +337,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
         OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
         OutsideDisplayProtocolKind.Zielnummer => "Zielnummer",
+        OutsideDisplayProtocolKind.Mobitec => "Mobitec",
         _ => "DS021T"
     };
 
@@ -511,10 +573,39 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         program.IsStartTarget ||
         string.Equals(program.Name, "Startziel", StringComparison.Ordinal);
 
-    public string FrontPreview =>
-        BuildCyclesPreview(FrontCycles, fallbackSingle: string.IsNullOrWhiteSpace(FrontLine2)
-            ? FrontLine1
-            : $"{FrontLine1} · {FrontLine2}");
+    public string FrontPreview
+    {
+        get
+        {
+            var dest = BuildCyclesPreview(FrontCycles, fallbackSingle: string.IsNullOrWhiteSpace(FrontLine2)
+                ? FrontLine1
+                : $"{FrontLine1} · {FrontLine2}");
+            if (Protocol != OutsideDisplayProtocolKind.Mobitec)
+            {
+                return dest;
+            }
+
+            var line = Ds001Value?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return dest;
+            }
+
+            if (string.IsNullOrWhiteSpace(dest) || dest == "—")
+            {
+                return line;
+            }
+
+            // Linie nicht doppelt, falls Zieltext sie schon enthält
+            if (dest.StartsWith(line + " ", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(dest, line, StringComparison.OrdinalIgnoreCase))
+            {
+                return dest;
+            }
+
+            return $"{line} {dest}";
+        }
+    }
 
     public string SidePreview =>
         FormatWechseltextListPreview(SideCycles, fallbackSingle:
@@ -614,6 +705,41 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             UseZa4 = true,
             Protocol = OutsideDisplayProtocolKind.Ds003aKrefeld
         };
+
+    /// <summary>
+    /// Mobitec: Linie in <see cref="Ds001Value"/>, Zieltext in <see cref="FrontLine1"/> / Name.
+    /// </summary>
+    public static OutsideDisplayProgram CreateMobitec(string? name = null) =>
+        new()
+        {
+            Id = OutsideDisplayId.NewId(),
+            Name = name ?? "Neues Ziel",
+            FrontLine1 = string.Empty,
+            SideLine1 = string.Empty,
+            Ds001Type = "line",
+            Ds001Value = "S8",
+            Ds001Spec = "E00",
+            IntervalSeconds = 3,
+            Protocol = OutsideDisplayProtocolKind.Mobitec
+        };
+
+    /// <summary>Mobitec-Danke/Smile (Tablet sendet Bitmap 0x77, wie DS021T „Danke“).</summary>
+    public static OutsideDisplayProgram CreateMobitecSmile()
+    {
+        var program = new OutsideDisplayProgram
+        {
+            Id = OutsideDisplayId.NewId(),
+            Name = "Danke",
+            Ds001Type = "line",
+            Ds001Value = string.Empty,
+            Ds001Spec = "E00",
+            IntervalSeconds = 3,
+            Protocol = OutsideDisplayProtocolKind.Mobitec
+        };
+        program.FrontCycles[0].SetFromPair("Danke", string.Empty);
+        program.SideCycles[0].SetFromPair("Danke", string.Empty);
+        return program;
+    }
 
     public static OutsideDisplayProgram? TryParse(string entry)
     {
@@ -724,6 +850,23 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             program.FontControl = Ds021NeuFontControl.ParseStored(DecodeUtf8(parts[11]));
         }
 
+        // Index: 12=Protokoll, 13=Id, 14=Intervall (Sekunden, optional), 15=AutoFitFonts
+        var intervalRaw = DecodeUtf8(parts.ElementAtOrDefault(14));
+        if (int.TryParse(intervalRaw, out var intervalSec) && intervalSec is >= 1 and <= 99)
+        {
+            program.IntervalSeconds = intervalSec;
+        }
+
+        var autoFitRaw = DecodeUtf8(parts.ElementAtOrDefault(15));
+        if (bool.TryParse(autoFitRaw, out var autoFit))
+        {
+            program.AutoFitFonts = autoFit;
+        }
+        else if (string.Equals(autoFitRaw, "1", StringComparison.OrdinalIgnoreCase))
+        {
+            program.AutoFitFonts = true;
+        }
+
         if (string.Equals(program.Name, "Startziel", StringComparison.Ordinal))
         {
             program.IsStartTarget = true;
@@ -754,6 +897,8 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             OutsideDisplayProtocolKind.Ds021Neu => OutsideDisplayTelegramFactory.BuildDs021NeuTelegrams(this),
             OutsideDisplayProtocolKind.FmaS1 => OutsideDisplayTelegramFactory.BuildFmaS1Telegrams(this),
             OutsideDisplayProtocolKind.Zielnummer => OutsideDisplayTelegramFactory.BuildZielnummerTelegrams(this),
+            // Mobitec: Frames erzeugt das Tablet (4800 8N1); hier nur Klartext + Linie speichern.
+            OutsideDisplayProtocolKind.Mobitec => (Array.Empty<byte>(), Array.Empty<byte>()),
             _ => OutsideDisplayTelegramFactory.BuildDs021tTelegrams(this)
         };
 
@@ -818,7 +963,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             EncodeUtf8(frontLog),
             EncodeUtf8(sideLog),
             EncodeUtf8("line"),
-            EncodeUtf8(NormalizeKrefeldLine(Ds001Value)),
+            EncodeUtf8(EncodeLineForStorage()),
             IsListEnabled.ToString().ToLowerInvariant(),
             EncodeUtf8(NormalizeKrefeldSpec(Ds001Spec))
         };
@@ -836,6 +981,8 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
         parts.Add(EncodeUtf8(ProtocolStorageTag(Protocol)));
         parts.Add(EncodeUtf8(OutsideDisplayId.Ensure(Id)));
+        parts.Add(EncodeUtf8(Math.Clamp(IntervalSeconds, 1, 99).ToString()));
+        parts.Add(EncodeUtf8(AutoFitFonts ? "true" : "false"));
         return string.Join('|', parts);
     }
 
@@ -845,6 +992,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
         OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
         OutsideDisplayProtocolKind.Zielnummer => "Zielnummer",
+        OutsideDisplayProtocolKind.Mobitec => "Mobitec",
         _ => "DS021T"
     };
 
@@ -869,6 +1017,11 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         if (string.Equals(tag, "Zielnummer", StringComparison.OrdinalIgnoreCase))
         {
             return OutsideDisplayProtocolKind.Zielnummer;
+        }
+
+        if (string.Equals(tag, "Mobitec", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.Mobitec;
         }
 
         if (string.Equals(tag, "DS021T", StringComparison.OrdinalIgnoreCase) ||
@@ -916,6 +1069,18 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         }
 
         return OutsideDisplayProtocolKind.Ds021T;
+    }
+
+    /// <summary>
+    /// Speichert die Linie: Mobitec/DS021T frei (RE13, S8, …);
+    /// nur DS003a Krefeld bleibt auf 3 Ziffern.
+    /// </summary>
+    private string EncodeLineForStorage()
+    {
+        var raw = (Ds001Value ?? string.Empty).Trim();
+        return Protocol == OutsideDisplayProtocolKind.Ds003aKrefeld
+            ? NormalizeKrefeldLine(raw)
+            : raw;
     }
 
     private static string NormalizeKrefeldLine(string value)
@@ -1011,8 +1176,10 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsDs021Neu));
         OnPropertyChanged(nameof(IsFmaS1));
         OnPropertyChanged(nameof(IsZielnummer));
+        OnPropertyChanged(nameof(IsMobitec));
         OnPropertyChanged(nameof(IsDs021T));
         OnPropertyChanged(nameof(UsesCycleEditor));
+        OnPropertyChanged(nameof(UsesIntervalSeconds));
         OnPropertyChanged(nameof(IsKrefeld));
         OnPropertyChanged(nameof(IsListEnabled));
         OnPropertyChanged(nameof(DisplayNumber));

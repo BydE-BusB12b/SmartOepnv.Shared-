@@ -72,6 +72,7 @@ public partial class RouteStopEditPanel : UserControl
             "startDs021Neu" or "endDs021Neu" => nameof(RoutesViewModel.Ds021NeuDestinations),
             "startFmaS1" or "endFmaS1" => nameof(RoutesViewModel.FmaS1Destinations),
             "startZielnummer" or "endZielnummer" => nameof(RoutesViewModel.ZielnummerDestinations),
+            "startMobitec" or "endMobitec" => nameof(RoutesViewModel.MobitecDestinations),
             "lineCourseTrip" => nameof(RoutesViewModel.LineCourseTripRoutes),
             _ => null
         };
@@ -161,11 +162,13 @@ public partial class RouteStopEditPanel : UserControl
                 SetComboSelection(StartFmaS1Combo, vm.SelectedDestinationFmaS1);
                 SetComboSelection(StartDs003aCombo, vm.SelectedDestinationDs003a);
                 SetComboSelection(StartZielnummerCombo, vm.SelectedDestinationZielnummer);
+                SetComboSelection(StartMobitecCombo, vm.SelectedDestinationMobitec);
                 SetComboSelection(EndDs021tCombo, vm.SelectedEndDestinationDs021t);
                 SetComboSelection(EndDs021NeuCombo, vm.SelectedEndDestinationDs021Neu);
                 SetComboSelection(EndFmaS1Combo, vm.SelectedEndDestinationFmaS1);
                 SetComboSelection(EndDs003aCombo, vm.SelectedEndDestinationDs003a);
                 SetComboSelection(EndZielnummerCombo, vm.SelectedEndDestinationZielnummer);
+                SetComboSelection(EndMobitecCombo, vm.SelectedEndDestinationMobitec);
                 SetComboSelection(LineCourseTripCombo, vm.SelectedLineCourseTrip);
                 return;
             }
@@ -196,6 +199,11 @@ public partial class RouteStopEditPanel : UserControl
                     stop.ZielnummerDestination,
                     RouteStopEditorCatalog.NoDestinationLabel));
             SetComboSelection(
+                StartMobitecCombo,
+                RouteStopEditorCatalog.ToComboLabel(
+                    stop.MobitecDestination,
+                    RouteStopEditorCatalog.NoDestinationLabel));
+            SetComboSelection(
                 EndDs021tCombo,
                 RouteStopEditorCatalog.ToComboLabel(
                     stop.EndDestination,
@@ -219,6 +227,11 @@ public partial class RouteStopEditPanel : UserControl
                 EndZielnummerCombo,
                 RouteStopEditorCatalog.ToComboLabel(
                     stop.ZielnummerEndDestination,
+                    RouteStopEditorCatalog.NoDestinationLabel));
+            SetComboSelection(
+                EndMobitecCombo,
+                RouteStopEditorCatalog.ToComboLabel(
+                    stop.MobitecEndDestination,
                     RouteStopEditorCatalog.NoDestinationLabel));
             SetComboSelection(
                 LineCourseTripCombo,
@@ -277,6 +290,12 @@ public partial class RouteStopEditPanel : UserControl
                     RouteStopEditorCatalog.NoDestinationLabel);
                 stop.LineNumber = string.Empty;
                 break;
+            case "startMobitec":
+                stop.MobitecDestination = RouteStopEditorCatalog.FromComboLabel(
+                    comboLabel,
+                    RouteStopEditorCatalog.NoDestinationLabel);
+                stop.LineNumber = string.Empty;
+                break;
             case "endDs021t":
                 stop.EndDestination = RouteStopEditorCatalog.FromComboLabel(
                     comboLabel,
@@ -302,6 +321,11 @@ public partial class RouteStopEditPanel : UserControl
                     comboLabel,
                     RouteStopEditorCatalog.NoDestinationLabel);
                 break;
+            case "endMobitec":
+                stop.MobitecEndDestination = RouteStopEditorCatalog.FromComboLabel(
+                    comboLabel,
+                    RouteStopEditorCatalog.NoDestinationLabel);
+                break;
             case "lineCourseTrip":
                 stop.SelectedLineCourseTrip = RouteStopEditorCatalog.FromComboLabel(
                     comboLabel,
@@ -317,11 +341,13 @@ public partial class RouteStopEditPanel : UserControl
         yield return StartDs021NeuCombo;
         yield return StartFmaS1Combo;
         yield return StartZielnummerCombo;
+        yield return StartMobitecCombo;
         yield return EndDs021tCombo;
         yield return EndDs003aCombo;
         yield return EndDs021NeuCombo;
         yield return EndFmaS1Combo;
         yield return EndZielnummerCombo;
+        yield return EndMobitecCombo;
         yield return LineCourseTripCombo;
     }
 
