@@ -250,7 +250,10 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         var previous = Vehicles.ToDictionary(v => v.Id, v => v);
         var selectedId = SelectedVehicle?.Id;
         Vehicles.Clear();
-        foreach (var v in _vehicles)
+        // Online → Veraltet → Offline (Enum-Reihenfolge); innerhalb gleicher Status nach Name
+        foreach (var v in _vehicles
+                     .OrderBy(v => v.Status)
+                     .ThenBy(v => v.DisplayName, StringComparer.CurrentCultureIgnoreCase))
         {
             if (previous.TryGetValue(v.Id, out var existing))
             {
