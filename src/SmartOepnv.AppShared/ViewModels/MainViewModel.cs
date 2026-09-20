@@ -964,12 +964,12 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var result = await AppServices.DeviceRegistration.TryProcessPendingAsync().ConfigureAwait(true);
-            if (result.AnyAdded)
+            if (result.AnyChanged)
             {
                 _vehicleManagementViewModel.RefreshFromEditor();
                 _dataTransferViewModel.RefreshStats();
                 _dataTransferViewModel.LastActionMessage =
-                    "Geräte registriert: " + string.Join(", ", result.AddedVehicles);
+                    string.Join(", ", result.AddedVehicles);
             }
         }
         catch

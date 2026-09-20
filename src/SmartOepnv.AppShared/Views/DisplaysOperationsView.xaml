@@ -158,6 +158,37 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
+                                            <TextBlock FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#FF64B5F6"
+                                                       Margin="0,0,0,4"
+                                                       Text="{Binding MobitecGraphicsLabel, Mode=OneWay}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasMobitecBitmapGraphic}" Value="False">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11"
+                                                       Opacity="0.85"
+                                                       Margin="0,0,0,2"
+                                                       Text="{Binding MobitecLineListLabel, Mode=OneWay}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding MobitecLineListLabel}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
                                                 <Run Text="Front: " FontWeight="SemiBold" />
                                                 <Run Text="{Binding WechseltextPreview, Mode=OneWay}" />
@@ -386,7 +417,7 @@
                                                 </TextBlock.Style>
                                             </TextBlock>
                                             <TextBox Grid.Column="1" Margin="0,0,12,0"
-                                                     ToolTip="Nur Ziel (z. B. Aachen Hbf). Die Linie kommt aus dem Feld Linie und erscheint auf der Front davor."
+                                                     ToolTip="Nur Zieltext. Mobitec ohne OUT-Rohframe: die Linie aus dem Feld „Linie“ erscheint separat auf Linienanzeige und in der Front-Linienzone (28 px), das Ziel zentriert in den restlichen 100 px. Mit OUT-Rohframe bleibt der Hex unverändert."
                                                      Text="{Binding DataContext.ActiveFrontLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
                                             <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="0,0,8,0">
                                                 <TextBlock.Style>
@@ -516,8 +547,8 @@
                                                 </TextBlock.Style>
                                             </TextBlock>
                                             <TextBox Grid.Column="1" Margin="0,0,12,0"
-                                                     materialDesign:HintAssist.Hint="z. B. RE13 / S8"
-                                                     ToolTip="Mobitec: erscheint auf Linienanzeige und vor dem Zieltext auf der Front"
+                                                     materialDesign:HintAssist.Hint="z. B. RE10 / S8 / RB3"
+                                                     ToolTip="Mobitec: Anzeigewert für Linienanzeige und Front-Linienzone (28 px), z. B. RE10, S8, RB3. Ohne OUT-Rohframe wird daraus die Anzeige neu erzeugt (Font 6C bei 4 Zeichen, sonst 69). Mit OUT-Rohframe nur Optik – Hex bleibt 1:1."
                                                      Text="{Binding Ds001Value, UpdateSourceTrigger=PropertyChanged}" />
                                             <TextBlock Grid.Column="2" Text="DS001 Sonderz." VerticalAlignment="Center" Margin="0,0,8,0">
                                                 <TextBlock.Style>
@@ -568,6 +599,24 @@
                                                 </TextBox.Style>
                                             </TextBox>
                                         </Grid>
+
+                                        <TextBlock Grid.Row="7" Grid.ColumnSpan="2"
+                                                   Margin="0,0,0,8"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#FF64B5F6"
+                                                   Text="{Binding MobitecGraphicsLabel, Mode=OneWay}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasMobitecBitmapGraphic}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
 
                                         <TextBlock Grid.Row="7" Grid.ColumnSpan="2"
                                                    Text="Schrift Front (DS021neu):"

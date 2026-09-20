@@ -8,10 +8,45 @@
   <style>
     html, body, #map { height: 100%; margin: 0; background: #0a1628; }
     .leaflet-container { background: #0a1628; font: 13px/1.35 Segoe UI, sans-serif; }
+    .trace-time-tooltip {
+      background: #0d2137;
+      color: #fff59d;
+      border: 1px solid #ffeb3b;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-weight: 700;
+      font-size: 13px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.45);
+    }
+    .trace-time-tooltip::before { border-top-color: #ffeb3b; }
+    .trace-neighbor-tooltip {
+      background: #132a45;
+      color: #e3f2fd;
+      border: 1px solid #64b5f6;
+      border-radius: 5px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .trace-hint {
+      position: absolute;
+      z-index: 1000;
+      left: 52px;
+      top: 10px;
+      background: rgba(13, 33, 55, 0.92);
+      color: #cfd8dc;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      pointer-events: none;
+      border: 1px solid rgba(255,235,59,.35);
+      max-width: 280px;
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div class="trace-hint" id="hint">Klick auf Spur oder Punkt → Uhrzeit · ±3 Nachbarpunkte</div>
   <script>
     const map = L.map('map', { zoomControl: true }).setView([51.45, 7.01], 11);
     L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
@@ -20,28 +55,170 @@
     }).addTo(map);
 
     let layer = L.layerGroup().addTo(map);
+    let selectionLayer = L.layerGroup().addTo(map);
+    /** @type {{lat:number, lon:number, t:string, label:string, speed:number, ts:number}[]} */
+    let tracePoints = [];
+    let polyline = null;
 
     function clearTrace() {
       layer.clearLayers();
+      selectionLayer.clearLayers();
+      tracePoints = [];
+      polyline = null;
+    }
+
+    function normalizePoints(raw) {
+      const out = [];
+      for (const p of (raw || [])) {
+        if (p && typeof p === 'object' && !Array.isArray(p)) {
+          const lat = Number(p.lat);
+          const lon = Number(p.lon);
+          if (!isFinite(lat) || !isFinite(lon)) continue;
+          out.push({
+            lat, lon,
+            t: String(p.t || ''),
+            label: String(p.label || p.t || ''),
+            speed: Number(p.speed) || 0,
+            ts: Number(p.ts) || 0
+          });
+          continue;
+        }
+        // Legacy: [lat, lon]
+        if (Array.isArray(p) && p.length >= 2) {
+          const lat = Number(p[0]);
+          const lon = Number(p[1]);
+          if (!isFinite(lat) || !isFinite(lon)) continue;
+          out.push({ lat, lon, t: '', label: '', speed: 0, ts: 0 });
+        }
+      }
+      return out;
+    }
+
+    function haversineM(aLat, aLon, bLat, bLon) {
+      const R = 6371000;
+      const toRad = Math.PI / 180;
+      const dLat = (bLat - aLat) * toRad;
+      const dLon = (bLon - aLon) * toRad;
+      const la1 = aLat * toRad;
+      const la2 = bLat * toRad;
+      const h = Math.sin(dLat / 2) ** 2 +
+        Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+    }
+
+    function nearestIndex(lat, lon) {
+      let best = -1;
+      let bestD = Infinity;
+      for (let i = 0; i < tracePoints.length; i++) {
+        const p = tracePoints[i];
+        const d = haversineM(lat, lon, p.lat, p.lon);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      return best;
+    }
+
+    function clearSelection() {
+      selectionLayer.clearLayers();
+    }
+
+    function showPointSelection(index) {
+      clearSelection();
+      if (index < 0 || index >= tracePoints.length) return;
+
+      const center = tracePoints[index];
+      const from = Math.max(0, index - 3);
+      const to = Math.min(tracePoints.length - 1, index + 3);
+
+      for (let i = from; i <= to; i++) {
+        if (i === index) continue;
+        const p = tracePoints[i];
+        const dir = i < index ? '←' : '→';
+        const offset = Math.abs(i - index);
+        L.circleMarker([p.lat, p.lon], {
+          radius: 6,
+          color: '#42a5f5',
+          fillColor: '#90caf9',
+          fillOpacity: 0.95,
+          weight: 2
+        })
+          .bindTooltip(`${dir}${offset}  ${p.t || p.label || ''}`, {
+            permanent: true,
+            direction: 'top',
+            offset: [0, -6],
+            className: 'trace-neighbor-tooltip'
+          })
+          .addTo(selectionLayer)
+          .on('click', function (e) {
+            L.DomEvent.stopPropagation(e);
+            showPointSelection(i);
+          });
+      }
+
+      const speedPart = center.speed > 0 ? ` · ${center.speed} km/h` : '';
+      L.circleMarker([center.lat, center.lon], {
+        radius: 10,
+        color: '#ffeb3b',
+        fillColor: '#fff59d',
+        fillOpacity: 1,
+        weight: 3
+      })
+        .bindTooltip(`${center.label || center.t || '–'}${speedPart}`, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -10],
+          className: 'trace-time-tooltip'
+        })
+        .addTo(selectionLayer)
+        .openTooltip();
     }
 
     function loadTrace(payload) {
       clearTrace();
-      const pts = (payload && payload.points) || [];
-      const latlngs = pts
-        .filter(p => Array.isArray(p) && p.length >= 2 && isFinite(Number(p[0])) && isFinite(Number(p[1])))
-        .map(p => [Number(p[0]), Number(p[1])]);
-      if (latlngs.length === 0) {
+      tracePoints = normalizePoints(payload && payload.points);
+      if (tracePoints.length === 0) {
         return;
       }
-      const line = L.polyline(latlngs, { color: '#FFEB3B', weight: 5, opacity: 0.92 }).addTo(layer);
-      L.circleMarker(latlngs[0], { radius: 7, color: '#43a047', fillColor: '#66bb6a', fillOpacity: 1, weight: 2 })
-        .bindTooltip('Start', { permanent: false })
-        .addTo(layer);
-      L.circleMarker(latlngs[latlngs.length - 1], { radius: 7, color: '#e53935', fillColor: '#ef5350', fillOpacity: 1, weight: 2 })
-        .bindTooltip('Ende', { permanent: false })
-        .addTo(layer);
-      map.fitBounds(line.getBounds().pad(0.12));
+
+      const latlngs = tracePoints.map(p => [p.lat, p.lon]);
+      polyline = L.polyline(latlngs, {
+        color: '#FFEB3B',
+        weight: 6,
+        opacity: 0.92,
+        interactive: true
+      }).addTo(layer);
+
+      polyline.on('click', function (e) {
+        L.DomEvent.stopPropagation(e);
+        const idx = nearestIndex(e.latlng.lat, e.latlng.lng);
+        showPointSelection(idx);
+      });
+
+      // Alle Punkte klickbar (klein, unauffällig) – Zeit erst nach Auswahl.
+      for (let i = 0; i < tracePoints.length; i++) {
+        const p = tracePoints[i];
+        const isEnd = i === 0 || i === tracePoints.length - 1;
+        L.circleMarker([p.lat, p.lon], {
+          radius: isEnd ? 7 : 4,
+          color: i === 0 ? '#43a047' : (i === tracePoints.length - 1 ? '#e53935' : '#fbc02d'),
+          fillColor: i === 0 ? '#66bb6a' : (i === tracePoints.length - 1 ? '#ef5350' : '#ffee58'),
+          fillOpacity: isEnd ? 1 : 0.55,
+          weight: isEnd ? 2 : 1,
+          opacity: isEnd ? 1 : 0.7
+        })
+          .bindTooltip(i === 0 ? 'Start' : (i === tracePoints.length - 1 ? 'Ende' : (p.t || '')), {
+            permanent: false
+          })
+          .addTo(layer)
+          .on('click', function (e) {
+            L.DomEvent.stopPropagation(e);
+            showPointSelection(i);
+          });
+      }
+
+      map.fitBounds(polyline.getBounds().pad(0.12));
       setTimeout(function () { map.invalidateSize(); }, 50);
     }
 
@@ -52,6 +229,11 @@
     function invalidateMapSize() {
       setTimeout(function () { map.invalidateSize(); }, 50);
     }
+
+    map.on('click', function () {
+      // Klick neben die Spur: Auswahl entfernen
+      clearSelection();
+    });
 
     window.applyTracePayload = applyTracePayload;
     window.invalidateMapSize = invalidateMapSize;

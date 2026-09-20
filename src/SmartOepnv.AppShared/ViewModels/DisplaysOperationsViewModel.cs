@@ -6,6 +6,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.Pdf;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
@@ -662,19 +663,33 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
                 return;
             }
 
-            var programs = MobitecTransOutImporter.ToPrograms(
-                imported,
-                OutsidePrograms.Select(p => p.Id));
-            foreach (var program in programs)
+            var selection = Views.MobitecOutImportDialog.Show(
+                DialogOwnerHelper.ResolveOwner(),
+                Path.GetFileName(dialog.FileName),
+                imported);
+            if (selection is null || selection.Count == 0)
             {
+                StatusMessage = "OUT-Import abgebrochen.";
+                return;
+            }
+
+            var usedIds = new HashSet<string>(
+                OutsidePrograms.Select(p => p.Id),
+                StringComparer.OrdinalIgnoreCase);
+            var programs = new List<OutsideDisplayProgram>();
+            foreach (var (destination, saveName) in selection)
+            {
+                var program = MobitecTransOutImporter.ToProgram(destination, saveName, usedIds);
                 OutsidePrograms.Add(program);
+                programs.Add(program);
             }
 
             SortOutsidePrograms();
             SelectedOutsideProgram = programs[^1];
             MarkDirty();
             StatusMessage =
-                $"{programs.Count} Mobitec-Ziel(e) aus „{Path.GetFileName(dialog.FileName)}“ importiert – bitte prüfen und speichern.";
+                $"{programs.Count} Mobitec-Ziel(e) aus „{Path.GetFileName(dialog.FileName)}“ importiert " +
+                $"(inkl. Linien-/Front-Grafiken aus der OUT) – bitte prüfen und speichern.";
         }
         catch (Exception ex)
         {

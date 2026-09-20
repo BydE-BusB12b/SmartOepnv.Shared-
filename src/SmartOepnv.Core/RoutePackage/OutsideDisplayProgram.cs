@@ -152,7 +152,29 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(FrontPreview));
                 OnPropertyChanged(nameof(WechseltextPreview));
+                OnPropertyChanged(nameof(MobitecLineListLabel));
             }
+        }
+    }
+
+    /// <summary>Listenzeile: Linien-Bitmap aus OUT → „Grafik“, sonst Linienkürzel.</summary>
+    public string MobitecLineListLabel
+    {
+        get
+        {
+            if (Protocol != OutsideDisplayProtocolKind.Mobitec)
+            {
+                return string.Empty;
+            }
+
+            if (FrameContainsBitmap(MobitecLineFrame))
+            {
+                return "Linie: Grafik";
+            }
+
+            return string.IsNullOrWhiteSpace(Ds001Value)
+                ? string.Empty
+                : $"Linie: {Ds001Value.Trim()}";
         }
     }
 
@@ -194,6 +216,82 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             _autoFitFonts = value;
             OnPropertyChanged();
         }
+    }
+
+    /// <summary>Mobitec: Roh-Frame Front aus ZEdit-OUT (inkl. 0x77-Bitmaps), sonst null → Tablet erzeugt neu.</summary>
+    public byte[]? MobitecFrontFrame { get; set; }
+
+    /// <summary>Mobitec: Roh-Frame Seite aus ZEdit-OUT.</summary>
+    public byte[]? MobitecSideFrame { get; set; }
+
+    /// <summary>Mobitec: Roh-Frame Linie aus ZEdit-OUT (Tasse, Schraubenschlüssel, Logo, Smile, …).</summary>
+    public byte[]? MobitecLineFrame { get; set; }
+
+    public bool HasMobitecRawFrames =>
+        MobitecFrontFrame is { Length: > 0 } ||
+        MobitecSideFrame is { Length: > 0 } ||
+        MobitecLineFrame is { Length: > 0 };
+
+    public bool HasMobitecBitmapGraphic =>
+        FrameContainsBitmap(MobitecFrontFrame) ||
+        FrameContainsBitmap(MobitecSideFrame) ||
+        FrameContainsBitmap(MobitecLineFrame);
+
+    /// <summary>Kurztext für Liste/Detail: ob OUT-Grafiken mitgespeichert sind.</summary>
+    public string MobitecGraphicsLabel
+    {
+        get
+        {
+            if (Protocol != OutsideDisplayProtocolKind.Mobitec || !HasMobitecRawFrames)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+            if (FrameContainsBitmap(MobitecFrontFrame)) parts.Add("Front");
+            if (FrameContainsBitmap(MobitecSideFrame)) parts.Add("Seite");
+            if (FrameContainsBitmap(MobitecLineFrame)) parts.Add("Linie");
+            if (parts.Count == 0)
+            {
+                return "OUT-Rohframe (nur Text)";
+            }
+
+            var gfx = $"OUT-Grafik: {string.Join("+", parts)}";
+            // Häufige Verwechslung: Logo auf Front, Linie bleibt Text (z. B. Mc Donalds + RE47)
+            if (FrameContainsBitmap(MobitecFrontFrame) &&
+                !FrameContainsBitmap(MobitecLineFrame) &&
+                !string.IsNullOrWhiteSpace(Ds001Value))
+            {
+                return $"{gfx} · Linie-Text „{Ds001Value.Trim()}“ (kein Linien-Logo)";
+            }
+
+            if (FrameContainsBitmap(MobitecLineFrame))
+            {
+                return string.IsNullOrWhiteSpace(Ds001Value)
+                    ? $"{gfx} · Linienanzeige = Bitmap (kein Linien-Text)"
+                    : $"{gfx} · Linienanzeige = Bitmap; Feld „{Ds001Value.Trim()}“ nur Fallback";
+            }
+
+            return gfx;
+        }
+    }
+
+    private static bool FrameContainsBitmap(byte[]? frame)
+    {
+        if (frame is null || frame.Length < 6)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < frame.Length - 1; i++)
+        {
+            if ((frame[i] & 0xFF) == 0xD4 && (frame[i + 1] & 0xFF) == 0x77)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public bool IsStartTarget
@@ -585,6 +683,12 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
                 return dest;
             }
 
+            // OUT-Rohframes: Linie/Front sind bereits fertig im Hex – nicht nochmal „RE47 …“ davorsetzen.
+            if (HasMobitecRawFrames)
+            {
+                return dest;
+            }
+
             var line = Ds001Value?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(line))
             {
@@ -782,15 +886,28 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             // Telegramm-Bytes optional für Zyklus-Parsing
         }
 
-        OutsideDisplayCycleParser.ApplyToCycles(program.FrontCycles, frontLog, frontBytes);
-        OutsideDisplayCycleParser.ApplyToCycles(program.SideCycles, sideLog, sideBytes);
-        program.SyncLegacyLinesFromCycles();
-
-        if (program.FrontCycles.All(c => !c.HasContent))
+        var looksMobitecWire = IsMobitecWireFrame(frontBytes) || IsMobitecWireFrame(sideBytes);
+        if (looksMobitecWire)
         {
+            // Mobitec-Rohframes nicht als DS021-Zyklen interpretieren
             ApplyLogLines(program, frontLog, isFront: true);
             ApplyLogLines(program, sideLog, isFront: false);
             program.SyncCyclesFromLegacyLines();
+            program.MobitecFrontFrame = IsMobitecWireFrame(frontBytes) ? frontBytes : null;
+            program.MobitecSideFrame = IsMobitecWireFrame(sideBytes) ? sideBytes : null;
+        }
+        else
+        {
+            OutsideDisplayCycleParser.ApplyToCycles(program.FrontCycles, frontLog, frontBytes);
+            OutsideDisplayCycleParser.ApplyToCycles(program.SideCycles, sideLog, sideBytes);
+            program.SyncLegacyLinesFromCycles();
+
+            if (program.FrontCycles.All(c => !c.HasContent))
+            {
+                ApplyLogLines(program, frontLog, isFront: true);
+                ApplyLogLines(program, sideLog, isFront: false);
+                program.SyncCyclesFromLegacyLines();
+            }
         }
 
         var ds001Type = DecodeUtf8(parts.ElementAtOrDefault(5));
@@ -867,6 +984,33 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             program.AutoFitFonts = true;
         }
 
+        if (program.Protocol == OutsideDisplayProtocolKind.Mobitec || looksMobitecWire)
+        {
+            if (looksMobitecWire)
+            {
+                program.Protocol = OutsideDisplayProtocolKind.Mobitec;
+            }
+
+            try
+            {
+                var lineB64 = parts.ElementAtOrDefault(16);
+                if (!string.IsNullOrWhiteSpace(lineB64))
+                {
+                    var lineBytes = Convert.FromBase64String(lineB64);
+                    if (IsMobitecWireFrame(lineBytes))
+                    {
+                        program.MobitecLineFrame = lineBytes;
+                    }
+                }
+            }
+            catch
+            {
+                // optional
+            }
+
+            program.NotifyMobitecGraphicsChanged();
+        }
+
         if (string.Equals(program.Name, "Startziel", StringComparison.Ordinal))
         {
             program.IsStartTarget = true;
@@ -897,8 +1041,10 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             OutsideDisplayProtocolKind.Ds021Neu => OutsideDisplayTelegramFactory.BuildDs021NeuTelegrams(this),
             OutsideDisplayProtocolKind.FmaS1 => OutsideDisplayTelegramFactory.BuildFmaS1Telegrams(this),
             OutsideDisplayProtocolKind.Zielnummer => OutsideDisplayTelegramFactory.BuildZielnummerTelegrams(this),
-            // Mobitec: Frames erzeugt das Tablet (4800 8N1); hier nur Klartext + Linie speichern.
-            OutsideDisplayProtocolKind.Mobitec => (Array.Empty<byte>(), Array.Empty<byte>()),
+            // Mobitec: OUT-Rohframes (Grafiken) mitspeichern; sonst leere Bytes → Tablet generiert.
+            OutsideDisplayProtocolKind.Mobitec => (
+                MobitecFrontFrame ?? Array.Empty<byte>(),
+                MobitecSideFrame ?? Array.Empty<byte>()),
             _ => OutsideDisplayTelegramFactory.BuildDs021tTelegrams(this)
         };
 
@@ -983,6 +1129,10 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         parts.Add(EncodeUtf8(OutsideDisplayId.Ensure(Id)));
         parts.Add(EncodeUtf8(Math.Clamp(IntervalSeconds, 1, 99).ToString()));
         parts.Add(EncodeUtf8(AutoFitFonts ? "true" : "false"));
+        // Index 16: Mobitec-Linien-Rohframe (Tasse/Schraubenschlüssel/Logo/…)
+        parts.Add(Protocol == OutsideDisplayProtocolKind.Mobitec
+            ? EncodeBytes(MobitecLineFrame ?? Array.Empty<byte>())
+            : string.Empty);
         return string.Join('|', parts);
     }
 
@@ -1020,6 +1170,11 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         }
 
         if (string.Equals(tag, "Mobitec", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.Mobitec;
+        }
+
+        if (IsMobitecWireFrame(frontBytes) || IsMobitecWireFrame(sideBytes))
         {
             return OutsideDisplayProtocolKind.Mobitec;
         }
@@ -1140,6 +1295,12 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     private static string EncodeBytes(byte[] bytes) =>
         Convert.ToBase64String(bytes);
 
+    private static bool IsMobitecWireFrame(byte[]? bytes) =>
+        bytes is { Length: >= 5 } &&
+        (bytes[0] & 0xFF) == 0xFF &&
+        (bytes[1] & 0xFF) is 0x06 or 0x07 or 0x0B &&
+        (bytes[2] & 0xFF) == 0xA2;
+
     private static string EncodeUtf8(string text) =>
         string.IsNullOrEmpty(text)
             ? string.Empty
@@ -1163,6 +1324,16 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         }
     }
 
+    public void NotifyMobitecGraphicsChanged()
+    {
+        OnPropertyChanged(nameof(HasMobitecRawFrames));
+        OnPropertyChanged(nameof(HasMobitecBitmapGraphic));
+        OnPropertyChanged(nameof(MobitecGraphicsLabel));
+        OnPropertyChanged(nameof(MobitecLineListLabel));
+        OnPropertyChanged(nameof(FrontPreview));
+        OnPropertyChanged(nameof(WechseltextPreview));
+    }
+
     public void RefreshListDisplayProperties()
     {
         OnPropertyChanged(nameof(Name));
@@ -1184,5 +1355,6 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsListEnabled));
         OnPropertyChanged(nameof(DisplayNumber));
         OnPropertyChanged(nameof(IdEditText));
+        NotifyMobitecGraphicsChanged();
     }
 }

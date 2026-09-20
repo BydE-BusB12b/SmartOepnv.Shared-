@@ -133,10 +133,20 @@ public partial class TripInspectionViewModel : ObservableObject
 
     private static JsonObject BuildMapPayload(TripInspectionSegmentItem segment)
     {
+        var de = CultureInfo.GetCultureInfo("de-DE");
         var coords = new JsonArray();
         foreach (var point in segment.Points)
         {
-            coords.Add(new JsonArray { point.Latitude, point.Longitude });
+            var local = DateTimeOffset.FromUnixTimeMilliseconds(point.TimestampEpochMs).ToLocalTime();
+            coords.Add(new JsonObject
+            {
+                ["lat"] = point.Latitude,
+                ["lon"] = point.Longitude,
+                ["t"] = local.ToString("HH:mm:ss", de),
+                ["ts"] = point.TimestampEpochMs,
+                ["label"] = local.ToString("dd.MM. HH:mm:ss", de),
+                ["speed"] = point.SpeedKmh
+            });
         }
 
         return new JsonObject
