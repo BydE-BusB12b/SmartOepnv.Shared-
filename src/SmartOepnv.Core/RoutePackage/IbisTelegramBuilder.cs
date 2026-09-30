@@ -28,6 +28,18 @@ public static class IbisTelegramBuilder
     /// <summary>DS003 Zielnummernabruf (z. B. <c>z003</c>).</summary>
     public static byte[] CreateDs003DestinationNumber(string number) => Build("z" + number);
 
+    /// <summary>Entwerter / Tarifstufe (z. B. <c>e508500</c>).</summary>
+    public static byte[] CreateEntwerterCode(string code)
+    {
+        var digits = new string((code ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+        {
+            throw new ArgumentException("Entwerter-Code leer", nameof(code));
+        }
+
+        return Build("e" + digits);
+    }
+
     public static byte[] CreateDs003aTwoLine(string line1, string line2)
     {
         var l1 = Pad16(line1);
@@ -207,13 +219,17 @@ public static class OutsideDisplayTelegramFactory
         return FmaS1ProgramBuilder.CreateDestinationTelegrams(frontCycles, sideCycles, lineNumber);
     }
 
-    /// <summary>Zielnummer (DS001+DS003 klassisch): DS001-Linie/-Sonderzeichen unverändert, Ziel als <c>z###</c>.</summary>
+    /// <summary>Zielnummer (DS001+DS003 klassisch): DS001 unverändert im Programm; Ziel als <c>z###</c>.</summary>
     public static (byte[] Front, byte[] Side) BuildZielnummerTelegrams(OutsideDisplayProgram program)
     {
         var number = NormalizeZielnummer(program.FrontLine1);
         var telegram = IbisTelegramBuilder.CreateDs003DestinationNumber(number);
         return (telegram, telegram);
     }
+
+    /// <summary>Alias: DS003-Telegramm (nur Zielnummer).</summary>
+    public static (byte[] Front, byte[] Side) BuildDs003Telegrams(OutsideDisplayProgram program) =>
+        BuildZielnummerTelegrams(program);
 
     /// <summary>Zielnummer normalisieren: 1–4 Ziffern, auf mind. 3 Stellen mit führenden Nullen auffüllen.</summary>
     public static string NormalizeZielnummer(string? value)

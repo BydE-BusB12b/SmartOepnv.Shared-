@@ -472,9 +472,10 @@
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="Zielnummer" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBlock Grid.Column="0" Text="Zielnummer (DS003)" VerticalAlignment="Center" Margin="0,0,8,0" />
                                             <TextBox Grid.Column="1"
-                                                     materialDesign:HintAssist.Hint="z. B. 003"
+                                                     materialDesign:HintAssist.Hint="z. B. 001 … 030"
+                                                     ToolTip="IBIS DS003: Tablet sendet z001&lt;CR&gt;+Parität – nur die Nummer, kein Klartext."
                                                      Text="{Binding FrontLine1, UpdateSourceTrigger=LostFocus}" />
                                         </Grid>
 
@@ -526,6 +527,16 @@
 
                                         <!-- Linie | Sonderz. | Intervall -->
                                         <Grid Grid.Row="6" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
@@ -752,10 +763,11 @@
                                         Command="{Binding AddOutsideProgramKrefeldCommand}"
                                         Style="{StaticResource MaterialDesignRaisedButton}"
                                         Margin="0,0,8,6" />
-                                <Button Content="+ Zielnummer"
+                                <Button Content="+ DS003"
                                         Command="{Binding AddOutsideProgramZielnummerCommand}"
                                         Style="{StaticResource MaterialDesignRaisedButton}"
-                                        Margin="0,0,8,6" />
+                                        Margin="0,0,8,6"
+                                        ToolTip="IBIS DS003: nur Zielnummer z001… (wie IBISUtility)" />
                                 <Button Content="+ Mobitec"
                                         Command="{Binding AddOutsideProgramMobitecCommand}"
                                         Style="{StaticResource MaterialDesignRaisedButton}"

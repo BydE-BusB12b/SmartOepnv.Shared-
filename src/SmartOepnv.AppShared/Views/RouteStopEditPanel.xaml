@@ -297,6 +297,27 @@
             </StackPanel>
         </StackPanel>
 
+        <StackPanel Margin="0,0,0,12"
+                    Visibility="{Binding HasSelectedStop, Converter={StaticResource BoolToVis}}">
+            <CheckBox Content="Entwerter"
+                      IsChecked="{Binding EntwerterEnabled, Mode=TwoWay}"
+                      Margin="0,0,0,6"
+                      VerticalAlignment="Center"
+                      ToolTip="Beim Verlassen der Haltestelle (120 m) IBIS Entwerter senden (e…). Datum/Uhrzeit laufen bereits minutengenau." />
+            <StackPanel Visibility="{Binding ShowEntwerterFields, Converter={StaticResource BoolToVis}}"
+                        Margin="16,0,0,0">
+                <TextBox materialDesign:HintAssist.Hint="Entwerter-Code (z. B. 508500)"
+                         Text="{Binding SelectedStop.EntwerterCode, UpdateSourceTrigger=LostFocus}"
+                         ToolTip="IBISUtility: e508500 → hier nur die Ziffern. App sendet e + Code nach 120 m Verlassen."
+                         Margin="0,0,0,4"
+                         LostFocus="Field_LostFocus" />
+                <TextBlock Text="Telegramm: e + Code (z. B. e508500). u/d kommen über den Minuten-Tick."
+                           FontSize="11"
+                           Opacity="0.75"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </StackPanel>
+
         <StackPanel Visibility="{Binding ShowStartStopFields, Converter={StaticResource BoolToVis}}"
                     Margin="0,0,0,12"
                     HorizontalAlignment="Stretch">
@@ -370,7 +391,7 @@
                     </Grid>
                 </StackPanel>
                 <StackPanel Margin="0,0,8,8">
-                    <TextBlock Text="Ziel auswählen (Zielnummer):" Margin="0,0,0,4" Opacity="0.9" />
+                    <TextBlock Text="Ziel auswählen (DS003):" Margin="0,0,0,4" Opacity="0.9" />
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -484,7 +505,7 @@
                     </Grid>
                 </StackPanel>
                 <StackPanel Margin="0,0,8,8">
-                    <TextBlock Text="Endziel auswählen (Zielnummer):" Margin="0,0,0,4" Opacity="0.9" />
+                    <TextBlock Text="Endziel auswählen (DS003):" Margin="0,0,0,4" Opacity="0.9" />
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />

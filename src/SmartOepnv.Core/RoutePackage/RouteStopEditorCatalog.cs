@@ -95,7 +95,7 @@ public static class RouteStopEditorCatalog
         LoadProtocolNames(editor, OutsideDisplayProtocolKind.Ds003aKrefeld);
 
     public static IReadOnlyList<string> LoadZielnummerNames(EditableRoutePackage? editor) =>
-        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Zielnummer);
+        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Ds003);
 
     public static IReadOnlyList<string> LoadMobitecNames(EditableRoutePackage? editor) =>
         LoadProtocolNames(editor, OutsideDisplayProtocolKind.Mobitec);

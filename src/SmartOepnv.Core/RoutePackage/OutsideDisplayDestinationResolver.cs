@@ -127,7 +127,7 @@ public static class OutsideDisplayDestinationResolver
                     stop.Ds003aEndDestination = name;
                     stop.Ds003aEndDestinationId = id;
                     break;
-                case OutsideDisplayProtocolKind.Zielnummer:
+                case OutsideDisplayProtocolKind.Ds003:
                     stop.ZielnummerEndDestination = name;
                     stop.ZielnummerEndDestinationId = id;
                     break;
@@ -158,7 +158,7 @@ public static class OutsideDisplayDestinationResolver
                 stop.Ds003aDestination = name;
                 stop.Ds003aDestinationId = id;
                 break;
-            case OutsideDisplayProtocolKind.Zielnummer:
+            case OutsideDisplayProtocolKind.Ds003:
                 stop.ZielnummerDestination = name;
                 stop.ZielnummerDestinationId = id;
                 break;
@@ -193,7 +193,7 @@ public static class OutsideDisplayDestinationResolver
                 SyncOne(stop, catalog, OutsideDisplayProtocolKind.Ds003aKrefeld, isEnd: false,
                     () => stop.Ds003aDestination, () => stop.Ds003aDestinationId,
                     (n, i) => { stop.Ds003aDestination = n; stop.Ds003aDestinationId = i; });
-                SyncOne(stop, catalog, OutsideDisplayProtocolKind.Zielnummer, isEnd: false,
+                SyncOne(stop, catalog, OutsideDisplayProtocolKind.Ds003, isEnd: false,
                     () => stop.ZielnummerDestination, () => stop.ZielnummerDestinationId,
                     (n, i) => { stop.ZielnummerDestination = n; stop.ZielnummerDestinationId = i; });
                 SyncOne(stop, catalog, OutsideDisplayProtocolKind.Mobitec, isEnd: false,
@@ -212,7 +212,7 @@ public static class OutsideDisplayDestinationResolver
                 SyncOne(stop, catalog, OutsideDisplayProtocolKind.Ds003aKrefeld, isEnd: true,
                     () => stop.Ds003aEndDestination, () => stop.Ds003aEndDestinationId,
                     (n, i) => { stop.Ds003aEndDestination = n; stop.Ds003aEndDestinationId = i; });
-                SyncOne(stop, catalog, OutsideDisplayProtocolKind.Zielnummer, isEnd: true,
+                SyncOne(stop, catalog, OutsideDisplayProtocolKind.Ds003, isEnd: true,
                     () => stop.ZielnummerEndDestination, () => stop.ZielnummerEndDestinationId,
                     (n, i) => { stop.ZielnummerEndDestination = n; stop.ZielnummerEndDestinationId = i; });
                 SyncOne(stop, catalog, OutsideDisplayProtocolKind.Mobitec, isEnd: true,

@@ -596,7 +596,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         SortOutsidePrograms();
         SelectedOutsideProgram = program;
         MarkDirty();
-        StatusMessage = "Neue Zielanzeige (Zielnummer) – Zielnummer/Linie/Sonderzeichen anpassen und speichern.";
+        StatusMessage = "Neue Zielanzeige (DS003) – Zielnummer setzen (z. B. 001); Tablet sendet nur z001…";
     }
 
     [RelayCommand]

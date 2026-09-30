@@ -166,6 +166,24 @@ public partial class RoutesViewModel
 
     public bool ShowStopHintOwnGpsFields => ShowStopHintFields && IsStopHintOwnGps;
 
+    public bool EntwerterEnabled
+    {
+        get => SelectedStop?.EntwerterEnabled ?? false;
+        set
+        {
+            if (SelectedStop is null || SelectedStop.EntwerterEnabled == value)
+            {
+                return;
+            }
+
+            SelectedStop.EntwerterEnabled = value;
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public bool ShowEntwerterFields => HasSelectedStop && EntwerterEnabled;
+
     public bool IsEndStop
     {
         get => SelectedStop?.IsEndStop ?? false;
@@ -378,7 +396,7 @@ public partial class RoutesViewModel
     public string? SelectedDestinationZielnummer
     {
         get => ResolveComboLabel(
-            OutsideDisplayProtocolKind.Zielnummer,
+            OutsideDisplayProtocolKind.Ds003,
             SelectedStop?.ZielnummerDestinationId,
             SelectedStop?.ZielnummerDestination);
         set
@@ -388,7 +406,7 @@ public partial class RoutesViewModel
                 return;
             }
 
-            ApplyDestinationSelection(OutsideDisplayProtocolKind.Zielnummer, isEnd: false, value);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Ds003, isEnd: false, value);
             MaintainStartStopMarkerIfNeeded();
             OnPropertyChanged();
             MarkStopDetailDirty();
@@ -494,7 +512,7 @@ public partial class RoutesViewModel
     public string? SelectedEndDestinationZielnummer
     {
         get => ResolveComboLabel(
-            OutsideDisplayProtocolKind.Zielnummer,
+            OutsideDisplayProtocolKind.Ds003,
             SelectedStop?.ZielnummerEndDestinationId,
             SelectedStop?.ZielnummerEndDestination);
         set
@@ -504,7 +522,7 @@ public partial class RoutesViewModel
                 return;
             }
 
-            ApplyDestinationSelection(OutsideDisplayProtocolKind.Zielnummer, isEnd: true, value);
+            ApplyDestinationSelection(OutsideDisplayProtocolKind.Ds003, isEnd: true, value);
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
@@ -979,6 +997,8 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(IsStopHintWithAnnouncement));
         OnPropertyChanged(nameof(IsStopHintOwnGps));
         OnPropertyChanged(nameof(ShowStopHintOwnGpsFields));
+        OnPropertyChanged(nameof(EntwerterEnabled));
+        OnPropertyChanged(nameof(ShowEntwerterFields));
         OnPropertyChanged(nameof(IsEndStop));
         OnPropertyChanged(nameof(PlayEndStopAnnouncement));
         OnPropertyChanged(nameof(PlayEndStopAnnouncementEn));

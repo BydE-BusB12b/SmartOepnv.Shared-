@@ -99,6 +99,11 @@ public sealed class RouteStopItem
     public string StopHintGpsCoordinates { get; set; } = string.Empty;
     public int StopHintRadius { get; set; } = 40;
 
+    /// <summary>Entwertersteuerung: beim 120‑m-Verlassen IBIS <c>u</c>/<c>d</c>/<c>e…</c>.</summary>
+    public bool EntwerterEnabled { get; set; }
+    /// <summary>Ziffern für DS004-Entwerter, z. B. <c>508500</c> → Telegramm <c>e508500</c>.</summary>
+    public string EntwerterCode { get; set; } = string.Empty;
+
     public bool IsDisplayEnabled { get; set; }
     public string DisplayText { get; set; } = string.Empty;
     public string DisplayText2 { get; set; } = string.Empty;
@@ -163,6 +168,8 @@ public sealed class RouteStopItem
             StopHintTriggerMode = StopHintTriggerMode,
             StopHintGpsCoordinates = StopHintGpsCoordinates,
             StopHintRadius = StopHintRadius,
+            EntwerterEnabled = EntwerterEnabled,
+            EntwerterCode = EntwerterCode,
             IsDisplayEnabled = IsDisplayEnabled,
         DisplayText = DisplayText,
         DisplayText2 = DisplayText2,
@@ -228,6 +235,8 @@ public sealed class RouteStopItem
         StopHintTriggerMode = other.StopHintTriggerMode;
         StopHintGpsCoordinates = other.StopHintGpsCoordinates;
         StopHintRadius = other.StopHintRadius;
+        EntwerterEnabled = other.EntwerterEnabled;
+        EntwerterCode = other.EntwerterCode;
         IsDisplayEnabled = other.IsDisplayEnabled;
         DisplayText = other.DisplayText;
         DisplayText2 = other.DisplayText2;

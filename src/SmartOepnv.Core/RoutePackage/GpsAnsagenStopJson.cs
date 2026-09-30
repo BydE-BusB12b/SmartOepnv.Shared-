@@ -63,6 +63,8 @@ public static class GpsAnsagenStopJson
                 JsonNodeReading.GetString(obj["stopHintTriggerMode"])),
             StopHintGpsCoordinates = JsonNodeReading.GetString(obj["stopHintGpsCoordinates"]),
             StopHintRadius = JsonNodeReading.GetInt32(obj["stopHintRadius"], 40),
+            EntwerterEnabled = JsonNodeReading.GetBoolean(obj["entwerterEnabled"]),
+            EntwerterCode = JsonNodeReading.GetString(obj["entwerterCode"]),
             IsDisplayEnabled = JsonNodeReading.GetBoolean(obj["isDisplayEnabled"]),
             DisplayText = JsonNodeReading.GetString(obj["displayText"]),
             DisplayText2 = JsonNodeReading.GetString(obj["displayText2"]),
@@ -143,6 +145,12 @@ public static class GpsAnsagenStopJson
             obj["stopHintTriggerMode"] = RouteStopHintTrigger.Normalize(stop.StopHintTriggerMode);
             obj["stopHintGpsCoordinates"] = stop.StopHintGpsCoordinates;
             obj["stopHintRadius"] = stop.StopHintRadius > 0 ? stop.StopHintRadius : 40;
+        }
+
+        if (stop.EntwerterEnabled || !string.IsNullOrWhiteSpace(stop.EntwerterCode))
+        {
+            obj["entwerterEnabled"] = stop.EntwerterEnabled;
+            obj["entwerterCode"] = (stop.EntwerterCode ?? string.Empty).Trim();
         }
 
         WriteRouteChangeTargetsByDate(obj, stop.RouteChangeTargetsByDate);

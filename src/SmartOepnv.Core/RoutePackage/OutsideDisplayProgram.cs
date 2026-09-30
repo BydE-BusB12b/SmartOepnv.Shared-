@@ -328,8 +328,15 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     public bool IsZielnummer
     {
-        get => Protocol == OutsideDisplayProtocolKind.Zielnummer;
-        set => SetProtocol(value ? OutsideDisplayProtocolKind.Zielnummer : OutsideDisplayProtocolKind.Ds021T);
+        get => Protocol == OutsideDisplayProtocolKind.Ds003;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Ds003 : OutsideDisplayProtocolKind.Ds021T);
+    }
+
+    /// <summary>DS003: nur Zielnummer <c>zNNN</c> (wie IBISUtility).</summary>
+    public bool IsDs003
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Ds003;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Ds003 : OutsideDisplayProtocolKind.Ds021T);
     }
 
     public bool IsMobitec
@@ -363,6 +370,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsDs021Neu));
         OnPropertyChanged(nameof(IsFmaS1));
         OnPropertyChanged(nameof(IsZielnummer));
+        OnPropertyChanged(nameof(IsDs003));
         OnPropertyChanged(nameof(IsMobitec));
         OnPropertyChanged(nameof(IsDs021T));
         OnPropertyChanged(nameof(UsesCycleEditor));
@@ -424,7 +432,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OutsideDisplayProtocolKind.Ds003aKrefeld => $"{Name} (DS003a Krefeld)",
         OutsideDisplayProtocolKind.Ds021Neu => $"{Name} (DS021neu)",
         OutsideDisplayProtocolKind.FmaS1 => $"{Name} (FMA-S1)",
-        OutsideDisplayProtocolKind.Zielnummer => $"{Name} (Zielnummer)",
+        OutsideDisplayProtocolKind.Ds003 => $"{Name} (DS003)",
         OutsideDisplayProtocolKind.Mobitec => $"{Name} (Mobitec)",
         _ => $"{Name} (DS021T)"
     };
@@ -434,7 +442,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OutsideDisplayProtocolKind.Ds003aKrefeld => "DS003a Krefeld",
         OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
         OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
-        OutsideDisplayProtocolKind.Zielnummer => "Zielnummer",
+        OutsideDisplayProtocolKind.Ds003 => "DS003",
         OutsideDisplayProtocolKind.Mobitec => "Mobitec",
         _ => "DS021T"
     };
@@ -786,17 +794,22 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             Protocol = OutsideDisplayProtocolKind.FmaS1
         };
 
-    public static OutsideDisplayProgram CreateZielnummer(string? name = null) =>
+    /// <summary>DS003: Telegramm <c>zNNN\\r</c>+Parität; Nummer in <see cref="FrontLine1"/>.</summary>
+    public static OutsideDisplayProgram CreateDs003(string? name = null) =>
         new()
         {
             Id = OutsideDisplayId.NewId(),
             Name = name ?? "Neues Ziel",
             FrontLine1 = "001",
             Ds001Type = "line",
-            Ds001Value = "001",
+            Ds001Value = string.Empty,
             Ds001Spec = "E00",
-            Protocol = OutsideDisplayProtocolKind.Zielnummer
+            Protocol = OutsideDisplayProtocolKind.Ds003
         };
+
+    /// <summary>Alias für <see cref="CreateDs003"/>.</summary>
+    public static OutsideDisplayProgram CreateZielnummer(string? name = null) =>
+        CreateDs003(name);
 
     public static OutsideDisplayProgram CreateKrefeld(string? name = null) =>
         new()
@@ -811,7 +824,8 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         };
 
     /// <summary>
-    /// Mobitec: Linie in <see cref="Ds001Value"/>, Zieltext in <see cref="FrontLine1"/> / Name.
+    /// Mobitec: Linie in <see cref="Ds001Value"/> (leer = keine Linie, volle Frontbreite),
+    /// Zieltext in <see cref="FrontLine1"/> / Name.
     /// </summary>
     public static OutsideDisplayProgram CreateMobitec(string? name = null) =>
         new()
@@ -821,7 +835,8 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             FrontLine1 = string.Empty,
             SideLine1 = string.Empty,
             Ds001Type = "line",
-            Ds001Value = "S8",
+            // Leer: sonst bleibt „S8“ stehen und die Linienzone blockiert den Zieltext.
+            Ds001Value = string.Empty,
             Ds001Spec = "E00",
             IntervalSeconds = 3,
             Protocol = OutsideDisplayProtocolKind.Mobitec
@@ -1040,7 +1055,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             OutsideDisplayProtocolKind.Ds003aKrefeld => OutsideDisplayTelegramFactory.BuildKrefeldTelegrams(this),
             OutsideDisplayProtocolKind.Ds021Neu => OutsideDisplayTelegramFactory.BuildDs021NeuTelegrams(this),
             OutsideDisplayProtocolKind.FmaS1 => OutsideDisplayTelegramFactory.BuildFmaS1Telegrams(this),
-            OutsideDisplayProtocolKind.Zielnummer => OutsideDisplayTelegramFactory.BuildZielnummerTelegrams(this),
+            OutsideDisplayProtocolKind.Ds003 => OutsideDisplayTelegramFactory.BuildZielnummerTelegrams(this),
             // Mobitec: OUT-Rohframes (Grafiken) mitspeichern; sonst leere Bytes → Tablet generiert.
             OutsideDisplayProtocolKind.Mobitec => (
                 MobitecFrontFrame ?? Array.Empty<byte>(),
@@ -1072,7 +1087,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
             sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
         }
-        else if (Protocol == OutsideDisplayProtocolKind.Zielnummer)
+        else if (Protocol == OutsideDisplayProtocolKind.Ds003)
         {
             frontGoals = [(FrontLine1, string.Empty)];
             sideGoals = frontGoals;
@@ -1091,13 +1106,13 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         var frontLog = Protocol switch
         {
             OutsideDisplayProtocolKind.FmaS1 => FmaS1CycleLog.Encode(frontGoals),
-            OutsideDisplayProtocolKind.Zielnummer => OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1),
+            OutsideDisplayProtocolKind.Ds003 => OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1),
             _ => OutsideDisplayCycleParser.BuildLogString(frontGoals)
         };
         var sideLog = Protocol switch
         {
             OutsideDisplayProtocolKind.FmaS1 => FmaS1CycleLog.Encode(sideGoals),
-            OutsideDisplayProtocolKind.Zielnummer => OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1),
+            OutsideDisplayProtocolKind.Ds003 => OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1),
             _ => OutsideDisplayCycleParser.BuildLogString(sideGoals)
         };
 
@@ -1141,7 +1156,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OutsideDisplayProtocolKind.Ds003aKrefeld => "DS003a_Krefeld",
         OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
         OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
-        OutsideDisplayProtocolKind.Zielnummer => "Zielnummer",
+        OutsideDisplayProtocolKind.Ds003 => "DS003",
         OutsideDisplayProtocolKind.Mobitec => "Mobitec",
         _ => "DS021T"
     };
@@ -1164,9 +1179,11 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             return OutsideDisplayProtocolKind.FmaS1;
         }
 
-        if (string.Equals(tag, "Zielnummer", StringComparison.OrdinalIgnoreCase))
+        // Neu: „DS003“; ältere Pakete: „Zielnummer“
+        if (string.Equals(tag, "DS003", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(tag, "Zielnummer", StringComparison.OrdinalIgnoreCase))
         {
-            return OutsideDisplayProtocolKind.Zielnummer;
+            return OutsideDisplayProtocolKind.Ds003;
         }
 
         if (string.Equals(tag, "Mobitec", StringComparison.OrdinalIgnoreCase))
@@ -1214,7 +1231,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
                 !ascii.StartsWith("zA4", StringComparison.Ordinal) &&
                 !ascii.StartsWith("zA5", StringComparison.Ordinal))
             {
-                return OutsideDisplayProtocolKind.Zielnummer;
+                return OutsideDisplayProtocolKind.Ds003;
             }
 
             if (ascii.Contains("aA", StringComparison.Ordinal))
@@ -1347,6 +1364,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsDs021Neu));
         OnPropertyChanged(nameof(IsFmaS1));
         OnPropertyChanged(nameof(IsZielnummer));
+        OnPropertyChanged(nameof(IsDs003));
         OnPropertyChanged(nameof(IsMobitec));
         OnPropertyChanged(nameof(IsDs021T));
         OnPropertyChanged(nameof(UsesCycleEditor));
