@@ -159,7 +159,8 @@ public sealed class MobitecOutImportDialog : Window
             SelectionMode = DataGridSelectionMode.Single,
             HeadersVisibility = DataGridHeadersVisibility.Column,
             GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
-            RowHeaderWidth = 0,
+            // 0 clippt die erste Spalte (Checkbox/Nr.); 1px reicht, Row-Header bleibt unsichtbar.
+            RowHeaderWidth = 1,
             Background = new SolidColorBrush(Color.FromRgb(0x12, 0x22, 0x36)),
             Foreground = Brushes.White,
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x2A, 0x3A, 0x4A)),
@@ -170,7 +171,17 @@ public sealed class MobitecOutImportDialog : Window
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
         };
 
-        grid.Columns.Add(new DataGridCheckBoxColumn
+        var checkStyle = new Style(typeof(CheckBox));
+        checkStyle.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center));
+        checkStyle.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center));
+        checkStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(6, 0, 2, 0)));
+
+        var nrStyle = new Style(typeof(TextBlock));
+        nrStyle.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right));
+        nrStyle.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center));
+        nrStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(4, 0, 8, 0)));
+
+        var checkCol = new DataGridCheckBoxColumn
         {
             Header = "Imp.",
             Binding = new Binding(nameof(Row.IsSelected))
@@ -178,35 +189,49 @@ public sealed class MobitecOutImportDialog : Window
                 Mode = BindingMode.TwoWay,
                 UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
             },
-            Width = 44
-        });
-        grid.Columns.Add(new DataGridTextColumn
+            Width = 64,
+            MinWidth = 64,
+            CanUserResize = false,
+            ElementStyle = checkStyle,
+            EditingElementStyle = checkStyle
+        };
+        grid.Columns.Add(checkCol);
+
+        var nrCol = new DataGridTextColumn
         {
             Header = "Nr.",
             Binding = new Binding(nameof(Row.Number)),
             IsReadOnly = true,
-            Width = 44
-        });
+            Width = 56,
+            MinWidth = 56,
+            CanUserResize = false,
+            ElementStyle = nrStyle
+        };
+        grid.Columns.Add(nrCol);
+
         grid.Columns.Add(new DataGridTextColumn
         {
             Header = "Linie",
             Binding = new Binding(nameof(Row.LinePreview)),
             IsReadOnly = true,
-            Width = 80
+            Width = 80,
+            MinWidth = 64
         });
         grid.Columns.Add(new DataGridTextColumn
         {
             Header = "Front",
             Binding = new Binding(nameof(Row.FrontPreview)),
             IsReadOnly = true,
-            Width = new DataGridLength(1.4, DataGridLengthUnitType.Star)
+            Width = new DataGridLength(1.4, DataGridLengthUnitType.Star),
+            MinWidth = 120
         });
         grid.Columns.Add(new DataGridTextColumn
         {
             Header = "Seite",
             Binding = new Binding(nameof(Row.SidePreview)),
             IsReadOnly = true,
-            Width = new DataGridLength(1.2, DataGridLengthUnitType.Star)
+            Width = new DataGridLength(1.2, DataGridLengthUnitType.Star),
+            MinWidth = 100
         });
         grid.Columns.Add(new DataGridTextColumn
         {
@@ -216,7 +241,8 @@ public sealed class MobitecOutImportDialog : Window
                 Mode = BindingMode.TwoWay,
                 UpdateSourceTrigger = UpdateSourceTrigger.LostFocus
             },
-            Width = new DataGridLength(1.3, DataGridLengthUnitType.Star)
+            Width = new DataGridLength(1.3, DataGridLengthUnitType.Star),
+            MinWidth = 120
         });
 
         return grid;

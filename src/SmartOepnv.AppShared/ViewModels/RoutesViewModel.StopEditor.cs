@@ -1119,6 +1119,65 @@ public partial class RoutesViewModel
         }
     }
 
+    /// <summary>
+    /// Freie DS003-Eingabe (1–4 Ziffern): vorhandenes Programm mit dieser Zielnummer nutzen
+    /// oder neu anlegen und den Anzeigenamen zurückgeben.
+    /// </summary>
+    public bool TryEnsureDs003DestinationByNumber(string? rawNumber, out string comboLabel)
+    {
+        comboLabel = RouteStopEditorCatalog.NoDestinationLabel;
+        var digits = new string((rawNumber ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length is < 1 or > 4)
+        {
+            return false;
+        }
+
+        var number = OutsideDisplayTelegramFactory.NormalizeZielnummer(digits);
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return false;
+        }
+
+        foreach (var entry in editor.OutsideDisplays)
+        {
+            var program = OutsideDisplayProgram.TryParse(entry);
+            if (program is null || program.Protocol != OutsideDisplayProtocolKind.Ds003)
+            {
+                continue;
+            }
+
+            var programNumber = OutsideDisplayTelegramFactory.NormalizeZielnummer(program.FrontLine1);
+            if (string.IsNullOrWhiteSpace(programNumber) || programNumber == "000")
+            {
+                programNumber = OutsideDisplayTelegramFactory.NormalizeZielnummer(program.Name);
+            }
+
+            if (!string.Equals(programNumber, number, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            comboLabel = program.Name.Trim();
+            EnsureComboValue(ZielnummerDestinations, comboLabel);
+            return true;
+        }
+
+        var created = OutsideDisplayProgram.CreateDs003(number);
+        created.FrontLine1 = number;
+        created.Id = OutsideDisplayId.NewUniqueId(
+            editor.OutsideDisplays
+                .Select(OutsideDisplayProgram.TryParse)
+                .Where(p => p is not null)
+                .Select(p => p!.Id));
+        editor.OutsideDisplays.Add(created.ToStorageEntry());
+        RefreshStopEditorCatalogs();
+        _sync.MarkDirty();
+        StatusMessage = $"DS003-Ziel {number} angelegt und übernommen.";
+        comboLabel = number;
+        return true;
+    }
+
     private static string? ToComboLabel(string? value, string emptyLabel) =>
         RouteStopEditorCatalog.ToComboLabel(value, emptyLabel);
 

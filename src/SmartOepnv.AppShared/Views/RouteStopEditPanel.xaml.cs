@@ -7,6 +7,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using MaterialDesignThemes.Wpf;
 using SmartOepnv.AppShared.ViewModels;
 using SmartOepnv.Core.RoutePackage;
 
@@ -464,6 +465,8 @@ public partial class RouteStopEditPanel : UserControl
             return;
         }
 
+        ConfigureDestinationSearchUi(combo);
+
         combo.Dispatcher.BeginInvoke(() =>
         {
             if (!combo.IsDropDownOpen)
@@ -513,6 +516,7 @@ public partial class RouteStopEditPanel : UserControl
             return;
         }
 
+        // Freie DS003-Nummer nur über Speichern/Enter – Schließen übernimmt nur die Listenauswahl.
         if (DataContext is RoutesViewModel vm && vm.SelectedStop is not null)
         {
             vm.ApplyDestinationComboSelection(fieldKey, ResolveComboSelection(combo));
@@ -531,6 +535,118 @@ public partial class RouteStopEditPanel : UserControl
 
         box.TextChanged -= DestinationSearchBox_OnTextChanged;
         box.TextChanged += DestinationSearchBox_OnTextChanged;
+    }
+
+    private void DestinationSearchBox_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || sender is not TextBox box)
+        {
+            return;
+        }
+
+        var combo = ResolveOwnerCombo(box);
+        if (combo is null || !TryCommitDs003NumberFromSearch(combo, box.Text))
+        {
+            return;
+        }
+
+        e.Handled = true;
+    }
+
+    private void DestinationNumberSaveButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        var combo = button.TemplatedParent as ComboBox ?? FindVisualParent<ComboBox>(button);
+        if (combo is null)
+        {
+            return;
+        }
+
+        var searchBox = FindDestinationSearchBox(combo);
+        TryCommitDs003NumberFromSearch(combo, searchBox?.Text);
+        e.Handled = true;
+    }
+
+    private bool TryCommitDs003NumberFromSearch(ComboBox combo, string? typedRaw)
+    {
+        if (combo.Tag is not string fieldKey || !IsZielnummerField(fieldKey))
+        {
+            return false;
+        }
+
+        if (DataContext is not RoutesViewModel vm || vm.SelectedStop is null)
+        {
+            return false;
+        }
+
+        var typed = typedRaw?.Trim();
+        if (!LooksLikeZielnummerInput(typed) ||
+            !vm.TryEnsureDs003DestinationByNumber(typed, out var numberLabel))
+        {
+            return false;
+        }
+
+        _suppressDestinationComboSync = true;
+        try
+        {
+            SetComboSelection(combo, numberLabel);
+            var searchBox = FindDestinationSearchBox(combo);
+            if (searchBox is not null)
+            {
+                searchBox.Text = string.Empty;
+            }
+
+            ClearDestinationFilter(combo);
+            combo.IsDropDownOpen = false;
+        }
+        finally
+        {
+            _suppressDestinationComboSync = false;
+        }
+
+        vm.ApplyDestinationComboSelection(fieldKey, numberLabel);
+        vm.MaintainStartStopMarkerAfterEdit();
+        vm.NotifyStopEditorStateChanged();
+        vm.StopDetailEditedCommand.Execute(null);
+        SyncComboSelectionsFromViewModel();
+        return true;
+    }
+
+    private static void ConfigureDestinationSearchUi(ComboBox combo)
+    {
+        var isZielnummer = combo.Tag is string tag && IsZielnummerField(tag);
+        var searchBox = FindDestinationSearchBox(combo);
+        var saveButton = FindDestinationNumberSaveButton(combo);
+
+        if (searchBox is not null)
+        {
+            HintAssist.SetHint(
+                searchBox,
+                isZielnummer ? "Nummer eingeben (z. B. 047)" : "Suchen (Zielname)");
+        }
+
+        if (saveButton is not null)
+        {
+            saveButton.Visibility = isZielnummer ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private static bool IsZielnummerField(string fieldKey) =>
+        fieldKey is "startZielnummer" or "endZielnummer";
+
+    private static bool LooksLikeZielnummerInput(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var digits = new string(text.Where(char.IsDigit).ToArray());
+        return digits.Length is >= 1 and <= 4 && digits.Length == text.Trim().Length;
     }
 
     private void DestinationSearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
@@ -657,6 +773,17 @@ public partial class RouteStopEditPanel : UserControl
         }
 
         return FindVisualChild<TextBox>(combo, "DestinationSearchBox");
+    }
+
+    private static Button? FindDestinationNumberSaveButton(ComboBox combo)
+    {
+        combo.ApplyTemplate();
+        if (combo.Template?.FindName("DestinationNumberSaveButton", combo) is Button fromTemplate)
+        {
+            return fromTemplate;
+        }
+
+        return FindVisualChild<Button>(combo, "DestinationNumberSaveButton");
     }
 
     private static ComboBox? ResolveOwnerCombo(TextBox box) =>
