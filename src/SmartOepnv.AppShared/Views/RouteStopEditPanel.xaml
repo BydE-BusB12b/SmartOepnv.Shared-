@@ -328,15 +328,28 @@
                       IsChecked="{Binding EntwerterEnabled, Mode=TwoWay}"
                       Margin="0,0,0,6"
                       VerticalAlignment="Center"
-                      ToolTip="Beim Verlassen der Haltestelle (120 m) IBIS Entwerter senden (e…). Datum/Uhrzeit laufen bereits minutengenau." />
+                      ToolTip="Beim Verlassen der Haltestelle (120 m) IBIS Entwerter senden (e…). Datum/Uhrzeit separat (d/u)." />
             <StackPanel Visibility="{Binding ShowEntwerterFields, Converter={StaticResource BoolToVis}}"
                         Margin="16,0,0,0">
-                <TextBox materialDesign:HintAssist.Hint="Entwerter-Code (z. B. 508500)"
-                         Text="{Binding SelectedStop.EntwerterCode, UpdateSourceTrigger=LostFocus}"
-                         ToolTip="IBISUtility: e508500 → hier nur die Ziffern. App sendet e + Code nach 120 m Verlassen."
-                         Margin="0,0,0,4"
-                         LostFocus="Field_LostFocus" />
-                <TextBlock Text="Telegramm: e + Code (z. B. e508500). u/d kommen über den Minuten-Tick."
+                <UniformGrid Columns="2" HorizontalAlignment="Stretch" Margin="0,0,0,4">
+                    <TextBox materialDesign:HintAssist.Hint="Wabe (3 Ziffern)"
+                             Text="{Binding EntwerterWabe, UpdateSourceTrigger=LostFocus}"
+                             ToolTip="DS004 Ziffer 1–3. Linie (4–6) kommt automatisch von der Route."
+                             Margin="0,0,6,0"
+                             MaxLength="3"
+                             LostFocus="Field_LostFocus" />
+                    <TextBox materialDesign:HintAssist.Hint="Kurzstrecke optional (DS004a)"
+                             Text="{Binding EntwerterKurzstrecke, UpdateSourceTrigger=LostFocus}"
+                             ToolTip="7. Stempelstelle über DS004a Ziffer 3. Leer = 0."
+                             Margin="6,0,0,0"
+                             MaxLength="1"
+                             LostFocus="Field_LostFocus" />
+                </UniformGrid>
+                <TextBlock Text="{Binding EntwerterLinieAuto, StringFormat=Linie (auto): {0}}"
+                           Margin="0,0,0,2"
+                           Opacity="0.85"
+                           FontSize="11" />
+                <TextBlock Text="{Binding EntwerterTelegramPreview}"
                            FontSize="11"
                            Opacity="0.75"
                            TextWrapping="Wrap" />

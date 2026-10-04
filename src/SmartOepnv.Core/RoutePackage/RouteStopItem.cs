@@ -99,9 +99,9 @@ public sealed class RouteStopItem
     public string StopHintGpsCoordinates { get; set; } = string.Empty;
     public int StopHintRadius { get; set; } = 40;
 
-    /// <summary>Entwertersteuerung: beim 120‑m-Verlassen IBIS <c>u</c>/<c>d</c>/<c>e…</c>.</summary>
+    /// <summary>Entwertersteuerung: beim Routenstart (Starthaltestelle) und beim 120‑m-Verlassen IBIS <c>l</c>/<c>u</c>/<c>d</c>/<c>e…</c>/<c>eA…</c>.</summary>
     public bool EntwerterEnabled { get; set; }
-    /// <summary>Ziffern für DS004-Entwerter, z. B. <c>508500</c> → Telegramm <c>e508500</c>.</summary>
+    /// <summary>DS004: gespeichert nur Wabe (3, Telegramm-Ziffer 4–6); Linie (Ziffer 1–3) setzt die App zur Fahrt. Optional 4. Ziffer = Kurzstrecke.</summary>
     public string EntwerterCode { get; set; } = string.Empty;
 
     public bool IsDisplayEnabled { get; set; }

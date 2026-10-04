@@ -184,6 +184,251 @@ public partial class RoutesViewModel
 
     public bool ShowEntwerterFields => HasSelectedStop && EntwerterEnabled;
 
+    /// <summary>Nur Wabe (DS004 Ziffer 4–6). Linie = Ziffer 1–3 kommt automatisch von der Route.</summary>
+    public string EntwerterWabe
+    {
+        get => ExtractEntwerterWabe(SelectedStop?.EntwerterCode);
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            var kurz = ExtractEntwerterKurzstrecke(SelectedStop.EntwerterCode);
+            var stored = StoreEntwerterCode(value, kurz);
+            if (string.Equals(SelectedStop.EntwerterCode, stored, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            SelectedStop.EntwerterCode = stored;
+            OnPropertyChanged(nameof(EntwerterWabe));
+            OnPropertyChanged(nameof(EntwerterKurzstrecke));
+            OnPropertyChanged(nameof(EntwerterLinieAuto));
+            OnPropertyChanged(nameof(EntwerterTelegramPreview));
+            MarkStopDetailDirty();
+        }
+    }
+
+    /// <summary>Optional DS004a Kurzstrecke (7. Stempelstelle), 0–9.</summary>
+    public string EntwerterKurzstrecke
+    {
+        get
+        {
+            var k = ExtractEntwerterKurzstrecke(SelectedStop?.EntwerterCode);
+            return k <= 0 ? string.Empty : k.ToString();
+        }
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+            var kurz = digits.Length == 0 ? 0 : digits[^1] - '0';
+            var stored = StoreEntwerterCode(EntwerterWabe, kurz);
+            if (string.Equals(SelectedStop.EntwerterCode, stored, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            SelectedStop.EntwerterCode = stored;
+            OnPropertyChanged(nameof(EntwerterWabe));
+            OnPropertyChanged(nameof(EntwerterKurzstrecke));
+            OnPropertyChanged(nameof(EntwerterTelegramPreview));
+            MarkStopDetailDirty();
+        }
+    }
+
+    /// <summary>DS004 Ziffer 4–6 aus Starthaltestellen-Ziel (DS001), nur Anzeige.</summary>
+    public string EntwerterLinieAuto
+    {
+        get
+        {
+            var line = ResolveRouteEntwerterLinie();
+            return string.IsNullOrEmpty(line) ? "—" : line;
+        }
+    }
+
+    public string EntwerterTelegramPreview
+    {
+        get
+        {
+            var wabe = ExtractEntwerterWabe(SelectedStop?.EntwerterCode);
+            if (string.IsNullOrEmpty(wabe))
+            {
+                return "Nur Wabe eintragen. Linie kommt automatisch von der Route (DS001). DS004a = Kurzstrecke.";
+            }
+
+            var line = ResolveRouteEntwerterLinie();
+            var linePart = string.IsNullOrEmpty(line) ? "???" : line;
+            var kurz = ExtractEntwerterKurzstrecke(SelectedStop?.EntwerterCode);
+            var ds004a = $"eA00{kurz}1";
+            // IbisUtility/ELGEBA: e + Linie(3) + Wabe(3)
+            return $"DS004: e{linePart}{wabe}  ·  DS004a: {ds004a} (Linie auto)";
+        }
+    }
+
+    private string ResolveRouteEntwerterLinie()
+    {
+        var start = Stops.FirstOrDefault(RouteStopEditorCatalog.IsStartStop);
+        if (start is null)
+        {
+            return string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(start.LineNumber))
+        {
+            return PadEntwerterDrei(start.LineNumber);
+        }
+
+        // Route-Linie/Kurs (z. B. 686/00) hat Vorrang vor DS001 am Zielprogramm –
+        // DS003-Programme haben oft Default „001“ (Zielnummer), nicht die Buslinie.
+        var fromRoute = ResolveEntwerterLinieFromSelectedRoute();
+        if (!string.IsNullOrEmpty(fromRoute))
+        {
+            return fromRoute;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return string.Empty;
+        }
+
+        foreach (var destName in new[]
+                 {
+                     start.Destination,
+                     start.Ds021NeuDestination,
+                     start.FmaS1Destination,
+                     start.Ds003aDestination,
+                     start.MobitecDestination
+                     // Zielnummer/DS003 absichtlich nicht: deren DS001 ist die Zielnr., nicht die Linie
+                 })
+        {
+            if (string.IsNullOrWhiteSpace(destName) ||
+                string.Equals(destName, RouteStopEditorCatalog.NoDestinationLabel, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            foreach (var entry in editor.OutsideDisplays)
+            {
+                var program = OutsideDisplayProgram.TryParse(entry);
+                if (program is null)
+                {
+                    continue;
+                }
+
+                if (!string.Equals(program.Name.Trim(), destName.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (program.IsDs003 || program.IsZielnummer)
+                {
+                    continue;
+                }
+
+                var digits = new string((program.Ds001Value ?? string.Empty).Where(char.IsDigit).ToArray());
+                if (digits.Length > 0)
+                {
+                    return PadEntwerterDrei(digits);
+                }
+            }
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>Linie aus ausgewählter Route: PassengerLine, sonst Linie/Kurs, sonst führende Ziffern im Namen.</summary>
+    private string ResolveEntwerterLinieFromSelectedRoute()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return string.Empty;
+        }
+
+        var parsed = RouteDisplayHelper.Parse(SelectedRoute);
+        if (!string.IsNullOrWhiteSpace(parsed.PassengerDisplayLine))
+        {
+            var fromPassenger = PadEntwerterDrei(parsed.PassengerDisplayLine);
+            if (!string.IsNullOrEmpty(fromPassenger))
+            {
+                return fromPassenger;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(parsed.LineCourse))
+        {
+            var linePart = parsed.LineCourse.Split('/')[0];
+            var fromCourse = PadEntwerterDrei(linePart);
+            if (!string.IsNullOrEmpty(fromCourse))
+            {
+                return fromCourse;
+            }
+        }
+
+        var name = (parsed.Name ?? string.Empty).Trim();
+        var leading = new string(name.TakeWhile(char.IsDigit).ToArray());
+        return PadEntwerterDrei(leading);
+    }
+
+    private static string ExtractEntwerterWabe(string? raw)
+    {
+        var digits = new string((raw ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        return digits.Length >= 3 ? digits[..3] : digits.PadLeft(3, '0');
+    }
+
+    private static int ExtractEntwerterKurzstrecke(string? raw)
+    {
+        var digits = new string((raw ?? string.Empty).Where(char.IsDigit).ToArray());
+        return digits.Length switch
+        {
+            >= 7 => digits[6] - '0',
+            4 => digits[3] - '0',
+            _ => 0
+        };
+    }
+
+    private static string StoreEntwerterCode(string? wabe, int kurzstrecke)
+    {
+        var w = ExtractEntwerterWabe(wabe);
+        if (string.IsNullOrEmpty(w) || w == "000")
+        {
+            var rawDigits = new string((wabe ?? string.Empty).Where(char.IsDigit).ToArray());
+            if (rawDigits.Length == 0)
+            {
+                return string.Empty;
+            }
+        }
+
+        if (string.IsNullOrEmpty(w))
+        {
+            return string.Empty;
+        }
+
+        return kurzstrecke > 0 ? $"{w}{kurzstrecke}" : w;
+    }
+
+    private static string PadEntwerterDrei(string? raw)
+    {
+        var digits = new string((raw ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        return digits.Length >= 3 ? digits[^3..] : digits.PadLeft(3, '0');
+    }
+
     public bool IsEndStop
     {
         get => SelectedStop?.IsEndStop ?? false;
@@ -999,6 +1244,10 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(ShowStopHintOwnGpsFields));
         OnPropertyChanged(nameof(EntwerterEnabled));
         OnPropertyChanged(nameof(ShowEntwerterFields));
+        OnPropertyChanged(nameof(EntwerterWabe));
+        OnPropertyChanged(nameof(EntwerterKurzstrecke));
+        OnPropertyChanged(nameof(EntwerterLinieAuto));
+        OnPropertyChanged(nameof(EntwerterTelegramPreview));
         OnPropertyChanged(nameof(IsEndStop));
         OnPropertyChanged(nameof(PlayEndStopAnnouncement));
         OnPropertyChanged(nameof(PlayEndStopAnnouncementEn));

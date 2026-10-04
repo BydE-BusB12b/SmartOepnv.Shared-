@@ -37,13 +37,21 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public string Id
     {
         get => _id;
-        set => SetProperty(ref _id, OutsideDisplayId.Ensure(value), nameof(DisplayNumber), nameof(IdEditText));
+        set => SetProperty(ref _id, OutsideDisplayId.Ensure(value), nameof(DisplayNumber), nameof(IdEditText), nameof(ListNumberLabel));
     }
 
     /// <summary>Vierstellige Anzeige-Nummer für Listen (direkt oder aus langer Legacy-ID abgeleitet).</summary>
     public string DisplayNumber => OutsideDisplayId.ToDisplayNumber(Id);
 
-    /// <summary>Editierbare ID im Formular (immer vorausgefüllt, 0001–9999).</summary>
+    /// <summary>
+    /// Listen-Kurzzeile: App-ID, bei Mobitec zusätzlich ICU-Zielnummer (unabhängig von der ID).
+    /// </summary>
+    public string ListNumberLabel =>
+        IsMobitec && DestinationNumber is int destNo
+            ? $"{DisplayNumber} · Z{destNo:D4}"
+            : DisplayNumber;
+
+    /// <summary>Editierbare App-ID im Formular (0001–9999).</summary>
     public string IdEditText
     {
         get => OutsideDisplayId.IsFourDigit(_id)
@@ -59,6 +67,53 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             }
 
             Id = next;
+        }
+    }
+
+    private int? _destinationNumber;
+
+    /// <summary>
+    /// Mobitec-/ICU-/ZEdit-Zielnummer (0–9999), unabhängig von der App-<see cref="Id"/>.
+    /// Leer/<c>null</c> = nicht gesetzt.
+    /// </summary>
+    public int? DestinationNumber
+    {
+        get => _destinationNumber;
+        set
+        {
+            int? next = value is >= 0 and <= 9999 ? value : null;
+            if (_destinationNumber == next)
+            {
+                return;
+            }
+
+            _destinationNumber = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DestinationNumberEditText));
+            OnPropertyChanged(nameof(ListNumberLabel));
+        }
+    }
+
+    /// <summary>Editierbare ICU-Zielnummer (leer = keine).</summary>
+    public string DestinationNumberEditText
+    {
+        get => DestinationNumber is int n ? n.ToString("D4") : string.Empty;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                DestinationNumber = null;
+                return;
+            }
+
+            var digits = new string(value.Where(char.IsDigit).ToArray());
+            if (digits.Length == 0 || !int.TryParse(digits, out var n) || n is < 0 or > 9999)
+            {
+                OnPropertyChanged(nameof(DestinationNumberEditText));
+                return;
+            }
+
+            DestinationNumber = n;
         }
     }
 
@@ -109,7 +164,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public string FrontLine1
     {
         get => _frontLine1;
-        set => SetProperty(ref _frontLine1, value, nameof(FrontPreview));
+        set => SetProperty(ref _frontLine1, value, nameof(FrontPreview), nameof(Ds003ListLabel));
     }
 
     public string FrontLine2
@@ -379,6 +434,9 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(DisplayLabel));
         OnPropertyChanged(nameof(FrontPreview));
         OnPropertyChanged(nameof(WechseltextPreview));
+        OnPropertyChanged(nameof(ListNumberLabel));
+        OnPropertyChanged(nameof(DestinationNumberEditText));
+        OnPropertyChanged(nameof(Ds003ListLabel));
     }
 
     public Ds021NeuFontControl FontControl { get; set; } = Ds021NeuFontControl.Default;
@@ -733,6 +791,23 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public string WechseltextPreview =>
         FormatWechseltextListPreview(FrontCycles, fallbackSingle: FrontPreview);
 
+    /// <summary>Ziellisten-Zeile für DS003: vergebene Zielnummer (z. B. „Zielnummer: 004“).</summary>
+    public string Ds003ListLabel
+    {
+        get
+        {
+            if (!IsDs003)
+            {
+                return string.Empty;
+            }
+
+            var number = OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1);
+            return string.IsNullOrWhiteSpace(number)
+                ? "Zielnummer: —"
+                : $"Zielnummer: {number}";
+        }
+    }
+
     private static string FormatWechseltextListPreview(
         IEnumerable<OutsideDisplayTextCycle> cycles,
         string fallbackSingle)
@@ -1026,6 +1101,21 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             program.NotifyMobitecGraphicsChanged();
         }
 
+        // Index 17: Mobitec-ICU-Zielnummer (unabhängig von App-ID Index 13)
+        var destRaw = DecodeUtf8(parts.ElementAtOrDefault(17));
+        if (int.TryParse(destRaw, out var destNo) && destNo is >= 0 and <= 9999)
+        {
+            program.DestinationNumber = destNo;
+        }
+        else if (program.Protocol == OutsideDisplayProtocolKind.Mobitec &&
+                 OutsideDisplayId.IsFourDigit(program.Id) &&
+                 int.TryParse(program.Id, out var legacyDest) &&
+                 legacyDest is >= 0 and <= 9999)
+        {
+            // Legacy: früher war die App-ID zugleich die ICU-Zielnummer
+            program.DestinationNumber = legacyDest;
+        }
+
         if (string.Equals(program.Name, "Startziel", StringComparison.Ordinal))
         {
             program.IsStartTarget = true;
@@ -1147,6 +1237,10 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         // Index 16: Mobitec-Linien-Rohframe (Tasse/Schraubenschlüssel/Logo/…)
         parts.Add(Protocol == OutsideDisplayProtocolKind.Mobitec
             ? EncodeBytes(MobitecLineFrame ?? Array.Empty<byte>())
+            : string.Empty);
+        // Index 17: Mobitec-ICU-Zielnummer (leer wenn nicht gesetzt)
+        parts.Add(DestinationNumber is int dn
+            ? EncodeUtf8(dn.ToString("D4"))
             : string.Empty);
         return string.Join('|', parts);
     }
@@ -1373,6 +1467,10 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsListEnabled));
         OnPropertyChanged(nameof(DisplayNumber));
         OnPropertyChanged(nameof(IdEditText));
+        OnPropertyChanged(nameof(ListNumberLabel));
+        OnPropertyChanged(nameof(DestinationNumber));
+        OnPropertyChanged(nameof(DestinationNumberEditText));
+        OnPropertyChanged(nameof(Ds003ListLabel));
         NotifyMobitecGraphicsChanged();
     }
 }
