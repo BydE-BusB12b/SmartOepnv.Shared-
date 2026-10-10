@@ -121,54 +121,52 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Nur Dropdown-Pfeil rechts – kein MaterialDesign-CheckBox-Toggle unter dem Text. -->
     <ControlTemplate x:Key="SmartDarkComboBoxToggleTemplate" TargetType="ToggleButton">
-        <Border x:Name="Bd"
-                Background="{TemplateBinding Background}"
-                BorderBrush="{TemplateBinding BorderBrush}"
-                BorderThickness="{TemplateBinding BorderThickness}"
-                SnapsToDevicePixels="True">
+        <Border Background="Transparent" BorderThickness="0" SnapsToDevicePixels="True">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="28" />
                 </Grid.ColumnDefinitions>
-                <!-- Nur Pfeil; Auswahltext liegt im ComboBox-Template darüber. -->
-                <Path Grid.Column="1"
-                      HorizontalAlignment="Center"
-                      VerticalAlignment="Center"
-                      Data="M 0 0 L 4 4 L 8 0 Z"
-                      Fill="White" />
+                <Border x:Name="ArrowBd"
+                        Grid.Column="1"
+                        Background="Transparent">
+                    <Path HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Data="M 0 0 L 4 4 L 8 0 Z"
+                          Fill="White" />
+                </Border>
             </Grid>
         </Border>
         <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SmartPrimaryBrush}" />
+                <Setter TargetName="ArrowBd" Property="Background" Value="#33FFFFFF" />
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="Bd" Property="Opacity" Value="0.5" />
+                <Setter Property="Opacity" Value="0.5" />
             </Trigger>
         </ControlTemplate.Triggers>
     </ControlTemplate>
 
     <ControlTemplate x:Key="SmartDarkComboBoxTemplate" TargetType="ComboBox">
-        <!-- Auswahltext neben dem Toggle (nicht als Toggle-Content), sonst kollabiert die Breite auf „A..“. -->
         <Grid SnapsToDevicePixels="True"
               HorizontalAlignment="Stretch"
               MinWidth="{TemplateBinding MinWidth}">
-            <ToggleButton x:Name="ToggleButton"
-                          HorizontalAlignment="Stretch"
-                          VerticalAlignment="Stretch"
-                          Background="{TemplateBinding Background}"
-                          BorderBrush="{TemplateBinding BorderBrush}"
-                          BorderThickness="{TemplateBinding BorderThickness}"
-                          Foreground="{TemplateBinding Foreground}"
-                          Focusable="False"
-                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
-                          ClickMode="Press"
-                          Padding="{TemplateBinding Padding}"
-                          Template="{StaticResource SmartDarkComboBoxToggleTemplate}" />
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="28" />
+            </Grid.ColumnDefinitions>
+            <Border x:Name="Bd"
+                    Grid.ColumnSpan="2"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    SnapsToDevicePixels="True" />
+            <!-- Text links, ohne darunter liegenden Check-Toggle -->
             <ContentPresenter x:Name="ContentSite"
-                              Margin="8,0,28,0"
+                              Grid.Column="0"
+                              Margin="8,0,4,0"
                               HorizontalAlignment="Left"
                               VerticalAlignment="Center"
                               Content="{TemplateBinding SelectionBoxItem}"
@@ -176,6 +174,19 @@
                               ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                               IsHitTestVisible="False"
                               SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+            <!-- Style=null: MD-ToggleButton sonst als Häkchen mitten im Text -->
+            <ToggleButton x:Name="ToggleButton"
+                          Grid.Column="0"
+                          Grid.ColumnSpan="2"
+                          Style="{x:Null}"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Focusable="False"
+                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                          ClickMode="Press"
+                          Template="{StaticResource SmartDarkComboBoxToggleTemplate}" />
             <Popup x:Name="PART_Popup"
                    AllowsTransparency="True"
                    Placement="Bottom"
@@ -207,6 +218,9 @@
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.55" />
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SmartPrimaryBrush}" />
             </Trigger>
         </ControlTemplate.Triggers>
     </ControlTemplate>

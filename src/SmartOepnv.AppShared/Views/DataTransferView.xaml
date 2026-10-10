@@ -336,10 +336,16 @@
                         <ItemsControl ItemsSource="{Binding RouteTransferItems}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <CheckBox Content="{Binding RouteName}"
-                                              IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                              Margin="6,2"
-                                              Foreground="White" />
+                                    <DockPanel LastChildFill="True" Margin="6,2">
+                                        <CheckBox DockPanel.Dock="Left"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="0,0,8,0" />
+                                        <TextBlock Text="{Binding RouteName}"
+                                                   Foreground="White"
+                                                   TextWrapping="Wrap"
+                                                   VerticalAlignment="Center" />
+                                    </DockPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

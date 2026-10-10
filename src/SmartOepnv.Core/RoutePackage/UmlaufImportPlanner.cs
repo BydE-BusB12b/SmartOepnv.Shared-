@@ -612,6 +612,17 @@ public static class UmlaufImportPlanner
         if (ausfahrt)
         {
             stop.PlayStartStopGreeting = true;
+            // Depot-Ausfahrt: Außenanzeige „Dienstfahrt“, falls Bibliothek kein Ziel liefert
+            if (!RouteStopEditorCatalog.HasStartStopDestination(stop.Destination) &&
+                !RouteStopEditorCatalog.HasStartStopDestination(stop.Ds021NeuDestination) &&
+                !RouteStopEditorCatalog.HasStartStopDestination(stop.FmaS1Destination) &&
+                string.IsNullOrWhiteSpace(stop.Ds003aDestination) &&
+                string.IsNullOrWhiteSpace(stop.ZielnummerDestination) &&
+                string.IsNullOrWhiteSpace(stop.MobitecDestination))
+            {
+                stop.Destination = "Dienstfahrt";
+            }
+
             RouteStopEditorCatalog.EnsureStartStopMarker(stop);
         }
         else
@@ -732,31 +743,20 @@ public static class UmlaufImportPlanner
         IReadOnlyList<UmlaufPdfReader.TimingPoint>? planTimingPoints = null,
         IReadOnlyDictionary<(string FromCode, string ToCode), int>? typicalTravelMinutes = null)
     {
-        var templateStops = StripDepotStops(GetTemplateStops(editor, templateRouteKey));
-        if (templateStops.Count == 0)
+        var fullTemplate = StripDepotStops(GetTemplateStops(editor, templateRouteKey));
+        if (fullTemplate.Count == 0)
         {
             return [];
         }
 
-        var startIdx = FindStopIndexByHint(templateStops, startStopHint);
-        var endIdx = FindStopIndexByHint(templateStops, endStopHint);
-        if (startIdx < 0)
-        {
-            startIdx = 0;
-        }
-
-        if (endIdx < 0)
-        {
-            endIdx = templateStops.Count - 1;
-        }
-
-        if (endIdx < startIdx)
-        {
-            startIdx = 0;
-            endIdx = templateStops.Count - 1;
-        }
-
-        templateStops = templateStops.Skip(startIdx).Take(endIdx - startIdx + 1).ToList();
+        // Volle Vorlagenkette Start→Ende; PDF-Zeiten nur als Anker (Taktpunkte)
+        var templateStops = SelectTemplateStopsForTrip(
+            editor,
+            templateRouteKey,
+            fullTemplate,
+            startStopHint,
+            endStopHint,
+            planTimingPoints);
 
         if (!RouteScheduleTimeCalculator.TryParseTime(startTime, out _))
         {
@@ -774,12 +774,22 @@ public static class UmlaufImportPlanner
         for (var i = 0; i < templateStops.Count; i++)
         {
             var stop = templateStops[i].Clone();
-            stop.Time = i == 0
-                ? tripStartTime
-                : RouteScheduleTimeCalculator.CalculateStopTime(
-                      tripStartTime,
-                      templateStartTime,
-                      templateStops[i].Time) ?? string.Empty;
+            // Doppelte Namensvarianten (z. B. „Höhscheid Brockenberg“ / „Höhscheid-Brockenberg“)
+            // teilen dieselbe Minute — nicht aus Vorlagen-Offset +1 Min. ableiten.
+            if (i > 0 && AreEquivalentStopNames(result[^1].Name, stop.Name) &&
+                !string.IsNullOrWhiteSpace(result[^1].Time))
+            {
+                stop.Time = result[^1].Time;
+            }
+            else
+            {
+                stop.Time = i == 0
+                    ? tripStartTime
+                    : RouteScheduleTimeCalculator.CalculateStopTime(
+                          tripStartTime,
+                          templateStartTime,
+                          templateStops[i].Time) ?? string.Empty;
+            }
 
             var code = PlannerStopCode.Normalize(stop.PlannerStopCode);
             if (!string.IsNullOrEmpty(code) && preserveByCode.TryGetValue(code, out var prev))
@@ -803,6 +813,396 @@ public static class UmlaufImportPlanner
         ApplyPlanTimingAndFillGaps(result, templateStops, planTimingPoints, typical, tripStartTime, endTime);
 
         return result;
+    }
+
+    /// <summary>
+    /// Vorlagenkette Start→Ende inkl. aller Zwischenhalte (PDF listet oft nur Taktpunkte).
+    /// Optionale Halte (Mangenberg, Schleife Krahenhöhe) nur wenn in der PDF eine Zeit steht.
+    /// Fehlende Spuren (Mangenberg auf 683) aus Donor-Linie (682) einspleißen.
+    /// </summary>
+    private static List<RouteStopItem> SelectTemplateStopsForTrip(
+        EditableRoutePackage editor,
+        string primaryRouteKey,
+        List<RouteStopItem> fullTemplate,
+        string? startStopHint,
+        string? endStopHint,
+        IReadOnlyList<UmlaufPdfReader.TimingPoint>? planTimingPoints)
+    {
+        // Start = erster Treffer, Ende = letzter (Rundkurs Burger ab → … → Burger an)
+        var startIdx = FindStopIndexByHint(fullTemplate, startStopHint);
+        var endIdx = FindLastStopIndexByHint(fullTemplate, endStopHint);
+        if (startIdx < 0 && planTimingPoints is { Count: > 0 })
+        {
+            var firstPoint = planTimingPoints
+                .Where(p => RouteScheduleTimeCalculator.TryParseTime(p.Time, out _))
+                .OrderBy(p => ToMinutes(p.Time))
+                .FirstOrDefault();
+            if (firstPoint is not null)
+            {
+                startIdx = FindStopIndexByHint(fullTemplate, firstPoint.StopHint);
+            }
+        }
+
+        if (endIdx < 0 && planTimingPoints is { Count: > 0 })
+        {
+            var lastPoint = planTimingPoints
+                .Where(p => RouteScheduleTimeCalculator.TryParseTime(p.Time, out _))
+                .OrderBy(p => ToMinutes(p.Time))
+                .LastOrDefault();
+            if (lastPoint is not null)
+            {
+                endIdx = FindLastStopIndexByHint(fullTemplate, lastPoint.StopHint);
+            }
+        }
+
+        if (startIdx < 0)
+        {
+            startIdx = 0;
+        }
+
+        if (endIdx < 0)
+        {
+            endIdx = fullTemplate.Count - 1;
+        }
+
+        List<RouteStopItem> oriented;
+        if (endIdx == startIdx && planTimingPoints is { Count: >= 2 })
+        {
+            // Gleicher Name Start/Ende ohne zweiten Vorlagen-Halt → ganze Kette, Richtung aus PDF
+            oriented = OrientFullTemplateByTimingPoints(fullTemplate, planTimingPoints);
+        }
+        else if (endIdx < startIdx)
+        {
+            oriented = fullTemplate
+                .Skip(endIdx)
+                .Take(startIdx - endIdx + 1)
+                .Reverse()
+                .Select(s => s.Clone())
+                .ToList();
+        }
+        else
+        {
+            oriented = fullTemplate
+                .Skip(startIdx)
+                .Take(endIdx - startIdx + 1)
+                .Select(s => s.Clone())
+                .ToList();
+        }
+
+        if (planTimingPoints is not { Count: > 0 })
+        {
+            return oriented;
+        }
+
+        var orderedPoints = planTimingPoints
+            .Where(p => RouteScheduleTimeCalculator.TryParseTime(p.Time, out _) &&
+                        !string.IsNullOrWhiteSpace(p.StopHint))
+            .OrderBy(p => ToMinutes(p.Time))
+            .ToList();
+        if (orderedPoints.Count == 0)
+        {
+            return oriented;
+        }
+
+        // 683 ohne Mangenberg → Segment Rathaus↔Mangenberg aus 682-Vorlage
+        oriented = EnrichTemplateWithDonorSpurs(
+            editor, primaryRouteKey, oriented, orderedPoints);
+
+        // Volle Vorlagenkette behalten; nur optionale PDF-Halte ohne Zeit streichen
+        return PruneOptionalStopsWithoutPlanTime(oriented, orderedPoints);
+    }
+
+    /// <summary>
+    /// Mangenberg / Schleife Krahenhöhe u. ä.: ohne PDF-Zeit nicht mitnehmen.
+    /// Normale Zwischenhalte der Vorlage bleiben (PDF zeigt oft nur Taktpunkte).
+    /// </summary>
+    private static List<RouteStopItem> PruneOptionalStopsWithoutPlanTime(
+        List<RouteStopItem> oriented,
+        IReadOnlyList<UmlaufPdfReader.TimingPoint> orderedPoints)
+    {
+        return oriented
+            .Where(stop =>
+            {
+                if (!IsOptionalUmlaufStop(stop.Name))
+                {
+                    return true;
+                }
+
+                return orderedPoints.Any(p => FindStopIndexByHint([stop], p.StopHint) >= 0);
+            })
+            .Select(s => s.Clone())
+            .ToList();
+    }
+
+    private static bool IsOptionalUmlaufStop(string? name)
+    {
+        var tokens = TokenizeStopHint(name);
+        if (tokens.Count == 0)
+        {
+            return false;
+        }
+
+        if (tokens.Any(t => t.Equals("mangenberg", StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        // Schleife Krahenhöhe / Krahenhöhe nur als optionaler Ast (nicht jede Krahenhöhe-Durchfahrt)
+        if (tokens.Any(t => t.Equals("schleife", StringComparison.Ordinal)) &&
+            tokens.Any(t => t.StartsWith("krahen", StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Fehlende Planzeit-Halte aus einer anderen Linie einspleißen
+    /// (typisch 683: Rathaus→Mangenberg aus 682).
+    /// </summary>
+    private static List<RouteStopItem> EnrichTemplateWithDonorSpurs(
+        EditableRoutePackage editor,
+        string primaryRouteKey,
+        List<RouteStopItem> oriented,
+        IReadOnlyList<UmlaufPdfReader.TimingPoint> orderedPoints)
+    {
+        var primaryPrefix = LinePrefix(primaryRouteKey);
+        var result = oriented.Select(s => s.Clone()).ToList();
+        var minIdx = 0;
+        string? prevHint = null;
+
+        for (var p = 0; p < orderedPoints.Count; p++)
+        {
+            var point = orderedPoints[p];
+            var used = new HashSet<int>();
+            var idx = FindStopIndexByHintFrom(result, point.StopHint, minIdx, used);
+            if (idx >= 0)
+            {
+                minIdx = idx + 1;
+                prevHint = point.StopHint;
+                continue;
+            }
+
+            // Nächster Halt, der schon in der Primärkette liegt (für Start an der Spur)
+            string? nextPrimaryHint = null;
+            for (var q = p + 1; q < orderedPoints.Count; q++)
+            {
+                if (FindStopIndexByHintFrom(result, orderedPoints[q].StopHint, minIdx, used) >= 0)
+                {
+                    nextPrimaryHint = orderedPoints[q].StopHint;
+                    break;
+                }
+            }
+
+            List<RouteStopItem>? segment = null;
+            var junctionHint = prevHint;
+            if (!string.IsNullOrWhiteSpace(junctionHint))
+            {
+                // Rathaus → Mangenberg
+                segment = TryExtractDonorSegment(
+                    editor, primaryPrefix, junctionHint!, point.StopHint);
+            }
+
+            if ((segment is null || segment.Count == 0) &&
+                !string.IsNullOrWhiteSpace(nextPrimaryHint))
+            {
+                // Mangenberg → Rathaus (Fahrt beginnt an der Spur)
+                segment = TryExtractDonorSegment(
+                    editor, primaryPrefix, point.StopHint, nextPrimaryHint!);
+                junctionHint = null;
+            }
+
+            if (segment is null || segment.Count == 0)
+            {
+                continue;
+            }
+
+            int insertAt;
+            if (!string.IsNullOrWhiteSpace(junctionHint))
+            {
+                var jIdx = -1;
+                for (var i = Math.Min(minIdx, result.Count) - 1; i >= 0; i--)
+                {
+                    if (FindStopIndexByHint([result[i]], junctionHint) >= 0)
+                    {
+                        jIdx = i;
+                        break;
+                    }
+                }
+
+                if (jIdx < 0)
+                {
+                    jIdx = Math.Max(0, minIdx - 1);
+                }
+
+                // Junction nicht doppelt; Spurhalte inkl. Ziel einfügen
+                var toInsert = segment
+                    .Skip(1)
+                    .Select(s => s.Clone())
+                    .ToList();
+                if (toInsert.Count == 0)
+                {
+                    continue;
+                }
+
+                result.InsertRange(jIdx + 1, toInsert);
+                insertAt = jIdx + toInsert.Count;
+            }
+            else
+            {
+                // Am Anfang bzw. vor dem nächsten Primärhalt einfügen
+                var nextIdx = FindStopIndexByHintFrom(result, nextPrimaryHint, minIdx, used);
+                insertAt = nextIdx >= 0 ? nextIdx : minIdx;
+                // Segment endet am nächsten Primärhalt → letzten Skip wenn doppelt
+                var toInsert = segment.Select(s => s.Clone()).ToList();
+                if (nextIdx >= 0 &&
+                    toInsert.Count > 0 &&
+                    FindStopIndexByHint([toInsert[^1]], nextPrimaryHint) >= 0)
+                {
+                    toInsert.RemoveAt(toInsert.Count - 1);
+                }
+
+                if (toInsert.Count == 0)
+                {
+                    continue;
+                }
+
+                result.InsertRange(insertAt, toInsert);
+                insertAt += toInsert.Count - 1;
+            }
+
+            minIdx = Math.Max(minIdx, insertAt + 1);
+            prevHint = point.StopHint;
+        }
+
+        return result;
+    }
+
+    private static List<RouteStopItem>? TryExtractDonorSegment(
+        EditableRoutePackage editor,
+        string excludeLinePrefix,
+        string fromHint,
+        string toHint)
+    {
+        var preferred = PreferredDonorLinePrefixes(excludeLinePrefix);
+        List<RouteStopItem>? best = null;
+        var bestScore = int.MinValue;
+
+        foreach (var key in editor.RouteNames)
+        {
+            var prefix = LinePrefix(key);
+            if (prefix.Equals(excludeLinePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var stops = StripDepotStops(GetTemplateStops(editor, key));
+            if (stops.Count < 2)
+            {
+                continue;
+            }
+
+            var fromIdx = FindStopIndexByHint(stops, fromHint);
+            var toIdx = FindLastStopIndexByHint(stops, toHint);
+            if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx)
+            {
+                // ggf. umgekehrte Reihenfolge in derselben Vorlage
+                fromIdx = FindLastStopIndexByHint(stops, fromHint);
+                toIdx = FindStopIndexByHint(stops, toHint);
+            }
+
+            if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx)
+            {
+                continue;
+            }
+
+            List<RouteStopItem> segment;
+            if (toIdx > fromIdx)
+            {
+                segment = stops.Skip(fromIdx).Take(toIdx - fromIdx + 1).Select(s => s.Clone()).ToList();
+            }
+            else
+            {
+                segment = stops
+                    .Skip(toIdx)
+                    .Take(fromIdx - toIdx + 1)
+                    .Reverse()
+                    .Select(s => s.Clone())
+                    .ToList();
+            }
+
+            // Kurze Spur bevorzugen (Rathaus–Mangenberg, nicht die ganze Linie)
+            var score = 100 - segment.Count;
+            if (preferred.Any(p => p.Equals(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                score += 200;
+            }
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = segment;
+            }
+        }
+
+        return best;
+    }
+
+    private static string LinePrefix(string routeKey)
+    {
+        var lc = RouteDisplayHelper.NormalizeLineCourse(
+            RouteDisplayHelper.Parse(routeKey).LineCourse);
+        if (string.IsNullOrWhiteSpace(lc))
+        {
+            return string.Empty;
+        }
+
+        var slash = lc.IndexOf('/');
+        return slash > 0 ? lc[..slash] : lc;
+    }
+
+    private static IReadOnlyList<string> PreferredDonorLinePrefixes(string primaryPrefix)
+    {
+        if (primaryPrefix.Equals("683", StringComparison.OrdinalIgnoreCase))
+        {
+            return ["682"];
+        }
+
+        if (primaryPrefix.Equals("682", StringComparison.OrdinalIgnoreCase))
+        {
+            return ["681", "683"];
+        }
+
+        if (primaryPrefix.Equals("681", StringComparison.OrdinalIgnoreCase))
+        {
+            return ["682"];
+        }
+
+        return [];
+    }
+
+    private static List<RouteStopItem> OrientFullTemplateByTimingPoints(
+        List<RouteStopItem> fullTemplate,
+        IReadOnlyList<UmlaufPdfReader.TimingPoint> planTimingPoints)
+    {
+        var ordered = planTimingPoints
+            .Where(p => RouteScheduleTimeCalculator.TryParseTime(p.Time, out _))
+            .OrderBy(p => ToMinutes(p.Time))
+            .ToList();
+        if (ordered.Count < 2)
+        {
+            return fullTemplate.Select(s => s.Clone()).ToList();
+        }
+
+        var firstIdx = FindStopIndexByHint(fullTemplate, ordered[0].StopHint);
+        var lastIdx = FindLastStopIndexByHint(fullTemplate, ordered[^1].StopHint);
+        if (firstIdx >= 0 && lastIdx >= 0 && lastIdx < firstIdx)
+        {
+            return fullTemplate.AsEnumerable().Reverse().Select(s => s.Clone()).ToList();
+        }
+
+        return fullTemplate.Select(s => s.Clone()).ToList();
     }
 
     /// <summary>
@@ -848,6 +1248,9 @@ public static class UmlaufImportPlanner
             }
         }
 
+        // Startzeit nur auf Index 0 → Doppelhalt (Brockenberg) ebenfalls verankern,
+        // sonst FillForward/Redistribute → +1 Min. und Verschiebung der ganzen Kette.
+        anchored = ExpandAnchorsToEquivalentStops(stops, anchored);
         anchored = SanitizeMonotonicAnchors(anchored);
 
         foreach (var (idx, time) in anchored)
@@ -885,6 +1288,62 @@ public static class UmlaufImportPlanner
         }
 
         EnforceMonotonicStopTimes(stops);
+        SyncEquivalentConsecutiveStopTimes(stops);
+    }
+
+    /// <summary>
+    /// Ankerzeit auf benachbarte Halte mit gleichem normalisierten Namen übertragen
+    /// (z. B. „Höhscheid Brockenberg“ / „Höhscheid-Brockenberg“ → dieselbe Minute).
+    /// </summary>
+    private static Dictionary<int, string> ExpandAnchorsToEquivalentStops(
+        IReadOnlyList<RouteStopItem> stops,
+        Dictionary<int, string> anchored)
+    {
+        if (anchored.Count == 0 || stops.Count == 0)
+        {
+            return anchored;
+        }
+
+        var result = new Dictionary<int, string>(anchored);
+        foreach (var (idx, time) in anchored.OrderBy(kv => kv.Key))
+        {
+            for (var j = idx + 1; j < stops.Count; j++)
+            {
+                if (!AreEquivalentStopNames(stops[idx].Name, stops[j].Name))
+                {
+                    break;
+                }
+
+                result[j] = time;
+            }
+
+            for (var j = idx - 1; j >= 0; j--)
+            {
+                if (!AreEquivalentStopNames(stops[idx].Name, stops[j].Name))
+                {
+                    break;
+                }
+
+                result[j] = time;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Aufeinanderfolgende Namens-Äquivalente auf die Zeit des ersten setzen.</summary>
+    private static void SyncEquivalentConsecutiveStopTimes(List<RouteStopItem> stops)
+    {
+        for (var i = 1; i < stops.Count; i++)
+        {
+            if (!AreEquivalentStopNames(stops[i - 1].Name, stops[i].Name) ||
+                string.IsNullOrWhiteSpace(stops[i - 1].Time))
+            {
+                continue;
+            }
+
+            stops[i].Time = stops[i - 1].Time;
+        }
     }
 
     /// <summary>Planzeiten auf Indizes; nur vorwärts in der Kette, Zeiten monoton.</summary>
@@ -905,7 +1364,8 @@ public static class UmlaufImportPlanner
                      .Where(p => RouteScheduleTimeCalculator.TryParseTime(p.Time, out _))
                      .OrderBy(p => ToMinutes(p.Time)))
         {
-            // Nur ab minIdx vorwärts – kein Zurückspringen auf frühere Halte
+            // Nur vorwärts ab minIdx – kein Rückwärts-Fallback (sonst „Rathaus“ → frühere
+            // Rathausstraße vor Bf. Mitte → Sanitize verwirft die echte 17:58).
             var idx = FindStopIndexByHintFrom(stops, point.StopHint, minIdx, used);
             if (idx < 0)
             {
@@ -923,9 +1383,22 @@ public static class UmlaufImportPlanner
                 continue;
             }
 
-            map[idx] = RouteScheduleTimeCalculator.NormalizeTimeInput(point.Time);
+            var timeNorm = RouteScheduleTimeCalculator.NormalizeTimeInput(point.Time);
+            map[idx] = timeNorm;
             used.Add(idx);
-            minIdx = idx + 1;
+            // Gleicher Halt, anderer Schreibweise → gleiche Planzeit (nicht nächste Minute)
+            for (var j = idx + 1; j < stops.Count; j++)
+            {
+                if (!AreEquivalentStopNames(stops[idx].Name, stops[j].Name) || used.Contains(j))
+                {
+                    break;
+                }
+
+                map[j] = timeNorm;
+                used.Add(j);
+            }
+
+            minIdx = Math.Max(minIdx, used.Max() + 1);
             lastTime = t;
         }
 
@@ -956,7 +1429,10 @@ public static class UmlaufImportPlanner
         return result;
     }
 
-    /// <summary>Jeder Halt mindestens 1 Min. nach dem vorherigen (Anker ggf. korrigieren).</summary>
+    /// <summary>
+    /// Jeder Halt mindestens 1 Min. nach dem vorherigen — außer bei aufeinanderfolgenden
+    /// Namens-Äquivalenten (gleiche Minute erlaubt, z. B. Brockenberg-Doppelhalt).
+    /// </summary>
     private static void EnforceMonotonicStopTimes(List<RouteStopItem> stops)
     {
         if (stops.Count == 0)
@@ -972,12 +1448,20 @@ public static class UmlaufImportPlanner
         stops[0].Time = FormatTime(cursor);
         for (var i = 1; i < stops.Count; i++)
         {
+            var sameStop = AreEquivalentStopNames(stops[i - 1].Name, stops[i].Name);
             if (!RouteScheduleTimeCalculator.TryParseTime(stops[i].Time, out var cur) ||
                 TripForwardMinutes(cursor, cur) is not int fwd ||
-                fwd < 1)
+                fwd < (sameStop ? 0 : 1))
             {
-                cursor = cursor.AddMinutes(1);
-                stops[i].Time = FormatTime(cursor);
+                if (sameStop)
+                {
+                    stops[i].Time = FormatTime(cursor);
+                }
+                else
+                {
+                    cursor = cursor.AddMinutes(1);
+                    stops[i].Time = FormatTime(cursor);
+                }
             }
             else
             {
@@ -1022,7 +1506,7 @@ public static class UmlaufImportPlanner
             }
         }
 
-        var minScore = hintTokens.Count >= 2 ? 2 : 1;
+        var minScore = hintTokens.Count >= 2 ? 15 : 8;
         return bestScore >= minScore ? bestIdx : -1;
     }
 
@@ -1091,6 +1575,12 @@ public static class UmlaufImportPlanner
                 continue;
             }
 
+            if (AreEquivalentStopNames(stops[i].Name, stops[i + 1].Name))
+            {
+                stops[i + 1].Time = FormatTime(cursor);
+                continue;
+            }
+
             var gap = Math.Max(1, ResolveGapMinutes(stops, templateStops, i, i + 1, typicalMinutes));
             cursor = cursor.AddMinutes(gap);
             stops[i + 1].Time = FormatTime(cursor);
@@ -1117,6 +1607,12 @@ public static class UmlaufImportPlanner
                 continue;
             }
 
+            if (AreEquivalentStopNames(stops[i - 1].Name, stops[i].Name))
+            {
+                stops[i - 1].Time = FormatTime(cursor);
+                continue;
+            }
+
             var gap = Math.Max(1, ResolveGapMinutes(stops, templateStops, i - 1, i, typicalMinutes));
             var next = cursor.AddMinutes(-gap);
             // Nicht über Mitternacht „nach hinten“ in den Vortag rutschen (→ 00:01-Artefakte)
@@ -1137,6 +1633,11 @@ public static class UmlaufImportPlanner
         int toIdx,
         IReadOnlyDictionary<(string FromCode, string ToCode), int> typicalMinutes)
     {
+        if (AreEquivalentStopNames(stops[fromIdx].Name, stops[toIdx].Name))
+        {
+            return 0;
+        }
+
         var fromCode = PlannerStopCode.Normalize(stops[fromIdx].PlannerStopCode);
         var toCode = PlannerStopCode.Normalize(stops[toIdx].PlannerStopCode);
         if (PlannerStopCode.IsValid(fromCode) &&
@@ -1177,34 +1678,40 @@ public static class UmlaufImportPlanner
             return gaps;
         }
 
-        if (span < n)
+        // Gewicht 0 = Doppelhalt (gleiche Minute) – Minuten nur auf echte Lücken verteilen
+        var active = Enumerable.Range(0, n).Where(i => weights[i] > 0).ToList();
+        if (active.Count == 0)
         {
-            // Weniger Minuten als Lücken: so gleichmäßig wie möglich (manche 0)
+            gaps[n - 1] = span;
+            return gaps;
+        }
+
+        if (span < active.Count)
+        {
             for (var i = 0; i < span; i++)
             {
-                gaps[i % n]++;
+                gaps[active[i % active.Count]]++;
             }
 
             return gaps;
         }
 
-        var safeWeights = weights.Select(w => Math.Max(1, w)).ToArray();
+        var safeWeights = active.Select(i => Math.Max(1, weights[i])).ToArray();
         var weightSum = safeWeights.Sum();
         var exact = safeWeights.Select(w => span * (double)w / weightSum).ToArray();
-        for (var i = 0; i < n; i++)
+        for (var a = 0; a < active.Count; a++)
         {
-            gaps[i] = Math.Max(1, (int)Math.Floor(exact[i]));
+            gaps[active[a]] = Math.Max(1, (int)Math.Floor(exact[a]));
         }
 
         var sum = gaps.Sum();
         if (sum > span)
         {
-            // Von den größten Lücken reduzieren, aber nicht unter 1
             while (sum > span)
             {
                 var idx = -1;
                 var best = 1;
-                for (var i = 0; i < n; i++)
+                foreach (var i in active)
                 {
                     if (gaps[i] > best)
                     {
@@ -1224,13 +1731,14 @@ public static class UmlaufImportPlanner
         }
         else if (sum < span)
         {
-            var order = Enumerable.Range(0, n)
-                .OrderByDescending(i => exact[i] - gaps[i])
+            var order = Enumerable.Range(0, active.Count)
+                .OrderByDescending(a => exact[a] - gaps[active[a]])
+                .Select(a => active[a])
                 .ToList();
             var k = 0;
             while (sum < span)
             {
-                gaps[order[k % n]]++;
+                gaps[order[k % order.Count]]++;
                 sum++;
                 k++;
             }
@@ -1342,8 +1850,18 @@ public static class UmlaufImportPlanner
     private static string FormatTime(TimeOnly time) =>
         time.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
 
-    /// <summary>Index der Haltestelle, die zum PDF-Hinweis passt (−1 = keine).</summary>
-    public static int FindStopIndexByHint(IReadOnlyList<RouteStopItem> stops, string? hint)
+    /// <summary>Index der Haltestelle, die zum PDF-Hinweis passt (−1 = keine; erster Treffer).</summary>
+    public static int FindStopIndexByHint(IReadOnlyList<RouteStopItem> stops, string? hint) =>
+        FindStopIndexByHintCore(stops, hint, preferLast: false);
+
+    /// <summary>Wie FindStopIndexByHint, aber letzter Treffer (Endhalt bei Rundkurs).</summary>
+    public static int FindLastStopIndexByHint(IReadOnlyList<RouteStopItem> stops, string? hint) =>
+        FindStopIndexByHintCore(stops, hint, preferLast: true);
+
+    private static int FindStopIndexByHintCore(
+        IReadOnlyList<RouteStopItem> stops,
+        string? hint,
+        bool preferLast)
     {
         if (string.IsNullOrWhiteSpace(hint) || stops.Count == 0)
         {
@@ -1358,6 +1876,7 @@ public static class UmlaufImportPlanner
 
         var bestIdx = -1;
         var bestScore = 0;
+        var minScore = hintTokens.Count >= 2 ? 15 : 8;
         for (var i = 0; i < stops.Count; i++)
         {
             var nameTokens = TokenizeStopHint(stops[i].Name);
@@ -1367,16 +1886,36 @@ public static class UmlaufImportPlanner
             }
 
             var score = ScoreTokenOverlap(hintTokens, nameTokens);
-            if (score > bestScore)
+            if (score < minScore)
+            {
+                continue;
+            }
+
+            if (score > bestScore || (preferLast && score >= bestScore))
             {
                 bestScore = score;
                 bestIdx = i;
             }
         }
 
-        // Mindestens 2 Treffer-Tokens oder ein eindeutiger längerer Treffer
-        var minScore = hintTokens.Count >= 2 ? 2 : 1;
-        return bestScore >= minScore ? bestIdx : -1;
+        return bestIdx;
+    }
+
+    /// <summary>
+    /// Gleiche Haltestelle unter unterschiedlicher Schreibweise
+    /// (z. B. „Höhscheid Brockenberg“ / „Höhscheid-Brockenberg“).
+    /// </summary>
+    private static bool AreEquivalentStopNames(string? a, string? b)
+    {
+        var ta = TokenizeStopHint(a);
+        var tb = TokenizeStopHint(b);
+        if (ta.Count == 0 || tb.Count == 0 || ta.Count != tb.Count)
+        {
+            return false;
+        }
+
+        return ta.OrderBy(t => t, StringComparer.Ordinal)
+            .SequenceEqual(tb.OrderBy(t => t, StringComparer.Ordinal), StringComparer.Ordinal);
     }
 
     private static List<string> TokenizeStopHint(string? text)
@@ -1387,10 +1926,12 @@ public static class UmlaufImportPlanner
         raw = Regex.Replace(raw, @"\b(an|ab)\b", " ");
         raw = raw
             .Replace("hauptbahnhof", "hbf", StringComparison.Ordinal)
-            .Replace("graf-wilhelm", "graf wilhelm", StringComparison.Ordinal)
-            .Replace("graf wilh", "graf wilhelm", StringComparison.Ordinal)
             .Replace("gwp", "graf wilhelm platz", StringComparison.Ordinal);
-        raw = Regex.Replace(raw, @"[^a-z0-9äöüß]+", " ");
+        // „Graf - Wilh. - Pl.“ / „Graf-Wilhelm-Platz“ → gleiche Tokens
+        raw = Regex.Replace(raw, @"graf\s*-?\s*wilh(?:elm)?", "graf wilhelm", RegexOptions.IgnoreCase);
+        // Umlaute angleichen: Grünewald ↔ Gruenewald
+        raw = FoldUmlauts(raw);
+        raw = Regex.Replace(raw, @"[^a-z0-9]+", " ");
         var list = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(t => t.Length >= 2)
             .Select(t => t switch
@@ -1415,24 +1956,78 @@ public static class UmlaufImportPlanner
             }
         }
 
+        // Umlaufkarte: „Brockenberg“ = Haltestelle „Höhscheid-Brockenberg“ (nicht nur Höhscheid)
+        if (list.Count == 1 &&
+            list[0].Equals("brockenberg", StringComparison.Ordinal))
+        {
+            list.Insert(0, "hoehscheid");
+        }
+
         return list;
     }
 
+    private static string FoldUmlauts(string value) =>
+        (value ?? string.Empty)
+            .Replace("ä", "ae", StringComparison.Ordinal)
+            .Replace("ö", "oe", StringComparison.Ordinal)
+            .Replace("ü", "ue", StringComparison.Ordinal)
+            .Replace("ß", "ss", StringComparison.Ordinal);
+
     private static int ScoreTokenOverlap(IReadOnlyList<string> hintTokens, IReadOnlyList<string> nameTokens)
     {
-        var score = 0;
+        static bool IsStreetSuffixExtension(string shorter, string longer)
+        {
+            if (!longer.StartsWith(shorter, StringComparison.Ordinal) ||
+                longer.Length <= shorter.Length)
+            {
+                return false;
+            }
+
+            var rest = longer[shorter.Length..];
+            return rest is "strasse" or "str" or "platz" or "weg" or "allee" or "gasse" or "ring" ||
+                   rest.StartsWith("strasse", StringComparison.Ordinal) ||
+                   rest.StartsWith("platz", StringComparison.Ordinal);
+        }
+
+        static bool TokMatch(string a, string b)
+        {
+            if (a.Equals(b, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            // „rathaus“ ≠ „rathausstrasse“ (False Friend)
+            if (a.Length < b.Length && IsStreetSuffixExtension(a, b))
+            {
+                return false;
+            }
+
+            if (b.Length < a.Length && IsStreetSuffixExtension(b, a))
+            {
+                return false;
+            }
+
+            return a.StartsWith(b, StringComparison.Ordinal) ||
+                   b.StartsWith(a, StringComparison.Ordinal);
+        }
+
+        var matched = 0;
         foreach (var h in hintTokens)
         {
-            if (nameTokens.Any(n =>
-                    n.Equals(h, StringComparison.Ordinal) ||
-                    n.StartsWith(h, StringComparison.Ordinal) ||
-                    h.StartsWith(n, StringComparison.Ordinal)))
+            if (nameTokens.Any(n => TokMatch(h, n)))
             {
-                score++;
+                matched++;
             }
         }
 
-        return score;
+        if (matched == 0)
+        {
+            return 0;
+        }
+
+        // „höhscheid“ soll „Höhscheid“ treffen, nicht „Höhscheid-Brockenberg“
+        var unmatchedName = nameTokens.Count(n => !hintTokens.Any(h => TokMatch(h, n)));
+        return matched * 10 - unmatchedName;
     }
 
     private static void CopyDestinationFields(RouteStopItem from, RouteStopItem to)

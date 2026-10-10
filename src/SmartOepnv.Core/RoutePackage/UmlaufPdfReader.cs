@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using SmartOepnv.Core.Dienstvorlagen;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.Annotations;
+using UglyToad.PdfPig.Tokens;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -48,7 +50,20 @@ public static class UmlaufPdfReader
         public string? EndStopHint { get; init; }
         /// <summary>Alle Planzeiten (Haltestellenname-Hinweis → Uhrzeit) dieser Fahrt.</summary>
         public IReadOnlyList<TimingPoint> TimingPoints { get; init; } = [];
+        /// <summary>PDF-Farbmarkierung (Highlight), falls vorhanden – für UI und Linienzuordnung.</summary>
+        public byte? MarkColorR { get; init; }
+        public byte? MarkColorG { get; init; }
+        public byte? MarkColorB { get; init; }
     }
+
+    /// <summary>Große Highlight-Bänder (gelb/grün) zur Linienzuordnung 681/682.</summary>
+    private sealed record LineMarkBand(
+        byte R,
+        byte G,
+        byte B,
+        double Top,
+        double Bottom,
+        string LineCourse);
 
     public sealed record TimingPoint(string StopHint, string Time);
 
@@ -94,7 +109,8 @@ public static class UmlaufPdfReader
         ParseHeader(joined, out var lineCourse, out var ausfahrt, out var einfahrt);
         var days = ParseOperatingDays(joined);
 
-        var trips = ExtractTripsFromColumns(words, lineCourse);
+        var markBands = ExtractLineMarkBands(pdfPath, lineCourse);
+        var trips = ExtractTripsFromColumns(words, lineCourse, markBands);
         string? warning = null;
         if (trips.Count == 0)
         {
@@ -107,6 +123,11 @@ public static class UmlaufPdfReader
             warning =
                 "Kopfdaten teilweise gelesen, aber keine Fahrten automatisch erkannt. " +
                 "Bitte Fahrten unten ergänzen oder korrigieren.";
+        }
+        else
+        {
+            // Wiederholte PDF-Nummern (438, 444, …) → 1438, 2438 …; Einzelnummern (652, 15) bleiben
+            trips = AssignSequentialTripNumbers(trips);
         }
 
         return new ParseResult
@@ -121,6 +142,89 @@ public static class UmlaufPdfReader
             Warning = warning
         };
     }
+
+    /// <summary>
+    /// Gleiche Fahrtnummer in mehreren Runden: 1. → 1438, 2. → 2438, …
+    /// Nummern, die nur einmal vorkommen (652, 15), unverändert.
+    /// </summary>
+    private static List<ParsedTrip> AssignSequentialTripNumbers(IReadOnlyList<ParsedTrip> trips)
+    {
+        if (trips.Count == 0)
+        {
+            return trips is List<ParsedTrip> list ? list : trips.ToList();
+        }
+
+        // Chronologisch (wie in der Karte / UI)
+        var ordered = trips
+            .OrderBy(t => ParseMinutes(t.StartTime))
+            .ThenBy(t => t.TripNumber.StartsWith('?'))
+            .ThenBy(t => t.TripNumber, StringComparer.Ordinal)
+            .ToList();
+
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var t in ordered)
+        {
+            var key = TripNumberSequenceKey(t.TripNumber);
+            if (key is null)
+            {
+                continue;
+            }
+
+            counts[key] = counts.TryGetValue(key, out var n) ? n + 1 : 1;
+        }
+
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        var result = new List<ParsedTrip>(ordered.Count);
+        foreach (var trip in ordered)
+        {
+            var key = TripNumberSequenceKey(trip.TripNumber);
+            if (key is null || !counts.TryGetValue(key, out var total) || total <= 1)
+            {
+                result.Add(trip);
+                continue;
+            }
+
+            var round = seen.TryGetValue(key, out var prev) ? prev + 1 : 1;
+            seen[key] = round;
+            result.Add(CloneTripWithNumber(trip, $"{round}{key}"));
+        }
+
+        return result;
+    }
+
+    /// <summary>Nur reine Ziffern-Nummern sequenzieren; Platzhalter (?…) unverändert.</summary>
+    private static string? TripNumberSequenceKey(string? tripNumber)
+    {
+        if (string.IsNullOrWhiteSpace(tripNumber))
+        {
+            return null;
+        }
+
+        var t = tripNumber.Trim();
+        if (t.StartsWith('?'))
+        {
+            return null;
+        }
+
+        return t.All(char.IsDigit) ? t : null;
+    }
+
+    private static ParsedTrip CloneTripWithNumber(ParsedTrip trip, string tripNumber) =>
+        new()
+        {
+            Direction = trip.Direction,
+            TripNumber = tripNumber,
+            StartTime = trip.StartTime,
+            EndTime = trip.EndTime,
+            LineCourseHint = trip.LineCourseHint,
+            SectionHint = trip.SectionHint,
+            StartStopHint = trip.StartStopHint,
+            EndStopHint = trip.EndStopHint,
+            TimingPoints = trip.TimingPoints,
+            MarkColorR = trip.MarkColorR,
+            MarkColorG = trip.MarkColorG,
+            MarkColorB = trip.MarkColorB
+        };
 
     private static List<PdfWord> ExtractWords(string pdfPath)
     {
@@ -144,6 +248,221 @@ public static class UmlaufPdfReader
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// PDF-Highlight-Bänder: gelb = 681 (Hästen), grün = 682 (Brockenberg).
+    /// Kleine Markierungen an Fahrtnr. ignorieren.
+    /// </summary>
+    private static List<LineMarkBand> ExtractLineMarkBands(string pdfPath, string? defaultLineCourse)
+    {
+        var raw = new List<(byte R, byte G, byte B, double Top, double Bottom)>();
+        try
+        {
+            using var document = PdfDocument.Open(pdfPath);
+            foreach (var page in document.GetPages())
+            {
+                foreach (var ann in page.ExperimentalAccess.GetAnnotations())
+                {
+                    if (ann.Type != AnnotationType.Highlight)
+                    {
+                        continue;
+                    }
+
+                    var rect = ann.Rectangle;
+                    // Nur große Flächenbänder, keine einzelnen Fahrtnr.-Kästchen
+                    if (rect.Height < 40 || rect.Width < 80)
+                    {
+                        continue;
+                    }
+
+                    if (!TryGetAnnotationRgb(ann, out var r, out var g, out var b))
+                    {
+                        continue;
+                    }
+
+                    raw.Add((r, g, b, rect.Top, rect.Bottom));
+                }
+            }
+        }
+        catch
+        {
+            return [];
+        }
+
+        if (raw.Count == 0)
+        {
+            return [];
+        }
+
+        // Nach Farbe clustern (Toleranz für PDF-Floats)
+        var clusters = new List<(byte R, byte G, byte B, double Top, double Bottom)>();
+        foreach (var band in raw.OrderByDescending(b => (b.Top + b.Bottom) / 2.0))
+        {
+            var match = -1;
+            for (var i = 0; i < clusters.Count; i++)
+            {
+                if (ColorNear(clusters[i].R, clusters[i].G, clusters[i].B, band.R, band.G, band.B))
+                {
+                    match = i;
+                    break;
+                }
+            }
+
+            if (match < 0)
+            {
+                clusters.Add(band);
+            }
+            else
+            {
+                var c = clusters[match];
+                clusters[match] = (
+                    c.R,
+                    c.G,
+                    c.B,
+                    Math.Max(c.Top, band.Top),
+                    Math.Min(c.Bottom, band.Bottom));
+            }
+        }
+
+        if (clusters.Count == 0)
+        {
+            return [];
+        }
+
+        var courseSuffix = ExtractCourseSuffix(defaultLineCourse);
+        var line681 = BuildLineCourseWithSuffix("681", courseSuffix);
+        var line682 = BuildLineCourseWithSuffix("682", courseSuffix);
+
+        // Farbe entscheidet (nicht Y/Dateiname) – sonst 681/682 vertauscht
+        var ordered = clusters.OrderByDescending(c => (c.Top + c.Bottom) / 2.0).ToList();
+        var result = new List<LineMarkBand>();
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var c = ordered[i];
+            string line;
+            if (IsYellowLineMark(c.R, c.G, c.B))
+            {
+                line = line681;
+            }
+            else if (IsGreenLineMark(c.R, c.G, c.B))
+            {
+                line = line682;
+            }
+            else
+            {
+                // Unklare Farbe: oben Hästen=681, unten Brockenberg=682
+                line = i == 0 || ordered.Count == 1 ? line681 : line682;
+            }
+
+            result.Add(new LineMarkBand(c.R, c.G, c.B, c.Top, c.Bottom, line));
+        }
+
+        return result;
+    }
+
+    /// <summary>Gelb/ocker Highlight → Linie 681 (Hästen).</summary>
+    private static bool IsYellowLineMark(byte r, byte g, byte b) =>
+        r >= 200 && g >= 180 && b <= 170 && r + 20 >= g;
+
+    /// <summary>Grün Highlight → Linie 682 (Brockenberg).</summary>
+    private static bool IsGreenLineMark(byte r, byte g, byte b) =>
+        g >= 180 && g > r + 30 && b <= 170;
+
+    private static bool TryGetAnnotationRgb(Annotation ann, out byte r, out byte g, out byte b)
+    {
+        r = g = b = 0;
+        if (!ann.AnnotationDictionary.TryGet(NameToken.C, out var token) ||
+            token is not ArrayToken arr ||
+            arr.Length < 3)
+        {
+            return false;
+        }
+
+        static double ToUnit(IToken t) =>
+            t switch
+            {
+                NumericToken n => n.Double,
+                _ => double.NaN
+            };
+
+        var rv = ToUnit(arr[0]);
+        var gv = ToUnit(arr[1]);
+        var bv = ToUnit(arr[2]);
+        if (double.IsNaN(rv) || double.IsNaN(gv) || double.IsNaN(bv))
+        {
+            return false;
+        }
+
+        r = (byte)Math.Clamp((int)Math.Round(rv * 255), 0, 255);
+        g = (byte)Math.Clamp((int)Math.Round(gv * 255), 0, 255);
+        b = (byte)Math.Clamp((int)Math.Round(bv * 255), 0, 255);
+        return true;
+    }
+
+    private static bool ColorNear(byte r1, byte g1, byte b1, byte r2, byte g2, byte b2) =>
+        Math.Abs(r1 - r2) <= 40 && Math.Abs(g1 - g2) <= 40 && Math.Abs(b1 - b2) <= 40;
+
+    private static ParsedTrip ApplyLineMark(
+        ParsedTrip trip,
+        IReadOnlyList<TimeCell> times,
+        IReadOnlyList<LineMarkBand> bands,
+        string? fallbackLine)
+    {
+        var band = FindBandForTimes(times, bands);
+        var line = band?.LineCourse ?? fallbackLine ?? trip.LineCourseHint;
+        if (band is null &&
+            string.Equals(line, trip.LineCourseHint, StringComparison.Ordinal) &&
+            trip.MarkColorR is null)
+        {
+            return trip;
+        }
+
+        return new ParsedTrip
+        {
+            Direction = trip.Direction,
+            TripNumber = trip.TripNumber,
+            StartTime = trip.StartTime,
+            EndTime = trip.EndTime,
+            LineCourseHint = line,
+            SectionHint = trip.SectionHint,
+            StartStopHint = trip.StartStopHint,
+            EndStopHint = trip.EndStopHint,
+            TimingPoints = trip.TimingPoints,
+            MarkColorR = band?.R ?? trip.MarkColorR,
+            MarkColorG = band?.G ?? trip.MarkColorG,
+            MarkColorB = band?.B ?? trip.MarkColorB
+        };
+    }
+
+    private static LineMarkBand? FindBandForTimes(
+        IReadOnlyList<TimeCell> times,
+        IReadOnlyList<LineMarkBand> bands)
+    {
+        if (times.Count == 0 || bands.Count == 0)
+        {
+            return null;
+        }
+
+        var midY = times.Average(t => t.Y);
+        LineMarkBand? best = null;
+        var bestDist = double.MaxValue;
+        foreach (var band in bands)
+        {
+            var pad = 8.0;
+            if (midY <= band.Top + pad && midY >= band.Bottom - pad)
+            {
+                var center = (band.Top + band.Bottom) / 2.0;
+                var dist = Math.Abs(midY - center);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = band;
+                }
+            }
+        }
+
+        return best ?? bands.OrderBy(b => Math.Abs(midY - (b.Top + b.Bottom) / 2.0)).First();
     }
 
     private static List<string> BuildRowTexts(IReadOnlyList<PdfWord> words) =>
@@ -223,7 +542,8 @@ public static class UmlaufPdfReader
 
     private static List<ParsedTrip> ExtractTripsFromColumns(
         IReadOnlyList<PdfWord> words,
-        string? defaultLineCourse)
+        string? defaultLineCourse,
+        IReadOnlyList<LineMarkBand> markBands)
     {
         var rows = words
             .GroupBy(w => (int)Math.Round(w.Y / RowTolerance))
@@ -302,8 +622,27 @@ public static class UmlaufPdfReader
         // Am Hbf splitten (681/682): zwei Fahrten pro Zeitsäule
         var splitY = FindHbfSplitY(rows, timeCells);
         var courseSuffix = ExtractCourseSuffix(defaultLineCourse);
-        var upperLine = defaultLineCourse;
-        var lowerLine = BuildSisterLineCourse(defaultLineCourse, courseSuffix);
+        // Geographie der Karte: oben Hästen=681, unten Brockenberg=682 (nicht Dateiname-primär)
+        var upperLine = BuildLineCourseWithSuffix("681", courseSuffix);
+        var lowerLine = BuildLineCourseWithSuffix("682", courseSuffix);
+        if (markBands.Count >= 2)
+        {
+            var byY = markBands.OrderByDescending(b => (b.Top + b.Bottom) / 2.0).ToList();
+            upperLine = byY[0].LineCourse;
+            lowerLine = byY[^1].LineCourse;
+        }
+        else if (markBands.Count == 1)
+        {
+            var only = markBands[0];
+            if (only.LineCourse.StartsWith("681", StringComparison.Ordinal))
+            {
+                upperLine = only.LineCourse;
+            }
+            else
+            {
+                lowerLine = only.LineCourse;
+            }
+        }
 
         // Jede Zeit genau einer Spalte (nächste) – sonst übernehmen Fahrt 2 die Zeiten von Fahrt 3
         var timesByColumn = AssignTimeCellsToColumns(timeCells, columns);
@@ -338,7 +677,8 @@ public static class UmlaufPdfReader
             }
             else
             {
-                // Kein Hbf-Split erkennbar → ganze Spalte als eine Fahrt
+                // Kein Hbf-Fahrtwechsel (z. B. 683): Spalte nur von oben nach unten = eine Fahrt
+                // (Hin und Rück in derselben Spalte, Wendung z. B. an Voh.-Bahnhof)
                 upperTimes = colTimes;
                 lowerTimes = [];
             }
@@ -354,7 +694,7 @@ public static class UmlaufPdfReader
                     sectionFallback: "Hästen/GWP↔Hbf");
                 // Obere Hälfte: Start GWP/…, nicht Hbf (Ende ist Hbf)
                 upperTrip = ForceUpperHalfStartBeforeHbf(upperTrip, upperTimes);
-                trips.Add(upperTrip);
+                trips.Add(ApplyLineMark(upperTrip, upperTimes, markBands, upperLine));
             }
 
             if (IsUsableHalf(lowerTimes))
@@ -368,7 +708,7 @@ public static class UmlaufPdfReader
                     sectionFallback: "Hbf↔Brockenberg");
                 // Untere Hälfte Hbf→Brockenberg: Start Hbf (4:45), nicht Brockenberg 5:38 der Folgespalte
                 lowerTrip = ForceLowerHalfStartAtHbf(lowerTrip, lowerTimes);
-                trips.Add(lowerTrip);
+                trips.Add(ApplyLineMark(lowerTrip, lowerTimes, markBands, lowerLine ?? upperLine));
             }
         }
 
@@ -402,6 +742,7 @@ public static class UmlaufPdfReader
     /// <summary>
     /// Zeitzellen bauen. Doppelzeile: Name nur von an/ab → ab/an derselben Hst erben –
     /// nie über Fahrtnummern/Hbf hinweg (sonst GWP-Zeiten am Hbf).
+    /// Orphan-Zeiten: Label oft knapp darunter („Hästen ab“ unter 7:14).
     /// </summary>
     private static List<TimeCell> BuildTimeCellsWithInheritedStopNames(List<List<PdfWord>> rows)
     {
@@ -409,8 +750,9 @@ public static class UmlaufPdfReader
         string? lastStopName = null;
         var lastWasAnAb = false;
 
-        foreach (var row in rows)
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
+            var row = rows[rowIndex];
             var tripOnly = row.Count > 0 &&
                            row.Count(w => IsTripToken(w.Text)) >= 3 &&
                            row.Count(w => IsTimeToken(w.Text)) == 0;
@@ -446,15 +788,24 @@ public static class UmlaufPdfReader
             }
 
             var label = rawLabel;
-            if (string.IsNullOrWhiteSpace(stopName) &&
-                !string.IsNullOrWhiteSpace(lastStopName) &&
-                lastWasAnAb &&
-                (IsAbAnLabel(rawLabel) ||
-                 string.IsNullOrWhiteSpace(rawLabel) ||
-                 LooksLikeOrphanTimeRoleRow(rawLabel)))
+            if (string.IsNullOrWhiteSpace(stopName))
             {
-                // Nur direkte Folgezeile ab/an zur vorherigen an/ab
-                label = $"{lastStopName} ab/an";
+                // Zeitzeile ohne Name: Label oft 0,5–3 pt darunter (Hästen ab / Hbf)
+                var below = FindStopLabelJustBelow(rows, rowIndex, times[0].Y);
+                if (!string.IsNullOrWhiteSpace(below))
+                {
+                    label = below!;
+                    stopName = CleanStopHint(label);
+                }
+                else if (!string.IsNullOrWhiteSpace(lastStopName) &&
+                         lastWasAnAb &&
+                         (IsAbAnLabel(rawLabel) ||
+                          string.IsNullOrWhiteSpace(rawLabel) ||
+                          LooksLikeOrphanTimeRoleRow(rawLabel)))
+                {
+                    // Nur direkte Folgezeile ab/an zur vorherigen an/ab
+                    label = $"{lastStopName} ab/an";
+                }
             }
 
             foreach (var w in times)
@@ -480,6 +831,61 @@ public static class UmlaufPdfReader
         }
 
         return timeCells;
+    }
+
+    /// <summary>
+    /// PDF trennt oft Zeit und Haltname um &lt; RowTolerance (z. B. 7:14 @523.8, „Hästen ab“ @523.3).
+    /// </summary>
+    private static string? FindStopLabelJustBelow(
+        IReadOnlyList<List<PdfWord>> rows,
+        int timeRowIndex,
+        double timeY)
+    {
+        for (var i = timeRowIndex + 1; i < rows.Count && i <= timeRowIndex + 3; i++)
+        {
+            var row = rows[i];
+            if (row.Count == 0)
+            {
+                continue;
+            }
+
+            if (row.Any(w => IsTimeToken(w.Text)))
+            {
+                // Nächste Zeitzeile → zu weit
+                break;
+            }
+
+            if (row.Count(w => IsTripToken(w.Text)) >= 3)
+            {
+                continue;
+            }
+
+            var y = row.Average(w => w.Y);
+            // Rows sind top→bottom (Y absteigend): Label darunter = kleineres Y
+            var dy = timeY - y;
+            if (dy < -0.5 || dy > RowTolerance * 3)
+            {
+                if (dy > RowTolerance * 3)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            var raw = NormalizeRoleSlashes(string.Join(
+                " ",
+                row.Where(w => !IsTimeToken(w.Text) && !IsTripToken(w.Text)).Select(w => w.Text)));
+            var name = CleanStopHint(raw);
+            if (string.IsNullOrWhiteSpace(name) || IsStopNameNoise(name))
+            {
+                continue;
+            }
+
+            return raw.Trim().Length > 0 ? raw.Trim() : name;
+        }
+
+        return null;
     }
 
     private static bool LooksLikeOrphanTimeRoleRow(string label)
@@ -564,18 +970,30 @@ public static class UmlaufPdfReader
         {
             startTime = terminusAb.OrderBy(c => ParseMinutes(c.Time)).First().Time;
             endTime = terminusAn.OrderBy(c => ParseMinutes(c.Time)).Last().Time;
+            // Plain-Endhalt nach Terminus-Ankunft (z. B. Mangenberg nach GWP) behalten
+            var laterPassenger = LatestPassengerCell(chronoAb, chronoAn);
+            if (laterPassenger is not null &&
+                ParseMinutes(laterPassenger.Time) > ParseMinutes(endTime))
+            {
+                endTime = laterPassenger.Time;
+            }
         }
         else if (terminusAb.Count > 0)
         {
             startTime = terminusAb.OrderBy(c => ParseMinutes(c.Time)).First().Time;
-            endTime = chronoAn.Count > 0
-                ? chronoAn[^1].Time
-                : chronoAb.Count > 0 ? chronoAb[^1].Time : startTime;
+            // Letzte Fahrgastzeit inkl. Plain-Halte (Mangenberg), nicht nur an/ab (sonst Ende = GWP)
+            endTime = LatestPassengerCell(chronoAb, chronoAn)?.Time ?? startTime;
         }
         else if (terminusAn.Count > 0)
         {
             endTime = terminusAn.OrderBy(c => ParseMinutes(c.Time)).Last().Time;
             startTime = chronoAb.Count > 0 ? chronoAb[0].Time : endTime;
+            var laterPassenger = LatestPassengerCell(chronoAb, chronoAn);
+            if (laterPassenger is not null &&
+                ParseMinutes(laterPassenger.Time) > ParseMinutes(endTime))
+            {
+                endTime = laterPassenger.Time;
+            }
         }
         else
         {
@@ -600,7 +1018,7 @@ public static class UmlaufPdfReader
             if (hbfAb.Count > 0 && ParseMinutes(chronoAb[0].Time) > ParseMinutes(hbfAb[0].Time))
             {
                 startTime = hbfAb[0].Time;
-                endTime = chronoAn.Count > 0 ? chronoAn[^1].Time : chronoAb[^1].Time;
+                endTime = LatestPassengerCell(chronoAb, chronoAn)?.Time ?? chronoAb[^1].Time;
             }
             else if (hbfAn.Count > 0 || hbfAb.Count > 0)
             {
@@ -609,12 +1027,12 @@ public static class UmlaufPdfReader
             }
             else
             {
-                endTime = chronoAn.Count > 0 ? chronoAn[^1].Time : chronoAb[^1].Time;
+                endTime = LatestPassengerCell(chronoAb, chronoAn)?.Time ?? chronoAb[^1].Time;
             }
 
             if (string.Equals(startTime, endTime, StringComparison.Ordinal) && chronoAb.Count > 1)
             {
-                endTime = chronoAn.Count > 0 ? chronoAn[^1].Time : chronoAb[^1].Time;
+                endTime = LatestPassengerCell(chronoAb, chronoAn)?.Time ?? chronoAb[^1].Time;
             }
         }
 
@@ -622,12 +1040,6 @@ public static class UmlaufPdfReader
         {
             (startTime, endTime) = (endTime, startTime);
         }
-
-        var tripNo = ResolveTripNumberForHalf(
-            tripNumbersByColumn,
-            colIndex,
-            halfTimes,
-            preferUpperNumbers) ?? $"?{colIndex + 1}{(preferUpperNumbers ? "a" : "b")}";
 
         var section = GuessSectionLabel(halfTimes);
         if (string.IsNullOrWhiteSpace(section))
@@ -646,16 +1058,30 @@ public static class UmlaufPdfReader
         startTime = PreferDepartureTimeForStop(
             halfTimes, startStopHint, startTime, colTripNumbers, preferUpperNumbers);
 
+        // Endhalt zur gewählten Endzeit – zuerst Abfahrt/Plain (Mangenberg), dann Ankunftszeilen
         var endStopHint = CleanStopHint(
-            endArrivalCells.LastOrDefault(c =>
+            chronoAb.LastOrDefault(c =>
                     string.Equals(c.Time, endTime, StringComparison.Ordinal))
                 ?.RowLabel
+            ?? endArrivalCells.LastOrDefault(c =>
+                    string.Equals(c.Time, endTime, StringComparison.Ordinal))
+                ?.RowLabel
+            ?? LatestPassengerCell(chronoAb, chronoAn)?.RowLabel
             ?? chronoAn.LastOrDefault()?.RowLabel
             ?? chronoAb.LastOrDefault()?.RowLabel);
 
         // Endhalt: bei Doppelzeile Ankunft = an/ab (erste); Hbf+Fahrtwechsel: Zeit oberhalb der Nr.
         endTime = PreferArrivalTimeForStop(
             halfTimes, endStopHint, endTime, colTripNumbers, preferUpperNumbers);
+
+        // Fahrtnr. nahe am Starthalt (unten am Brockenberg = 648, oben am Hbf = 444/438)
+        var startAnchorY = ResolveStartAnchorY(halfTimes, startStopHint, startTime);
+        var tripNo = ResolveTripNumberForHalf(
+            tripNumbersByColumn,
+            colIndex,
+            halfTimes,
+            preferUpperNumbers,
+            startAnchorY) ?? $"?{colIndex + 1}{(preferUpperNumbers ? "a" : "b")}";
 
         // Nach Hbf-Split: obere Spaltenhälfte = Hin (→ Hbf), untere = Rück (Hbf →).
         var direction = preferUpperNumbers
@@ -744,14 +1170,15 @@ public static class UmlaufPdfReader
 
     /// <summary>
     /// Untere Hälfte nach Fahrtwechsel: bei Fahrt Hbf→Brockenberg Start = Hbf (z. B. 4:45).
-    /// Nicht anfassen, wenn die Hälfte Brockenberg-ab hat (Rückfahrt Brockenberg→Hbf, z. B. 5:38).
+    /// Nicht anfassen bei Fahrt zum Hbf (Brockenberg/GWP … → Hbf, z. B. erste Fahrt 4:20–4:46) —
+    /// sonst Start=Ende=Hbf und die Fahrt fällt weg.
     /// </summary>
     private static ParsedTrip ForceLowerHalfStartAtHbf(ParsedTrip trip, IReadOnlyList<TimeCell> lowerTimes)
     {
-        var hasBrockenbergAb = lowerTimes.Any(c =>
+        var hasTerminusAb = lowerTimes.Any(c =>
             !string.IsNullOrWhiteSpace(c.Time) &&
             IsTerminusAbLabel(c.RowLabel));
-        if (hasBrockenbergAb)
+        if (hasTerminusAb)
         {
             return trip;
         }
@@ -767,6 +1194,22 @@ public static class UmlaufPdfReader
         }
 
         var hbfTime = NormalizeTime(hbf.Time);
+
+        // Früheste Nicht-Hbf-Zeit vor Hbf → Hin zum Hbf (GWP/Brockenberg→Hbf), Start nicht überschreiben
+        var firstNonHbf = lowerTimes
+            .Where(c =>
+                !string.IsNullOrWhiteSpace(c.Time) &&
+                !IsHauptbahnhofSplitAnchor(c.RowLabel) &&
+                !string.IsNullOrWhiteSpace(CleanStopHint(c.RowLabel)) &&
+                !IsStopNameNoise(CleanStopHint(c.RowLabel)))
+            .OrderBy(c => ParseMinutes(c.Time))
+            .FirstOrDefault();
+        if (firstNonHbf is not null &&
+            ParseMinutes(firstNonHbf.Time) < ParseMinutes(hbfTime))
+        {
+            return trip;
+        }
+
         var hbfHint = CleanStopHint(hbf.RowLabel) ?? trip.StartStopHint;
         if (string.Equals(trip.StartTime, hbfTime, StringComparison.Ordinal) &&
             IsHauptbahnhofHint(trip.StartStopHint))
@@ -851,9 +1294,9 @@ public static class UmlaufPdfReader
     }
 
     /// <summary>
-    /// Planzeiten je Haltestelle.
-    /// GWP: bei an/ab + ab/an zählt immer die Abfahrt (2. / spätere Zeit).
-    /// Hbf mit Fahrtwechsel (Nr. dazwischen): Zeit dieser Hälfte.
+    /// Planzeiten in Leserichtung (oben → unten).
+    /// Doppelzeile eng beieinander (GWP an/ab+ab/an) = ein Halt; zweiter Besuch derselben Hst
+    /// weiter unten (Rundkurs 683) = eigener TimingPoint.
     /// </summary>
     private static IReadOnlyList<TimingPoint> ExtractTimingPoints(
         IReadOnlyList<TimeCell> halfTimes,
@@ -862,103 +1305,88 @@ public static class UmlaufPdfReader
         IReadOnlyList<(string Number, double Y)> tripNumbers,
         bool preferUpperHalf)
     {
-        var byHint = new Dictionary<string, TimeCell>(StringComparer.OrdinalIgnoreCase);
+        // PdfPig: größeres Y = weiter oben → absteigend = Leserichtung
+        var cells = halfTimes
+            .Where(c => !string.IsNullOrWhiteSpace(c.Time))
+            .Select(c => (Hint: CleanStopHint(c.RowLabel), Cell: c))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Hint))
+            .OrderByDescending(x => x.Cell.Y)
+            .ToList();
 
-        foreach (var group in halfTimes
-                     .Where(c => !string.IsNullOrWhiteSpace(c.Time))
-                     .Select(c => (Hint: CleanStopHint(c.RowLabel), Cell: c))
-                     .Where(x => !string.IsNullOrWhiteSpace(x.Hint))
-                     .GroupBy(x => x.Hint!, StringComparer.OrdinalIgnoreCase))
+        const double doubleLineGapPt = 28.0;
+        var points = new List<TimingPoint>();
+        var i = 0;
+        while (i < cells.Count)
         {
-            var cells = group.Select(x => x.Cell).ToList();
-            var hint = group.Key;
-
-            if (cells.Count == 1)
+            var hint = cells[i].Hint!;
+            var cluster = new List<TimeCell> { cells[i].Cell };
+            var j = i + 1;
+            while (j < cells.Count &&
+                   string.Equals(cells[j].Hint, hint, StringComparison.OrdinalIgnoreCase) &&
+                   cells[j - 1].Cell.Y - cells[j].Cell.Y < doubleLineGapPt)
             {
-                byHint[hint] = cells[0];
-                continue;
+                cluster.Add(cells[j].Cell);
+                j++;
             }
 
-            if (IsHauptbahnhofHint(hint) &&
-                HasTripNumberBetween(cells.Max(c => c.Y), cells.Min(c => c.Y), tripNumbers))
+            TimeCell chosen;
+            if (cluster.Count == 1)
             {
-                byHint[hint] = PreferHbfCellForHalf(
-                    cells.OrderByDescending(c => c.Y).First(),
-                    cells.OrderBy(c => c.Y).First(),
+                chosen = cluster[0];
+            }
+            else if (IsHauptbahnhofHint(hint) &&
+                     HasTripNumberBetween(cluster.Max(c => c.Y), cluster.Min(c => c.Y), tripNumbers))
+            {
+                chosen = PreferHbfCellForHalf(
+                    cluster.OrderByDescending(c => c.Y).First(),
+                    cluster.OrderBy(c => c.Y).First(),
                     preferUpperHalf);
-                continue;
             }
-
-            if (IsHauptbahnhofHint(hint))
+            else if (IsHauptbahnhofHint(hint))
             {
-                // Hbf ohne Fahrtnr.: Ankunft = frühere Zeit
-                byHint[hint] = cells.OrderBy(c => ParseMinutes(c.Time)).First();
-                continue;
+                chosen = cluster.OrderBy(c => ParseMinutes(c.Time)).First();
+            }
+            else
+            {
+                // Doppelzeile: Abfahrt = spätere Uhrzeit
+                chosen = cluster.OrderByDescending(c => ParseMinutes(c.Time)).First();
             }
 
-            // GWP u. a.: ab/an bevorzugen, sonst immer die spätere Zeit (2. Zeile)
-            var abAn = cells.Where(c => IsAbAnLabel(c.RowLabel)).ToList();
-            byHint[hint] = abAn.Count > 0
-                ? abAn.OrderByDescending(c => ParseMinutes(c.Time)).First()
-                : cells.OrderByDescending(c => ParseMinutes(c.Time)).First();
+            points.Add(new TimingPoint(hint, NormalizeTime(chosen.Time)));
+            i = j;
         }
 
-        // Endhalt: Ankunft (an/ab) falls vorhanden und noch nicht als Abfahrt gesetzt
         if (!string.IsNullOrWhiteSpace(endTime) &&
             !string.IsNullOrWhiteSpace(endStopHint) &&
             RouteScheduleTimeCalculator.TryParseTime(endTime, out _))
         {
             var endNorm = NormalizeTime(endTime);
-            if (!byHint.ContainsKey(endStopHint))
+            if (points.Count == 0)
             {
-                byHint[endStopHint] = new TimeCell(endNorm, 0, 0, endStopHint);
+                points.Add(new TimingPoint(endStopHint, endNorm));
             }
-            else if (IsHauptbahnhofHint(endStopHint))
+            else if (string.Equals(points[^1].StopHint, endStopHint, StringComparison.OrdinalIgnoreCase))
             {
-                // Endhalt Hbf: explizite Endzeit (Ankunft) setzen
-                byHint[endStopHint] = new TimeCell(
-                    endNorm,
-                    byHint[endStopHint].MidX,
-                    byHint[endStopHint].Y,
-                    byHint[endStopHint].RowLabel);
+                points[^1] = new TimingPoint(endStopHint, endNorm);
+            }
+            else if (IsHauptbahnhofHint(endStopHint) ||
+                     !points.Any(p =>
+                         string.Equals(p.StopHint, endStopHint, StringComparison.OrdinalIgnoreCase) &&
+                         string.Equals(p.Time, endNorm, StringComparison.Ordinal)))
+            {
+                points.Add(new TimingPoint(endStopHint, endNorm));
             }
         }
 
-        return byHint
-            .Select(kv => new TimingPoint(kv.Key, NormalizeTime(kv.Value.Time)))
-            .OrderBy(p => ParseMinutes(p.Time))
-            .ToList();
+        return points;
     }
 
     /// <summary>
-    /// Bei Doppelzeile derselben Hst (nicht Hbf-Fahrtwechsel): ab/an bzw. spätere Zeit (2.).
-    /// GWP: an/ab 5:13 + ab/an 5:15 → 5:15.
+    /// Doppelzeile derselben Hst (nicht Hbf-Fahrtwechsel): immer die spätere Uhrzeit.
+    /// GWP Hin: :13/:15 → :15; Rück: :48/:50 → :50.
     /// </summary>
-    private static TimeCell PreferDepartureCell(TimeCell a, TimeCell b)
-    {
-        var aAbAn = IsAbAnLabel(a.RowLabel);
-        var bAbAn = IsAbAnLabel(b.RowLabel);
-        if (aAbAn != bAbAn)
-        {
-            return bAbAn ? b : a;
-        }
-
-        var aAnAb = IsAnAbLabel(a.RowLabel);
-        var bAnAb = IsAnAbLabel(b.RowLabel);
-        if (aAnAb != bAnAb)
-        {
-            // an/ab = Ankunft → die andere (Abfahrt) bevorzugen
-            return aAnAb ? b : a;
-        }
-
-        if (IsPureArrivalLabel(a.RowLabel) != IsPureArrivalLabel(b.RowLabel))
-        {
-            return IsPureArrivalLabel(a.RowLabel) ? b : a;
-        }
-
-        // Gleiche Art / unklare Labels → zweite / spätere Uhrzeit (GWP-Doppelzeile)
-        return ParseMinutes(b.Time) >= ParseMinutes(a.Time) ? b : a;
-    }
+    private static TimeCell PreferDepartureCell(TimeCell a, TimeCell b) =>
+        ParseMinutes(b.Time) >= ParseMinutes(a.Time) ? b : a;
 
     private static TimeCell PreferHbfCellForHalf(TimeCell a, TimeCell b, bool preferUpperHalf) =>
         preferUpperHalf
@@ -1144,18 +1572,8 @@ public static class UmlaufPdfReader
             }
             else if (combined.Count > 0)
             {
-                // Doppel-GWP: nur ab/an (Abfahrt). Gibt es mehrere → spätere Zeit.
-                // Am Hbf hat FilterHbfCellsForFahrtwechsel zuvor getrennt (rote Fahrtnr.).
-                var abFirst = combined.Where(c => IsAbAnLabel(c.RowLabel)).ToList();
-                if (abFirst.Count > 0)
-                {
-                    result.Add(abFirst.OrderByDescending(c => ParseMinutes(c.Time)).First());
-                }
-                else
-                {
-                    // nur an/ab: bei mehreren Zeiten die spätere (2.) als Betriebsabfahrt
-                    result.Add(combined.OrderByDescending(c => ParseMinutes(c.Time)).First());
-                }
+                // Doppelzeile (GWP): spätere Uhrzeit. Am Hbf zuvor per Fahrtnr. getrennt.
+                result.Add(combined.OrderByDescending(c => ParseMinutes(c.Time)).First());
             }
             else if (plain.Count > 0)
             {
@@ -1169,6 +1587,7 @@ public static class UmlaufPdfReader
     /// <summary>
     /// Endhaltestelle: Ankunft. Wenn an und ab vorhanden → nur an.
     /// Kombinierte Zeile ohne getrenntes Paar: an/ab bevorzugen, sonst ab/an.
+    /// Plain-Halte (ohne an/ab) zählen mit – sonst fehlt z. B. Mangenberg als Endhalt.
     /// Am Hbf keine GWP-Spätzeit – frühere/obere Zeit (Ankunft vor Fahrtwechsel).
     /// </summary>
     private static List<TimeCell> FilterToEndArrivalTimes(IReadOnlyList<TimeCell> cells)
@@ -1180,6 +1599,12 @@ public static class UmlaufPdfReader
             var pureAb = list.Where(c => IsPureDepartureLabel(c.RowLabel)).ToList();
             var pureAn = list.Where(c => IsPureArrivalLabel(c.RowLabel)).ToList();
             var combined = list.Where(c => IsCombinedAnAbLabel(c.RowLabel)).ToList();
+            var plain = list.Where(c =>
+                    !IsPureDepartureLabel(c.RowLabel) &&
+                    !IsPureArrivalLabel(c.RowLabel) &&
+                    !IsCombinedAnAbLabel(c.RowLabel) &&
+                    !IsEinfahrtOrDepotLabel(c.RowLabel))
+                .ToList();
 
             if (pureAb.Count > 0 && pureAn.Count > 0)
             {
@@ -1194,9 +1619,49 @@ public static class UmlaufPdfReader
                 var anFirst = combined.Where(c => IsAnAbLabel(c.RowLabel)).ToList();
                 result.AddRange(anFirst.Count > 0 ? anFirst : combined);
             }
+            else if (plain.Count > 0)
+            {
+                result.Add(plain.OrderByDescending(c => ParseMinutes(c.Time)).First());
+            }
         }
 
         return result;
+    }
+
+    /// <summary>Späteste Fahrgast-Zeit (Abfahrt/Plain/Ankunft), ohne Einfahrt/Betr.Hof.</summary>
+    private static TimeCell? LatestPassengerCell(
+        IReadOnlyList<TimeCell> chronoAb,
+        IReadOnlyList<TimeCell> chronoAn)
+    {
+        TimeCell? best = null;
+        foreach (var c in chronoAb.Concat(chronoAn))
+        {
+            if (string.IsNullOrWhiteSpace(c.Time) || IsEinfahrtOrDepotLabel(c.RowLabel))
+            {
+                continue;
+            }
+
+            if (best is null || ParseMinutes(c.Time) > ParseMinutes(best.Time))
+            {
+                best = c;
+            }
+        }
+
+        return best;
+    }
+
+    private static bool IsEinfahrtOrDepotLabel(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return false;
+        }
+
+        var l = label.Trim();
+        return l.Contains("Einfahrt", StringComparison.OrdinalIgnoreCase) ||
+               l.Contains("Ausfahrt", StringComparison.OrdinalIgnoreCase) ||
+               l.Contains("Betr.Hof", StringComparison.OrdinalIgnoreCase) ||
+               l.Contains("Betriebshof", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeStopKey(string? label)
@@ -1205,7 +1670,32 @@ public static class UmlaufPdfReader
         l = AnAbFlexibleRegex.Replace(l, " ");
         l = AbAnFlexibleRegex.Replace(l, " ");
         l = Regex.Replace(l, @"\b(an|ab)\b", " ");
+        // PDF: „/ Graf - Wilh. - Pl. ab/an“ und „Graf - Wilh. - Pl. an/ab“ → gleicher Halt
+        // (sonst TimingPoints doppelt: :13 und :15, Anzeige nimmt oft die Ankunft)
+        l = Regex.Replace(l, @"^[\s/|.\-–—]+", "");
+        l = Regex.Replace(l, @"[\s/|.\-–—]+$", "");
         l = Regex.Replace(l, @"\s+", " ").Trim();
+        // PdfPig-Artefakte: „2 hauptbahnhof“, „e graf…“, „r . rathaus“, „f heresbachstr“, „4 wald…“
+        for (var n = 0; n < 3; n++)
+        {
+            var next = Regex.Replace(l, @"^\d+\s+", "");
+            next = Regex.Replace(next, @"^[a-z]\s*\.\s*", "");
+            next = Regex.Replace(next, @"^[a-z]\s+", "");
+            next = Regex.Replace(next, @"\s+", " ").Trim();
+            if (next.Equals(l, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            l = next;
+        }
+
+        // Umlaufkarte: Brockenberg = Höhscheid-Brockenberg
+        if (l.Equals("brockenberg", StringComparison.Ordinal))
+        {
+            return "höhscheid-brockenberg";
+        }
+
         return l;
     }
 
@@ -1362,7 +1852,8 @@ public static class UmlaufPdfReader
         Dictionary<int, List<(string Number, double Y)>> tripNumbersByColumn,
         int colIndex,
         List<TimeCell> halfTimes,
-        bool preferUpperNumbers)
+        bool preferUpperNumbers,
+        double? startAnchorY = null)
     {
         if (!tripNumbersByColumn.TryGetValue(colIndex, out var list) || list.Count == 0)
         {
@@ -1374,36 +1865,56 @@ public static class UmlaufPdfReader
         var inHalf = list.Where(x => x.Y >= halfMinY && x.Y <= halfMaxY).ToList();
         var pool = inHalf.Count > 0 ? inHalf : list;
 
-        if (preferUpperNumbers)
-        {
-            // Obere Hälfte: 646/642/438 bevorzugen
-            var preferred = pool
-                .Where(x => x.Number is "646" or "642" or "438" or "430" or "432")
-                .OrderByDescending(x => x.Y)
-                .FirstOrDefault();
-            if (preferred.Number is { Length: > 0 })
-            {
-                return preferred.Number;
-            }
-        }
-        else
-        {
-            // Untere Hälfte: 648/444 bevorzugen
-            var preferred = pool
-                .Where(x => x.Number is "648" or "444" or "401" or "404" or "400" or "405")
-                .OrderBy(x => x.Y)
-                .FirstOrDefault();
-            if (preferred.Number is { Length: > 0 })
-            {
-                return preferred.Number;
-            }
-        }
-
-        return (preferUpperNumbers
-                ? pool.OrderByDescending(x => x.Y)
-                : pool.OrderBy(x => x.Y))
+        // Nummer am Starthalt: Brockenberg unten → 648; Hbf/Hästen oben → 444/438/646
+        var anchorY = startAnchorY ?? (preferUpperNumbers ? halfMaxY : halfMinY);
+        return pool
+            .OrderBy(x => Math.Abs(x.Y - anchorY))
+            .ThenBy(x => preferUpperNumbers ? -x.Y : x.Y)
             .First()
             .Number;
+    }
+
+    private static double? ResolveStartAnchorY(
+        IReadOnlyList<TimeCell> halfTimes,
+        string? startStopHint,
+        string startTime)
+    {
+        if (halfTimes.Count == 0)
+        {
+            return null;
+        }
+
+        var byHint = halfTimes
+            .Where(c => !string.IsNullOrWhiteSpace(startStopHint) &&
+                        FindStopNameMatch(c.RowLabel, startStopHint))
+            .ToList();
+        if (byHint.Count > 0)
+        {
+            return byHint.Average(c => c.Y);
+        }
+
+        var byTime = halfTimes
+            .Where(c => string.Equals(c.Time, startTime, StringComparison.Ordinal))
+            .ToList();
+        if (byTime.Count > 0)
+        {
+            return byTime.Average(c => c.Y);
+        }
+
+        return null;
+    }
+
+    private static bool FindStopNameMatch(string? rowLabel, string? hint)
+    {
+        var a = CleanStopHint(rowLabel);
+        var b = CleanStopHint(hint);
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b))
+        {
+            return false;
+        }
+
+        return a.Contains(b, StringComparison.OrdinalIgnoreCase) ||
+               b.Contains(a, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ExtractCourseSuffix(string? lineCourse)
@@ -1417,6 +1928,9 @@ public static class UmlaufPdfReader
         return parts.Length >= 2 ? parts[^1] : null;
     }
 
+    private static string BuildLineCourseWithSuffix(string line, string? courseSuffix) =>
+        string.IsNullOrWhiteSpace(courseSuffix) ? line : $"{line}/{courseSuffix}";
+
     /// <summary>681/02 → 682/02 (Hbf-Verknüpfung), sonst unverändert.</summary>
     private static string? BuildSisterLineCourse(string? lineCourse, string? courseSuffix)
     {
@@ -1428,12 +1942,12 @@ public static class UmlaufPdfReader
         var normalized = RouteDisplayHelper.NormalizeLineCourse(lineCourse);
         if (normalized.StartsWith("681", StringComparison.Ordinal))
         {
-            return string.IsNullOrWhiteSpace(courseSuffix) ? "682" : $"682/{courseSuffix}";
+            return BuildLineCourseWithSuffix("682", courseSuffix);
         }
 
         if (normalized.StartsWith("682", StringComparison.Ordinal))
         {
-            return string.IsNullOrWhiteSpace(courseSuffix) ? "681" : $"681/{courseSuffix}";
+            return BuildLineCourseWithSuffix("681", courseSuffix);
         }
 
         return normalized;
@@ -1519,7 +2033,17 @@ public static class UmlaufPdfReader
         lowerLabel.Contains("obenitter", StringComparison.Ordinal) ||
         lowerLabel.Contains("rüden", StringComparison.Ordinal) ||
         lowerLabel.Contains("ruden", StringComparison.Ordinal) ||
-        lowerLabel.Contains("widdert", StringComparison.Ordinal);
+        lowerLabel.Contains("widdert", StringComparison.Ordinal) ||
+        // Linie 683 u. a.
+        (lowerLabel.Contains("burger", StringComparison.Ordinal) &&
+         lowerLabel.Contains("bahnhof", StringComparison.Ordinal)) ||
+        ((lowerLabel.Contains("voh", StringComparison.Ordinal) ||
+          lowerLabel.Contains("vohwinkel", StringComparison.Ordinal)) &&
+         lowerLabel.Contains("bahnhof", StringComparison.Ordinal)) ||
+        lowerLabel.Contains("krähenhöhe", StringComparison.Ordinal) ||
+        lowerLabel.Contains("krahenhöhe", StringComparison.Ordinal) ||
+        lowerLabel.Contains("krahenhoehe", StringComparison.Ordinal) ||
+        lowerLabel.Contains("mangenberg", StringComparison.Ordinal);
 
     private static string GuessSectionLabel(IReadOnlyList<TimeCell> colTimes)
     {
@@ -1528,7 +2052,7 @@ public static class UmlaufPdfReader
             var l = c.RowLabel;
             if (l.Contains("Brockenberg", StringComparison.OrdinalIgnoreCase))
             {
-                return "Brockenberg";
+                return "Höhscheid-Brockenberg";
             }
 
             if (l.Contains("Hästen", StringComparison.OrdinalIgnoreCase) ||
