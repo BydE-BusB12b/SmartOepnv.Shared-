@@ -85,4 +85,34 @@ public static class PlanerEmbeddedSoundsWorkspace
 
         return count;
     }
+
+    /// <summary>Entfernt Tondateien im Workspace, die nicht mehr referenziert sind.</summary>
+    public static void PruneUnreferencedFiles(LocalWorkspaceStore workspace, IEnumerable<string> keepFileNames)
+    {
+        var keep = new HashSet<string>(
+            keepFileNames.Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var dir = GetSoundsDirectory(workspace);
+            foreach (var path in Directory.EnumerateFiles(dir))
+            {
+                if (!EmbeddedSoundCatalog.IsAudioFile(path))
+                {
+                    continue;
+                }
+
+                var fileName = Path.GetFileName(path);
+                if (!keep.Contains(fileName))
+                {
+                    File.Delete(path);
+                }
+            }
+        }
+        catch
+        {
+            // Workspace optional
+        }
+    }
 }

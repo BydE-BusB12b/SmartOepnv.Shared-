@@ -157,7 +157,8 @@ public sealed class PickStopFromLibraryDialog : Window
                 t.DisplayLabel.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 t.StopCode.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 t.StopNameItcs.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                t.VrrStopId.Contains(query, StringComparison.OrdinalIgnoreCase));
+                t.VrrStopId.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                t.Lines.Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
         foreach (var item in matches)

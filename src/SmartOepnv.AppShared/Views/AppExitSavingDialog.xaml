@@ -19,7 +19,7 @@
             Background="#FF121A2E">
         <StackPanel>
             <TextBlock x:Name="MessageText"
-                       Text="Planer-Arbeitsstand wird lokal gespeichert, planer_workspace.json und leitstelle_stand.json nach Dropbox hochgeladen und anschließend geschlossen."
+                       Text="Planer-Arbeitsstand wird lokal gespeichert. Nach Dropbox: kleine planer_workspace.json (Dienste, Dispo, …), nur bei Änderung planer_routes.json, Versionen und Ansagen – danach schließen."
                        TextWrapping="Wrap"
                        TextAlignment="Center"
                        FontSize="15"

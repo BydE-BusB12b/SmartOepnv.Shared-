@@ -50,6 +50,12 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 
     [ObservableProperty] private string destination = "Düsseldorf, Hauptbahnhof";
 
+    /// <summary>Variante 2: Startbahnhof (leer = erste Haltestelle).</summary>
+    [ObservableProperty] private string startStation = string.Empty;
+
+    [ObservableProperty] private SevDestinationVariant destinationVariant =
+        SevDestinationVariant.DestinationOnly;
+
     [ObservableProperty] private string newStopName = string.Empty;
 
     [ObservableProperty] private string draftName = string.Empty;
@@ -75,6 +81,63 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
     public bool HasSavedDrafts => SavedDrafts.Count > 0;
 
     public bool CanUpdateLoadedDraft => !string.IsNullOrEmpty(_loadedDraftId);
+
+    public bool IsDestinationOnlyVariant =>
+        DestinationVariant == SevDestinationVariant.DestinationOnly;
+
+    public bool IsStartAndDestinationVariant =>
+        DestinationVariant == SevDestinationVariant.StartAndDestination;
+
+    public bool IsDestinationOnlyVariantSelected
+    {
+        get => IsDestinationOnlyVariant;
+        set
+        {
+            if (value)
+            {
+                DestinationVariant = SevDestinationVariant.DestinationOnly;
+            }
+        }
+    }
+
+    public bool IsStartAndDestinationVariantSelected
+    {
+        get => IsStartAndDestinationVariant;
+        set
+        {
+            if (value)
+            {
+                DestinationVariant = SevDestinationVariant.StartAndDestination;
+            }
+        }
+    }
+
+    public string PreviewPrimaryLine =>
+        IsStartAndDestinationVariant
+            ? (string.IsNullOrWhiteSpace(StartStation)
+                ? Stops.Select(s => s.Name.Trim()).FirstOrDefault(n => n.Length > 0) ?? "Startbahnhof"
+                : StartStation.Trim())
+            : Destination;
+
+    public string PreviewSecondaryLine =>
+        IsStartAndDestinationVariant ? Destination : string.Empty;
+
+    partial void OnDestinationVariantChanged(SevDestinationVariant value)
+    {
+        OnPropertyChanged(nameof(IsDestinationOnlyVariant));
+        OnPropertyChanged(nameof(IsStartAndDestinationVariant));
+        OnPropertyChanged(nameof(IsDestinationOnlyVariantSelected));
+        OnPropertyChanged(nameof(IsStartAndDestinationVariantSelected));
+        OnPropertyChanged(nameof(PreviewPrimaryLine));
+        OnPropertyChanged(nameof(PreviewSecondaryLine));
+        SyncDraftNameAfterContentChange();
+    }
+
+    partial void OnStartStationChanged(string value)
+    {
+        OnPropertyChanged(nameof(PreviewPrimaryLine));
+        SyncDraftNameAfterContentChange();
+    }
 
     partial void OnSelectedDraftChanged(SevSignDraft? value)
     {
@@ -107,7 +170,12 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
 
     partial void OnLineChanged(string value) => SyncDraftNameAfterContentChange();
 
-    partial void OnDestinationChanged(string value) => SyncDraftNameAfterContentChange();
+    partial void OnDestinationChanged(string value)
+    {
+        OnPropertyChanged(nameof(PreviewPrimaryLine));
+        OnPropertyChanged(nameof(PreviewSecondaryLine));
+        SyncDraftNameAfterContentChange();
+    }
 
     public void RefreshFromEditor()
     {
@@ -175,6 +243,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
     {
         if (!string.Equals(Line.Trim(), draft.Line, StringComparison.Ordinal) ||
             !string.Equals(Destination.Trim(), draft.Destination, StringComparison.Ordinal) ||
+            !string.Equals(StartStation.Trim(), draft.StartStation, StringComparison.Ordinal) ||
+            DestinationVariant != draft.DestinationVariant ||
             ImportRouteReverse != draft.ImportRouteReverse ||
             !string.Equals(SelectedRoute, draft.SourceRoute, StringComparison.Ordinal))
         {
@@ -219,6 +289,7 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
             return;
         }
 
+        var removedEmpty = AppServices.SevSignDrafts.RemoveDraftsWithoutStops();
         foreach (var draft in AppServices.SevSignDrafts.LoadAll())
         {
             SavedDrafts.Add(draft);
@@ -228,6 +299,11 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         if (SelectedDraft is not null)
         {
             SelectedDraft = SavedDrafts.FirstOrDefault(d => d.Id == SelectedDraft.Id);
+        }
+
+        if (removedEmpty > 0)
+        {
+            StatusMessage = $"{removedEmpty} Vorlage(n) ohne Haltestellen entfernt.";
         }
     }
 
@@ -254,6 +330,12 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         var store = TryGetDraftStore();
         if (store is null)
         {
+            return;
+        }
+
+        if (Stops.Count == 0)
+        {
+            StatusMessage = "Vorlage braucht mindestens eine Haltestelle – bitte Haltestellen hinzufügen.";
             return;
         }
 
@@ -302,34 +384,36 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
     private void TryPersistDraftForExport()
     {
         var store = TryGetDraftStore();
-        if (store is null ||
-            (string.IsNullOrWhiteSpace(Line) &&
-             string.IsNullOrWhiteSpace(Destination) &&
-             Stops.Count == 0))
+        // Keine leeren Haltestellen-Vorlagen erzeugen (früher: Default Linie/Ziel → zig „0 Haltestellen“).
+        if (store is null || Stops.Count == 0)
         {
             return;
         }
 
-        var id = _loadedDraftId ?? Guid.NewGuid().ToString("N");
-        var isNew = _loadedDraftId is null;
+        if (string.IsNullOrWhiteSpace(Line) &&
+            string.IsNullOrWhiteSpace(Destination))
+        {
+            return;
+        }
+
+        // Nur eine bereits geladene Vorlage mitschreiben – keine neuen Auto-Vorlagen beim Export.
+        if (_loadedDraftId is null)
+        {
+            return;
+        }
+
+        var id = _loadedDraftId;
         var name = DraftName.Trim();
         if (name.Length == 0)
         {
             name = SevSignDraft.SuggestName(Line, Destination);
         }
 
-        if (!isNew &&
-            SavedDrafts.Any(d =>
+        if (SavedDrafts.Any(d =>
                 d.Id != id &&
                 string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             return;
-        }
-
-        if (isNew &&
-            SavedDrafts.Any(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
-        {
-            name = CreateUniqueDraftName(name);
         }
 
         var draft = BuildDraftFromEditor(id);
@@ -337,6 +421,9 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         store.Save(draft);
         _loadedDraftId = draft.Id;
         DraftName = draft.Name;
+        ReloadDraftList();
+        SelectedDraft = SavedDrafts.FirstOrDefault(d => d.Id == draft.Id);
+        NotifyDraftCommands();
     }
 
     private static string CreateUniqueDraftName(string baseName)
@@ -413,6 +500,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         SelectedDraft = null;
         Line = string.Empty;
         Destination = string.Empty;
+        StartStation = string.Empty;
+        DestinationVariant = SevDestinationVariant.DestinationOnly;
         NewStopName = string.Empty;
         SelectedRoute = Routes.FirstOrDefault();
         ImportRouteReverse = false;
@@ -429,6 +518,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
             Id = id,
             Line = Line.Trim(),
             Destination = Destination.Trim(),
+            StartStation = StartStation.Trim(),
+            DestinationVariant = DestinationVariant,
             Stops = Stops.Select(s => s.Name).ToList(),
             Operators = OperatorSelections
                 .Where(s => s.IsSelected)
@@ -445,6 +536,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         _lastSuggestedDraftName = SevSignDraft.SuggestName(draft.Line, draft.Destination);
         Line = draft.Line;
         Destination = draft.Destination;
+        StartStation = draft.StartStation;
+        DestinationVariant = draft.DestinationVariant;
         ImportRouteReverse = draft.ImportRouteReverse;
         SelectedRoute = string.IsNullOrWhiteSpace(draft.SourceRoute)
             ? Routes.FirstOrDefault()
@@ -493,6 +586,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         Stops.Add(new SevStopItem(name));
         NewStopName = string.Empty;
         SelectedStop = Stops[^1];
+        OnPropertyChanged(nameof(PreviewPrimaryLine));
+        SyncDraftNameAfterContentChange();
         StatusMessage = $"Haltestelle „{name}“ hinzugefügt.";
     }
 
@@ -511,6 +606,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         SelectedStop = Stops.Count == 0
             ? null
             : Stops[Math.Clamp(index, 0, Stops.Count - 1)];
+        OnPropertyChanged(nameof(PreviewPrimaryLine));
+        SyncDraftNameAfterContentChange();
         StatusMessage = $"Haltestelle „{removed}“ entfernt.";
     }
 
@@ -529,6 +626,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         }
 
         Stops.Move(index, index - 1);
+        OnPropertyChanged(nameof(PreviewPrimaryLine));
+        SyncDraftNameAfterContentChange();
         StatusMessage = "Haltestelle nach oben verschoben.";
     }
 
@@ -547,6 +646,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         }
 
         Stops.Move(index, index + 1);
+        OnPropertyChanged(nameof(PreviewPrimaryLine));
+        SyncDraftNameAfterContentChange();
         StatusMessage = "Haltestelle nach unten verschoben.";
     }
 
@@ -577,9 +678,17 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
             Destination = previousFirst;
         }
 
+        var start = StartStation.Trim();
+        if (start.Length == 0 ||
+            string.Equals(start, previousFirst, StringComparison.OrdinalIgnoreCase))
+        {
+            StartStation = previousLast;
+        }
+
         SelectedStop = selectedName is null
             ? null
             : Stops.FirstOrDefault(s => s.Name == selectedName);
+        OnPropertyChanged(nameof(PreviewPrimaryLine));
         SyncDraftNameAfterContentChange();
         StatusMessage = "Haltestellenreihenfolge umgekehrt (Fahrtrichtung gedreht).";
     }
@@ -629,7 +738,10 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
             Destination = imported.Destination;
         }
 
+        StartStation = imported.Stops.Count > 0 ? imported.Stops[0] : string.Empty;
+
         SelectedStop = Stops.FirstOrDefault();
+        OnPropertyChanged(nameof(PreviewPrimaryLine));
         SyncDraftNameAfterContentChange();
         StatusMessage = ImportRouteReverse
             ? $"{imported.Summary} (Richtung umgekehrt)"
@@ -694,6 +806,8 @@ public partial class SevSignEditorViewModel : EditorStatusViewModelBase
         {
             Line = Line,
             Destination = Destination,
+            StartStation = StartStation,
+            DestinationVariant = DestinationVariant,
             Stops = Stops.Select(s => s.Name).ToList(),
             Operators = OperatorSelections
                 .Where(s => s.IsSelected)

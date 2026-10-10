@@ -97,7 +97,7 @@ public partial class MessagesViewModel : ObservableObject, IEditorAreaViewModel
         editor.ReplaceMessageTemplates(
             MessageTemplates.ToList(),
             MailTemplates.ToList());
-        AppServices.Routes.ApplyEditorChanges("nachrichten");
+        AppServices.Routes.ApplyEditorChanges("nachrichten", rebuildEmbeddedMedia: false);
         StatusMessage =
             $"{MessageTemplates.Count} Nachrichten, {MailTemplates.Count} Mail-Vorlagen gespeichert.";
         _sync.AfterCommit();

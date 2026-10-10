@@ -7,6 +7,7 @@
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch">
     <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <sev:SevAssetPathConverter x:Key="SevAssetPathConverter" />
     </UserControl.Resources>
 
@@ -119,6 +120,30 @@
                                  Text="{Binding Line, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,0,0,10"
                                  Padding="6,4" />
+
+                        <TextBlock Text="Ziel-Darstellung" Opacity="0.9" FontSize="12" Margin="0,0,0,4" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <RadioButton Content="Variante 1 (nur Ziel)"
+                                         IsChecked="{Binding IsDestinationOnlyVariantSelected}"
+                                         Margin="0,0,16,0"
+                                         FontSize="12"
+                                         GroupName="SevDestinationVariant" />
+                            <RadioButton Content="Variante 2 (Start + Ziel)"
+                                         IsChecked="{Binding IsStartAndDestinationVariantSelected}"
+                                         FontSize="12"
+                                         GroupName="SevDestinationVariant" />
+                        </StackPanel>
+
+                        <TextBlock Text="Startbahnhof"
+                                   Opacity="0.9"
+                                   FontSize="12"
+                                   Margin="0,0,0,4"
+                                   Visibility="{Binding IsStartAndDestinationVariant, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBox materialDesign:HintAssist.Hint="leer = erste Haltestelle"
+                                 Text="{Binding StartStation, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="0,0,0,10"
+                                 Padding="6,4"
+                                 Visibility="{Binding IsStartAndDestinationVariant, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                         <TextBlock Text="Ziel" Opacity="0.9" FontSize="12" Margin="0,0,0,4" />
                         <TextBox materialDesign:HintAssist.Hint="z. B. Krefeld, Hauptbahnhof oder Expressbus, …"
@@ -290,7 +315,7 @@
                                FontSize="10"
                                Margin="0,8,0,0"
                                FontStyle="Italic">
-                        Erste Haltestelle links, letzte Haltestelle rechts (Richtung Ziel). Das Ziel erscheint zusätzlich groß oben.
+                        Variante 1: nur Ziel (Pfeil links). Variante 2: Start · mittig &lt; &gt; · Ziel.
                     </TextBlock>
                 </StackPanel>
 
@@ -318,13 +343,27 @@
                                            TextAlignment="Right" />
                             </Grid>
                         </Border>
-                        <TextBlock Text="{Binding Destination}"
-                                   Foreground="#001F5B"
-                                   FontWeight="Bold"
-                                   FontSize="16"
-                                   TextAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   Margin="0,0,0,10" />
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="{Binding PreviewPrimaryLine}"
+                                       Foreground="#001F5B"
+                                       FontWeight="Bold"
+                                       FontSize="16"
+                                       TextWrapping="Wrap"
+                                       TextAlignment="Center" />
+                            <TextBlock Text="‹  ›"
+                                       Foreground="#001F5B"
+                                       FontWeight="Bold"
+                                       FontSize="16"
+                                       TextAlignment="Center"
+                                       Visibility="{Binding IsStartAndDestinationVariant, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock Text="{Binding PreviewSecondaryLine}"
+                                       Foreground="#001F5B"
+                                       FontWeight="Bold"
+                                       FontSize="16"
+                                       TextWrapping="Wrap"
+                                       TextAlignment="Center"
+                                       Visibility="{Binding IsStartAndDestinationVariant, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </StackPanel>
                         <ItemsControl ItemsSource="{Binding Stops}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>

@@ -6,30 +6,39 @@ namespace SmartOepnv.AppShared.Views;
 public partial class SmartConfirmDialog : Window
 {
     public static bool ShowConfirm(
-        Window owner,
+        Window? owner,
         string title,
         string message,
         string confirmButton = "Ja",
-        string cancelButton = "Nein")
+        string cancelButton = "Nein",
+        bool preferCancel = false,
+        double width = 520)
     {
-        var dialog = new SmartConfirmDialog(title, message, confirmButton, cancelButton, infoOnly: false)
+        var dialog = new SmartConfirmDialog(title, message, confirmButton, cancelButton, infoOnly: false, preferCancel)
         {
             Owner = owner,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner
+            Width = width,
+            WindowStartupLocation = owner != null
+                ? WindowStartupLocation.CenterOwner
+                : WindowStartupLocation.CenterScreen
         };
         return dialog.ShowDialog() == true;
     }
 
     public static void ShowInfo(
-        Window owner,
+        Window? owner,
         string title,
         string message,
-        string okButton = "OK")
+        string okButton = "OK",
+        double width = 520)
     {
-        var dialog = new SmartConfirmDialog(title, message, okButton, cancelButton: null, infoOnly: true)
+        var dialog = new SmartConfirmDialog(title, message, okButton, cancelButton: null, infoOnly: true, preferCancel: false)
         {
             Owner = owner,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner
+            Width = width,
+            WindowStartupLocation = owner != null
+                ? WindowStartupLocation.CenterOwner
+                : WindowStartupLocation.CenterScreen
         };
         dialog.ShowDialog();
     }
@@ -39,7 +48,8 @@ public partial class SmartConfirmDialog : Window
         string message,
         string confirmButton,
         string? cancelButton,
-        bool infoOnly)
+        bool infoOnly,
+        bool preferCancel)
     {
         InitializeComponent();
         WindowTitleBarHelper.ApplySmartOepnvTitleBar(this);
@@ -55,6 +65,12 @@ public partial class SmartConfirmDialog : Window
         }
 
         CancelButton.Content = cancelButton;
+        if (preferCancel)
+        {
+            ConfirmButton.IsDefault = false;
+            CancelButton.IsDefault = true;
+            Loaded += (_, _) => CancelButton.Focus();
+        }
     }
 
     private void Confirm_Click(object sender, RoutedEventArgs e)

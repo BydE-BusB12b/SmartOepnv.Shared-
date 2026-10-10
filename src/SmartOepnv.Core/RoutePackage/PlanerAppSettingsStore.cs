@@ -49,7 +49,15 @@ public sealed class PlanerAppSettingsStore
             companyLogoFileName = settings.CompanyLogoFileName,
             companyLogos = settings.CompanyLogos,
             devicePassword = settings.DevicePassword,
-            unlockPassword = settings.UnlockPassword
+            unlockPassword = settings.UnlockPassword,
+            sondergongFileName = settings.SondergongFileName,
+            specialBuildingBlockLines = settings.SpecialBuildingBlockLines,
+            specialBuildingBlockLinesHidden = settings.SpecialBuildingBlockLinesHidden,
+            suppressedStopAnnouncementSoundKeys = settings.SuppressedStopAnnouncementSoundKeys,
+            lastRoutesExportPackageVersion = settings.LastRoutesExportPackageVersion,
+            lastRoutesUpdatePackageVersion = settings.LastRoutesUpdatePackageVersion,
+            showSmartOepnvLogoInPdfs = settings.ShowSmartOepnvLogoInPdfs,
+            ds009TextLength = settings.Ds009TextLength <= 16 ? 16 : 20
         };
         SafeDataFileStore.WriteAllText(_settingsPath, JsonSerializer.Serialize(document, JsonOptions));
     }

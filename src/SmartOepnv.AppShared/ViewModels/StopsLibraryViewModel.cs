@@ -1,10 +1,14 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Data;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
@@ -17,32 +21,106 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     private const int SuccessFeedbackMs = 5000;
 
     private readonly List<ManagedStopTemplateItem> _allTemplates = [];
+    private readonly List<string> _allRoutes = [];
     private readonly EditorAreaSyncState _sync = new();
+    private readonly SearchQueryDebouncer _searchDebouncer;
+    private readonly SearchQueryDebouncer _routeAssignSearchDebouncer;
     private string? _loadedFingerprint;
+    private string? _lastAppliedStopTemplatesFingerprint;
     private CancellationTokenSource? _saveButtonFeedbackCts;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private string searchQuery = string.Empty;
+    [ObservableProperty] private string routeAssignSearchQuery = string.Empty;
     [ObservableProperty] private ManagedStopTemplateItem? selectedTemplate;
     [ObservableProperty] private string? selectedRouteForInsert;
     [ObservableProperty] private string selectedAnnouncementCoordinates = string.Empty;
     [ObservableProperty] private string selectedStopCoordinates = string.Empty;
+    [ObservableProperty] private string selectedVrrStopId = string.Empty;
     [ObservableProperty] private string announcementMergePauseSeconds = "0,3";
     [ObservableProperty] private bool saveButtonIsSuccess;
     [ObservableProperty] private bool removeTemplateButtonIsSuccess;
     [ObservableProperty] private bool insertIntoRouteButtonIsSuccess;
+    [ObservableProperty] private bool isRouteAssignPanelOpen;
+    [ObservableProperty] private int ds009TextMaxLength = PlanerDs009TextLength.Length20;
+    [ObservableProperty] private LibraryListSortField listSortField = LibraryListSortField.Id;
+    [ObservableProperty] private LibraryListSortDirection listSortDirection = LibraryListSortDirection.Ascending;
 
+    private readonly Dictionary<string, string> _routeAssignSearchHaystack = new(StringComparer.Ordinal);
+    private int _linesSyncGeneration;
     private bool _syncingCoordinates;
+
+    private bool _suppressRouteAssignSearchChanged;
 
     public ObservableCollection<ManagedStopTemplateItem> FilteredTemplates { get; } = [];
     public ObservableCollection<string> AvailableRoutes { get; } = [];
 
     public StopsLibraryViewModel()
     {
+        _searchDebouncer = new SearchQueryDebouncer(ApplyFilter);
+        _routeAssignSearchDebouncer = new SearchQueryDebouncer(ApplyRouteAssignFilter);
+        Ds009TextMaxLength = PlanerDs009TextLength.Read();
+        PlanerDs009TextLength.Changed += () => Ds009TextMaxLength = PlanerDs009TextLength.Read();
         if (AppServices.IsInitialized)
         {
             AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
         }
+    }
+
+    public string RouteAssignToggleButtonLabel =>
+        IsRouteAssignPanelOpen ? "Schließen · In Route übernehmen" : "In Route übernehmen";
+
+    public string SortByIdButtonLabel =>
+        LibraryListSort.FormatButtonLabel("ID", LibraryListSortField.Id, ListSortField, ListSortDirection);
+
+    public string SortByNameButtonLabel =>
+        LibraryListSort.FormatButtonLabel("Name", LibraryListSortField.Name, ListSortField, ListSortDirection);
+
+    partial void OnIsRouteAssignPanelOpenChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RouteAssignToggleButtonLabel));
+        if (value)
+        {
+            // Routenliste immer frisch aus dem Editor – sonst fehlen neu angelegte Tagesvarianten.
+            SyncAvailableRoutesFromEditor();
+        }
+    }
+
+    partial void OnListSortFieldChanged(LibraryListSortField value)
+    {
+        OnPropertyChanged(nameof(SortByIdButtonLabel));
+        OnPropertyChanged(nameof(SortByNameButtonLabel));
+    }
+
+    partial void OnListSortDirectionChanged(LibraryListSortDirection value)
+    {
+        OnPropertyChanged(nameof(SortByIdButtonLabel));
+        OnPropertyChanged(nameof(SortByNameButtonLabel));
+    }
+
+    [RelayCommand]
+    private void ToggleRouteAssignPanel() => IsRouteAssignPanelOpen = !IsRouteAssignPanelOpen;
+
+    [RelayCommand]
+    private void SortListById()
+    {
+        var field = ListSortField;
+        var dir = ListSortDirection;
+        LibraryListSort.Toggle(ref field, ref dir, LibraryListSortField.Id);
+        ListSortField = field;
+        ListSortDirection = dir;
+        ApplyFilter();
+    }
+
+    [RelayCommand]
+    private void SortListByName()
+    {
+        var field = ListSortField;
+        var dir = ListSortDirection;
+        LibraryListSort.Toggle(ref field, ref dir, LibraryListSortField.Name);
+        ListSortField = field;
+        ListSortDirection = dir;
+        ApplyFilter();
     }
 
     public bool HasPendingChanges => _sync.HasPendingChanges;
@@ -51,6 +129,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     {
         if (!_sync.ShouldRefresh(_allTemplates.Count > 0))
         {
+            // Vorlagen unverändert – Routen trotzdem synchronisieren (neue Fahrten/Tagesvarianten).
+            SyncAvailableRoutesFromEditor();
             return;
         }
 
@@ -59,26 +139,71 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
     public void RefreshFromEditor() => RefreshFromEditorCore();
 
+    private void SyncAvailableRoutesFromEditor()
+    {
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            _allRoutes.Clear();
+            _routeAssignSearchHaystack.Clear();
+            AvailableRoutes.Clear();
+            SelectedRouteForInsert = null;
+            return;
+        }
+
+        var previousSelection = SelectedRouteForInsert;
+        _allRoutes.Clear();
+        _allRoutes.AddRange(editor.RouteNames);
+        RebuildRouteAssignSearchIndex();
+        EnsureAvailableRoutesPopulated();
+        ApplyRouteAssignFilter();
+
+        if (!string.IsNullOrWhiteSpace(previousSelection) &&
+            _allRoutes.Any(r => string.Equals(r, previousSelection, StringComparison.Ordinal)))
+        {
+            SelectedRouteForInsert = previousSelection;
+            return;
+        }
+
+        if (SelectedRouteForInsert is null ||
+            !_allRoutes.Any(r => string.Equals(r, SelectedRouteForInsert, StringComparison.Ordinal)))
+        {
+            var view = CollectionViewSource.GetDefaultView(AvailableRoutes);
+            SelectedRouteForInsert = view?.OfType<string>().FirstOrDefault()
+                                     ?? AvailableRoutes.FirstOrDefault();
+        }
+    }
+
     private void RefreshFromEditorCore()
     {
         _allTemplates.Clear();
+        _lastAppliedStopTemplatesFingerprint = null;
         FilteredTemplates.Clear();
+        _allRoutes.Clear();
+        _routeAssignSearchHaystack.Clear();
         AvailableRoutes.Clear();
+        _suppressRouteAssignSearchChanged = true;
+        try
+        {
+            RouteAssignSearchQuery = string.Empty;
+        }
+        finally
+        {
+            _suppressRouteAssignSearchChanged = false;
+        }
         SelectedTemplate = null;
         SelectedRouteForInsert = null;
 
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
-            StatusMessage = "Kein Route-Paket geladen – bitte unter Übersicht importieren.";
+            StatusMessage = "Kein Route-Paket – „Neue Haltestelle“ oder unter Routen „Route hinzufügen“ legt ein leeres Paket an.";
             return;
         }
 
-        foreach (var route in editor.RouteNames)
-        {
-            AvailableRoutes.Add(route);
-        }
-
+        _allRoutes.AddRange(editor.RouteNames);
+        RebuildRouteAssignSearchIndex();
+        ApplyRouteAssignFilter();
         SelectedRouteForInsert = AvailableRoutes.FirstOrDefault();
 
         var fromManaged = 0;
@@ -96,12 +221,49 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         var merge = MergeRouteStopsIntoLibrary();
+
+        // Liste sofort anzeigen – Linien-Sync (alle Routen × Halte) im Hintergrund danach.
         ApplyFilter();
         SelectedTemplate = FilteredTemplates.FirstOrDefault();
         SyncCoordinateFieldsFromSelected();
         StatusMessage = BuildLibraryStatusMessage(fromManaged, merge);
         _sync.AfterRefresh();
         _loadedFingerprint = ComputeFingerprint();
+        ScheduleLinesSyncFromRoutes(editor);
+    }
+
+    private void ScheduleLinesSyncFromRoutes(EditableRoutePackage editor)
+    {
+        var generation = ++_linesSyncGeneration;
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            StopTemplateRouteMerger.SyncLinesFromRoutes(_allTemplates, editor);
+            return;
+        }
+
+        dispatcher.BeginInvoke(
+            () =>
+            {
+                if (generation != _linesSyncGeneration ||
+                    !ReferenceEquals(AppServices.Routes.Editor, editor))
+                {
+                    return;
+                }
+
+                StopTemplateRouteMerger.SyncLinesFromRoutes(_allTemplates, editor);
+                // Linien rechts in der Liste und im Detailfeld aktualisieren
+                foreach (var template in _allTemplates)
+                {
+                    template.NotifyDisplayLabelChanged();
+                }
+
+                if (!string.IsNullOrWhiteSpace(SearchQuery))
+                {
+                    ApplyFilter();
+                }
+            },
+            DispatcherPriority.Background);
     }
 
     public void CommitChangesIfDirty()
@@ -124,6 +286,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             t.StopDisplay,
             t.VrrStopId,
             t.DirectionDescription,
+            t.Lines,
             t.AnnouncementLat,
             t.AnnouncementLng,
             t.StopLat,
@@ -131,7 +294,9 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             t.RadiusMeters,
             t.ExternalSoundUri,
             t.EmbeddedSoundFileName,
-            t.LocalAudioPath
+            t.LocalAudioPath,
+            t.EntwerterEnabled,
+            t.EntwerterCode
         }));
 
     private string BuildLibraryStatusMessage(int fromManaged, StopTemplateRouteMerger.MergeResult merge)
@@ -194,21 +359,39 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
         var persistable = _allTemplates.Where(t => !t.IsEmptyDraft()).Select(Clone).ToList();
         editor.ReplaceStopTemplates(persistable);
-        var routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, persistable);
+        var stopFingerprint = StopTemplateRouteMerger.ComputeApplyFingerprint(persistable);
+        var routeStopsUpdated = 0;
+        if (!string.Equals(stopFingerprint, _lastAppliedStopTemplatesFingerprint, StringComparison.Ordinal))
+        {
+            routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, persistable);
+            _lastAppliedStopTemplatesFingerprint = stopFingerprint;
+        }
         var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
-        editor.SyncEmbeddedSoundsFromStopTemplates(_allTemplates, workspace);
-        AppServices.Routes.ApplyEditorChanges("haltestellen");
+        // Ton aus der Soundbibliothek: nur Dateiname verknüpfen. Neu einbetten nur bei LocalAudioPath
+        // oder wenn die Datei noch nicht in embeddedSounds liegt.
+        if (editor.NeedsEmbeddedSoundMaterialization(_allTemplates, workspace))
+        {
+            editor.SyncEmbeddedSoundsFromStopTemplates(_allTemplates, workspace);
+        }
+
+        AppServices.Routes.ApplyEditorChanges("haltestellen", rebuildEmbeddedMedia: false);
 
         foreach (var t in _allTemplates)
         {
             t.LocalAudioPath = null;
         }
 
+        // Linien nur per Haltestellen-ID aus Routen ergänzen/bereinigen – Liste sofort aktualisieren.
+        var linesUpdated = StopTemplateRouteMerger.SyncLinesFromRoutes(_allTemplates, editor);
         SyncCoordinateFieldsFromSelected();
         RefreshTemplateListLabels(rebuildFilter: false);
         StatusMessage = routeStopsUpdated > 0
-            ? $"{_allTemplates.Count} Vorlagen gespeichert – {routeStopsUpdated} Haltestelle(n) in Routen aktualisiert (ID, Name, GPS, Ton …)."
+            ? $"{_allTemplates.Count} Vorlagen gespeichert – {routeStopsUpdated} Haltestelle(n) in Routen aktualisiert (ID, Name, GPS, Ton, Entwerter …)."
             : $"{_allTemplates.Count} Vorlagen lokal gespeichert – werden mit Routen-Export/Dropbox übertragen.";
+        if (linesUpdated > 0)
+        {
+            StatusMessage += $" Linien an {linesUpdated} Vorlage(n) per ID abgeglichen.";
+        }
         SaveButtonIsSuccess = true;
         RemoveTemplateButtonIsSuccess = false;
         _ = ShowSaveSuccessFeedbackAsync();
@@ -261,7 +444,17 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
     }
 
-    partial void OnSearchQueryChanged(string value) => ApplyFilter();
+    partial void OnSearchQueryChanged(string value) => _searchDebouncer.Schedule();
+
+    partial void OnRouteAssignSearchQueryChanged(string value)
+    {
+        if (_suppressRouteAssignSearchChanged)
+        {
+            return;
+        }
+
+        _routeAssignSearchDebouncer.Schedule();
+    }
 
     partial void OnSelectedTemplateChanged(ManagedStopTemplateItem? value)
     {
@@ -283,6 +476,23 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             SelectedTemplate.AnnouncementLat = lat;
             SelectedTemplate.AnnouncementLng = lon;
         });
+        MarkDirty();
+    }
+
+    partial void OnSelectedVrrStopIdChanged(string value)
+    {
+        if (_syncingCoordinates || SelectedTemplate is null)
+        {
+            return;
+        }
+
+        var trimmed = value?.Trim() ?? string.Empty;
+        if (string.Equals(SelectedTemplate.VrrStopId, trimmed, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        SelectedTemplate.VrrStopId = trimmed;
         MarkDirty();
     }
 
@@ -308,6 +518,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         {
             SelectedAnnouncementCoordinates = string.Empty;
             SelectedStopCoordinates = string.Empty;
+            SelectedVrrStopId = string.Empty;
         }
         else
         {
@@ -317,6 +528,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             SelectedStopCoordinates = CoordinateFormatting.FormatFromParts(
                 SelectedTemplate.StopLat,
                 SelectedTemplate.StopLng);
+            SelectedVrrStopId = SelectedTemplate.VrrStopId;
         }
 
         _syncingCoordinates = false;
@@ -387,10 +599,22 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     [RelayCommand]
     private void AddTemplate()
     {
+        if (!AppServices.Routes.EnsureEmptyPackageIfNeeded())
+        {
+            StatusMessage = "Leeres Route-Paket konnte nicht angelegt werden.";
+            return;
+        }
+
         if (AppServices.Routes.Editor is null)
         {
             StatusMessage = "Kein Route-Paket geladen.";
             return;
+        }
+
+        // Nach erstem Anlegen: Listen/Status aktualisieren (z. B. neuer Betrieb).
+        if (_allRoutes.Count == 0 && _allTemplates.Count == 0)
+        {
+            RefreshFromEditor();
         }
 
         var code = PlannerStopCode.SuggestNext(_allTemplates.Select(t => t.StopCode));
@@ -514,7 +738,6 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             var assignment = VrrStopAssignmentManager.FromCatalogEntry(dialog.SelectedEntry);
             VrrStopAssignmentManager.ApplyToTemplate(SelectedTemplate, assignment);
             SyncCoordinateFieldsFromSelected();
-            RefreshSelectedTemplateBinding();
             StatusMessage = $"VRR-ID „{SelectedTemplate.VrrStopId}“ übernommen ({assignment.DisplayName}).";
             MarkDirty();
         }
@@ -576,11 +799,15 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             }
 
             var template = SelectedTemplate;
+            var radius = template!.RadiusMeters > 0
+                ? template.RadiusMeters
+                : ManagedStopTemplateItem.DefaultRadiusMeters;
             var dialog = new GpsMapPickerDialog(
                 title,
-                formatCurrent(template!),
-                formatOther(template!),
-                otherLabel)
+                formatCurrent(template),
+                formatOther(template),
+                otherLabel,
+                radiusMeters: radius)
             {
                 Owner = owner
             };
@@ -653,7 +880,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         var owner = ResolveDialogOwner();
-        var dialog = new EmbeddedSoundPickerDialog(names, prefill) { Owner = owner };
+        var searchHints = BuildEmbeddedSoundSearchHints(names);
+        var dialog = new EmbeddedSoundPickerDialog(names, prefill, searchHints) { Owner = owner };
         if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.SelectedFileName))
         {
             return;
@@ -662,7 +890,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         SelectedTemplate.EmbeddedSoundFileName = dialog.SelectedFileName.Trim();
         SelectedTemplate.LocalAudioPath = null;
         RefreshSelectedTemplateBinding();
-        StatusMessage = $"Ansage „{SelectedTemplate.EmbeddedSoundFileName}“ zugeordnet – mit „Speichern“ übernehmen.";
+        StatusMessage =
+            $"Ansage „{SelectedTemplate.EmbeddedSoundFileName}“ verknüpft (bereits in Soundbibliothek) – mit „Speichern“ übernehmen.";
         MarkDirty();
     }
 
@@ -708,7 +937,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         var owner = ResolveDialogOwner();
-        var dialog = new EmbeddedSoundMultiPickerDialog(names, prefill) { Owner = owner };
+        var searchHints = BuildEmbeddedSoundSearchHints(names);
+        var dialog = new EmbeddedSoundMultiPickerDialog(names, prefill, searchHintsByFileName: searchHints) { Owner = owner };
         if (dialog.ShowDialog() != true || dialog.SelectedFileNames.Count < 2)
         {
             return;
@@ -768,13 +998,32 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             return null;
         }
 
-        var extra = editor.AnnouncementTemplates
+        var extraNames = _allTemplates
             .Select(t => t.EmbeddedSoundFileName)
-            .Concat(_allTemplates.Select(t => t.EmbeddedSoundFileName));
-        var names = EmbeddedSoundCatalog.ListAvailable(
+            .Where(n => !string.IsNullOrWhiteSpace(n));
+        var names = EmbeddedSoundCatalog.ListReferenced(
+            editor,
             editor.PackageRoot,
             AppServices.IsInitialized ? AppServices.Workspace : null,
-            extra);
+            extraNames)
+            .ToList();
+
+        foreach (var template in _allTemplates)
+        {
+            var fileName = template.EmbeddedSoundFileName?.Trim();
+            if (string.IsNullOrWhiteSpace(fileName) ||
+                names.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(template.LocalAudioPath) && File.Exists(template.LocalAudioPath))
+            {
+                names.Add(fileName);
+            }
+        }
+
+        names.Sort(StringComparer.OrdinalIgnoreCase);
 
         if (names.Count == 0)
         {
@@ -783,6 +1032,63 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         return names;
+    }
+
+    private Dictionary<string, string> BuildEmbeddedSoundSearchHints(IReadOnlyList<string> fileNames)
+    {
+        var hints = new Dictionary<string, StringBuilder>(StringComparer.OrdinalIgnoreCase);
+
+        void Append(string? fileName, params string?[] parts)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return;
+            }
+
+            var text = string.Join(' ', parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            if (!hints.TryGetValue(fileName, out var builder))
+            {
+                builder = new StringBuilder();
+                hints[fileName] = builder;
+            }
+
+            builder.Append(' ').Append(text);
+        }
+
+        foreach (var template in _allTemplates)
+        {
+            Append(
+                template.EmbeddedSoundFileName,
+                template.StopNameItcs,
+                template.StopDisplay,
+                template.DirectionDescription,
+                template.Lines);
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is not null)
+        {
+            foreach (var announcement in ManagedAnnouncementTemplateEditor.LoadFromRoot(editor.PackageRoot))
+            {
+                Append(
+                    announcement.EmbeddedSoundFileName,
+                    announcement.DisplayName,
+                    announcement.Description,
+                    announcement.Lines);
+            }
+        }
+
+        return fileNames.ToDictionary(
+            name => name,
+            name => hints.TryGetValue(name, out var builder)
+                ? builder.ToString().Trim()
+                : string.Empty,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     private static Window? ResolveDialogOwner()
@@ -943,7 +1249,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         editor.AddStopFromTemplate(SelectedRouteForInsert, Clone(SelectedTemplate));
-        AppServices.Routes.ApplyEditorChanges("haltestellen-route");
+        AppServices.Routes.ApplyEditorChanges("haltestellen-route", rebuildEmbeddedMedia: false);
         var code = PlannerStopCode.Normalize(SelectedTemplate.StopCode);
         var codeHint = string.IsNullOrEmpty(code) ? string.Empty : $" (ID {code})";
         StatusMessage =
@@ -961,14 +1267,22 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         var merge = MergeRouteStopsIntoLibrary();
+        var linesUpdated = 0;
+        if (AppServices.Routes.Editor is not null)
+        {
+            linesUpdated = StopTemplateRouteMerger.SyncLinesFromRoutes(_allTemplates, AppServices.Routes.Editor);
+        }
+
         RefreshTemplateListLabels();
         StatusMessage = merge.Added > 0
             ? $"{merge.Added} neue Vorlage(n) aus allen Routen – insgesamt {_allTemplates.Count}. Bitte „Speichern“."
             : $"Keine neuen Haltestellen – {_allTemplates.Count} Vorlagen, {merge.RouteStopCount} Haltestellen in Routen bereits abgeglichen.";
-        if (merge.Added > 0)
+        if (merge.Added > 0 || linesUpdated > 0)
         {
             MarkDirty();
         }
+
+        ApplyFilter();
     }
 
     [RelayCommand]
@@ -992,43 +1306,219 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             return;
         }
 
+        var linesUpdated = StopTemplateRouteMerger.SyncLinesFromRoutes(_allTemplates, AppServices.Routes.Editor!);
         RefreshTemplateListLabels();
         StatusMessage = merge.Added > 0
             ? $"{merge.Added} neue Vorlage(n) aus „{SelectedRouteForInsert}“ – insgesamt {_allTemplates.Count}. Bitte „Speichern“."
             : $"Route „{SelectedRouteForInsert}“ abgeglichen ({merge.RouteStopCount} Haltestellen, keine neuen Einträge).";
-        if (merge.Added > 0)
+        if (merge.Added > 0 || linesUpdated > 0)
         {
             MarkDirty();
         }
+
+        ApplyFilter();
+    }
+
+    private void ApplyRouteAssignFilter()
+    {
+        EnsureAvailableRoutesPopulated();
+
+        var view = CollectionViewSource.GetDefaultView(AvailableRoutes);
+        if (view is null)
+        {
+            return;
+        }
+
+        var query = RouteAssignSearchQuery.Trim();
+
+        // Filter statt Clear/Add: ComboBox behält Popup + Fokus im Suchfeld.
+        view.Filter = obj =>
+        {
+            if (obj is not string route)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(query))
+            {
+                return true;
+            }
+
+            // Bei aktiver Suche nur Treffer – aktuelle Auswahl nicht „mitführen“,
+            // sonst erscheint z. B. 681 weiterhin bei Suche nach 698.
+            return RouteMatchesAssignSearchCached(route, query);
+        };
+        view.Refresh();
+    }
+
+    private void EnsureAvailableRoutesPopulated()
+    {
+        var sorted = RouteDisplayHelper.SortRoutesByLineCourseAndTrip(_allRoutes).ToList();
+        if (AvailableRoutes.Count == sorted.Count)
+        {
+            var same = true;
+            for (var i = 0; i < sorted.Count; i++)
+            {
+                if (!string.Equals(AvailableRoutes[i], sorted[i], StringComparison.Ordinal))
+                {
+                    same = false;
+                    break;
+                }
+            }
+
+            if (same)
+            {
+                return;
+            }
+        }
+
+        AvailableRoutes.Clear();
+        foreach (var route in sorted)
+        {
+            AvailableRoutes.Add(route);
+        }
+    }
+
+    private void RebuildRouteAssignSearchIndex()
+    {
+        _routeAssignSearchHaystack.Clear();
+        foreach (var routeKey in _allRoutes)
+        {
+            var definition = RouteDisplayHelper.Parse(routeKey);
+            var display = RouteDisplayHelper.ToLineCourseTripFirstDisplayString(routeKey);
+            _routeAssignSearchHaystack[routeKey] = string.Join(' ',
+                routeKey,
+                display,
+                definition.Name,
+                definition.LineCourse,
+                definition.TripNumber,
+                definition.PassengerDisplayLine);
+        }
+    }
+
+    private bool RouteMatchesAssignSearchCached(string routeKey, string query)
+    {
+        if (!_routeAssignSearchHaystack.TryGetValue(routeKey, out var haystack))
+        {
+            var definition = RouteDisplayHelper.Parse(routeKey);
+            var display = RouteDisplayHelper.ToLineCourseTripFirstDisplayString(routeKey);
+            haystack = string.Join(' ',
+                routeKey,
+                display,
+                definition.Name,
+                definition.LineCourse,
+                definition.TripNumber,
+                definition.PassengerDisplayLine);
+            _routeAssignSearchHaystack[routeKey] = haystack;
+        }
+
+        var tokens = query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0)
+        {
+            return true;
+        }
+
+        return tokens.All(token => haystack.Contains(token, StringComparison.OrdinalIgnoreCase));
     }
 
     private void ApplyFilter()
     {
         var q = SearchQuery.Trim();
-        FilteredTemplates.Clear();
-        IEnumerable<ManagedStopTemplateItem> source = _allTemplates
-            .OrderBy(t => t.StopCode, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(t => t.StopNameItcs, StringComparer.OrdinalIgnoreCase);
+        IEnumerable<ManagedStopTemplateItem> source = _allTemplates;
+
         if (!string.IsNullOrEmpty(q))
         {
-            source = source.Where(t =>
-                (t.StopCode?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (t.StopNameItcs?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (t.StopDisplay?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (t.VrrStopId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (t.DirectionDescription?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
+            source = source.Where(t => TemplateMatchesSearch(t, q));
         }
 
-        foreach (var t in source)
-        {
-            FilteredTemplates.Add(t);
-        }
+        source = LibraryListSort.OrderByField(
+            source,
+            ListSortField,
+            ListSortDirection,
+            t => t.StopCode,
+            t => t.StopNameItcs);
+
+        ReplaceFilteredTemplates(source.ToList());
 
         if (SelectedTemplate is not null &&
             !FilteredTemplates.Any(t => t.Id == SelectedTemplate.Id))
         {
             SelectedTemplate = FilteredTemplates.FirstOrDefault();
         }
+    }
+
+    private void ReplaceFilteredTemplates(IReadOnlyList<ManagedStopTemplateItem> next)
+    {
+        if (FilteredTemplates.Count == next.Count)
+        {
+            var same = true;
+            for (var i = 0; i < next.Count; i++)
+            {
+                if (!ReferenceEquals(FilteredTemplates[i], next[i]))
+                {
+                    same = false;
+                    break;
+                }
+            }
+
+            if (same)
+            {
+                return;
+            }
+        }
+
+        FilteredTemplates.Clear();
+        foreach (var t in next)
+        {
+            FilteredTemplates.Add(t);
+        }
+    }
+
+    private static bool TemplateMatchesSearch(ManagedStopTemplateItem t, string q) =>
+        (t.StopCode?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+        (t.StopNameItcs?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+        (t.StopDisplay?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+        (t.VrrStopId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+        (t.DirectionDescription?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+        LineFieldContains(t.Lines, q);
+
+    /// <summary>
+    /// Linien-Suche: „694“ trifft „694“, „694/95“ und Einträge in „694, 681“.
+    /// </summary>
+    private static bool LineFieldContains(string? lines, string query)
+    {
+        if (string.IsNullOrWhiteSpace(lines) || string.IsNullOrWhiteSpace(query))
+        {
+            return false;
+        }
+
+        if (lines.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        foreach (var part in lines.Split([',', ';', '/', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (part.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                query.Contains(part, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string PrimaryLineSortKey(string? lines, string query)
+    {
+        if (string.IsNullOrWhiteSpace(lines))
+        {
+            return "~";
+        }
+
+        var parts = lines.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var match = parts.FirstOrDefault(p => p.Contains(query, StringComparison.OrdinalIgnoreCase));
+        return match ?? parts[0];
     }
 
     private static ManagedStopTemplateItem Clone(ManagedStopTemplateItem source) => new()
@@ -1039,6 +1529,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         StopDisplay = source.StopDisplay,
         VrrStopId = source.VrrStopId,
         DirectionDescription = source.DirectionDescription,
+        Lines = source.Lines,
         AnnouncementLat = source.AnnouncementLat,
         AnnouncementLng = source.AnnouncementLng,
         StopLat = source.StopLat,
@@ -1046,6 +1537,8 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         RadiusMeters = source.RadiusMeters,
         ExternalSoundUri = source.ExternalSoundUri,
         EmbeddedSoundFileName = source.EmbeddedSoundFileName,
-        LocalAudioPath = source.LocalAudioPath
+        LocalAudioPath = source.LocalAudioPath,
+        EntwerterEnabled = source.EntwerterEnabled,
+        EntwerterCode = source.EntwerterCode
     };
 }

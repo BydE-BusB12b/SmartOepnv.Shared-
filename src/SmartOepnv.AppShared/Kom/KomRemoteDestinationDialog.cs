@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using SmartOepnv.AppShared.ViewModels;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
@@ -9,8 +10,11 @@ namespace SmartOepnv.AppShared.Kom;
 
 public sealed class KomRemoteDestinationDialog : Window
 {
+    private readonly KomSendDialogGuard _sendGuard;
+
     public KomRemoteDestinationDialog(VehicleListItemViewModel vehicle, Window owner)
     {
+        _sendGuard = new KomSendDialogGuard(this);
         Owner = owner;
         Title = "Fernsteuerung Ziel";
         Width = 520;
@@ -23,7 +27,7 @@ public sealed class KomRemoteDestinationDialog : Window
             Loaded += (_, _) => { DialogResult = false; Close(); };
         }
 
-        var destinations = KomOutsideDestinationCatalog.LoadListEnabledNames(AppServices.Routes.Editor);
+        var destinations = KomOutsideDestinationCatalog.LoadListEnabledItems(AppServices.Routes.Editor);
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -45,6 +49,7 @@ public sealed class KomRemoteDestinationDialog : Window
         var list = new ListBox
         {
             ItemsSource = destinations,
+            ItemTemplate = VehicleKomUi.MakeNameProtocolListItemTemplate(),
             Margin = new Thickness(0, 8, 0, 0),
             IsEnabled = destinations.Count > 0
         };
@@ -76,44 +81,44 @@ public sealed class KomRemoteDestinationDialog : Window
                 return;
             }
 
-            if (list.SelectedItem is not string destination)
+            if (list.SelectedItem is not KomOutsideDestinationCatalog.ListItem destination)
             {
-                MessageBox.Show(this, "Bitte ein Ziel wählen.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                SmartConfirmDialog.ShowInfo(this, Title, "Bitte ein Ziel wählen.");
                 return;
             }
 
             send.IsEnabled = false;
-            cancel.IsEnabled = false;
-            status.Text = "Sende Fernziel …";
+            _sendGuard.BeginSend();
             try
             {
-                var commandId = await KomRemoteDestinationService.UploadAsync(
-                    AppServices.Dropbox,
+                if (await KomCommandSendFlow.SendAndReleaseDialogAsync(
+                    this,
+                    status,
+                    vehicle.DisplayName,
                     phone,
-                    destination);
-                if (commandId > 0)
+                    KomRemoteDestinationService.CommandType,
+                    ct => KomRemoteDestinationService.UploadAsync(
+                        AppServices.Dropbox,
+                        phone,
+                        destination.Name,
+                        ct),
+                    releaseCloseGuard: () => _sendGuard.EndSend()))
                 {
-                    MessageBox.Show(this,
-                        $"Fernziel „{destination}“ an {vehicle.DisplayName} gesendet.",
-                        Title,
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
-                    DialogResult = true;
-                    Close();
-                }
-                else
-                {
-                    status.Text = "Senden fehlgeschlagen.";
+                    return;
                 }
             }
             catch (Exception ex)
             {
-                status.Text = $"Fehler: {ex.Message}";
+                SmartConfirmDialog.ShowInfo(this, Title, $"Senden fehlgeschlagen: {ex.Message}");
             }
             finally
             {
-                send.IsEnabled = true;
-                cancel.IsEnabled = true;
+                if (IsLoaded)
+                {
+                    _sendGuard.EndSend();
+                    send.IsEnabled = true;
+                    cancel.IsEnabled = true;
+                }
             }
         };
 

@@ -60,6 +60,11 @@ internal static class EmployeePlannerCredentialMerge
             source.DriverCardCheckConfirmedAtUtcMs,
             e => e.DriverCardCheckConfirmedAtUtcMs,
             (e, v) => e.DriverCardCheckConfirmedAtUtcMs = v);
+        MergeCheckTimestamp(
+            target,
+            source.LastEditedAtUtcMs,
+            e => e.LastEditedAtUtcMs,
+            (e, v) => e.LastEditedAtUtcMs = v);
 
         MergeExpiryIfNewerCheck(target, source,
             e => e.LicenseCheckConfirmedAtUtcMs,
@@ -144,6 +149,7 @@ internal static class EmployeePlannerCredentialMerge
         PlannerPassword = e.PlannerPassword,
         LicenseCheckConfirmedAtUtcMs = e.LicenseCheckConfirmedAtUtcMs,
         FqnCheckConfirmedAtUtcMs = e.FqnCheckConfirmedAtUtcMs,
-        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs
+        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs,
+        LastEditedAtUtcMs = e.LastEditedAtUtcMs
     };
 }

@@ -10,7 +10,7 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public const int DefaultRadiusMeters = 25;
+    public const int DefaultRadiusMeters = 35;
 
     /// <summary>Standardtitel beim Anlegen – wird nicht dauerhaft gespeichert, solange keine Stammdaten fehlen.</summary>
     public const string PlaceholderStopName = "Neue Haltestelle";
@@ -34,8 +34,21 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
         set => SetField(ref _stopNameItcs, value, nameof(StopNameItcs), nameof(DisplayLabel), nameof(AnnouncementsLibraryDisplayLabel));
     }
 
-    public string StopDisplay { get; set; } = string.Empty;
-    public string VrrStopId { get; set; } = string.Empty;
+    public string StopDisplay
+    {
+        get => _stopDisplay;
+        set => SetField(ref _stopDisplay, value);
+    }
+
+    private string _stopDisplay = string.Empty;
+
+    public string VrrStopId
+    {
+        get => _vrrStopId;
+        set => SetField(ref _vrrStopId, value);
+    }
+
+    private string _vrrStopId = string.Empty;
 
     private string _directionDescription = string.Empty;
 
@@ -43,6 +56,15 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
     {
         get => _directionDescription;
         set => SetField(ref _directionDescription, value, nameof(DirectionDescription), nameof(DisplayLabel));
+    }
+
+    private string _lines = string.Empty;
+
+    /// <summary>Linien-Hinweis (z. B. „681, 690“) – Suche und rechtsbündig in der Bibliotheks-Liste.</summary>
+    public string Lines
+    {
+        get => _lines;
+        set => SetField(ref _lines, value);
     }
 
     public string AnnouncementLat { get; set; } = string.Empty;
@@ -67,6 +89,86 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
     {
         get => _localAudioPath;
         set => SetField(ref _localAudioPath, value, nameof(LocalAudioPath), nameof(DisplayLabel), nameof(AnnouncementsLibraryDisplayLabel), nameof(HasAssignedAudio));
+    }
+
+    private bool _entwerterEnabled;
+
+    /// <summary>
+    /// Entwerter-Vorgabe für Routen: nur wenn aktiv/gesetzt, beim Speichern auf passende Haltestellen.
+    /// Deaktiviert in der Bibliothek: routenspezifische Aktivierungen bleiben lokal und werden nicht zurückgespiegelt.
+    /// </summary>
+    public bool EntwerterEnabled
+    {
+        get => _entwerterEnabled;
+        set => SetField(ref _entwerterEnabled, value, nameof(EntwerterEnabled), nameof(ShowEntwerterFields));
+    }
+
+    private string _entwerterCode = string.Empty;
+
+    /// <summary>DS004: nur Wabe (3) + optional Kurzstrecke; Linie setzt die App aus der Route.</summary>
+    public string EntwerterCode
+    {
+        get => _entwerterCode;
+        set => SetField(
+            ref _entwerterCode,
+            value ?? string.Empty,
+            nameof(EntwerterCode),
+            nameof(EntwerterWabe),
+            nameof(EntwerterKurzstrecke),
+            nameof(EntwerterTelegramHint));
+    }
+
+    public bool ShowEntwerterFields => EntwerterEnabled;
+
+    /// <summary>Wabe (DS004 Ziffer 4–6), drei Ziffern.</summary>
+    public string EntwerterWabe
+    {
+        get => EntwerterStopCode.ExtractWabe(EntwerterCode);
+        set
+        {
+            var stored = EntwerterStopCode.Store(value, EntwerterStopCode.EffectiveKurzstrecke(EntwerterCode));
+            if (string.Equals(EntwerterCode, stored, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            EntwerterCode = stored;
+        }
+    }
+
+    /// <summary>DS004a Kurzstrecke (7. Stempelstelle), 0–9; Voreinstellung 3 → DS004a <c>0031</c>.</summary>
+    public string EntwerterKurzstrecke
+    {
+        get => EntwerterStopCode.EffectiveKurzstrecke(EntwerterCode).ToString();
+        set
+        {
+            var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+            var kurz = digits.Length == 0
+                ? EntwerterStopCode.DefaultKurzstrecke
+                : digits[^1] - '0';
+            var stored = EntwerterStopCode.Store(EntwerterWabe, kurz);
+            if (string.Equals(EntwerterCode, stored, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            EntwerterCode = stored;
+        }
+    }
+
+    public string EntwerterTelegramHint
+    {
+        get
+        {
+            var wabe = EntwerterStopCode.ExtractWabe(EntwerterCode);
+            if (string.IsNullOrEmpty(wabe))
+            {
+                return "Nur Wabe eintragen – beim Speichern als Vorgabe in Routen. Linie kommt in der Route automatisch (DS001). DS004a = 0031.";
+            }
+
+            var ds004a = EntwerterStopCode.FormatDs004a(EntwerterCode);
+            return $"Vorgabe: e???{wabe}  ·  DS004a: {ds004a} (Linie aus Route; Speichern → Routen)";
+        }
     }
 
     public void NotifyDisplayLabelChanged()
@@ -136,11 +238,21 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
             return true;
         }
 
+        if (!string.IsNullOrWhiteSpace(Lines))
+        {
+            return true;
+        }
+
         if (!string.IsNullOrWhiteSpace(StopDisplay) ||
             !string.IsNullOrWhiteSpace(DirectionDescription) ||
             !string.IsNullOrWhiteSpace(EmbeddedSoundFileName) ||
             !string.IsNullOrWhiteSpace(LocalAudioPath) ||
             !string.IsNullOrWhiteSpace(ExternalSoundUri))
+        {
+            return true;
+        }
+
+        if (EntwerterEnabled || !string.IsNullOrWhiteSpace(EntwerterCode))
         {
             return true;
         }
@@ -178,7 +290,9 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
             StopCoordinates = string.IsNullOrEmpty(stop) ? gps : stop,
             Radius = RadiusMeters > 0 ? RadiusMeters : DefaultRadiusMeters,
             EmbeddedSoundFileName = EmbeddedSoundFileName.Trim(),
-            IsAnnouncementEnabled = true
+            IsAnnouncementEnabled = true,
+            EntwerterEnabled = EntwerterEnabled,
+            EntwerterCode = (EntwerterCode ?? string.Empty).Trim()
         };
     }
 
@@ -197,7 +311,9 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
             StopLat = stopLat,
             StopLng = stopLon,
             RadiusMeters = stop.Radius > 0 ? stop.Radius : DefaultRadiusMeters,
-            EmbeddedSoundFileName = stop.EmbeddedSoundFileName
+            EmbeddedSoundFileName = stop.EmbeddedSoundFileName,
+            EntwerterEnabled = stop.EntwerterEnabled,
+            EntwerterCode = (stop.EntwerterCode ?? string.Empty).Trim()
         };
     }
 

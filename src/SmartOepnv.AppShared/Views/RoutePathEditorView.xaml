@@ -4,10 +4,13 @@
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels"
+             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch"
              Margin="0">
     <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <conv:RouteLineCourseTripFirstConverter x:Key="RouteLineCourseTripFirstConverter" />
         <!-- Gedämpfte Zustandsfarben (Outlined wie die übrigen Buttons, kein greller Vollton) -->
         <Storyboard x:Key="RoutePathSaveBlinkStoryboard" RepeatBehavior="Forever">
             <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)"
@@ -45,26 +48,195 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <ControlTemplate x:Key="RoutePathRoutePickerToggleTemplate" TargetType="ToggleButton">
+            <Border x:Name="Bd"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    SnapsToDevicePixels="True">
+                <Path HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Data="M 0 0 L 4 4 L 8 0 Z"
+                      Fill="White" />
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource SmartPrimaryBrush}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="Bd" Property="Opacity" Value="0.5" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+        <ControlTemplate x:Key="RoutePathRoutePickerComboTemplate" TargetType="ComboBox">
+            <Grid SnapsToDevicePixels="True" HorizontalAlignment="Stretch">
+                <ToggleButton x:Name="ToggleButton"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              Foreground="{TemplateBinding Foreground}"
+                              Focusable="False"
+                              IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                              ClickMode="Press"
+                              Padding="{TemplateBinding Padding}"
+                              Template="{StaticResource RoutePathRoutePickerToggleTemplate}" />
+                <Popup x:Name="PART_Popup"
+                       AllowsTransparency="True"
+                       Placement="Bottom"
+                       IsOpen="{TemplateBinding IsDropDownOpen}"
+                       PopupAnimation="Slide"
+                       Focusable="False">
+                    <Grid MinWidth="360"
+                          MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                        <Border Background="{StaticResource SmartPrimaryDarkBrush}"
+                                BorderBrush="{StaticResource SmartAccentBrush}"
+                                BorderThickness="1"
+                                CornerRadius="0,0,2,2" />
+                        <ScrollViewer Margin="1"
+                                      SnapsToDevicePixels="True"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Visible"
+                                      CanContentScroll="False">
+                            <ScrollViewer.Resources>
+                                <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
+                            </ScrollViewer.Resources>
+                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                        </ScrollViewer>
+                    </Grid>
+                </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="HasItems" Value="False">
+                    <Setter TargetName="PART_Popup" Property="MinHeight" Value="32" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.55" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+        <Style x:Key="RoutePathRoutePickerCombo" TargetType="ComboBox" BasedOn="{StaticResource SmartDarkComboBox}">
+            <Setter Property="MaxDropDownHeight" Value="320" />
+            <Setter Property="MinWidth" Value="44" />
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Padding" Value="4,6" />
+            <Setter Property="Template" Value="{StaticResource RoutePathRoutePickerComboTemplate}" />
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Converter={StaticResource RouteLineCourseTripFirstConverter}}"
+                                   Foreground="White"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="420"
+                                   ToolTip="{Binding Converter={StaticResource RouteLineCourseTripFirstConverter}}" />
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="RoutePathLineColorCombo" TargetType="ComboBox" BasedOn="{StaticResource SmartDarkComboBox}">
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate DataType="{x:Type vm:RouteLineColorOption}">
+                        <TextBlock Text="{Binding Label}"
+                                   Foreground="White"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Label}" />
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
     <DockPanel x:Name="RootDock" LastChildFill="True" ClipToBounds="True">
         <!-- Rechts: feste Breite, scrollt bei wenig Fensterhöhe (treibt Layout-Höhe nicht auf) -->
-        <ScrollViewer DockPanel.Dock="Right"
+        <ScrollViewer x:Name="RightPanelScrollViewer"
+                      DockPanel.Dock="Right"
                       Width="400"
                       MaxWidth="440"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalAlignment="Stretch">
-            <StackPanel>
+            <StackPanel MinWidth="360">
                 <materialDesign:Card Padding="14" UniformCornerRadius="12"
                                      Background="{StaticResource SmartSurfaceBrush}"
                                      Margin="0,0,0,8">
                     <StackPanel>
-                        <TextBlock Text="Route &amp; Fahrweg" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,10" />
+                        <DockPanel Margin="0,0,0,10" LastChildFill="True">
+                            <Button DockPanel.Dock="Right"
+                                    Command="{Binding ToggleMapHelpCommand}"
+                                    Style="{StaticResource MaterialDesignIconForegroundButton}"
+                                    Width="32" Height="32"
+                                    Padding="0"
+                                    VerticalAlignment="Center"
+                                    ToolTip="Bedienung der Karte anzeigen">
+                                <materialDesign:PackIcon Kind="InformationOutline"
+                                                         Width="20" Height="20"
+                                                         Foreground="{StaticResource SmartAccentBrush}" />
+                            </Button>
+                            <TextBlock Text="Route &amp; Fahrweg"
+                                       FontWeight="SemiBold"
+                                       FontSize="14"
+                                       VerticalAlignment="Center" />
+                        </DockPanel>
+
+                        <Border Margin="0,0,0,10"
+                                Padding="12"
+                                Background="{StaticResource SmartPrimaryDarkBrush}"
+                                CornerRadius="8"
+                                Visibility="{Binding IsMapHelpVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="Bedienung Karte"
+                                           Foreground="White"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,8" />
+                                <TextBlock Foreground="#BBDEFB"
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           LineHeight="18">
+                                    <Run Text="• Haltestellen laden = nur Knoten (keine Auto-Linien)" />
+                                    <LineBreak />
+                                    <Run Text="• Knoten A tippen, dann B → gelbe Linie → Straße snappen / Busspur" />
+                                    <LineBreak />
+                                    <Run Text="• Gelb = bearbeitbar · Blau = gesnappt · Orange = Busspur" />
+                                    <LineBreak />
+                                    <Run Text="• Snap/Busspur-Button nur für gelbe Verbindungen" />
+                                    <LineBreak />
+                                    <Run Text="• Doppelklick auf Linie = Navi-Symbol setzen" />
+                                    <LineBreak />
+                                    <Run Text="• Orange gestrichelt = Busspur/direkt (ohne PKW-Umweg)" />
+                                    <LineBreak />
+                                    <Run Text="• Shift + Klick auf Linie = Zwischenpunkt" />
+                                    <LineBreak />
+                                    <Run Text="• Marker ziehen = Position ändern" />
+                                    <LineBreak />
+                                    <Run Text="• Rechtsklick auf Karte = manueller Wegpunkt" />
+                                    <LineBreak />
+                                    <Run Text="• „Schritt zurück“ oder „Fahrweg zurücksetzen“ rechts" />
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
 
                         <TextBlock Text="Route" FontWeight="SemiBold" Margin="0,0,0,4" />
-                        <ComboBox ItemsSource="{Binding AvailableRoutes}"
-                                  SelectedItem="{Binding SelectedRoute}"
-                                  Margin="0,0,0,10" />
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0"
+                                      Style="{StaticResource RoutePathRoutePickerCombo}"
+                                      ItemsSource="{Binding AvailableRoutes}"
+                                      SelectedItem="{Binding SelectedRoute}"
+                                      ToolTip="Route wechseln" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding SelectedRoute, Converter={StaticResource RouteLineCourseTripFirstConverter}, TargetNullValue='— Route wählen —'}"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center"
+                                       Margin="10,0,0,0"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource SmartPrimaryBrush}"
+                                       ToolTip="{Binding SelectedRoute, Converter={StaticResource RouteLineCourseTripFirstConverter}}" />
+                        </Grid>
 
                         <Button Content="Haltestellen laden"
                                 Command="{Binding LoadStopsOnMapCommand}"
@@ -75,6 +247,11 @@
                                 Style="{StaticResource MaterialDesignRaisedButton}"
                                 Margin="0,0,0,6" HorizontalAlignment="Stretch"
                                 ToolTip="Nur die gewählte Verbindung (2 Punkte) – wie „Straße snappen“ am Handy." />
+                        <Button Content="Busspur / direkt (ohne PKW-Umweg)"
+                                Command="{Binding ApplyBusStraightLaneCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,0,6" HorizontalAlignment="Stretch"
+                                ToolTip="Gerade Linie A→B für Bussonderstreifen oder PKW-gesperrte Bereiche; OSRM-PKW-Routing wird umgangen." />
                         <Button Content="Alle Verbindungen snappen"
                                 Command="{Binding SnapAllCommand}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
@@ -104,19 +281,20 @@
                                 Command="{Binding ResetRouteConnectionsCommand}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Margin="0,0,0,6" HorizontalAlignment="Stretch" />
+                        <Button Content="Fahrweg bereinigen (Länge)"
+                                Command="{Binding RepairBloatedPathCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,0,6" HorizontalAlignment="Stretch"
+                                ToolTip="Doppelte reuse-Kanten, lange Nav-Zweige und überlange Segment-Snaps entfernen; Shape neu bauen"
+                                Visibility="{Binding HasIntegrityWarning, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <Button Content="Nur Straßen-Snap löschen"
                                 Command="{Binding ClearSnapOnlyCommand}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
-                                Margin="0,0,0,6" HorizontalAlignment="Stretch" />
-                        <Button Content="Busspur / direkt (ohne PKW-Umweg)"
-                                Command="{Binding ApplyBusStraightLaneCommand}"
-                                Style="{StaticResource MaterialDesignRaisedButton}"
-                                Margin="0,0,0,10" HorizontalAlignment="Stretch"
-                                ToolTip="Gerade Linie A→B für Bussonderstreifen oder PKW-gesperrte Bereiche; OSRM-PKW-Routing wird umgangen." />
+                                Margin="0,0,0,10" HorizontalAlignment="Stretch" />
 
                         <TextBlock Text="Linienfarbe" FontWeight="SemiBold" Margin="0,0,0,4" />
-                        <ComboBox ItemsSource="{Binding RouteLineColorOptions}"
-                                  DisplayMemberPath="Label"
+                        <ComboBox Style="{StaticResource RoutePathLineColorCombo}"
+                                  ItemsSource="{Binding RouteLineColorOptions}"
                                   SelectedValuePath="Hex"
                                   SelectedValue="{Binding SelectedRouteLineColor}"
                                   Margin="0,0,0,10" />
@@ -126,41 +304,19 @@
                                    TextWrapping="Wrap"
                                    Opacity="0.85"
                                    FontSize="12" />
-                    </StackPanel>
-                </materialDesign:Card>
-
-                <materialDesign:Card Padding="12" UniformCornerRadius="12"
-                                     Background="{StaticResource SmartPrimaryDarkBrush}"
-                                     Margin="0,0,0,8">
-                    <StackPanel>
-                        <TextBlock Text="Bedienung Karte"
-                                   Foreground="White"
-                                   FontWeight="SemiBold"
-                                   Margin="0,0,0,8" />
-                        <TextBlock Foreground="#BBDEFB"
-                                   TextWrapping="Wrap"
-                                   FontSize="12"
-                                   LineHeight="18">
-                            <Run Text="• Haltestellen laden = nur Knoten (keine Auto-Linien)" />
-                            <LineBreak />
-                            <Run Text="• Knoten A tippen, dann B → gelbe Linie → Straße snappen / Busspur" />
-                            <LineBreak />
-                            <Run Text="• Gelb = bearbeitbar · Blau = gesnappt · Orange = Busspur" />
-                            <LineBreak />
-                            <Run Text="• Snap/Busspur-Button nur für gelbe Verbindungen" />
-                            <LineBreak />
-                            <Run Text="• Doppelklick auf Linie = Verbindung löschen" />
-                            <LineBreak />
-                            <Run Text="• Orange gestrichelt = Busspur/direkt (ohne PKW-Umweg)" />
-                            <LineBreak />
-                            <Run Text="• Shift + Klick auf Linie = Zwischenpunkt" />
-                            <LineBreak />
-                            <Run Text="• Marker ziehen = Position ändern" />
-                            <LineBreak />
-                            <Run Text="• Rechtsklick auf Karte = manueller Wegpunkt" />
-                            <LineBreak />
-                            <Run Text="• „Schritt zurück“ oder „Fahrweg zurücksetzen“ rechts" />
-                        </TextBlock>
+                        <Border Margin="0,10,0,0"
+                                Padding="8"
+                                Background="#33FF9800"
+                                BorderBrush="#FFFFB74D"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Visibility="{Binding HasIntegrityWarning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="{Binding IntegrityWarning}"
+                                       TextWrapping="Wrap"
+                                       Foreground="#FFFFE0B2"
+                                       FontSize="12"
+                                       FontWeight="SemiBold" />
+                        </Border>
                     </StackPanel>
                 </materialDesign:Card>
 
@@ -238,10 +394,13 @@
                                    Foreground="#BBDEFB"
                                    FontSize="12"
                                    Margin="0,0,0,4" />
-                        <ComboBox ItemsSource="{Binding NavSymbolPickerOptions}"
-                                  SelectedValuePath="Id"
-                                  SelectedValue="{Binding SelectedNavSymbol}"
+                        <ComboBox Style="{StaticResource SmartDarkComboBox}"
+                                  ItemsSource="{Binding NavSymbolPickerOptions}"
+                                  SelectedItem="{Binding SelectedNavSymbolOption, Mode=TwoWay}"
                                   MaxDropDownHeight="420"
+                                  HorizontalAlignment="Stretch"
+                                  MinWidth="320"
+                                  MinHeight="44"
                                   Margin="0,0,0,8">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -249,9 +408,12 @@
                                         <Image Source="{Binding IconUri}"
                                                Width="28" Height="28"
                                                Margin="0,0,8,0"
-                                               Stretch="Uniform" />
+                                               Stretch="Uniform"
+                                               RenderOptions.BitmapScalingMode="HighQuality" />
                                         <TextBlock Text="{Binding Label}"
-                                                   VerticalAlignment="Center" />
+                                                   Foreground="White"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
@@ -264,7 +426,15 @@
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Foreground="White"
                                 BorderBrush="#6642A5F5"
+                                Margin="0,0,0,6"
                                 HorizontalAlignment="Stretch" />
+                        <Button Content="Symbol löschen"
+                                Command="{Binding DeleteNavSymbolCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Foreground="#FFCDD2"
+                                BorderBrush="#66EF5350"
+                                HorizontalAlignment="Stretch"
+                                ToolTip="Entfernt nur den gewählten Navi-Hinweis (nicht die ganze Verbindung)." />
                     </StackPanel>
                 </materialDesign:Card>
             </StackPanel>

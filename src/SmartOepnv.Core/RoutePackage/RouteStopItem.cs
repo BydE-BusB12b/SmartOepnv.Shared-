@@ -1,80 +1,126 @@
 namespace SmartOepnv.Core.RoutePackage;
 
-
-
 public sealed class RouteStopItem
-
 {
-
     /// <summary>5-stellige Planer-ID (JSON: plannerStopCode), nicht in App-ITCS sichtbar.</summary>
-
     public string PlannerStopCode { get; set; } = string.Empty;
 
-
-
     public string Name { get; set; } = string.Empty;
-
     public string RouteName { get; set; } = string.Empty;
-
     public string GpsCoordinates { get; set; } = string.Empty;
-
     public string StopCoordinates { get; set; } = string.Empty;
-
     public int Radius { get; set; } = 50;
-
     public string VrrStopId { get; set; } = string.Empty;
-
     public string StopDisplay { get; set; } = string.Empty;
-
     public string Time { get; set; } = string.Empty;
-
     public bool IsWaypoint { get; set; }
-
     public string WaypointName { get; set; } = string.Empty;
-
     public bool IsAnnouncementEnabled { get; set; } = true;
-
     public string EmbeddedSoundFileName { get; set; } = string.Empty;
 
     public string Destination { get; set; } = string.Empty;
+    /// <summary>Stabile ID zum DS021T-Ziel (Außenanzeige).</summary>
+    public string DestinationId { get; set; } = string.Empty;
 
-    /// <summary>Starthaltestellen-Ziel DS003a Krefeld (nur Handy/Planer, optional in JSON).</summary>
+    public string Ds021NeuDestination { get; set; } = string.Empty;
+    public string Ds021NeuDestinationId { get; set; } = string.Empty;
+
+    public string FmaS1Destination { get; set; } = string.Empty;
+    public string FmaS1DestinationId { get; set; } = string.Empty;
+
     public string Ds003aDestination { get; set; } = string.Empty;
+    public string Ds003aDestinationId { get; set; } = string.Empty;
+
+    public string ZielnummerDestination { get; set; } = string.Empty;
+    public string ZielnummerDestinationId { get; set; } = string.Empty;
+
+    public string MobitecDestination { get; set; } = string.Empty;
+    public string MobitecDestinationId { get; set; } = string.Empty;
 
     public string LineNumber { get; set; } = string.Empty;
 
     public string EndDestination { get; set; } = string.Empty;
+    public string EndDestinationId { get; set; } = string.Empty;
 
-    /// <summary>Endhaltestellen-Ziel DS003a Krefeld.</summary>
+    public string Ds021NeuEndDestination { get; set; } = string.Empty;
+    public string Ds021NeuEndDestinationId { get; set; } = string.Empty;
+
+    public string FmaS1EndDestination { get; set; } = string.Empty;
+    public string FmaS1EndDestinationId { get; set; } = string.Empty;
+
     public string Ds003aEndDestination { get; set; } = string.Empty;
+    public string Ds003aEndDestinationId { get; set; } = string.Empty;
+
+    public string ZielnummerEndDestination { get; set; } = string.Empty;
+    public string ZielnummerEndDestinationId { get; set; } = string.Empty;
+
+    public string MobitecEndDestination { get; set; } = string.Empty;
+    public string MobitecEndDestinationId { get; set; } = string.Empty;
 
     public bool IsEndStop { get; set; }
-
-    /// <summary>Endhaltestellen-Ansage aus der Kartei an die Haltestellenansage anhängen (nur wenn <see cref="IsEndStop"/>).</summary>
-    public bool PlayEndStopAnnouncement { get; set; }
-
+    /// <summary>Englische Endhaltestellen-Ansage (aktueller Kartei-Eintrag „Endhaltestelle“).</summary>
+    public bool PlayEndStopAnnouncementEn { get; set; }
+    /// <summary>Niederländische Endhaltestellen-Ansage (Kartei „Eindhalteplaats“ / Endhaltestelle NL).</summary>
+    public bool PlayEndStopAnnouncementNl { get; set; }
+    /// <summary>True wenn EN und/oder NL aktiv (App-/JSON-Kompatibilität).</summary>
+    public bool PlayEndStopAnnouncement
+    {
+        get => PlayEndStopAnnouncementEn || PlayEndStopAnnouncementNl;
+        set
+        {
+            if (value)
+            {
+                if (!PlayEndStopAnnouncementEn && !PlayEndStopAnnouncementNl)
+                {
+                    PlayEndStopAnnouncementEn = true;
+                }
+            }
+            else
+            {
+                PlayEndStopAnnouncementEn = false;
+                PlayEndStopAnnouncementNl = false;
+            }
+        }
+    }
+    public bool PlayStartStopGreeting { get; set; }
+    public string StartStopGreetingCoordinates { get; set; } = string.Empty;
     public bool RouteChangeEnabled { get; set; }
-
+    /// <summary>Standard-Routenwechselziel (Tage ohne datierte Ausnahme).</summary>
     public string SelectedLineCourseTrip { get; set; } = string.Empty;
-
+    /// <summary>Abweichende Routenwechselziele an einzelnen Betriebstagen.</summary>
+    public List<RouteChangeTargetEntry> RouteChangeTargetsByDate { get; set; } = [];
     public string EndDestinationCoordinates { get; set; } = string.Empty;
 
+    /// <summary>Haltestellengesteuerter Hinweis (nur diese Fahrt).</summary>
+    public bool StopHintEnabled { get; set; }
+    public string StopHintText { get; set; } = string.Empty;
+    /// <summary><c>withAnnouncement</c> oder <c>ownGps</c>.</summary>
+    public string StopHintTriggerMode { get; set; } = RouteStopHintTrigger.WithAnnouncement;
+    public string StopHintGpsCoordinates { get; set; } = string.Empty;
+    public int StopHintRadius { get; set; } = 40;
+
+    /// <summary>Entwertersteuerung: beim Routenstart (Starthaltestelle) und beim 120‑m-Verlassen IBIS <c>l</c>/<c>u</c>/<c>d</c>/<c>e…</c>/<c>eA…</c>.</summary>
+    public bool EntwerterEnabled { get; set; }
+    /// <summary>DS004: gespeichert nur Wabe (3, Telegramm-Ziffer 4–6); Linie (Ziffer 1–3) setzt die App zur Fahrt. Optional 4. Ziffer = Kurzstrecke.</summary>
+    public string EntwerterCode { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Zielwechsel: an dieser Haltestelle (bzw. am optionalen GPS-Punkt) das hier gesetzte Ziel erneut senden.
+    /// </summary>
+    public bool ZielwechselEnabled { get; set; }
+    /// <summary>Optionaler Auslöse-Punkt (lat,lon). Leer = an der Haltestelle.</summary>
+    public string ZielwechselGpsCoordinates { get; set; } = string.Empty;
+    /// <summary>Radius in Metern für den GPS-Punkt (Default 40).</summary>
+    public int ZielwechselRadius { get; set; } = 40;
+
     public bool IsDisplayEnabled { get; set; }
-
     public string DisplayText { get; set; } = string.Empty;
-
     public string DisplayText2 { get; set; } = string.Empty;
-
     public string DisplayText3 { get; set; } = string.Empty;
-
     public bool UseDisplayText2 { get; set; }
-
     public bool UseDisplayText3 { get; set; }
-
     public int DisplayInterval { get; set; } = 5;
-
     public string NextStop { get; set; } = string.Empty;
-
     public int Abstand { get; set; }
 
     public RouteStopItem Clone() => new()
@@ -93,16 +139,50 @@ public sealed class RouteStopItem
         IsAnnouncementEnabled = IsAnnouncementEnabled,
         EmbeddedSoundFileName = EmbeddedSoundFileName,
         Destination = Destination,
+        DestinationId = DestinationId,
+        Ds021NeuDestination = Ds021NeuDestination,
+        Ds021NeuDestinationId = Ds021NeuDestinationId,
+        FmaS1Destination = FmaS1Destination,
+        FmaS1DestinationId = FmaS1DestinationId,
         Ds003aDestination = Ds003aDestination,
+        Ds003aDestinationId = Ds003aDestinationId,
+        ZielnummerDestination = ZielnummerDestination,
+        ZielnummerDestinationId = ZielnummerDestinationId,
+        MobitecDestination = MobitecDestination,
+        MobitecDestinationId = MobitecDestinationId,
         LineNumber = LineNumber,
         EndDestination = EndDestination,
+        EndDestinationId = EndDestinationId,
+        Ds021NeuEndDestination = Ds021NeuEndDestination,
+        Ds021NeuEndDestinationId = Ds021NeuEndDestinationId,
+        FmaS1EndDestination = FmaS1EndDestination,
+        FmaS1EndDestinationId = FmaS1EndDestinationId,
         Ds003aEndDestination = Ds003aEndDestination,
+        Ds003aEndDestinationId = Ds003aEndDestinationId,
+        ZielnummerEndDestination = ZielnummerEndDestination,
+        ZielnummerEndDestinationId = ZielnummerEndDestinationId,
+        MobitecEndDestination = MobitecEndDestination,
+        MobitecEndDestinationId = MobitecEndDestinationId,
         IsEndStop = IsEndStop,
-        PlayEndStopAnnouncement = PlayEndStopAnnouncement,
+        PlayEndStopAnnouncementEn = PlayEndStopAnnouncementEn,
+        PlayEndStopAnnouncementNl = PlayEndStopAnnouncementNl,
+        PlayStartStopGreeting = PlayStartStopGreeting,
+        StartStopGreetingCoordinates = StartStopGreetingCoordinates,
         RouteChangeEnabled = RouteChangeEnabled,
         SelectedLineCourseTrip = SelectedLineCourseTrip,
-        EndDestinationCoordinates = EndDestinationCoordinates,
-        IsDisplayEnabled = IsDisplayEnabled,
+        RouteChangeTargetsByDate = RouteChangeTargetsByDate.Select(e => e.Clone()).ToList(),
+            EndDestinationCoordinates = EndDestinationCoordinates,
+            StopHintEnabled = StopHintEnabled,
+            StopHintText = StopHintText,
+            StopHintTriggerMode = StopHintTriggerMode,
+            StopHintGpsCoordinates = StopHintGpsCoordinates,
+            StopHintRadius = StopHintRadius,
+            EntwerterEnabled = EntwerterEnabled,
+            EntwerterCode = EntwerterCode,
+            ZielwechselEnabled = ZielwechselEnabled,
+            ZielwechselGpsCoordinates = ZielwechselGpsCoordinates,
+            ZielwechselRadius = ZielwechselRadius,
+            IsDisplayEnabled = IsDisplayEnabled,
         DisplayText = DisplayText,
         DisplayText2 = DisplayText2,
         DisplayText3 = DisplayText3,
@@ -129,15 +209,49 @@ public sealed class RouteStopItem
         IsAnnouncementEnabled = other.IsAnnouncementEnabled;
         EmbeddedSoundFileName = other.EmbeddedSoundFileName;
         Destination = other.Destination;
+        DestinationId = other.DestinationId;
+        Ds021NeuDestination = other.Ds021NeuDestination;
+        Ds021NeuDestinationId = other.Ds021NeuDestinationId;
+        FmaS1Destination = other.FmaS1Destination;
+        FmaS1DestinationId = other.FmaS1DestinationId;
         Ds003aDestination = other.Ds003aDestination;
+        Ds003aDestinationId = other.Ds003aDestinationId;
+        ZielnummerDestination = other.ZielnummerDestination;
+        ZielnummerDestinationId = other.ZielnummerDestinationId;
+        MobitecDestination = other.MobitecDestination;
+        MobitecDestinationId = other.MobitecDestinationId;
         LineNumber = other.LineNumber;
         EndDestination = other.EndDestination;
+        EndDestinationId = other.EndDestinationId;
+        Ds021NeuEndDestination = other.Ds021NeuEndDestination;
+        Ds021NeuEndDestinationId = other.Ds021NeuEndDestinationId;
+        FmaS1EndDestination = other.FmaS1EndDestination;
+        FmaS1EndDestinationId = other.FmaS1EndDestinationId;
         Ds003aEndDestination = other.Ds003aEndDestination;
+        Ds003aEndDestinationId = other.Ds003aEndDestinationId;
+        ZielnummerEndDestination = other.ZielnummerEndDestination;
+        ZielnummerEndDestinationId = other.ZielnummerEndDestinationId;
+        MobitecEndDestination = other.MobitecEndDestination;
+        MobitecEndDestinationId = other.MobitecEndDestinationId;
         IsEndStop = other.IsEndStop;
-        PlayEndStopAnnouncement = other.PlayEndStopAnnouncement;
+        PlayEndStopAnnouncementEn = other.PlayEndStopAnnouncementEn;
+        PlayEndStopAnnouncementNl = other.PlayEndStopAnnouncementNl;
+        PlayStartStopGreeting = other.PlayStartStopGreeting;
+        StartStopGreetingCoordinates = other.StartStopGreetingCoordinates;
         RouteChangeEnabled = other.RouteChangeEnabled;
         SelectedLineCourseTrip = other.SelectedLineCourseTrip;
+        RouteChangeTargetsByDate = other.RouteChangeTargetsByDate.Select(e => e.Clone()).ToList();
         EndDestinationCoordinates = other.EndDestinationCoordinates;
+        StopHintEnabled = other.StopHintEnabled;
+        StopHintText = other.StopHintText;
+        StopHintTriggerMode = other.StopHintTriggerMode;
+        StopHintGpsCoordinates = other.StopHintGpsCoordinates;
+        StopHintRadius = other.StopHintRadius;
+        EntwerterEnabled = other.EntwerterEnabled;
+        EntwerterCode = other.EntwerterCode;
+        ZielwechselEnabled = other.ZielwechselEnabled;
+        ZielwechselGpsCoordinates = other.ZielwechselGpsCoordinates;
+        ZielwechselRadius = other.ZielwechselRadius;
         IsDisplayEnabled = other.IsDisplayEnabled;
         DisplayText = other.DisplayText;
         DisplayText2 = other.DisplayText2;
@@ -149,4 +263,3 @@ public sealed class RouteStopItem
         Abstand = other.Abstand;
     }
 }
-

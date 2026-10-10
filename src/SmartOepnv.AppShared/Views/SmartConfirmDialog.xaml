@@ -6,8 +6,9 @@
         ShowInTaskbar="False"
         ResizeMode="NoResize"
         SizeToContent="Height"
-        Width="440"
-        MinWidth="380"
+        Width="520"
+        MinWidth="400"
+        MaxWidth="720"
         Background="{StaticResource SmartBackgroundBrush}"
         Foreground="White"
         TextElement.Foreground="White">
@@ -25,14 +26,18 @@
                    Foreground="White"
                    TextWrapping="Wrap" />
 
-        <TextBlock x:Name="MessageText"
-                   Grid.Row="1"
-                   Margin="0,12,0,24"
-                   FontSize="13"
-                   LineHeight="20"
-                   TextWrapping="Wrap"
-                   Foreground="White"
-                   Opacity="0.88" />
+        <ScrollViewer Grid.Row="1"
+                      Margin="0,12,0,24"
+                      MaxHeight="360"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <TextBlock x:Name="MessageText"
+                       FontSize="13"
+                       LineHeight="20"
+                       TextWrapping="Wrap"
+                       Foreground="White"
+                       Opacity="0.88" />
+        </ScrollViewer>
 
         <StackPanel Grid.Row="2"
                     Orientation="Horizontal"

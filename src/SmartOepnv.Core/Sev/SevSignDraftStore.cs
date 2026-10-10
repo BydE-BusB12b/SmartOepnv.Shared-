@@ -69,6 +69,20 @@ public sealed class SevSignDraftStore
         WriteCatalog(drafts.OrderByDescending(d => d.UpdatedAtUtcMs).ToList());
     }
 
+    /// <summary>Entfernt Vorlagen ohne Haltestellen (oft Auto-Speicher-Müll).</summary>
+    public int RemoveDraftsWithoutStops()
+    {
+        var items = LoadAll().ToList();
+        var kept = items.Where(d => d.Stops.Count > 0).ToList();
+        var removed = items.Count - kept.Count;
+        if (removed > 0)
+        {
+            WriteCatalog(kept);
+        }
+
+        return removed;
+    }
+
     /// <summary>
     /// Übernimmt Dropbox-Vorlagen ohne lokale zu löschen (ältere Workspace-Dateien hatten oft kein sevSignDrafts).
     /// </summary>
@@ -83,7 +97,7 @@ public sealed class SevSignDraftStore
         var merged = LoadAll().ToDictionary(d => d.Id, d => d);
         foreach (var draft in incomingList)
         {
-            if (string.IsNullOrWhiteSpace(draft.Id))
+            if (string.IsNullOrWhiteSpace(draft.Id) || draft.Stops.Count == 0)
             {
                 continue;
             }
@@ -95,7 +109,10 @@ public sealed class SevSignDraftStore
             }
         }
 
-        WriteCatalog(merged.Values.OrderByDescending(d => d.UpdatedAtUtcMs).ToList());
+        WriteCatalog(merged.Values
+            .Where(d => d.Stops.Count > 0)
+            .OrderByDescending(d => d.UpdatedAtUtcMs)
+            .ToList());
     }
 
     public bool Delete(string id)

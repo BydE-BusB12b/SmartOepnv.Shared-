@@ -67,19 +67,28 @@ public static class LeitstelleRoutePathOverview
 
     public static string? TryGetOverviewJson(JsonObject? packageRoot, string? routeName)
     {
+        return TryGetOverviewJson(packageRoot, routeName, lineCourseTelemetry: null);
+    }
+
+    public static string? TryGetOverviewJson(
+        JsonObject? packageRoot,
+        string? routeName,
+        string? lineCourseTelemetry)
+    {
         if (packageRoot is null || string.IsNullOrWhiteSpace(routeName))
         {
             return null;
         }
 
-        var resolvedKey = ResolveRouteKey(packageRoot, routeName);
+        var resolvedKey = ResolveRouteKey(packageRoot, routeName, lineCourseTelemetry);
         if (resolvedKey is null)
         {
             return null;
         }
 
         if (packageRoot[OverviewsKey] is JsonObject overviews &&
-            JsonNodeExtensions.DraftNodeToJsonText(overviews[resolvedKey]) is { } overviewJson)
+            JsonNodeExtensions.DraftNodeToJsonText(overviews[resolvedKey]) is { } overviewJson &&
+            OverviewHasDrawableLine(overviewJson))
         {
             return overviewJson;
         }
@@ -101,6 +110,13 @@ public static class LeitstelleRoutePathOverview
             {
                 return null;
             }
+        }
+
+        // Overview ohne Linie (nur Marker) als letzter Fallback
+        if (packageRoot[OverviewsKey] is JsonObject overviewsFallback &&
+            JsonNodeExtensions.DraftNodeToJsonText(overviewsFallback[resolvedKey]) is { } markerOnly)
+        {
+            return markerOnly;
         }
 
         return null;
@@ -126,7 +142,17 @@ public static class LeitstelleRoutePathOverview
         return result;
     }
 
-    public static string? ResolveRouteKey(JsonObject packageRoot, string routeName)
+    public static string? ResolveRouteKey(JsonObject packageRoot, string routeName) =>
+        ResolveRouteKey(packageRoot, routeName, lineCourseTelemetry: null);
+
+    /// <param name="lineCourseTelemetry">
+    /// Optional Feld vom Fahrzeug, z. B. „128/01, 2134“ – nötig wenn <paramref name="routeName"/>
+    /// nur der reine Name ohne Linie/Fahrt ist.
+    /// </param>
+    public static string? ResolveRouteKey(
+        JsonObject packageRoot,
+        string routeName,
+        string? lineCourseTelemetry)
     {
         var trimmed = routeName.Trim();
         if (string.IsNullOrEmpty(trimmed))
@@ -134,7 +160,7 @@ public static class LeitstelleRoutePathOverview
             return null;
         }
 
-        var keys = CollectRouteKeys(packageRoot);
+        var keys = CollectRouteKeys(packageRoot).ToList();
         if (keys.Count == 0)
         {
             return null;
@@ -146,26 +172,151 @@ public static class LeitstelleRoutePathOverview
             return exact;
         }
 
-        var contains = keys
-            .Where(k => trimmed.Contains(k, StringComparison.OrdinalIgnoreCase) ||
-                        k.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(k => k.Length)
-            .FirstOrDefault();
-        if (contains is not null)
+        var telemetry = EnrichTelemetryFromLineCourse(RouteDisplayHelper.Parse(trimmed), lineCourseTelemetry);
+
+        // Mit Linie/Fahrt zuerst scharf matchen – sonst gewinnt oft die kürzeste Geschwisterfahrt.
+        if (!string.IsNullOrWhiteSpace(telemetry.LineCourse) ||
+            !string.IsNullOrWhiteSpace(telemetry.TripNumber))
         {
-            return contains;
+            var sharpMatches = keys
+                .Where(k => RouteDefinitionMatchesTelemetry(k, telemetry, requireLineOrTrip: true))
+                .ToList();
+            if (sharpMatches.Count == 1)
+            {
+                return sharpMatches[0];
+            }
+
+            if (sharpMatches.Count > 1)
+            {
+                return PickPreferredRouteKey(sharpMatches);
+            }
         }
 
-        var linePrefix = trimmed.Split('/', 2)[0].Trim();
-        if (!string.IsNullOrEmpty(linePrefix))
+        var canonicalMatches = keys
+            .Where(k => RouteDisplayHelper.RouteKeysMatch(k, trimmed))
+            .ToList();
+        if (canonicalMatches.Count == 1)
         {
-            return keys
-                .Where(k => k.StartsWith(linePrefix, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(k => k.Length)
-                .FirstOrDefault();
+            return canonicalMatches[0];
         }
 
+        if (canonicalMatches.Count > 1)
+        {
+            return PickPreferredRouteKey(canonicalMatches);
+        }
+
+        var definitionMatches = keys
+            .Where(k => RouteDefinitionMatchesTelemetry(k, telemetry, requireLineOrTrip: false))
+            .ToList();
+        if (definitionMatches.Count == 1)
+        {
+            return definitionMatches[0];
+        }
+
+        if (definitionMatches.Count > 1)
+        {
+            return PickPreferredRouteKey(definitionMatches);
+        }
+
+        // Kein Raten per Substring („über CAS“ darf nicht „Hommelsbach“ ersetzen).
         return null;
+    }
+
+    private static RouteDefinition EnrichTelemetryFromLineCourse(
+        RouteDefinition telemetry,
+        string? lineCourseTelemetry)
+    {
+        if (!string.IsNullOrWhiteSpace(telemetry.LineCourse) ||
+            !string.IsNullOrWhiteSpace(telemetry.TripNumber) ||
+            string.IsNullOrWhiteSpace(lineCourseTelemetry))
+        {
+            return telemetry;
+        }
+
+        var raw = lineCourseTelemetry.Trim();
+        if (raw is "–" or "-")
+        {
+            return telemetry;
+        }
+
+        var comma = raw.IndexOf(',');
+        var lineCourse = comma >= 0 ? raw[..comma].Trim() : raw;
+        var trip = comma >= 0 ? raw[(comma + 1)..].Trim() : string.Empty;
+        return new RouteDefinition(telemetry.Name, lineCourse, trip, telemetry.PassengerDisplayLine);
+    }
+
+    private static string PickPreferredRouteKey(IReadOnlyList<string> matches) =>
+        matches
+            .OrderBy(k => k.Length)
+            .ThenBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .First();
+
+    private static bool RouteDefinitionMatchesTelemetry(
+        string packageRouteKey,
+        RouteDefinition telemetry,
+        bool requireLineOrTrip)
+    {
+        var def = RouteDisplayHelper.Parse(packageRouteKey);
+        if (!string.Equals(def.Name, telemetry.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var hasLine = !string.IsNullOrWhiteSpace(telemetry.LineCourse);
+        var hasTrip = !string.IsNullOrWhiteSpace(telemetry.TripNumber);
+        if (requireLineOrTrip && !hasLine && !hasTrip)
+        {
+            return false;
+        }
+
+        if (hasLine &&
+            !string.Equals(
+                RouteDisplayHelper.NormalizeLineCourse(def.LineCourse),
+                RouteDisplayHelper.NormalizeLineCourse(telemetry.LineCourse),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (hasTrip &&
+            !string.Equals(
+                RouteDisplayHelper.NormalizeTripNumber(def.TripNumber),
+                RouteDisplayHelper.NormalizeTripNumber(telemetry.TripNumber),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool OverviewHasDrawableLine(string overviewJson)
+    {
+        try
+        {
+            var obj = JsonNode.Parse(overviewJson)?.AsObject();
+            if (obj is null)
+            {
+                return false;
+            }
+
+            if (obj["snappedShape"] is JsonArray shape && shape.Count >= 2)
+            {
+                return true;
+            }
+
+            if (obj["segmentSnaps"] is not JsonArray segs)
+            {
+                return false;
+            }
+
+            return segs.OfType<JsonObject>()
+                .Any(s => s["points"] is JsonArray pts && pts.Count >= 2);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static HashSet<string> CollectRouteKeys(JsonObject packageRoot)

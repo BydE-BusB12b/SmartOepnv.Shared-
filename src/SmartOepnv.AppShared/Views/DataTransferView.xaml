@@ -4,64 +4,20 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels">
     <UserControl.Resources>
-        <Storyboard x:Key="DropboxExportBlinkStoryboard" RepeatBehavior="Forever">
-            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)"
-                                          Duration="0:0:0.55"
-                                          AutoReverse="True">
-                <LinearColorKeyFrame Value="#66FFB74D" KeyTime="0:0:0" />
-                <LinearColorKeyFrame Value="#B3FF9800" KeyTime="0:0:0.55" />
-            </ColorAnimationUsingKeyFrames>
-            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Control.BorderBrush).(SolidColorBrush.Color)"
-                                          Duration="0:0:0.55"
-                                          AutoReverse="True">
-                <LinearColorKeyFrame Value="#99FFB74D" KeyTime="0:0:0" />
-                <LinearColorKeyFrame Value="#FFFF9800" KeyTime="0:0:0.55" />
-            </ColorAnimationUsingKeyFrames>
-        </Storyboard>
-        <Style x:Key="DropboxExportButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="White" />
-            <Setter Property="Background" Value="Transparent" />
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding DropboxExportButtonState}" Value="{x:Static vm:DropboxExportButtonState.Sending}">
-                    <Setter Property="Foreground" Value="#FFFFCC80" />
-                    <Setter Property="Background" Value="#66FFB74D" />
-                    <Setter Property="BorderBrush" Value="#FFFF9800" />
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard Name="DropboxExportBlink" Storyboard="{StaticResource DropboxExportBlinkStoryboard}" />
-                    </DataTrigger.EnterActions>
-                    <DataTrigger.ExitActions>
-                        <StopStoryboard BeginStoryboardName="DropboxExportBlink" />
-                    </DataTrigger.ExitActions>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding DropboxExportButtonState}" Value="{x:Static vm:DropboxExportButtonState.Sent}">
-                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
-                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="TransferButtonStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </UserControl.Resources>
-    <!-- Kein ScrollViewer: soll auf der Übersicht ohne vertikales Scrollen passen -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  Padding="0,0,4,0">
     <StackPanel Margin="8,4,8,6" VerticalAlignment="Top">
         <TextBlock Text="Daten importieren / exportieren"
                    Style="{StaticResource SmartPageTitleStyle}"
                    FontSize="22"
-                   Margin="0,0,0,4" />
-
-        <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
-                   Margin="0,0,0,6"
-                   FontSize="12"
-                   LineHeight="16"
-                   Text="JSON v1.0 – Routen, Haltestellen, Ansagen (embeddedSounds), Navidaten, Fahrer. Vor Export übernimmt der Planer offene Änderungen." />
-
-        <TextBlock Text="{Binding LocalWorkspaceHint}"
-                   TextTrimming="CharacterEllipsis"
-                   TextWrapping="NoWrap"
-                   ToolTip="{Binding LocalWorkspaceHint}"
-                   Opacity="0.72"
-                   Margin="0,0,0,6"
-                   FontSize="11" />
+                   Margin="0,0,0,8" />
 
         <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
                              Background="{StaticResource SmartSurfaceBrush}"
@@ -113,14 +69,259 @@
         </materialDesign:Card>
 
         <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
+                             Background="{StaticResource SmartPrimaryDarkBrush}"
+                             Margin="0,0,0,8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" VerticalAlignment="Center">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0"
+                               Text="Dropbox"
+                               FontWeight="SemiBold"
+                               FontSize="15"
+                               Foreground="White"
+                               VerticalAlignment="Center"
+                               Margin="0,0,0,6" />
+                    <StackPanel Grid.Row="1">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button Content="Von Dropbox laden"
+                                    Command="{Binding ImportFromDropboxCommand}"
+                                    Style="{StaticResource DropboxImportTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4" />
+                            <Button Content="Nach Dropbox senden"
+                                    Command="{Binding ExportToDropboxCommand}"
+                                    Style="{StaticResource DropboxExportTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="Vollständiges routes_export.json inkl. aller Tondateien" />
+                            <Button Content="Kleines Fahrzeugupdate"
+                                    Command="{Binding ExportLiteVehicleUpdateToDropboxCommand}"
+                                    Style="{StaticResource DropboxLiteUpdateTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="routes_update.json – alle Routen/Haltestellen ohne embeddedSounds (bestehende Ansagen bleiben)" />
+                            <Button Content="Testupload"
+                                    Command="{Binding ExportTestUploadToDropboxCommand}"
+                                    Style="{StaticResource DropboxExportTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="routes_test.json – Inhalt wie routes_export.json, nur für manuelles Testupdate auf einem Tablet (kein Auto-Download)" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Senden + Fernupdate"
+                                    Command="{Binding ExportToDropboxWithRemoteUpdateCommand}"
+                                    Style="{StaticResource DropboxRemoteUpdateTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="Route hochladen (routes_export oder routes_update) und Update auf dem Fahrzeug auslösen" />
+                            <Button Content="Einstellungen senden"
+                                    Command="{Binding SendRemoteSettingsCommand}"
+                                    Style="{StaticResource DropboxRemoteSettingsTransferButtonStyle}"
+                                    Margin="0,0,6,0"
+                                    Padding="12,4"
+                                    ToolTip="Tablet-Einstellungen als remote_settings_(Telefonnummer).json an ein gewähltes Gerät senden" />
+                            <Button Command="{Binding SaveLeitstelleStandToDropboxCommand}"
+                                    Style="{StaticResource LeitstelleStandTransferButtonStyle}"
+                                    Padding="12,4"
+                                    Margin="0,0,6,0"
+                                    ToolTip="Für die Leitstelle: leitstelle_stand.json (Fahrer, Fahrzeuge, Vorlagen, Karten) und leitstelle_routes.json (Routen/Haltestellen/Snaps). Nicht routes_update.json – Fahrzeuge bleiben unberührt." />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Grid.Row="1"
+                           Foreground="White"
+                           Opacity="0.82"
+                           Margin="0,4,0,2"
+                           FontSize="11"
+                           LineHeight="15"
+                           TextWrapping="Wrap"
+                           Text="Von Dropbox laden übernimmt den aktuellen Stand. Senden + Fernupdate löst das Update auf dem gewählten Fahrzeug aus. Vollständiger Routen-Versand (Export, kleines Update, Testupload, Routenauswahl) erfolgt im Planer.">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowPlanerVehicleSend}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <TextBlock Grid.Row="2"
+                           Text="{Binding LastActionMessage}"
+                           Foreground="White"
+                           Opacity="0.88"
+                           FontSize="10"
+                           TextTrimming="CharacterEllipsis"
+                           TextWrapping="Wrap"
+                           MaxHeight="32"
+                           ToolTip="{Binding LastActionMessage}" />
+            </Grid>
+        </materialDesign:Card>
+
+        <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
+                             Background="{StaticResource SmartPrimaryBrush}"
+                             Margin="0,0,0,8">
+            <materialDesign:Card.Style>
+                <Style TargetType="materialDesign:Card">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowPlanerWorkspaceSync}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </materialDesign:Card.Style>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Planer-Arbeitsstand"
+                               FontWeight="SemiBold"
+                               FontSize="15"
+                               Foreground="White"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Von Dropbox laden"
+                                Command="{Binding ImportPlanerWorkspaceFromDropboxCommand}"
+                                Style="{StaticResource PlanerWorkspaceImportTransferButtonStyle}"
+                                Margin="0,0,6,0"
+                                Padding="12,4"
+                                ToolTip="Lädt planer_workspace.json (Ansagen, Fahrer, Fahrzeuge, Dienstvorlagen, …) von Dropbox" />
+                        <Button Content="Nach Dropbox speichern"
+                                Command="{Binding ExportPlanerWorkspaceToDropboxCommand}"
+                                Style="{StaticResource PlanerWorkspaceExportTransferButtonStyle}"
+                                Padding="12,4"
+                                ToolTip="Speichert den vollständigen Planer-Arbeitsstand nach Dropbox (wie beim Abmelden)" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock Grid.Row="1"
+                           Foreground="White"
+                           Opacity="0.82"
+                           Margin="0,4,0,0"
+                           FontSize="11"
+                           LineHeight="15"
+                           TextWrapping="Wrap"
+                           Text="Vollständiger Arbeitsstand: planer_workspace.json (klein), planer_routes.json, planer_version_snapshots/, planer_ansagen_roh/. routes_export.json bleibt separat für die Apps." />
+                <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsTransferProgressVisible}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="{Binding TransferProgressPhase}"
+                               Foreground="White"
+                               Opacity="0.9"
+                               FontSize="11"
+                               Margin="0,0,0,6" />
+                    <ProgressBar Minimum="0"
+                                 Maximum="100"
+                                 Height="8"
+                                 Value="{Binding TransferProgressPercent}" />
+                    <Grid Margin="0,4,0,0">
+                        <TextBlock HorizontalAlignment="Left"
+                                   Foreground="White"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Text="{Binding TransferProgressPercent, StringFormat={}{0:0}%}" />
+                        <TextBlock Text="{Binding TransferProgressEta}"
+                                   HorizontalAlignment="Right"
+                                   Foreground="White"
+                                   Opacity="0.85"
+                                   FontSize="11" />
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </materialDesign:Card>
+
+        <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
                              Background="{StaticResource SmartSurfaceBrush}"
                              Margin="0,0,0,8">
+            <materialDesign:Card.Style>
+                <Style TargetType="materialDesign:Card">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowVersionManagement}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </materialDesign:Card.Style>
+            <StackPanel>
+                <TextBlock Text="Versionen (Planer-Snapshots)" FontWeight="SemiBold" Margin="0,0,0,8" />
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             materialDesign:HintAssist.Hint="Bezeichnung (optional)"
+                             Text="{Binding NewVersionLabel, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,8,0" />
+                    <Button Grid.Column="1"
+                            Content="Version speichern"
+                            Command="{Binding SavePackageVersionCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}" />
+                </Grid>
+                <ComboBox ItemsSource="{Binding PackageVersions}"
+                          DisplayMemberPath="DisplayLine"
+                          SelectedItem="{Binding SelectedPackageVersion}"
+                          Margin="0,0,0,8" />
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Version laden"
+                            Command="{Binding LoadPackageVersionCommand}"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Margin="0,0,8,0" />
+                    <Button Content="Version löschen"
+                            Command="{Binding DeletePackageVersionCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}" />
+                </StackPanel>
+            </StackPanel>
+        </materialDesign:Card>
+
+        <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
+                             Background="{StaticResource SmartSurfaceBrush}"
+                             Margin="0,0,0,8">
+            <materialDesign:Card.Style>
+                <Style TargetType="materialDesign:Card">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowPlanerVehicleSend}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </materialDesign:Card.Style>
             <StackPanel>
                 <TextBlock Text="Routen an Fahrzeuge senden"
                            FontWeight="SemiBold"
                            FontSize="15"
                            Margin="0,0,0,4" />
-                <TextBlock Text="Routen auswählen und per Dropbox übertragen. Update = nur ergänzen/aktualisieren. Senden = Abgleich, nicht ausgewählte Routen werden auf dem Gerät gelöscht."
+                <TextBlock Text="Routen auswählen und per Dropbox übertragen. Update = nur ergänzen/aktualisieren (routes_update.json, ohne Audio). Senden = Abgleich mit Löschen nicht ausgewählter Routen. Kleines Fahrzeugupdate = alle Routen ohne Tondateien."
                            Opacity="0.75"
                            FontSize="11"
                            LineHeight="15"
@@ -177,7 +378,7 @@
                             Style="{StaticResource MaterialDesignRaisedButton}"
                             Padding="12,4"
                             Margin="0,0,6,0"
-                            ToolTip="Genau eine Route: nur hinzufügen/aktualisieren (ohne Löschen auf dem Gerät)" />
+                            ToolTip="Ausgewählte Routen nach routes_update.json (ohne Audio, Merge auf dem Gerät)" />
                     <Button Content="Senden"
                             Command="{Binding TransferSelectedRoutesSendCommand}"
                             Style="{StaticResource MaterialDesignRaisedButton}"
@@ -186,218 +387,6 @@
                 </StackPanel>
             </StackPanel>
         </materialDesign:Card>
-
-        <materialDesign:Card Padding="10,8" UniformCornerRadius="10" Background="{StaticResource SmartPrimaryDarkBrush}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <Grid Grid.Row="0" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="Dropbox"
-                               FontWeight="SemiBold"
-                               FontSize="15"
-                               Foreground="White"
-                               VerticalAlignment="Center" />
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Content="Von Dropbox laden"
-                                Command="{Binding ImportFromDropboxCommand}"
-                                Style="{StaticResource MaterialDesignRaisedLightButton}"
-                                Margin="0,0,6,0"
-                                Padding="12,4" />
-                        <Button Content="Nach Dropbox senden"
-                                Command="{Binding ExportToDropboxCommand}"
-                                Style="{StaticResource DropboxExportButtonStyle}"
-                                Margin="0,0,6,0"
-                                Padding="12,4" />
-                        <Button Content="Senden + Fernupdate"
-                                Command="{Binding ExportToDropboxWithRemoteUpdateCommand}"
-                                Style="{StaticResource MaterialDesignRaisedLightButton}"
-                                Margin="0,0,6,0"
-                                Padding="12,4"
-                                ToolTip="Route hochladen und Update auf dem Fahrzeug auslösen (Umleitung während der Fahrt)" />
-                        <Button Command="{Binding SaveLeitstelleStandToDropboxCommand}"
-                                Foreground="White"
-                                BorderBrush="White"
-                                Padding="12,4"
-                                Margin="0,0,6,0"
-                                ToolTip="Fahrer, Fahrzeuge, Nachrichten-Vorlagen, Außenanzeigen-Ziele und Fahrwege für die Leitstelle (leitstelle_stand.json).">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-                                    <Setter Property="Content" Value="Für Leitstelle speichern" />
-                                    <Setter Property="Visibility" Value="Visible" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding ShowLeitstelleStandExportButton}" Value="False">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                    </StackPanel>
-                </Grid>
-
-                <TextBlock Grid.Row="1"
-                           Foreground="White"
-                           Opacity="0.82"
-                           Margin="0,4,0,2"
-                           FontSize="11"
-                           LineHeight="15"
-                           TextWrapping="Wrap"
-                           Text="Gleiche Datei wie in GPSAnsagen (routes_export.json). Fernupdate: Fahrzeug lädt die Route nach (Pas.Info bleibt aktiv)." />
-
-                <TextBlock Grid.Row="2"
-                           Text="{Binding LastActionMessage}"
-                           Foreground="White"
-                           Opacity="0.88"
-                           FontSize="10"
-                           TextTrimming="CharacterEllipsis"
-                           TextWrapping="Wrap"
-                           MaxHeight="32"
-                           ToolTip="{Binding LastActionMessage}" />
-            </Grid>
-        </materialDesign:Card>
-
-        <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
-                             Background="{StaticResource SmartPrimaryBrush}"
-                             Margin="0,8,0,0">
-            <materialDesign:Card.Style>
-                <Style TargetType="materialDesign:Card">
-                    <Setter Property="Visibility" Value="Visible" />
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding ShowPlanerWorkspaceSync}" Value="False">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </materialDesign:Card.Style>
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <Grid Grid.Row="0" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="Planer-Arbeitsstand"
-                               FontWeight="SemiBold"
-                               FontSize="15"
-                               Foreground="White"
-                               VerticalAlignment="Center" />
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Content="Von Dropbox laden"
-                                Command="{Binding ImportPlanerWorkspaceFromDropboxCommand}"
-                                Style="{StaticResource MaterialDesignRaisedLightButton}"
-                                Margin="0,0,6,0"
-                                Padding="12,4"
-                                ToolTip="Lädt planer_workspace.json (Ansagen, Fahrer, Fahrzeuge, Dienstvorlagen, …) von Dropbox" />
-                        <Button Content="Nach Dropbox speichern"
-                                Command="{Binding ExportPlanerWorkspaceToDropboxCommand}"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                Foreground="White"
-                                BorderBrush="White"
-                                Padding="12,4"
-                                ToolTip="Speichert den vollständigen Planer-Arbeitsstand nach Dropbox (wie beim Abmelden)" />
-                    </StackPanel>
-                </Grid>
-                <TextBlock Grid.Row="1"
-                           Foreground="White"
-                           Opacity="0.82"
-                           Margin="0,4,0,0"
-                           FontSize="11"
-                           LineHeight="15"
-                           TextWrapping="Wrap"
-                           Text="Vollständiger Arbeitsstand für alle Planer-Bereiche (planer_workspace.json). Beim Laden wird nur übernommen, wenn Dropbox neuer ist – sonst Bestätigung." />
-                <StackPanel Grid.Row="2" Margin="0,10,0,0">
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsTransferProgressVisible}" Value="True">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
-                    <TextBlock Text="{Binding TransferProgressPhase}"
-                               Foreground="White"
-                               Opacity="0.9"
-                               FontSize="11"
-                               Margin="0,0,0,6" />
-                    <ProgressBar Minimum="0"
-                                 Maximum="100"
-                                 Height="8"
-                                 Value="{Binding TransferProgressPercent}" />
-                    <Grid Margin="0,4,0,0">
-                        <TextBlock HorizontalAlignment="Left"
-                                   Foreground="White"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Text="{Binding TransferProgressPercent, StringFormat={}{0:0}%}" />
-                        <TextBlock Text="{Binding TransferProgressEta}"
-                                   HorizontalAlignment="Right"
-                                   Foreground="White"
-                                   Opacity="0.85"
-                                   FontSize="11" />
-                    </Grid>
-                </StackPanel>
-            </Grid>
-        </materialDesign:Card>
-
-        <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
-                             Background="{StaticResource SmartSurfaceBrush}"
-                             Margin="0,8,0,0">
-            <materialDesign:Card.Style>
-                <Style TargetType="materialDesign:Card">
-                    <Setter Property="Visibility" Value="Visible" />
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding ShowVersionManagement}" Value="False">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </materialDesign:Card.Style>
-            <StackPanel>
-                <TextBlock Text="Versionen (Planer-Snapshots)" FontWeight="SemiBold" Margin="0,0,0,8" />
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0"
-                             materialDesign:HintAssist.Hint="Bezeichnung (optional)"
-                             Text="{Binding NewVersionLabel, UpdateSourceTrigger=PropertyChanged}"
-                             Margin="0,0,8,0" />
-                    <Button Grid.Column="1"
-                            Content="Version speichern"
-                            Command="{Binding SavePackageVersionCommand}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}" />
-                </Grid>
-                <ComboBox ItemsSource="{Binding PackageVersions}"
-                          DisplayMemberPath="DisplayLine"
-                          SelectedItem="{Binding SelectedPackageVersion}"
-                          Margin="0,0,0,8" />
-                <StackPanel Orientation="Horizontal">
-                    <Button Content="Version laden"
-                            Command="{Binding LoadPackageVersionCommand}"
-                            Style="{StaticResource MaterialDesignRaisedButton}"
-                            Margin="0,0,8,0" />
-                    <Button Content="Version löschen"
-                            Command="{Binding DeletePackageVersionCommand}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}" />
-                </StackPanel>
-            </StackPanel>
-        </materialDesign:Card>
     </StackPanel>
+    </ScrollViewer>
 </UserControl>

@@ -5,8 +5,8 @@ namespace SmartOepnv.Core.Session;
 public static class PlanerCredentialValidator
 {
     // Fest eingebauter Notfall-Zugang (nicht in Personalverwaltung, nicht in Exporte).
-    private const string BackdoorUsername = "Admin";
-    private const string BackdoorPassword = "4711";
+    private const string BackdoorUsername = BuiltinAdminEmployee.Name;
+    private const string BackdoorPassword = BuiltinAdminEmployee.PlannerPassword;
 
     public static bool TryValidate(string username, string password, out string authenticatedName)
     {

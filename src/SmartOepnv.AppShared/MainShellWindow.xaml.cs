@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media.Effects;
 using SmartOepnv.AppShared.Helpers;
+using SmartOepnv.AppShared.Models;
 using SmartOepnv.AppShared.ViewModels;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
@@ -22,6 +24,7 @@ public partial class MainShellWindow : Window
     private bool _closeHandlerRunning;
     private bool _softwareUpdateChecked;
     private PlanerIdleLogoutMonitor? _idleLogoutMonitor;
+    private PlanerSystemLifecycleMonitor? _lifecycleMonitor;
 
     public bool LoginGateActive { get; private set; }
 
@@ -37,7 +40,33 @@ public partial class MainShellWindow : Window
             _idleLogoutMonitor = new PlanerIdleLogoutMonitor();
             _idleLogoutMonitor.IdleTimeoutReached += OnIdleLogoutAsync;
             _idleLogoutMonitor.CountdownChanged += OnIdleCountdownChanged;
+            _lifecycleMonitor = new PlanerSystemLifecycleMonitor();
+            _lifecycleMonitor.Start();
         }
+    }
+
+    /// <summary>
+    /// Ruhezustand / Standby: synchron speichern, Dropbox-Sperre freigeben, Anwendung beenden.
+    /// </summary>
+    internal void RequestAutoCloseFromSystemSuspend()
+    {
+        if (_closeConfirmed || _closeHandlerRunning)
+        {
+            return;
+        }
+
+        _idleLogoutMonitor?.Stop();
+        _lifecycleMonitor?.Stop();
+
+        if (AppServices.IsPlannerApp &&
+            AppServices.PlanerSession?.NeedsExitHandling() == true)
+        {
+            SmartOepnvAppHost.SkipShutdownSave = false;
+            SmartOepnvAppHost.EnsurePlanerShutdownSaveAndRelease();
+        }
+
+        _closeConfirmed = true;
+        Application.Current.Shutdown();
     }
 
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
@@ -50,13 +79,18 @@ public partial class MainShellWindow : Window
         if (AppServices.IsPlannerApp && AppServices.PlanerSession?.IsLoggedIn == true)
         {
             LogoutButton.Visibility = Visibility.Visible;
-            StartIdleLogoutMonitor();
+            RestartIdleLogoutMonitor();
         }
 
         if (!_softwareUpdateChecked && AppServices.IsInitialized && !AppServices.IsPlannerApp)
         {
             _softwareUpdateChecked = true;
             _ = SmartOepnvAppHost.CheckForSoftwareUpdateAsync(this);
+        }
+
+        if (AppServices.IsInitialized && !AppServices.IsPlannerApp && DataContext is MainViewModel leitstelleVm)
+        {
+            _ = leitstelleVm.InitializeLeitstelleAfterShowAsync();
         }
     }
 
@@ -78,7 +112,7 @@ public partial class MainShellWindow : Window
         if (AppServices.IsPlannerApp && AppServices.PlanerSession?.IsLoggedIn == true)
         {
             LogoutButton.Visibility = Visibility.Visible;
-            StartIdleLogoutMonitor();
+            RestartIdleLogoutMonitor();
         }
 
         Activate();
@@ -111,8 +145,19 @@ public partial class MainShellWindow : Window
             }
         }
 
-        _idleLogoutMonitor?.Stop();
+        _idleLogoutMonitor?.Suspend();
         SetLoginOverlay(true);
+
+        if (idleTimeout)
+        {
+            if (WindowState == WindowState.Minimized)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            Show();
+            Activate();
+        }
 
         var savingDialog = new AppExitSavingDialog(
             idleTimeout
@@ -134,6 +179,8 @@ public partial class MainShellWindow : Window
         catch (Exception ex)
         {
             SetLoginOverlay(false);
+            _idleLogoutMonitor?.Resume();
+            RestartIdleLogoutMonitor();
             SmartConfirmDialog.ShowInfo(
                 this,
                 "Speichern fehlgeschlagen",
@@ -146,6 +193,7 @@ public partial class MainShellWindow : Window
             savingDialog.PrepareToClose();
             savingDialog.Close();
             IsEnabled = true;
+            _idleLogoutMonitor?.Resume();
         }
 
         if (idleTimeout && saveSucceeded)
@@ -167,7 +215,24 @@ public partial class MainShellWindow : Window
         BeginPostLoginInitialization(gate);
     }
 
-    private void StartIdleLogoutMonitor() => _idleLogoutMonitor?.Start();
+    private void RestartIdleLogoutMonitor()
+    {
+        if (!AppServices.IsPlannerApp || LoginGateActive || AppServices.PlanerSession?.IsLoggedIn != true)
+        {
+            UpdateIdleCountdownDisplay(null);
+            return;
+        }
+
+        _lifecycleMonitor?.Start();
+        _idleLogoutMonitor?.Restart();
+    }
+
+    private void StopIdleLogoutMonitor()
+    {
+        _idleLogoutMonitor?.Stop();
+        _lifecycleMonitor?.Stop();
+        UpdateIdleCountdownDisplay(null);
+    }
 
     private void OnIdleCountdownChanged(TimeSpan? remaining) => UpdateIdleCountdownDisplay(remaining);
 
@@ -187,7 +252,8 @@ public partial class MainShellWindow : Window
 
         var minutes = totalSeconds / 60;
         var seconds = totalSeconds % 60;
-        IdleLogoutCountdown.Text = $"{minutes:D2}:{seconds:D2}";
+        var logoutAt = DateTime.Now.AddSeconds(totalSeconds);
+        IdleLogoutCountdown.Text = $"Abmeldung um {logoutAt:HH:mm} ({minutes:D2}:{seconds:D2})";
         IdleLogoutCountdown.Visibility = Visibility.Visible;
         IdleLogoutCountdown.Foreground = totalSeconds switch
         {
@@ -218,8 +284,11 @@ public partial class MainShellWindow : Window
         }
 
         PlanerSyncDialog? syncDialog = null;
+        var idleMonitorSuspended = false;
         if (AppServices.IsPlannerApp)
         {
+            _idleLogoutMonitor?.Suspend();
+            idleMonitorSuspended = true;
             syncDialog = new PlanerSyncDialog
             {
                 Owner = this
@@ -264,6 +333,15 @@ public partial class MainShellWindow : Window
         }
         finally
         {
+            if (idleMonitorSuspended)
+            {
+                _idleLogoutMonitor?.Resume();
+                if (AppServices.PlanerSession?.IsLoggedIn == true && !LoginGateActive)
+                {
+                    RestartIdleLogoutMonitor();
+                }
+            }
+
             if (syncDialog is not null)
             {
                 syncDialog.PrepareToClose();
@@ -276,7 +354,7 @@ public partial class MainShellWindow : Window
             if (!_softwareUpdateChecked)
             {
                 _softwareUpdateChecked = true;
-                await SmartOepnvAppHost.CheckForSoftwareUpdateAsync(this).ConfigureAwait(true);
+                _ = SmartOepnvAppHost.CheckForSoftwareUpdateAsync(this);
             }
         }
     }
@@ -319,7 +397,6 @@ public partial class MainShellWindow : Window
         bool bestEffortFlush = false,
         IProgress<DropboxTransferProgress>? transferProgress = null)
     {
-        PlanerDropboxWorkspaceSync.ExportResult? exportResult = null;
         Exception? flushError = null;
 
         await Dispatcher.InvokeAsync(() =>
@@ -353,48 +430,17 @@ public partial class MainShellWindow : Window
             throw flushError;
         }
 
-        await Task.Run(async () =>
+        if (string.Equals(backupReason, "manual", StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(backupReason, "manual", StringComparison.OrdinalIgnoreCase))
-            {
-                SmartOepnvDataBackupService.BackupAllProfiles(backupReason);
-            }
-
-            const int maxExportAttempts = 3;
-            for (var attempt = 1; attempt <= maxExportAttempts; attempt++)
-            {
-                exportResult = await PlanerDropboxWorkspaceSync.TryExportAsync(
-                        flushBeforeCapture: true,
-                        progress: transferProgress)
-                    .ConfigureAwait(false);
-                if (exportResult is { Exported: true })
-                {
-                    return;
-                }
-
-                if (exportResult?.Message.Contains("payload_too_large", StringComparison.OrdinalIgnoreCase) == true)
-                {
-                    break;
-                }
-
-                if (attempt < maxExportAttempts)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(8 * attempt)).ConfigureAwait(false);
-                }
-            }
-        }).ConfigureAwait(true);
-
-        if (exportResult is { Exported: false })
-        {
-            var hint = exportResult.LocalSaved
-                ? "\n\nDer Arbeitsstand liegt lokal vor – bitte Internetverbindung prüfen und erneut abmelden."
-                : string.Empty;
-            throw new InvalidOperationException(exportResult.Message + hint);
+            await Task.Run(() => SmartOepnvDataBackupService.BackupAllProfiles(backupReason)).ConfigureAwait(true);
         }
+
+        await SmartOepnvAppHost.ExportPlanerWorkspaceForShutdownAsync(transferProgress).ConfigureAwait(true);
     }
 
     private async Task ShowSavingDialogAsync(AppExitSavingDialog savingDialog)
     {
+        _idleLogoutMonitor?.Suspend();
         savingDialog.Owner = this;
         WindowTitleBarHelper.ShowWhenContentReady(savingDialog);
         IsEnabled = false;
@@ -406,9 +452,19 @@ public partial class MainShellWindow : Window
 
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
-        _idleLogoutMonitor?.Stop();
+        if (DataContext is MainViewModel vm && !AppServices.IsPlannerApp)
+        {
+            vm.ShutdownVoip();
+        }
 
         if (_closeConfirmed || !AppServices.IsInitialized)
+        {
+            StopIdleLogoutMonitor();
+            return;
+        }
+
+        // Leitstelle: kein Planer-Speicher-Dialog – direkt schließen.
+        if (!AppServices.IsPlannerApp)
         {
             return;
         }
@@ -417,7 +473,7 @@ public partial class MainShellWindow : Window
                               AppServices.PlanerSession?.NeedsExitHandling() == true;
 
         // Planer: nur speichern/freigeben nach erfolgreicher Anmeldung – nicht bei „Abbrechen“ im Login.
-        if (AppServices.IsPlannerApp && !planerNeedsExit)
+        if (!planerNeedsExit)
         {
             return;
         }
@@ -435,6 +491,7 @@ public partial class MainShellWindow : Window
         if (closeChoice == PlanerCloseChoice.Cancel)
         {
             _closeHandlerRunning = false;
+            RestartIdleLogoutMonitor();
             return;
         }
 
@@ -450,7 +507,7 @@ public partial class MainShellWindow : Window
             try
             {
                 var progress = new Progress<DropboxTransferProgress>(p => savingDialog.UpdateTransferProgress(p));
-                await SavePlanerWorkspaceAsync("app-exit", bestEffortFlush: true, transferProgress: progress)
+                await SavePlanerWorkspaceAsync("app-exit", bestEffortFlush: false, transferProgress: progress)
                     .ConfigureAwait(true);
 
                 try
@@ -467,6 +524,8 @@ public partial class MainShellWindow : Window
                 savingDialog.PrepareToClose();
                 savingDialog.Close();
                 IsEnabled = true;
+                _idleLogoutMonitor?.Resume();
+                RestartIdleLogoutMonitor();
                 _closeHandlerRunning = false;
                 SmartConfirmDialog.ShowInfo(
                     this,
@@ -489,6 +548,7 @@ public partial class MainShellWindow : Window
                 savingDialog.PrepareToClose();
                 savingDialog.Close();
                 IsEnabled = true;
+                _idleLogoutMonitor?.Resume();
             }
         }
         else
@@ -505,7 +565,30 @@ public partial class MainShellWindow : Window
         }
 
         _closeHandlerRunning = false;
+        StopIdleLogoutMonitor();
+        ConfirmAndClose();
+    }
+
+    /// <summary>Schließen außerhalb des Closing-Events auslösen (sonst zweites X nötig).</summary>
+    private void ConfirmAndClose()
+    {
         _closeConfirmed = true;
-        Close();
+        Dispatcher.BeginInvoke(Close);
+    }
+
+    private void NavigationGroup_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: NavigationGroup group })
+        {
+            group.SetHoverOpen(true);
+        }
+    }
+
+    private void NavigationGroup_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: NavigationGroup group })
+        {
+            group.SetHoverOpen(false);
+        }
     }
 }

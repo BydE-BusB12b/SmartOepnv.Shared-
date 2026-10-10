@@ -1,7 +1,12 @@
+using System.Text.Json.Nodes;
+
 namespace SmartOepnv.Core.RoutePath;
 
 public static class RoutePathSnapOrchestrator
 {
+    /// <summary>Optional: Paketwurzel für Navi-Korrekturgedächtnis (Symbole / Waypoints).</summary>
+    public static JsonObject? CorrectionMemoryPackageRoot { get; set; }
+
     public static async Task SnapSegmentAsync(
         RoutePathDraft draft,
         string fromNodeId,
@@ -33,19 +38,43 @@ public static class RoutePathSnapOrchestrator
             throw new InvalidOperationException("Segment-Endpunkte haben keine gültigen Koordinaten.");
         }
 
-        var snap = await osrm.SnapPathAsync(waypoints, ct);
+        waypoints = InjectLearnedWaypoints(draft, segment, waypoints);
+
+        var snap = await SnapSegmentPathWithFallbacksAsync(draft, segment, key, waypoints, osrm, ct);
         if (!snap.IsRoadRoute || snap.Points.Count < 2)
         {
             throw new InvalidOperationException(snap.Error ?? "OSRM-Snap fehlgeschlagen.");
         }
 
+        var maneuvers = snap.Maneuvers.ToList();
+        NavCorrectionMemory.ApplySymbolCorrections(CorrectionMemoryPackageRoot, snap.Points, maneuvers);
+
         draft.RoadSegmentPolylines[key] = snap.Points.ToList();
-        draft.RoadSegmentManeuvers[key] = snap.Maneuvers.ToList();
+        draft.RoadSegmentManeuvers[key] = maneuvers;
         draft.RoadSnappedEdgeKeys.Add(key);
         draft.RoadBusStraightEdgeKeys.Remove(key);
         RoutePathPolylineJoin.AlignSegmentEndpointsAtSharedNodes(draft, key);
         RoutePathDraftMutator.DeduplicateSegmentsByEdge(draft);
         RebuildMergedShapeAndManeuvers(draft);
+    }
+
+    private static List<RoutePathLatLng> InjectLearnedWaypoints(
+        RoutePathDraft draft,
+        RoutePathSegment segment,
+        List<RoutePathLatLng> waypoints)
+    {
+        var nodeMap = draft.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        if (!nodeMap.TryGetValue(segment.FromNodeId, out var fromNode) ||
+            !nodeMap.TryGetValue(segment.ToNodeId, out var toNode))
+        {
+            return waypoints;
+        }
+
+        var from = new RoutePathLatLng { Lat = fromNode.Lat, Lon = fromNode.Lon };
+        var to = new RoutePathLatLng { Lat = toNode.Lat, Lon = toNode.Lon };
+        return NavCorrectionMemory.SuggestWaypointsAlongSegment(
+                CorrectionMemoryPackageRoot, from, to, waypoints)
+            .ToList();
     }
 
     public static async Task SnapAllSegmentsAsync(
@@ -80,8 +109,35 @@ public static class RoutePathSnapOrchestrator
         }
     }
 
+    public static bool SegmentHasRealRoadGeometry(RoutePathDraft draft, RoutePathSegment segment)
+    {
+        var key = RoutePathDraft.SegmentEdgeKey(segment.FromNodeId, segment.ToNodeId);
+        if (draft.RoadBusStraightEdgeKeys.Contains(key))
+        {
+            return true;
+        }
+
+        if (!draft.RoadSegmentPolylines.TryGetValue(key, out var pts) || pts.Count < 2)
+        {
+            return false;
+        }
+
+        var from = draft.Nodes.FirstOrDefault(n => n.Id == segment.FromNodeId);
+        var to = draft.Nodes.FirstOrDefault(n => n.Id == segment.ToNodeId);
+        if (from is null || to is null)
+        {
+            return pts.Count >= 3;
+        }
+
+        return RoutePathGeo.IsRealRoadPolyline(
+            pts,
+            new RoutePathLatLng { Lat = from.Lat, Lon = from.Lon },
+            new RoutePathLatLng { Lat = to.Lat, Lon = to.Lon });
+    }
+
     public static void RebuildMergedShapeAndManeuvers(RoutePathDraft draft)
     {
+        PruneStaleSnapKeys(draft);
         var nodeMap = draft.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
         var shape = new List<RoutePathLatLng>();
         var mergedManeuvers = new List<RoutePathSnapManeuver>();
@@ -144,18 +200,24 @@ public static class RoutePathSnapOrchestrator
         }
 
         var stopNodes = draft.Nodes.Where(n => n.Type == RoutePathNodeType.STOP).ToList();
+        var involvesManual = fromNode.Type == RoutePathNodeType.MANUAL_WAYPOINT ||
+                             toNode.Type == RoutePathNodeType.MANUAL_WAYPOINT;
         var waypoints = new List<RoutePathLatLng>
         {
             new() { Lat = fromNode.Lat, Lon = fromNode.Lon }
         };
 
-        var stitchFrom = RoutePathPolylineJoin.FindNetworkPointAtNode(draft, segment.FromNodeId, edgeKey);
-        if (stitchFrom is not null && !RoutePathPolylineJoin.NearlySamePoint(waypoints[^1], stitchFrom))
+        if (!involvesManual)
         {
-            waypoints.Add(stitchFrom);
+            var stitchFrom = RoutePathPolylineJoin.FindNetworkPointAtNode(draft, segment.FromNodeId, edgeKey);
+            if (stitchFrom is not null && !RoutePathPolylineJoin.NearlySamePoint(waypoints[^1], stitchFrom))
+            {
+                waypoints.Add(stitchFrom);
+            }
         }
 
-        if (fromNode.Type == RoutePathNodeType.ANNOUNCEMENT &&
+        if (!involvesManual &&
+            fromNode.Type == RoutePathNodeType.ANNOUNCEMENT &&
             ShouldRouteViaPairedStop(fromNode, toNode))
         {
             var paired = ResolvePairedStopNode(fromNode, stopNodes);
@@ -169,7 +231,8 @@ public static class RoutePathSnapOrchestrator
             }
         }
 
-        if (toNode.Type == RoutePathNodeType.ANNOUNCEMENT &&
+        if (!involvesManual &&
+            toNode.Type == RoutePathNodeType.ANNOUNCEMENT &&
             ShouldRouteViaPairedStop(toNode, fromNode))
         {
             var paired = ResolvePairedStopNode(toNode, stopNodes);
@@ -184,10 +247,13 @@ public static class RoutePathSnapOrchestrator
         }
 
         var endPt = new RoutePathLatLng { Lat = toNode.Lat, Lon = toNode.Lon };
-        var stitchTo = RoutePathPolylineJoin.FindNetworkPointAtNode(draft, segment.ToNodeId, edgeKey);
-        if (stitchTo is not null && !RoutePathPolylineJoin.NearlySamePoint(endPt, stitchTo))
+        if (!involvesManual)
         {
-            waypoints.Add(stitchTo);
+            var stitchTo = RoutePathPolylineJoin.FindNetworkPointAtNode(draft, segment.ToNodeId, edgeKey);
+            if (stitchTo is not null && !RoutePathPolylineJoin.NearlySamePoint(endPt, stitchTo))
+            {
+                waypoints.Add(stitchTo);
+            }
         }
 
         if (!RoutePathPolylineJoin.NearlySamePoint(waypoints[^1], endPt))
@@ -218,9 +284,93 @@ public static class RoutePathSnapOrchestrator
 
     private static bool ShouldRouteViaPairedStop(RoutePathNode announcementNode, RoutePathNode otherNode)
     {
+        if (otherNode.Type is RoutePathNodeType.MANUAL_WAYPOINT or RoutePathNodeType.AUTO_WAYPOINT)
+        {
+            return false;
+        }
+
         var annIdx = ExtractPairIndex(announcementNode.Id);
         var otherIdx = ExtractPairIndex(otherNode.Id);
         return otherNode.Type == RoutePathNodeType.ANNOUNCEMENT || annIdx == otherIdx;
+    }
+
+    private static List<RoutePathLatLng> BuildNodeEndpointWaypoints(RoutePathDraft draft, RoutePathSegment segment)
+    {
+        var from = draft.Nodes.FirstOrDefault(n => n.Id == segment.FromNodeId);
+        var to = draft.Nodes.FirstOrDefault(n => n.Id == segment.ToNodeId);
+        if (from is null || to is null)
+        {
+            return [];
+        }
+
+        return
+        [
+            new RoutePathLatLng { Lat = from.Lat, Lon = from.Lon },
+            new RoutePathLatLng { Lat = to.Lat, Lon = to.Lon }
+        ];
+    }
+
+    private static async Task<OsrmSnapResult> SnapSegmentPathWithFallbacksAsync(
+        RoutePathDraft draft,
+        RoutePathSegment segment,
+        string edgeKey,
+        IReadOnlyList<RoutePathLatLng> primaryWaypoints,
+        OsrmSnapService osrm,
+        CancellationToken ct)
+    {
+        var attempts = new List<IReadOnlyList<RoutePathLatLng>> { primaryWaypoints };
+
+        var endpoints = BuildNodeEndpointWaypoints(draft, segment);
+        if (endpoints.Count >= 2 && !WaypointListsEquivalent(endpoints, primaryWaypoints))
+        {
+            attempts.Add(endpoints);
+        }
+
+        var stitchStart = RoutePathPolylineJoin.FindNetworkPointAtNode(draft, segment.FromNodeId, edgeKey);
+        if (stitchStart is not null && endpoints.Count >= 2)
+        {
+            var viaStitch =
+                new List<RoutePathLatLng> { stitchStart, endpoints[^1] };
+            if (!WaypointListsEquivalent(viaStitch, primaryWaypoints) &&
+                !WaypointListsEquivalent(viaStitch, endpoints))
+            {
+                attempts.Add(viaStitch);
+            }
+        }
+
+        OsrmSnapResult? last = null;
+        foreach (var waypoints in attempts)
+        {
+            ct.ThrowIfCancellationRequested();
+            var snap = await osrm.SnapPathAsync(waypoints, ct: ct);
+            last = snap;
+            if (snap.IsRoadRoute && snap.Points.Count >= 2)
+            {
+                return snap;
+            }
+        }
+
+        return last ?? OsrmSnapResult.Failed(endpoints, "OSRM-Snap fehlgeschlagen.");
+    }
+
+    private static bool WaypointListsEquivalent(
+        IReadOnlyList<RoutePathLatLng> a,
+        IReadOnlyList<RoutePathLatLng> b)
+    {
+        if (a.Count != b.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!RoutePathPolylineJoin.NearlySamePoint(a[i], b[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static RoutePathNode? ResolvePairedStopNode(RoutePathNode announcementNode, IList<RoutePathNode> stopNodes)
@@ -308,4 +458,7 @@ public static class RoutePathSnapOrchestrator
         maneuvers.Any(m =>
             NavManeuverHelper.IsManualManeuver(m) ||
             !string.Equals(m.NavSymbolType, "straight", StringComparison.OrdinalIgnoreCase));
+
+    private static void PruneStaleSnapKeys(RoutePathDraft draft) =>
+        RoutePathDraftMutator.PruneOrphanEdgeSnaps(draft);
 }

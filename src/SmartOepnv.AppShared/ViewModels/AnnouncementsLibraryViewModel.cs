@@ -1,5 +1,5 @@
 using System.Collections.ObjectModel;
-
+using System.ComponentModel;
 using System.IO;
 
 using System.Text.Json;
@@ -13,6 +13,8 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 
 using System.Windows;
+
+using SmartOepnv.AppShared.Helpers;
 
 using SmartOepnv.AppShared.Models;
 
@@ -38,11 +40,17 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     private readonly EditorAreaSyncState _sync = new();
 
+    private readonly SearchQueryDebouncer _searchDebouncer;
+
     private string? _loadedFingerprint;
+
+    private string? _lastAppliedStopTemplatesFingerprint;
 
     private const int SuccessFeedbackMs = 5000;
 
     private CancellationTokenSource? _saveButtonFeedbackCts;
+
+    private ManagedAnnouncementTemplateItem? _greetingCommandWatchAnnouncement;
 
 
 
@@ -64,6 +72,10 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     [ObservableProperty] private string searchQuery = string.Empty;
 
+    [ObservableProperty] private LibraryListSortField listSortField = LibraryListSortField.Id;
+
+    [ObservableProperty] private LibraryListSortDirection listSortDirection = LibraryListSortDirection.Ascending;
+
     [ObservableProperty] private ManagedAnnouncementTemplateItem? selectedAnnouncement;
 
     [ObservableProperty] private string? selectedAnnouncementAudioHint;
@@ -77,9 +89,13 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     [ObservableProperty] private bool includeGongInAnnouncementMerge;
 
+    [ObservableProperty] private bool includeSondergongInAnnouncementMerge;
+
     [ObservableProperty] private bool includeNextStopInAnnouncementMerge;
 
     [ObservableProperty] private bool includeNextStopMp3InAnnouncementMerge;
+
+    [ObservableProperty] private bool includeFollowingStopsInAnnouncementMerge;
 
     [ObservableProperty] private AnnouncementAudioSequenceItem? selectedSequenceItem;
 
@@ -92,11 +108,19 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     public IReadOnlyList<string> AnnouncementMergePausePresets { get; } = ["0,5", "1", "2", "3"];
 
+    public string SortByIdButtonLabel =>
+        LibraryListSort.FormatButtonLabel("ID", LibraryListSortField.Id, ListSortField, ListSortDirection);
+
+    public string SortByNameButtonLabel =>
+        LibraryListSort.FormatButtonLabel("Name", LibraryListSortField.Name, ListSortField, ListSortDirection);
+
 
 
     public AnnouncementsLibraryViewModel()
 
     {
+
+        _searchDebouncer = new SearchQueryDebouncer(ApplyFilter);
 
         if (AppServices.IsInitialized)
 
@@ -150,11 +174,17 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _gongByAnnouncementId.Clear();
 
+        _sondergongByAnnouncementId.Clear();
+
         _nextStopByAnnouncementId.Clear();
 
         _nextStopMp3ByAnnouncementId.Clear();
 
+        _followingStopsByAnnouncementId.Clear();
+
         _announcementsNeedingAudioMaterialization.Clear();
+
+        _lastAppliedStopTemplatesFingerprint = null;
 
         _sequenceLoadedForAnnouncementId = null;
 
@@ -167,6 +197,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         SelectedAnnouncementAudioHint = null;
 
 
+
+        ReloadSuppressedStopAnnouncementKeys();
 
         var editor = AppServices.Routes.Editor;
 
@@ -227,6 +259,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         UpdateSelectedAudioHint();
 
         StatusMessage = BuildListStatusMessage();
+
+        RefreshSpecialBuildingBlocks();
 
         _sync.AfterRefresh();
 
@@ -310,6 +344,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
                 a.EmbeddedSoundFileName,
 
+                a.AudioOutput,
+
                 a.IncludeInSpecialAnnouncements,
 
                 a.LocalAudioPath
@@ -336,9 +372,13 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
             GongFlags = _gongByAnnouncementId,
 
+            SondergongFlags = _sondergongByAnnouncementId,
+
             NextStopFlags = _nextStopByAnnouncementId,
 
-            NextStopMp3Flags = _nextStopMp3ByAnnouncementId
+            NextStopMp3Flags = _nextStopMp3ByAnnouncementId,
+
+            FollowingStopsFlags = _followingStopsByAnnouncementId
 
         });
 
@@ -355,6 +395,9 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
             SaveJsonButtonIsSuccess = false;
         }
     }
+
+    /// <summary>UI-Aktionen (z. B. Lautsprecher-Zyklus), die nicht über Binding laufen.</summary>
+    internal void MarkDirtyFromUi() => MarkDirty();
 
     private async Task ShowSaveSuccessFeedbackAsync()
     {
@@ -444,17 +487,43 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         editor.ReplaceStopTemplates(stopClones);
 
-        var routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, stopClones);
+        var stopFingerprint = StopTemplateRouteMerger.ComputeApplyFingerprint(stopClones);
+
+        var routeStopsUpdated = 0;
+
+        if (!string.Equals(stopFingerprint, _lastAppliedStopTemplatesFingerprint, StringComparison.Ordinal))
+
+        {
+
+            routeStopsUpdated = StopTemplateRouteMerger.ApplyTemplatesToRouteStops(editor, stopClones);
+
+            _lastAppliedStopTemplatesFingerprint = stopFingerprint;
+
+        }
 
         var workspace = AppServices.IsInitialized ? AppServices.Workspace : null;
 
-        editor.SyncEmbeddedSoundsFromStopTemplates(stopClones, workspace);
+        var needsAudio = _announcementsNeedingAudioMaterialization.Count > 0 ||
 
-        editor.SyncEmbeddedSoundsFromTemplates(announcementClones, workspace);
+            editor.NeedsEmbeddedSoundMaterialization(stopClones, workspace) ||
+
+            editor.NeedsEmbeddedSoundMaterialization(announcementClones, workspace);
+
+        if (needsAudio)
+
+        {
+
+            editor.SyncEmbeddedSoundsFromStopTemplates(stopClones, workspace);
+
+            editor.SyncEmbeddedSoundsFromTemplates(announcementClones, workspace);
+
+        }
 
         editor.ReplaceAnnouncementTemplates(announcementClones);
 
-        AppServices.Routes.ApplyEditorChanges("ansagen");
+        // Audio-Rebuild nur wenn ein Ton neu eingebettet werden muss (sonst Sidecar belassen).
+
+        AppServices.Routes.ApplyEditorChanges("ansagen", rebuildEmbeddedMedia: needsAudio);
 
 
 
@@ -490,9 +559,13 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _gongByAnnouncementId.Clear();
 
+        _sondergongByAnnouncementId.Clear();
+
         _nextStopByAnnouncementId.Clear();
 
         _nextStopMp3ByAnnouncementId.Clear();
+
+        _followingStopsByAnnouncementId.Clear();
 
         _announcementsNeedingAudioMaterialization.Clear();
 
@@ -508,15 +581,57 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-    partial void OnSearchQueryChanged(string value) => ApplyFilter();
+    partial void OnSearchQueryChanged(string value) => _searchDebouncer.Schedule();
+
+    partial void OnListSortFieldChanged(LibraryListSortField value)
+    {
+        OnPropertyChanged(nameof(SortByIdButtonLabel));
+        OnPropertyChanged(nameof(SortByNameButtonLabel));
+    }
+
+    partial void OnListSortDirectionChanged(LibraryListSortDirection value)
+    {
+        OnPropertyChanged(nameof(SortByIdButtonLabel));
+        OnPropertyChanged(nameof(SortByNameButtonLabel));
+    }
+
+    [RelayCommand]
+    private void SortListById()
+    {
+        var field = ListSortField;
+        var dir = ListSortDirection;
+        LibraryListSort.Toggle(ref field, ref dir, LibraryListSortField.Id);
+        ListSortField = field;
+        ListSortDirection = dir;
+        ApplyFilter();
+    }
+
+    [RelayCommand]
+    private void SortListByName()
+    {
+        var field = ListSortField;
+        var dir = ListSortDirection;
+        LibraryListSort.Toggle(ref field, ref dir, LibraryListSortField.Name);
+        ListSortField = field;
+        ListSortDirection = dir;
+        ApplyFilter();
+    }
 
     partial void OnSelectedAnnouncementChanged(ManagedAnnouncementTemplateItem? value)
     {
         PersistCurrentAnnouncementSequence();
 
+        if (_greetingCommandWatchAnnouncement is not null)
+        {
+            _greetingCommandWatchAnnouncement.PropertyChanged -= OnSelectedAnnouncementFieldsChanged;
+            _greetingCommandWatchAnnouncement = null;
+        }
+
         if (value is not null)
         {
             value.AnnouncementCode = ManagedAnnouncementTemplateItem.NormalizeCode(value.AnnouncementCode);
+            value.PropertyChanged += OnSelectedAnnouncementFieldsChanged;
+            _greetingCommandWatchAnnouncement = value;
         }
 
         LoadAnnouncementSequenceForSelection();
@@ -524,6 +639,16 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         RefreshSelectedAnnouncementDisplay();
         UpdateSelectedAudioHint();
         ClearEmbeddedSoundCommand.NotifyCanExecuteChanged();
+        AddGreetingLineDestinationPackageCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnSelectedAnnouncementFieldsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ManagedAnnouncementTemplateItem.DisplayName)
+            or nameof(ManagedAnnouncementTemplateItem.Description))
+        {
+            AddGreetingLineDestinationPackageCommand.NotifyCanExecuteChanged();
+        }
     }
 
     partial void OnSelectedSequenceItemChanged(AnnouncementAudioSequenceItem? value) =>
@@ -562,49 +687,21 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        var code = ManagedAnnouncementTemplateItem.SuggestNextCode(
-
-            _allAnnouncements.Select(a => a.AnnouncementCode));
-
-        var item = new ManagedAnnouncementTemplateItem
-
-        {
-
-            AnnouncementCode = code,
-
-            DisplayName = string.Empty,
-
-            Category = "haltestelle",
-
-            EmbeddedSoundFileName = string.Empty,
-
-            IncludeInSpecialAnnouncements = false
-
-        };
-
-        _allAnnouncements.Add(item);
-
-        ApplyFilter();
-
-        SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault(a => a.Id == item.Id);
-
-
-
         if (promptForAudio)
 
         {
 
-            PickAudioFile();
+            AddAnnouncementsWithAudioPicker();
+
+            return;
 
         }
 
-        else
 
-        {
 
-            StatusMessage = $"Ansage {code} angelegt – Bezeichnung und Ton ergänzen.";
+        var code = CreateAndSelectNewAnnouncement().AnnouncementCode;
 
-        }
+        StatusMessage = $"Ansage {code} angelegt – Bezeichnung und Ton ergänzen.";
 
     }
 
@@ -685,6 +782,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
         var announcementId = SelectedAnnouncement.Id;
+        var removed = SelectedAnnouncement;
 
         _allAnnouncements.RemoveAll(a => a.Id == announcementId);
 
@@ -692,14 +790,22 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _gongByAnnouncementId.Remove(announcementId);
 
+        _sondergongByAnnouncementId.Remove(announcementId);
+
         _nextStopByAnnouncementId.Remove(announcementId);
 
         _nextStopMp3ByAnnouncementId.Remove(announcementId);
+
+        _followingStopsByAnnouncementId.Remove(announcementId);
+
+        SuppressStopAnnouncementSound(removed.EmbeddedSoundFileName, removed.DisplayName);
+        DetachStopSoundsForRemovedAnnouncement(removed);
 
         ApplyFilter();
 
         SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault();
 
+        MarkDirty();
         StatusMessage = "Ansage entfernt – „Speichern & JSON“ übernimmt die Änderung.";
 
     }
@@ -722,7 +828,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         {
 
-            StatusMessage = "Bitte zuerst eine Ansage auswählen (oder „Neue Ansage mit Tondatei“).";
+            StatusMessage = "Bitte zuerst eine Ansage auswählen (oder „Neue Ansage“).";
 
             return;
 
@@ -730,17 +836,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        var dialog = new OpenFileDialog
-
-        {
-
-            Title = "Tondatei für Ansage wählen",
-
-            Filter = "Audio (*.mp3;*.wav;*.ogg)|*.mp3;*.wav;*.ogg|Alle Dateien (*.*)|*.*"
-
-        };
-
-
+        var dialog = CreateAudioOpenFileDialog();
 
         if (dialog.ShowDialog() != true)
 
@@ -794,15 +890,19 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         _sequenceByAnnouncementId.Remove(id);
         _gongByAnnouncementId.Remove(id);
+        _sondergongByAnnouncementId.Remove(id);
         _nextStopByAnnouncementId.Remove(id);
         _nextStopMp3ByAnnouncementId.Remove(id);
+        _followingStopsByAnnouncementId.Remove(id);
         _announcementsNeedingAudioMaterialization.Remove(id);
 
         AnnouncementSequence.Clear();
         _sequenceLoadedForAnnouncementId = id;
         IncludeGongInAnnouncementMerge = false;
+        IncludeSondergongInAnnouncementMerge = false;
         IncludeNextStopInAnnouncementMerge = false;
         IncludeNextStopMp3InAnnouncementMerge = false;
+        IncludeFollowingStopsInAnnouncementMerge = false;
 
         SelectedAnnouncement.NotifyDisplayLabelChanged();
         RefreshSelectedAnnouncementDisplay();
@@ -913,11 +1013,20 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
                 }
 
+                var routeSoundFile = stop.EmbeddedSoundFileName.Trim();
+                if (IsSuppressedStopAnnouncementSound(routeSoundFile))
+
+                {
+
+                    continue;
+
+                }
+
 
 
                 if (_allAnnouncements.Any(a =>
 
-                        string.Equals(a.EmbeddedSoundFileName, stop.EmbeddedSoundFileName, StringComparison.OrdinalIgnoreCase)))
+                        string.Equals(a.EmbeddedSoundFileName, routeSoundFile, StringComparison.OrdinalIgnoreCase)))
 
                 {
 
@@ -941,7 +1050,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
                     Category = "haltestelle",
 
-                    EmbeddedSoundFileName = stop.EmbeddedSoundFileName.Trim()
+                    EmbeddedSoundFileName = routeSoundFile
 
                 };
 
@@ -1230,6 +1339,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
             }
 
             var fileName = stop.EmbeddedSoundFileName.Trim();
+            if (IsSuppressedStopAnnouncementSound(fileName))
+            {
+                continue;
+            }
+
             if (_allAnnouncements.Any(a => a.StopTemplateId == stop.Id))
             {
                 continue;
@@ -1535,8 +1649,12 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        if (AnnouncementSequence.Count > 0)
-
+        if (AnnouncementSequence.Count > 0 ||
+            IncludeGongInAnnouncementMerge ||
+            IncludeSondergongInAnnouncementMerge ||
+            IncludeNextStopInAnnouncementMerge ||
+            IncludeNextStopMp3InAnnouncementMerge ||
+            IncludeFollowingStopsInAnnouncementMerge)
         {
 
             var audioCount = AnnouncementSequence.Count(i => i.Kind == AnnouncementSequenceEntryKind.Audio);
@@ -1547,9 +1665,13 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
                 IncludeGongInAnnouncementMerge,
 
+                IncludeSondergongInAnnouncementMerge,
+
                 IncludeNextStopInAnnouncementMerge,
 
-                IncludeNextStopMp3InAnnouncementMerge);
+                IncludeNextStopMp3InAnnouncementMerge,
+
+                IncludeFollowingStopsInAnnouncementMerge);
 
             SelectedAnnouncementAudioHint =
 
@@ -1746,59 +1868,37 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
     }
 
     private void ApplyFilter()
-
     {
-
         var q = SearchQuery.Trim();
-
         FilteredAnnouncements.Clear();
 
-        IEnumerable<ManagedAnnouncementTemplateItem> source = _allAnnouncements
-
-            .OrderBy(a => a.AnnouncementCode, StringComparer.OrdinalIgnoreCase)
-
-            .ThenBy(a => a.DisplayName, StringComparer.OrdinalIgnoreCase);
-
-
-
+        IEnumerable<ManagedAnnouncementTemplateItem> source = _allAnnouncements;
         if (!string.IsNullOrEmpty(q))
-
         {
-
             source = source.Where(a =>
-
                 (a.AnnouncementCode?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-
                 (a.DisplayName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-
                 (a.Description?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-
                 (a.Lines?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-
                 (a.EmbeddedSoundFileName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
-
         }
 
-
+        source = LibraryListSort.OrderByField(
+            source,
+            ListSortField,
+            ListSortDirection,
+            a => a.AnnouncementCode,
+            a => a.DisplayName);
 
         foreach (var ann in source)
-
         {
-
             FilteredAnnouncements.Add(ann);
-
         }
 
-
-
         if (SelectedAnnouncement is not null &&
-
             !FilteredAnnouncements.Any(a => a.Id == SelectedAnnouncement.Id))
-
         {
-
             SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault();
-
         }
 
     }
@@ -2053,7 +2153,24 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         EmbeddedSoundFileName = source.EmbeddedSoundFileName,
 
+        AudioOutput = AnnouncementAudioOutput.Normalize(source.AudioOutput),
+
         IncludeInSpecialAnnouncements = source.IncludeInSpecialAnnouncements,
+
+        IncludeGong = source.IncludeGong,
+        IncludeSondergong = source.IncludeSondergong,
+        IncludeNextStopGerman = source.IncludeNextStopGerman,
+        IncludeNextStopMp3 = source.IncludeNextStopMp3,
+        IncludeFollowingStops = source.IncludeFollowingStops,
+        SondergongFileName = source.SondergongFileName,
+        AnnouncementSequence = source.AnnouncementSequence
+            .Select(e => new AnnouncementSequenceEntry
+            {
+                Kind = e.Kind,
+                FileName = e.FileName,
+                PauseSeconds = e.PauseSeconds
+            })
+            .ToList(),
 
         LocalAudioPath = source.LocalAudioPath
 
@@ -2077,6 +2194,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         DirectionDescription = source.DirectionDescription,
 
+        Lines = source.Lines,
+
         AnnouncementLat = source.AnnouncementLat,
 
         AnnouncementLng = source.AnnouncementLng,
@@ -2089,7 +2208,13 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         ExternalSoundUri = source.ExternalSoundUri,
 
-        EmbeddedSoundFileName = source.EmbeddedSoundFileName
+        EmbeddedSoundFileName = source.EmbeddedSoundFileName,
+
+        LocalAudioPath = source.LocalAudioPath,
+
+        EntwerterEnabled = source.EntwerterEnabled,
+
+        EntwerterCode = source.EntwerterCode
 
     };
 
