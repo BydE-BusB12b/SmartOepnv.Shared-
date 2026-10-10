@@ -113,7 +113,7 @@ public sealed class KomRemoteRouteDialog : Window
         Grid.SetRow(status, row++);
         root.Children.Add(status);
 
-        var cancel = VehicleKomUi.MakeButton("Abbrechen", margin: new Thickness(0, 0, 8, 0), isCancel: true);
+        var cancel = VehicleKomUi.MakeButton("Schließen", margin: new Thickness(0, 0, 8, 0), isCancel: true);
         cancel.Click += (_, _) => { DialogResult = false; Close(); };
         var send = VehicleKomUi.MakeButton(
             "Fernroute senden",
@@ -135,10 +135,14 @@ public sealed class KomRemoteRouteDialog : Window
             }
 
             send.IsEnabled = false;
+            cancel.IsEnabled = false;
+            list.IsEnabled = false;
+            pasInfo.IsEnabled = false;
+            filterBox.IsEnabled = false;
             _sendGuard.BeginSend();
             try
             {
-                if (await KomCommandSendFlow.SendAndReleaseDialogAsync(
+                var outcome = await KomCommandSendFlow.ExecuteAsync(
                     this,
                     status,
                     vehicle.DisplayName,
@@ -149,23 +153,30 @@ public sealed class KomRemoteRouteDialog : Window
                         phone,
                         pick.Key,
                         pasInfo.IsChecked == true,
-                        ct)))
+                        ct));
+                if (outcome == KomCommandSendOutcome.Success && IsLoaded)
                 {
                     _sendGuard.EndSend();
+                    DialogResult = true;
+                    Close();
                     return;
                 }
             }
             catch (Exception ex)
             {
+                status.Text = $"Fehler: {ex.Message}";
                 SmartConfirmDialog.ShowInfo(this, Title, $"Senden fehlgeschlagen: {ex.Message}");
             }
             finally
             {
+                _sendGuard.EndSend();
                 if (IsLoaded)
                 {
-                    _sendGuard.EndSend();
                     send.IsEnabled = true;
                     cancel.IsEnabled = true;
+                    list.IsEnabled = true;
+                    pasInfo.IsEnabled = true;
+                    filterBox.IsEnabled = true;
                 }
             }
         };

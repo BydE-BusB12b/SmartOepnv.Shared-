@@ -128,6 +128,8 @@ public partial class AnnouncementsLibraryViewModel
             {
                 AnnouncementSequence.Add(item.Clone());
             }
+
+            SelectedSequenceItem = AnnouncementSequence.Count > 0 ? AnnouncementSequence[0] : null;
         }
         else
         {
@@ -254,6 +256,7 @@ public partial class AnnouncementsLibraryViewModel
                 AnnouncementSequence.Add(item.Clone());
             }
 
+            SelectedSequenceItem = AnnouncementSequence.Count > 0 ? AnnouncementSequence[0] : null;
             return;
         }
 
@@ -297,14 +300,18 @@ public partial class AnnouncementsLibraryViewModel
             return;
         }
 
-        AnnouncementSequence.Add(new AnnouncementAudioSequenceItem
+        var bootstrapped = new AnnouncementAudioSequenceItem
         {
             Kind = AnnouncementSequenceEntryKind.Audio,
             DisplayName = !string.IsNullOrWhiteSpace(announcement.EmbeddedSoundFileName)
                 ? announcement.EmbeddedSoundFileName.Trim()
                 : Path.GetFileName(path),
             SourcePath = path
-        });
+        };
+        // In Dictionary legen, sonst wirkt „Löschen“ nur in der UI und Bootstrap stellt den Ton wieder her.
+        _sequenceByAnnouncementId[announcement.Id] = [bootstrapped.Clone()];
+        AnnouncementSequence.Add(bootstrapped);
+        SelectedSequenceItem = bootstrapped;
     }
 
     private string? ResolveSequenceAudioPath(ManagedAnnouncementTemplateItem announcement, string fileName)
@@ -449,14 +456,31 @@ public partial class AnnouncementsLibraryViewModel
     [RelayCommand]
     private void RemoveSequenceItem()
     {
-        if (SelectedSequenceItem is null)
+        if (SelectedAnnouncement is null)
         {
+            StatusMessage = "Bitte zuerst eine Ansage auswählen.";
             return;
         }
 
-        var index = AnnouncementSequence.IndexOf(SelectedSequenceItem);
+        // Einziger Eintrag / Fokusverlust der ListBox: trotzdem löschen.
+        var target = SelectedSequenceItem;
+        if (target is null && AnnouncementSequence.Count == 1)
+        {
+            target = AnnouncementSequence[0];
+        }
+
+        if (target is null)
+        {
+            StatusMessage = AnnouncementSequence.Count == 0
+                ? "Sequenz ist bereits leer."
+                : "Bitte zuerst einen Eintrag in der Sequenz wählen.";
+            return;
+        }
+
+        var index = AnnouncementSequence.IndexOf(target);
         if (index < 0)
         {
+            StatusMessage = "Bitte zuerst einen Eintrag in der Sequenz wählen.";
             return;
         }
 
@@ -464,7 +488,19 @@ public partial class AnnouncementsLibraryViewModel
         SelectedSequenceItem = AnnouncementSequence.Count == 0
             ? null
             : AnnouncementSequence[Math.Min(index, AnnouncementSequence.Count - 1)];
+
+        // Letzter Ton: gleicher Effekt wie ✕ – sonst erscheint der Eintrag sofort wieder
+        // (Bootstrap aus EmbeddedSoundFileName).
+        if (!AnnouncementSequence.Any(i => i.Kind == AnnouncementSequenceEntryKind.Audio))
+        {
+            ClearEmbeddedSound();
+            StatusMessage = "Tonsequenz geleert – „Speichern & JSON“ übernimmt die Änderung.";
+            return;
+        }
+
+        PersistCurrentAnnouncementSequence();
         NotifySequenceChanged();
+        ClearEmbeddedSoundCommand.NotifyCanExecuteChanged();
         StatusMessage = "Eintrag aus der Sequenz entfernt.";
     }
 
@@ -608,6 +644,9 @@ public partial class AnnouncementsLibraryViewModel
                 !announcement.IncludeFollowingStops)
             {
                 announcement.AnnouncementSequence.Clear();
+                // Sonst bleibt EmbeddedSound stehen → Bootstrap zeigt den Ton nach Speichern wieder.
+                announcement.EmbeddedSoundFileName = string.Empty;
+                announcement.LocalAudioPath = null;
                 continue;
             }
 

@@ -5,6 +5,7 @@ namespace SmartOepnv.Core.VehicleTracking;
 
 public sealed class GpsTripTraceService
 {
+    private const int MaxParallelDownloads = 6;
     private readonly DropboxApiClient _dropbox;
 
     public GpsTripTraceService(DropboxApiClient dropbox)
@@ -21,30 +22,44 @@ public sealed class GpsTripTraceService
             : RegisteredVehicleInfo.ParseFromJson(routePackageJson);
 
         var files = await _dropbox.ListGpsTraceFilesAsync(ct);
-        var byPhone = new Dictionary<string, GpsTripTraceFile>(StringComparer.Ordinal);
-
-        foreach (var fileName in files)
+        if (files.Count == 0)
         {
-            ct.ThrowIfCancellationRequested();
+            return [];
+        }
+
+        using var gate = new SemaphoreSlim(MaxParallelDownloads);
+        var tasks = files.Select(async fileName =>
+        {
+            await gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var content = await _dropbox.DownloadNamedFileAsync(fileName, ct);
+                var content = await _dropbox.DownloadNamedFileAsync(fileName, ct).ConfigureAwait(false);
                 var parsed = GpsTripTraceParser.TryParse(content, fileName);
-                if (parsed is null)
-                {
-                    continue;
-                }
-
-                var named = ApplyRosterName(parsed, roster);
-                if (!byPhone.TryGetValue(named.Phone, out var existing) ||
-                    named.UpdatedAtEpochMs >= existing.UpdatedAtEpochMs)
-                {
-                    byPhone[named.Phone] = named;
-                }
+                return parsed is null ? null : ApplyRosterName(parsed, roster);
             }
             catch
             {
-                // Einzelne defekte Datei überspringen
+                return null;
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+        var byPhone = new Dictionary<string, GpsTripTraceFile>(StringComparer.Ordinal);
+        foreach (var named in results)
+        {
+            if (named is null)
+            {
+                continue;
+            }
+
+            if (!byPhone.TryGetValue(named.Phone, out var existing) ||
+                named.UpdatedAtEpochMs >= existing.UpdatedAtEpochMs)
+            {
+                byPhone[named.Phone] = named;
             }
         }
 
@@ -78,7 +93,8 @@ public sealed class GpsTripTraceService
             Phone = file.Phone,
             VehicleName = match.Name.Trim(),
             UpdatedAtEpochMs = file.UpdatedAtEpochMs,
-            Days = file.Days
+            Days = file.Days,
+            Events = file.Events
         };
     }
 }

@@ -56,6 +56,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
     public Func<Task<string?>>? PullMapDraftJsonAsync { get; set; }
 
     [ObservableProperty] private string statusMessage = "Route wählen und Fahrweg planen.";
+    [ObservableProperty] private bool isMapHelpVisible;
     /// <summary>Warnung bei verdoppeltem/zu langem Fahrweg (Nav-Übernahme).</summary>
     [ObservableProperty] private string? integrityWarning;
     [ObservableProperty] private string? selectedRoute;
@@ -263,6 +264,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             UndoLastChangeCommand.NotifyCanExecuteChanged();
 
             _draft = RoutePathDraftRepository.LoadOrCreate(routeName, stops, editor.PackageRoot);
+            RoutePathSnapOrchestrator.CorrectionMemoryPackageRoot = editor.PackageRoot;
             RoutePathSegmentOrdering.RenumberContiguous(_draft);
             // Kein ReorderSegmentsAsSinglePath beim Laden: das hat an Gabelungen die Kette
             // vor der Endhaltestelle abgeschnitten und den Snap „weggespeichert“.
@@ -284,6 +286,9 @@ public partial class RoutePathEditorViewModel : ObservableObject
             _suppressDirtyTracking = false;
         }
     }
+
+    [RelayCommand]
+    private void ToggleMapHelp() => IsMapHelpVisible = !IsMapHelpVisible;
 
     [RelayCommand]
     private void LoadStopsOnMap()
@@ -439,8 +444,9 @@ public partial class RoutePathEditorViewModel : ObservableObject
                                         navForwardProgress);
             var allowWhileBlocked = forceFromMap || forceNavManeuverSync;
 
-            // Nach PushDraftToMap: Karten-JSON ist veraltet, bis draftLoaded (sonst kommen gelöschte Symbole zurück).
-            if (_awaitingMapLoadAfterPlannerPush && !forceFromMap && !forceApplyFromMap)
+            // Nach PushDraftToMap: Karten-JSON ist veraltet, bis draftLoaded –
+            // außer bei echten Navi-Manöver-Edits (Doppelklick), sonst geht das Symbol verloren.
+            if (_awaitingMapLoadAfterPlannerPush && !forceFromMap && !forceApplyFromMap && !forceNavManeuverSync)
             {
                 return false;
             }
@@ -683,7 +689,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Nach Dedup können <c>_m{i}</c>-Indizes verrutschen. Auswahl anhand Distanz neu binden.
+    /// Nach Dedup können <c>_m{i}</c>-Indizes verrutschen bzw. Schlüssel <c>_o{order}_m{i}</c> brauchen.
+    /// Auswahl anhand Distanz neu binden – MapMarkerKey wie in der sichtbaren Liste/Karte.
     /// </summary>
     private void RemapSelectedNavMarkerKeyAfterManeuverDedupe(double? preferredDistanceM)
     {
@@ -715,7 +722,21 @@ public partial class RoutePathEditorViewModel : ObservableObject
         }
 
         _selectedManeuverIndex = preferredIndex;
-        _selectedNavMarkerKey = $"{key}_m{preferredIndex}";
+
+        // Exakten Karten-/Listen-Schlüssel verwenden (inkl. _o{order}_m{i} bei Doppelkanten).
+        if (!string.IsNullOrWhiteSpace(_selectedNavMarkerKey) &&
+            NavManeuverDisplayHelper.EnumerateVisibleMapManeuvers(_draft)
+                .Any(e => string.Equals(e.MapMarkerKey, _selectedNavMarkerKey, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        var match = NavManeuverDisplayHelper.EnumerateVisibleMapManeuvers(_draft)
+            .FirstOrDefault(e =>
+                string.Equals(e.Segment.FromNodeId, _selectedSegmentFrom, StringComparison.Ordinal) &&
+                string.Equals(e.Segment.ToNodeId, _selectedSegmentTo, StringComparison.Ordinal) &&
+                e.ManeuverIndex == preferredIndex);
+        _selectedNavMarkerKey = match?.MapMarkerKey ?? $"{key}_m{preferredIndex}";
     }
 
     private static double? TryPeekSelectedManeuverDistanceM(RoutePathDraft draft, JsonObject root)
@@ -1733,6 +1754,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             if (_draft is null) return;
 
             StatusMessage = "Straßenvorschau wird berechnet…";
+            RoutePathSnapOrchestrator.CorrectionMemoryPackageRoot = AppServices.Routes.Editor.PackageRoot;
             await RoutePathSnapOrchestrator.SnapSegmentAsync(_draft, from, to, _osrm, token);
             StatusMessage = "Straßenvorschau aktualisiert.";
             PushDraftToMap();
@@ -1751,7 +1773,8 @@ public partial class RoutePathEditorViewModel : ObservableObject
         string? from,
         string? to,
         int? maneuverIndex = null,
-        int? segmentOrder = null)
+        int? segmentOrder = null,
+        bool pushToMap = true)
     {
         _selectedSegmentFrom = from;
         _selectedSegmentTo = to;
@@ -1779,7 +1802,11 @@ public partial class RoutePathEditorViewModel : ObservableObject
         if (_draft is null || string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
         {
             SelectedManeuverText = null;
-            PushDraftToMap();
+            if (pushToMap)
+            {
+                PushDraftToMap();
+            }
+
             return;
         }
 
@@ -1816,7 +1843,10 @@ public partial class RoutePathEditorViewModel : ObservableObject
                 $"{RoutePathDraft.SegmentEdgeKey(from, to)}_m{Math.Clamp(_selectedManeuverIndex, 0, segMans.Count - 1)}";
         }
 
-        PushDraftToMap();
+        if (pushToMap)
+        {
+            PushDraftToMap();
+        }
     }
 
     public void SelectNavManeuverFromMap(
@@ -1824,11 +1854,31 @@ public partial class RoutePathEditorViewModel : ObservableObject
         string? to,
         int? maneuverIndex,
         string? symbolType,
-        string? instruction)
+        string? instruction,
+        string? draftJson = null,
+        bool recordUndo = false,
+        string? mapMarkerKey = null)
     {
         if (_applyingNavSymbol)
         {
             return;
+        }
+
+        // Doppelklick / Drag: Kartenstand übernehmen + speichern.
+        // Reiner Klick (nur Auswahl): kein Apply – sonst geht der gelbe Rahmen durch Key-Mismatch verloren.
+        if (recordUndo && !string.IsNullOrWhiteSpace(draftJson))
+        {
+            var applied = ApplyDraftJsonFromMap(draftJson, recordUndo: true);
+            if (!applied)
+            {
+                // Nach vorherigem Push kann die Karte blockiert sein – erzwungen übernehmen.
+                applied = ApplyDraftJsonFromMap(draftJson, recordUndo: true, forceFromMap: true);
+            }
+
+            if (applied || HasPendingDraftChanges)
+            {
+                PersistDraftOverwrite(" – Navi-Symbol lokal gespeichert.");
+            }
         }
 
         if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to))
@@ -1839,8 +1889,16 @@ public partial class RoutePathEditorViewModel : ObservableObject
         _selectedSegmentFrom = from;
         _selectedSegmentTo = to;
         _selectedManeuverIndex = maneuverIndex ?? 0;
-        _selectedNavMarkerKey =
-            $"{RoutePathDraft.SegmentEdgeKey(from, to)}_m{_selectedManeuverIndex}";
+
+        if (!string.IsNullOrWhiteSpace(mapMarkerKey))
+        {
+            _selectedNavMarkerKey = mapMarkerKey.Trim();
+        }
+        else
+        {
+            _selectedNavMarkerKey =
+                $"{RoutePathDraft.SegmentEdgeKey(from, to)}_m{_selectedManeuverIndex}";
+        }
 
         if (!string.IsNullOrWhiteSpace(symbolType))
         {
@@ -1853,12 +1911,24 @@ public partial class RoutePathEditorViewModel : ObservableObject
             if (_draft.RoadSegmentManeuvers.TryGetValue(key, out var mans) && mans.Count > 0)
             {
                 var idx = Math.Clamp(_selectedManeuverIndex, 0, mans.Count - 1);
+                _selectedManeuverIndex = idx;
+                if (string.IsNullOrWhiteSpace(mapMarkerKey))
+                {
+                    var match = NavManeuverDisplayHelper.EnumerateVisibleMapManeuvers(_draft)
+                        .FirstOrDefault(e =>
+                            string.Equals(e.Segment.FromNodeId, from, StringComparison.Ordinal) &&
+                            string.Equals(e.Segment.ToNodeId, to, StringComparison.Ordinal) &&
+                            e.ManeuverIndex == idx);
+                    _selectedNavMarkerKey = match?.MapMarkerKey ?? $"{key}_m{idx}";
+                }
+
                 var sym = string.IsNullOrWhiteSpace(symbolType)
                     ? mans[idx].NavSymbolType
                     : symbolType;
+                SelectedNavSymbol = string.IsNullOrWhiteSpace(sym) ? "straight" : sym!;
                 SelectedManeuverText = NavManeuverHelper.GetDisplayInstruction(
                     mans[idx],
-                    string.IsNullOrWhiteSpace(sym) ? "straight" : sym!);
+                    SelectedNavSymbol);
             }
         }
         else if (!string.IsNullOrWhiteSpace(instruction))
@@ -1866,12 +1936,20 @@ public partial class RoutePathEditorViewModel : ObservableObject
             SelectedManeuverText = instruction;
         }
 
-        StatusMessage = "Navi-Hinweis ausgewählt – Symbol/Anweisung rechts ändern und übernehmen.";
+        StatusMessage = recordUndo
+            ? "Navi-Hinweis gespeichert – Symbol rechts ändern und „Übernehmen“ falls nötig."
+            : "Navi-Hinweis gewählt – Symbol rechts ändern und „Übernehmen“.";
 
         var markerKey = _selectedNavMarkerKey;
         if (SelectedNavManeuverItem?.MapMarkerKey != markerKey)
         {
-            SelectNavManeuverInListByMarkerKey(markerKey);
+            SelectNavManeuverInListByMarkerKey(markerKey ?? string.Empty);
+        }
+
+        // Gelben Rahmen auf der Karte an die Auswahl koppeln (ohne Draft-Inhalt zu überschreiben).
+        if (!recordUndo)
+        {
+            PushDraftToMap(skipNavListRefresh: true);
         }
 
         DeleteNavSymbolCommand.NotifyCanExecuteChanged();
@@ -1946,6 +2024,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
             }
 
             PrepareSegmentForResnap(segment);
+            RoutePathSnapOrchestrator.CorrectionMemoryPackageRoot = AppServices.Routes.Editor.PackageRoot;
             await RoutePathSnapOrchestrator.SnapSegmentAsync(_draft, from, to, _osrm);
             CommitSegmentEditTarget(segment);
             var key = RoutePathDraft.SegmentEdgeKey(from, to);
@@ -1998,6 +2077,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
         StatusMessage = "OSRM-Snap läuft…";
         try
         {
+            RoutePathSnapOrchestrator.CorrectionMemoryPackageRoot = AppServices.Routes.Editor.PackageRoot;
             await RoutePathSnapOrchestrator.SnapAllSegmentsAsync(_draft, _osrm);
             RefreshIntegrityWarning();
             StatusMessage = IntegrityWarning is null
@@ -2023,11 +2103,29 @@ public partial class RoutePathEditorViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ApplyNavSymbol()
+    private async Task ApplyNavSymbol()
     {
         if (_draft is null)
         {
             return;
+        }
+
+        // Offene Karten-Edits (neu doppelgeklickte Symbole) zuerst übernehmen –
+        // sonst überschreibt „Übernehmen“ den Stand und neue Symbole verschwinden.
+        if (PullMapDraftJsonAsync is not null)
+        {
+            try
+            {
+                var mapJson = await PullMapDraftJsonAsync().ConfigureAwait(true);
+                if (!string.IsNullOrWhiteSpace(mapJson))
+                {
+                    ApplyDraftJsonFromMap(mapJson, recordUndo: false, forceFromMap: true);
+                }
+            }
+            catch
+            {
+                // Auswahl trotzdem anwenden
+            }
         }
 
         _applyingNavSymbol = true;
@@ -2040,6 +2138,7 @@ public partial class RoutePathEditorViewModel : ObservableObject
         if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
         {
             _applyingNavSymbol = false;
+            _suppressNavManeuverSelectionSync = false;
             StatusMessage = "Bitte zuerst einen Hinweis in der Liste oder ein Navi-Symbol auf der Karte wählen.";
             return;
         }
@@ -2086,11 +2185,20 @@ public partial class RoutePathEditorViewModel : ObservableObject
             _selectedSegmentFrom = from;
             _selectedSegmentTo = to;
             _selectedManeuverIndex = maneuverIndex;
-            _selectedNavMarkerKey = $"{key}_m{maneuverIndex}";
+
+            RememberNavSymbolCorrection(key, maneuverIndex, SelectedNavSymbol, mans[Math.Clamp(maneuverIndex, 0, mans.Count - 1)]);
 
             RoutePathDraftMutator.DeduplicateSegmentsByEdge(_draft);
             RoutePathDraftMutator.DeduplicateManeuversPerEdge(_draft);
             RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(_draft);
+
+            var match = NavManeuverDisplayHelper.EnumerateVisibleMapManeuvers(_draft)
+                .FirstOrDefault(e =>
+                    string.Equals(e.Segment.FromNodeId, from, StringComparison.Ordinal) &&
+                    string.Equals(e.Segment.ToNodeId, to, StringComparison.Ordinal) &&
+                    e.ManeuverIndex == maneuverIndex);
+            _selectedNavMarkerKey = match?.MapMarkerKey ?? $"{key}_m{maneuverIndex}";
+
             StatusMessage = $"Navi-Symbol „{symbolLabel}“ gesetzt.";
             MarkDraftDirty();
             RefreshNavManeuverList(_selectedNavMarkerKey);
@@ -2385,12 +2493,53 @@ public partial class RoutePathEditorViewModel : ObservableObject
 
         // 1) Draft in PackageRoot
         RoutePathDraftRepository.SaveToPackage(editor.PackageRoot, _draft);
+        // Mitlernen: Waypoints + manuelle/reiche Symbole für künftige Snaps merken
+        NavCorrectionMemory.HarvestFromDraft(editor.PackageRoot, _draft);
+        RoutePathSnapOrchestrator.CorrectionMemoryPackageRoot = editor.PackageRoot;
         // 2) ToJson/SyncToRoot (kann Keys normalisieren)
         AppServices.Routes.ApplyEditorChanges("navidaten", rebuildEmbeddedMedia: false);
         // 3) Erneut setzen – SyncToRoot darf den frischen Draft nicht verlieren
         RoutePathDraftRepository.SaveToPackage(editor.PackageRoot, _draft);
+        // Gedächtnis erneut schreiben (Sync kann Root neu aufbauen)
+        NavCorrectionMemory.HarvestFromDraft(editor.PackageRoot, _draft);
         AppServices.Routes.PersistPackageBodyOnly("navidaten-draft");
         return true;
+    }
+
+    private void RememberNavSymbolCorrection(
+        string edgeKey,
+        int maneuverIndex,
+        string symbolType,
+        RoutePathSnapManeuver maneuver)
+    {
+        try
+        {
+            var editor = AppServices.Routes.Editor;
+            RoutePathSnapOrchestrator.CorrectionMemoryPackageRoot = editor.PackageRoot;
+            if (!_draft!.RoadSegmentPolylines.TryGetValue(edgeKey, out var poly) || poly.Count < 2)
+            {
+                return;
+            }
+
+            var at = NavCorrectionMemory.PointAlongPolyline(poly, maneuver.DistanceM);
+            if (at is null)
+            {
+                return;
+            }
+
+            var bearing = NavCorrectionMemory.BearingNearDistance(poly, maneuver.DistanceM);
+            NavCorrectionMemory.RecordSymbolCorrection(
+                editor.PackageRoot,
+                at.Lat,
+                at.Lon,
+                bearing,
+                symbolType,
+                maneuver.Instruction);
+        }
+        catch
+        {
+            // Lernen darf Speichern/UI nicht blockieren
+        }
     }
 
     private void RefreshNavManeuverList(string? selectMarkerKey = null)

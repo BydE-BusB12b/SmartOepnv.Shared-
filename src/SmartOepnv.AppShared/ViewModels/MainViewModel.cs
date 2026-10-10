@@ -44,14 +44,39 @@ public partial class MainViewModel : ObservableObject
 
     private RoutesViewModel RoutesViewModel => _routesViewModel ??= new();
     private RoutePathEditorViewModel RoutePathEditorViewModel => _routePathEditorViewModel ??= new();
-    private BildfahrplanViewModel BildfahrplanViewModel => _bildfahrplanViewModel ??= new();
+    private BildfahrplanViewModel BildfahrplanViewModel
+    {
+        get
+        {
+            if (_bildfahrplanViewModel is null)
+            {
+                _bildfahrplanViewModel = new();
+                _bildfahrplanViewModel.OpenRouteRequested += OnBildfahrplanOpenRouteRequested;
+            }
+
+            return _bildfahrplanViewModel;
+        }
+    }
     private StopsLibraryViewModel StopsLibraryViewModel => _stopsLibraryViewModel ??= new();
     private AnnouncementsLibraryViewModel AnnouncementsLibraryViewModel => _announcementsLibraryViewModel ??= new();
     private MessagesViewModel MessagesViewModel => _messagesViewModel ??= new();
     private DisplaysOperationsViewModel DisplaysOperationsViewModel => _displaysOperationsViewModel ??= new();
     private ZeitwirtschaftPlannerViewModel ZeitwirtschaftPlannerViewModel => _zeitwirtschaftPlannerViewModel ??= new();
     private SevSignEditorViewModel SevSignEditorViewModel => _sevSignEditorViewModel ??= new();
-    private FahrerdispoViewModel FahrerdispoViewModel => _fahrerdispoViewModel ??= new();
+    private FahrerdispoViewModel FahrerdispoViewModel
+    {
+        get
+        {
+            if (_fahrerdispoViewModel is null)
+            {
+                _fahrerdispoViewModel = new();
+                _fahrerdispoViewModel.NavigateToEmployeeManagementRequested +=
+                    OnNavigateToEmployeeManagementFromDispoRequested;
+            }
+
+            return _fahrerdispoViewModel;
+        }
+    }
     private FahrzeugdispoViewModel FahrzeugdispoViewModel => _fahrzeugdispoViewModel ??= new();
     private DienstvorlagenViewModel DienstvorlagenViewModel => _dienstvorlagenViewModel ??= new();
     private DienstvorlagenLibraryViewModel DienstvorlagenLibraryViewModel => _dienstvorlagenLibraryViewModel ??= new();
@@ -94,11 +119,6 @@ public partial class MainViewModel : ObservableObject
         _dataTransferViewModel.RoutePackageImported += OnRoutePackageLoaded;
         _dataTransferViewModel.NavigateToVehicleManagementRequested += OnNavigateToVehicleManagementRequested;
         _dataTransferViewModel.NavigateToEmployeeManagementRequested += OnNavigateToEmployeeManagementRequested;
-        if (!profile.IsLeitstelle)
-        {
-            FahrerdispoViewModel.NavigateToEmployeeManagementRequested += OnNavigateToEmployeeManagementFromDispoRequested;
-            BildfahrplanViewModel.OpenRouteRequested += OnBildfahrplanOpenRouteRequested;
-        }
         _leitstelleMessagesInboxViewModel.SosAlertRaised += OnLeitstelleSosAlertRaised;
         _leitstelleMessagesInboxViewModel.OpenVehicleOnMapRequested += OnLeitstelleOpenVehicleOnMapRequested;
         _leitstelleMessagesInboxViewModel.SprechwunschAnswerRequested += OnLeitstelleSprechwunschAnswerRequested;
@@ -177,12 +197,34 @@ public partial class MainViewModel : ObservableObject
             _leitstelleMessagesInboxViewModel.StartMonitoring();
             UpdateLeitstelleMessagesBadge();
             _ = StartVoipHostSafeAsync();
+            ScheduleGpsMapViewsWarmup();
         }
         catch (Exception ex)
         {
             StatusText = $"Start fehlgeschlagen: {ex.Message}";
             CurrentPage ??= SelectedNavigationItem?.Content;
         }
+    }
+
+    /// <summary>
+    /// WebView2 für Fahrzeuge/Fahrtenprüfung im Idle vorbereiten, damit der erste Klick die Seite sofort zeigt.
+    /// </summary>
+    private void ScheduleGpsMapViewsWarmup()
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            return;
+        }
+
+        dispatcher.BeginInvoke(() =>
+        {
+            foreach (var title in new[] { "Fahrzeuge", "Fahrtenprüfung" })
+            {
+                var nav = NavigationItems.FirstOrDefault(i => i.Title == title);
+                _ = nav?.Content;
+            }
+        }, DispatcherPriority.ApplicationIdle);
     }
 
     /// <summary>Planer: Arbeitsstand und Dropbox-Sync nach Anmeldung im Hintergrund laden.</summary>
@@ -218,9 +260,6 @@ public partial class MainViewModel : ObservableObject
                 if (forced.Imported)
                 {
                     OnRoutePackageLoaded();
-                    FahrerdispoViewModel.RefreshFromEditor();
-                    DienstvorlagenViewModel.RefreshFromEditor();
-                    DienstvorlagenLibraryViewModel.RefreshFromEditor();
                     StatusText = AppServices.Routes.HasPackage
                         ? BuildLocalStatusText("Dropbox übernommen (mehr Inhalt)")
                         : "Planer-Arbeitsstand aus Dropbox übernommen.";
@@ -426,11 +465,12 @@ public partial class MainViewModel : ObservableObject
         }
         else if (value.Title == "Fahrzeuge")
         {
-            _vehicleTrackingViewModel.OnViewActivated();
+            // Seite zuerst zeichnen, Dropbox/Cache danach – Navigation bleibt flüssig.
+            ScheduleDispositionRefresh(_vehicleTrackingViewModel.OnViewActivated);
         }
         else if (value.Title == "Fahrtenprüfung")
         {
-            _tripInspectionViewModel.OnViewActivated();
+            ScheduleDispositionRefresh(_tripInspectionViewModel.OnViewActivated);
         }
         else if (value.Title == "Zeitwirtschaft")
         {
@@ -662,9 +702,6 @@ public partial class MainViewModel : ObservableObject
             if (result.Imported)
             {
                 OnRoutePackageLoaded();
-                FahrerdispoViewModel.RefreshFromEditor();
-                DienstvorlagenViewModel.RefreshFromEditor();
-                DienstvorlagenLibraryViewModel.RefreshFromEditor();
                 var usedLocalOnly = result.Message.Contains("kein Dropbox-Download", StringComparison.Ordinal);
                 StatusText = AppServices.Routes.HasPackage
                     ? BuildLocalStatusText(usedLocalOnly ? "Lokal (Dropbox unverändert)" : "Dropbox synchronisiert")
@@ -688,8 +725,6 @@ public partial class MainViewModel : ObservableObject
         {
             _dataTransferViewModel.IsBusy = false;
             _dataTransferViewModel.RefreshStats();
-            _dataTransferViewModel.RefreshPackageVersions();
-            SevSignEditorViewModel.RefreshFromEditor();
             await TryProcessDeviceRegistrationsFromDropboxAsync().ConfigureAwait(true);
         }
     }
@@ -941,6 +976,7 @@ public partial class MainViewModel : ObservableObject
             DienstvorlagenLibraryViewModel.RefreshFromEditor();
             FahrzeugdispoViewModel.RefreshFromEditor();
             FahrerdispoViewModel.RefreshFromEditor();
+            BildfahrplanViewModel.RefreshFromEditor();
         }
         else
         {
@@ -952,6 +988,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         UpdatePersonalverwaltungBadge();
+        UpdateFahrzeugverwaltungBadge();
     }
 
     private async Task TryProcessDeviceRegistrationsFromDropboxAsync()

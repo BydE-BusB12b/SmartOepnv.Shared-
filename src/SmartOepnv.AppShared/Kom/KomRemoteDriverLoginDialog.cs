@@ -195,9 +195,9 @@ public sealed class KomRemoteDriverLoginDialog : Window
                             employee.PersonnelNumber,
                             employee.Name,
                             ct)
-                        : KomRemoteDriverLoginService.UploadLogoutAsync(AppServices.Dropbox, phone, ct)))
+                        : KomRemoteDriverLoginService.UploadLogoutAsync(AppServices.Dropbox, phone, ct),
+                    releaseCloseGuard: () => _sendGuard.EndSend()))
             {
-                _sendGuard.EndSend();
                 return;
             }
         }

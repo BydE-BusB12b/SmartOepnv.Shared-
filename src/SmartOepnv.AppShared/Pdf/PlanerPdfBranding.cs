@@ -17,7 +17,42 @@ public static class PlanerPdfBranding
 
     public static void ComposeHeaderWithSmartLogo(IContainer container, Action<IContainer> leftContent)
     {
-        ComposeHeaderWithOptionalSmartLogo(container, showSmartLogo: true, leftContent);
+        ComposeHeaderWithOptionalSmartLogo(container, IsSmartOepnvLogoEnabledInPdfs(), leftContent);
+    }
+
+    /// <summary>Liest die Planer-Einstellung „Smart-ÖPNV-Logo in PDFs“ (Standard: an).</summary>
+    public static bool IsSmartOepnvLogoEnabledInPdfs()
+    {
+        if (!AppServices.IsInitialized || AppServices.PlanerAppSettings is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            return AppServices.PlanerAppSettings.Load().ShowSmartOepnvLogoInPdfs;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    public static void SetSmartOepnvLogoEnabledInPdfs(bool enabled)
+    {
+        if (!AppServices.IsInitialized || AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var settings = AppServices.PlanerAppSettings.Load();
+        if (settings.ShowSmartOepnvLogoInPdfs == enabled)
+        {
+            return;
+        }
+
+        settings.ShowSmartOepnvLogoInPdfs = enabled;
+        AppServices.PlanerAppSettings.Save(settings);
     }
 
     public static void ComposeHeaderWithOptionalSmartLogo(
@@ -68,6 +103,15 @@ public static class PlanerPdfBranding
     public static void DrawSmartOepnvLogo(IContainer container)
     {
         DrawImageIfExists(container, ResolveSmartOepnvLogoPath());
+    }
+
+    /// <summary>Zeichnet das Smart-ÖPNV-Logo nur wenn in den Einstellungen aktiv.</summary>
+    public static void DrawSmartOepnvLogoIfEnabled(IContainer container)
+    {
+        if (IsSmartOepnvLogoEnabledInPdfs())
+        {
+            DrawSmartOepnvLogo(container);
+        }
     }
 
     public static void DrawCompanyLogo(IContainer container, string? logoPath) =>

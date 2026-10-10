@@ -253,7 +253,7 @@ public partial class VehicleTrackingView : UserControl
 
             _viewModel.ShowVehicleDetailRequested += OnShowVehicleDetailRequested;
 
-            _viewModel.OnViewActivated();
+            // Aktivierung läuft über MainViewModel (Seite zuerst zeichnen, dann laden).
 
         }
 

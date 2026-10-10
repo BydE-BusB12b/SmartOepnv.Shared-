@@ -1,7 +1,12 @@
+using System.Text.Json.Nodes;
+
 namespace SmartOepnv.Core.RoutePath;
 
 public static class RoutePathSnapOrchestrator
 {
+    /// <summary>Optional: Paketwurzel für Navi-Korrekturgedächtnis (Symbole / Waypoints).</summary>
+    public static JsonObject? CorrectionMemoryPackageRoot { get; set; }
+
     public static async Task SnapSegmentAsync(
         RoutePathDraft draft,
         string fromNodeId,
@@ -33,19 +38,43 @@ public static class RoutePathSnapOrchestrator
             throw new InvalidOperationException("Segment-Endpunkte haben keine gültigen Koordinaten.");
         }
 
+        waypoints = InjectLearnedWaypoints(draft, segment, waypoints);
+
         var snap = await SnapSegmentPathWithFallbacksAsync(draft, segment, key, waypoints, osrm, ct);
         if (!snap.IsRoadRoute || snap.Points.Count < 2)
         {
             throw new InvalidOperationException(snap.Error ?? "OSRM-Snap fehlgeschlagen.");
         }
 
+        var maneuvers = snap.Maneuvers.ToList();
+        NavCorrectionMemory.ApplySymbolCorrections(CorrectionMemoryPackageRoot, snap.Points, maneuvers);
+
         draft.RoadSegmentPolylines[key] = snap.Points.ToList();
-        draft.RoadSegmentManeuvers[key] = snap.Maneuvers.ToList();
+        draft.RoadSegmentManeuvers[key] = maneuvers;
         draft.RoadSnappedEdgeKeys.Add(key);
         draft.RoadBusStraightEdgeKeys.Remove(key);
         RoutePathPolylineJoin.AlignSegmentEndpointsAtSharedNodes(draft, key);
         RoutePathDraftMutator.DeduplicateSegmentsByEdge(draft);
         RebuildMergedShapeAndManeuvers(draft);
+    }
+
+    private static List<RoutePathLatLng> InjectLearnedWaypoints(
+        RoutePathDraft draft,
+        RoutePathSegment segment,
+        List<RoutePathLatLng> waypoints)
+    {
+        var nodeMap = draft.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        if (!nodeMap.TryGetValue(segment.FromNodeId, out var fromNode) ||
+            !nodeMap.TryGetValue(segment.ToNodeId, out var toNode))
+        {
+            return waypoints;
+        }
+
+        var from = new RoutePathLatLng { Lat = fromNode.Lat, Lon = fromNode.Lon };
+        var to = new RoutePathLatLng { Lat = toNode.Lat, Lon = toNode.Lon };
+        return NavCorrectionMemory.SuggestWaypointsAlongSegment(
+                CorrectionMemoryPackageRoot, from, to, waypoints)
+            .ToList();
     }
 
     public static async Task SnapAllSegmentsAsync(

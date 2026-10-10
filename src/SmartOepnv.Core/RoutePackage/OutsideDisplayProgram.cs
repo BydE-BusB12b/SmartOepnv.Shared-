@@ -158,7 +158,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public string Name
     {
         get => _name;
-        set => SetProperty(ref _name, value, nameof(DisplayLabel));
+        set => SetProperty(ref _name, value, nameof(DisplayLabel), nameof(Ds003ListLabel));
     }
 
     public string FrontLine1
@@ -176,13 +176,13 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public string SideLine1
     {
         get => _sideLine1;
-        set => SetProperty(ref _sideLine1, value, nameof(SidePreview));
+        set => SetProperty(ref _sideLine1, value, nameof(SidePreview), nameof(Ds003ListLabel));
     }
 
     public string SideLine2
     {
         get => _sideLine2;
-        set => SetProperty(ref _sideLine2, value, nameof(SidePreview));
+        set => SetProperty(ref _sideLine2, value, nameof(SidePreview), nameof(Ds003ListLabel));
     }
 
     public int IntervalSeconds { get; set; } = 3;
@@ -190,7 +190,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     private string _ds001Value = "001";
 
-    /// <summary>Liniennummer bzw. Mobitec-Linienkürzel (z. B. RE13) – gehört an der Front zum Zieltext.</summary>
+    /// <summary>Liniennummer bzw. Mobitec-Linienkürzel (z. B. RE13); bei DS003: Front z999 (Dokumentation).</summary>
     public string Ds001Value
     {
         get => _ds001Value;
@@ -203,6 +203,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
             _ds001Value = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(Ds003ListLabel));
             if (Protocol == OutsideDisplayProtocolKind.Mobitec)
             {
                 OnPropertyChanged(nameof(FrontPreview));
@@ -791,7 +792,9 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public string WechseltextPreview =>
         FormatWechseltextListPreview(FrontCycles, fallbackSingle: FrontPreview);
 
-    /// <summary>Ziellisten-Zeile für DS003: vergebene Zielnummer (z. B. „Zielnummer: 004“).</summary>
+    /// <summary>
+    /// Ziellisten-Zeile für DS003: Zielnummer · Linie · Anzeigename · Beschreibung.
+    /// </summary>
     public string Ds003ListLabel
     {
         get
@@ -802,10 +805,59 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             }
 
             var number = OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1);
-            return string.IsNullOrWhiteSpace(number)
-                ? "Zielnummer: —"
-                : $"Zielnummer: {number}";
+            var line = Ds001Value?.Trim() ?? string.Empty;
+            var displayName = Name?.Trim() ?? string.Empty;
+            var description = FormatDs003Beschreibung(SideLine1, SideLine2);
+
+            var parts = new List<string>
+            {
+                string.IsNullOrWhiteSpace(number) || number == "000" ? "—" : number
+            };
+            parts.Add(line.Length > 0 ? line : "—");
+            parts.Add(displayName.Length > 0 ? displayName : "—");
+            if (description.Length > 0)
+            {
+                parts.Add(description);
+            }
+
+            return string.Join(" · ", parts);
         }
+    }
+
+    /// <summary>
+    /// Beschreibung/Seite für DS003: zwei Seitenzeilen mit „/“ (kein Zeilenumbruch in der UI).
+    /// </summary>
+    public static string FormatDs003Beschreibung(string? side1, string? side2)
+    {
+        var a = side1?.Trim() ?? string.Empty;
+        var b = side2?.Trim() ?? string.Empty;
+        if (a.Length == 0)
+        {
+            return b;
+        }
+
+        if (b.Length == 0 || a.Contains('/'))
+        {
+            return a;
+        }
+
+        return $"{a}/{b}";
+    }
+
+    /// <summary>
+    /// Übernimmt SideLine2 in SideLine1 mit „/“ und leert SideLine2 (ein Beschreibungsfeld).
+    /// </summary>
+    private static void MergeDs003SideDescriptionWithSlash(OutsideDisplayProgram program)
+    {
+        var merged = FormatDs003Beschreibung(program.SideLine1, program.SideLine2);
+        if (merged == (program.SideLine1?.Trim() ?? string.Empty) &&
+            string.IsNullOrWhiteSpace(program.SideLine2))
+        {
+            return;
+        }
+
+        program.SideLine1 = merged;
+        program.SideLine2 = string.Empty;
     }
 
     private static string FormatWechseltextListPreview(
@@ -877,7 +929,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             Name = name ?? "Neues Ziel",
             FrontLine1 = "001",
             Ds001Type = "line",
-            Ds001Value = string.Empty,
+            Ds001Value = "000",
             Ds001Spec = "E00",
             Protocol = OutsideDisplayProtocolKind.Ds003
         };
@@ -1052,6 +1104,17 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             program.SyncLegacyLinesFromCycles();
         }
 
+        // DS003: Front-Log = Zielnummer, Side-Log = Beschreibung/Seite (nicht Zyklus-Parsing).
+        if (program.Protocol == OutsideDisplayProtocolKind.Ds003)
+        {
+            ApplyLogLines(program, frontLog, isFront: true);
+            ApplyLogLines(program, sideLog, isFront: false);
+            program.FrontLine1 = OutsideDisplayTelegramFactory.NormalizeZielnummer(program.FrontLine1);
+            // Zwei Seitenzeilen → ein Feld mit „/“; fehlende Linie → 000 (nicht Default 001).
+            MergeDs003SideDescriptionWithSlash(program);
+            program.Ds001Value = string.IsNullOrWhiteSpace(ds001Value) ? "000" : ds001Value.Trim();
+        }
+
         if (parts.Length >= 12)
         {
             program.FontControl = Ds021NeuFontControl.ParseStored(DecodeUtf8(parts[11]));
@@ -1180,7 +1243,10 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         else if (Protocol == OutsideDisplayProtocolKind.Ds003)
         {
             frontGoals = [(FrontLine1, string.Empty)];
-            sideGoals = frontGoals;
+            // Beschreibung/Seite getrennt von der Zielnummer speichern
+            sideGoals = string.IsNullOrWhiteSpace(SideLine1) && string.IsNullOrWhiteSpace(SideLine2)
+                ? [(string.Empty, string.Empty)]
+                : [(SideLine1, SideLine2)];
         }
         else
         {
@@ -1202,7 +1268,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         var sideLog = Protocol switch
         {
             OutsideDisplayProtocolKind.FmaS1 => FmaS1CycleLog.Encode(sideGoals),
-            OutsideDisplayProtocolKind.Ds003 => OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1),
+            OutsideDisplayProtocolKind.Ds003 => BuildLogString(SideLine1, SideLine2),
             _ => OutsideDisplayCycleParser.BuildLogString(sideGoals)
         };
 
@@ -1339,14 +1405,22 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     /// <summary>
     /// Speichert die Linie: Mobitec/DS021T frei (RE13, S8, …);
-    /// nur DS003a Krefeld bleibt auf 3 Ziffern.
+    /// DS003: Front z999, leer → „000“; nur DS003a Krefeld bleibt auf 3 Ziffern.
     /// </summary>
     private string EncodeLineForStorage()
     {
         var raw = (Ds001Value ?? string.Empty).Trim();
-        return Protocol == OutsideDisplayProtocolKind.Ds003aKrefeld
-            ? NormalizeKrefeldLine(raw)
-            : raw;
+        if (Protocol == OutsideDisplayProtocolKind.Ds003aKrefeld)
+        {
+            return NormalizeKrefeldLine(raw);
+        }
+
+        if (Protocol == OutsideDisplayProtocolKind.Ds003)
+        {
+            return string.IsNullOrEmpty(raw) ? "000" : raw;
+        }
+
+        return raw;
     }
 
     private static string NormalizeKrefeldLine(string value)

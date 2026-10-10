@@ -2,7 +2,7 @@ namespace SmartOepnv.Core.RoutePackage;
 
 public sealed class PlanerAppSettings
 {
-    public const int FileVersion = 8;
+    public const int FileVersion = 10;
 
     /// <summary>Legacy: einzelnes Logo vor Mehrfach-Verwaltung.</summary>
     public string CompanyLogoFileName { get; set; } = string.Empty;
@@ -43,4 +43,13 @@ public sealed class PlanerAppSettings
 
     /// <summary>Zuletzt vergebene packageVersion für routes_update.json.</summary>
     public long LastRoutesUpdatePackageVersion { get; set; }
+
+    /// <summary>Smart-ÖPNV-Logo in PDF-Kopfzeilen anzeigen (Planer-PDFs).</summary>
+    public bool ShowSmartOepnvLogoInPdfs { get; set; } = true;
+
+    /// <summary>
+    /// Max. Zeichen für DS009-Eingaben im Planer (Haltestellenanzeige / Zieltext): 16 oder 20.
+    /// Entspricht der Fahrzeug-Einstellung; steuert nur die Planer-Eingabelänge.
+    /// </summary>
+    public int Ds009TextLength { get; set; } = 20;
 }

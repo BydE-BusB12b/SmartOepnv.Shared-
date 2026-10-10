@@ -35,6 +35,19 @@ public partial class AnnouncementsLibraryViewModel
         @"\bhauptbahnhof\b",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    // „Bf Mitte“ ↔ „Bahnhof Mitte“, „Bhf“ ↔ „Bahnhof“.
+    private static readonly Regex BfTokenRegex = new(
+        @"\bbf\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex BhfTokenRegex = new(
+        @"\bbhf\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex BahnhofTokenRegex = new(
+        @"\bbahnhof\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     [RelayCommand]
     private void SoundFileUpdate()
     {
@@ -278,6 +291,25 @@ public partial class AnnouncementsLibraryViewModel
         if (HauptbahnhofTokenRegex.IsMatch(key))
         {
             yield return HauptbahnhofTokenRegex.Replace(key, "hbf");
+        }
+
+        // Bf / Bhf / Bahnhof (z. B. „Bf Mitte“ ↔ „Bahnhof Mitte“)
+        if (BfTokenRegex.IsMatch(key))
+        {
+            yield return BfTokenRegex.Replace(key, "bahnhof");
+            yield return BfTokenRegex.Replace(key, "bhf");
+        }
+
+        if (BhfTokenRegex.IsMatch(key))
+        {
+            yield return BhfTokenRegex.Replace(key, "bahnhof");
+            yield return BhfTokenRegex.Replace(key, "bf");
+        }
+
+        if (BahnhofTokenRegex.IsMatch(key))
+        {
+            yield return BahnhofTokenRegex.Replace(key, "bf");
+            yield return BahnhofTokenRegex.Replace(key, "bhf");
         }
     }
 

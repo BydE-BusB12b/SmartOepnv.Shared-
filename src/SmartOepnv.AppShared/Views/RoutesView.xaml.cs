@@ -40,7 +40,6 @@ public partial class RoutesView : UserControl
             return;
         }
 
-        vm.SelectedStop = stop;
         OpenStopEditDialog(vm, stop);
     }
 

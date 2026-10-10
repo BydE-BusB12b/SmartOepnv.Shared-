@@ -1,3 +1,5 @@
+using SmartOepnv.Core.Dienstvorlagen;
+
 namespace SmartOepnv.Core.RoutePackage;
 
 /// <summary>Löst das effektive Routenwechselziel für einen Betriebstag auf.</summary>
@@ -12,12 +14,7 @@ public static class RouteChangeTargetResolver
 
         foreach (var entry in stop.RouteChangeTargetsByDate)
         {
-            if (entry.OperatingDates.Count == 0)
-            {
-                continue;
-            }
-
-            if (!entry.OperatingDates.Contains(operatingDate))
+            if (!Matches(entry, operatingDate))
             {
                 continue;
             }
@@ -48,7 +45,7 @@ public static class RouteChangeTargetResolver
         {
             foreach (var entry in stop.RouteChangeTargetsByDate)
             {
-                if (entry.OperatingDates.Count == 0 || !entry.OperatingDates.Contains(date))
+                if (!Matches(entry, date))
                 {
                     continue;
                 }
@@ -67,8 +64,29 @@ public static class RouteChangeTargetResolver
 
     public static bool HasDatedTargets(RouteStopItem? stop) =>
         stop?.RouteChangeTargetsByDate.Any(e =>
-            e.OperatingDates.Count > 0 &&
+            e.HasScheduleConstraint &&
             !string.IsNullOrWhiteSpace(e.SelectedLineCourseTrip)) == true;
+
+    public static bool Matches(RouteChangeTargetEntry entry, DateOnly operatingDate)
+    {
+        if (!entry.HasScheduleConstraint)
+        {
+            return false;
+        }
+
+        if (entry.OperatingDates.Count > 0 && entry.OperatingDates.Contains(operatingDate))
+        {
+            return true;
+        }
+
+        if (entry.OperatingDays.Count > 0)
+        {
+            var day = DutyOperatingDayHelper.FromDate(operatingDate);
+            return entry.OperatingDays.Contains(day);
+        }
+
+        return false;
+    }
 
     private static string NormalizeDefault(string? value)
     {

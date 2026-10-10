@@ -3,7 +3,11 @@ namespace SmartOepnv.Core.RoutePackage;
 /// <summary>Zielname/ID zwischen Haltestelle und Außenanzeigen-Programm auflösen.</summary>
 public static class OutsideDisplayDestinationResolver
 {
-    public sealed record CatalogEntry(string Id, string Name, OutsideDisplayProtocolKind Protocol);
+    public sealed record CatalogEntry(
+        string Id,
+        string Name,
+        OutsideDisplayProtocolKind Protocol,
+        string ListLabel);
 
     public static IReadOnlyList<CatalogEntry> BuildCatalog(IEnumerable<string> outsideDisplayEntries)
     {
@@ -24,7 +28,16 @@ public static class OutsideDisplayDestinationResolver
                 continue;
             }
 
-            list.Add(new CatalogEntry(id, program.Name.Trim(), program.Protocol));
+            var name = program.Name.Trim();
+            var listLabel = program.Protocol == OutsideDisplayProtocolKind.Ds003
+                ? program.Ds003ListLabel
+                : name;
+            if (string.IsNullOrWhiteSpace(listLabel))
+            {
+                listLabel = name;
+            }
+
+            list.Add(new CatalogEntry(id, name, program.Protocol, listLabel));
         }
 
         return list;
@@ -35,21 +48,51 @@ public static class OutsideDisplayDestinationResolver
         OutsideDisplayProtocolKind protocol,
         string? name)
     {
-        if (string.IsNullOrWhiteSpace(name) ||
-            string.Equals(name.Trim(), RouteStopEditorCatalog.NoDestinationLabel, StringComparison.Ordinal))
+        return FindEntryByComboLabel(catalog, protocol, name)?.Id;
+    }
+
+    public static CatalogEntry? FindEntryByComboLabel(
+        IEnumerable<CatalogEntry> catalog,
+        OutsideDisplayProtocolKind protocol,
+        string? comboLabel)
+    {
+        if (string.IsNullOrWhiteSpace(comboLabel) ||
+            string.Equals(comboLabel.Trim(), RouteStopEditorCatalog.NoDestinationLabel, StringComparison.Ordinal))
         {
             return null;
         }
 
-        var trimmed = name.Trim();
+        var trimmed = comboLabel.Trim();
         return catalog
             .FirstOrDefault(e =>
                 e.Protocol == protocol &&
-                string.Equals(e.Name, trimmed, StringComparison.Ordinal))
-            ?.Id;
+                (string.Equals(e.ListLabel, trimmed, StringComparison.Ordinal) ||
+                 string.Equals(e.Name, trimmed, StringComparison.Ordinal)));
     }
 
     public static string? FindNameById(
+        IEnumerable<CatalogEntry> catalog,
+        OutsideDisplayProtocolKind protocol,
+        string? id)
+    {
+        return FindEntryById(catalog, protocol, id)?.Name;
+    }
+
+    public static string? FindListLabelById(
+        IEnumerable<CatalogEntry> catalog,
+        OutsideDisplayProtocolKind protocol,
+        string? id)
+    {
+        var entry = FindEntryById(catalog, protocol, id);
+        if (entry is null)
+        {
+            return null;
+        }
+
+        return string.IsNullOrWhiteSpace(entry.ListLabel) ? entry.Name : entry.ListLabel;
+    }
+
+    private static CatalogEntry? FindEntryById(
         IEnumerable<CatalogEntry> catalog,
         OutsideDisplayProtocolKind protocol,
         string? id)
@@ -63,12 +106,11 @@ public static class OutsideDisplayDestinationResolver
         return catalog
             .FirstOrDefault(e =>
                 e.Protocol == protocol &&
-                string.Equals(e.Id, normalized, StringComparison.OrdinalIgnoreCase))
-            ?.Name;
+                string.Equals(e.Id, normalized, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
-    /// Anzeigename für Combo: bevorzugt aktuelle Programm-Namen zur gespeicherten ID,
+    /// Anzeigename für Combo: bevorzugt aktuelles ListLabel zur gespeicherten ID,
     /// sonst Legacy-Name.
     /// </summary>
     public static string ResolveDisplayName(
@@ -77,16 +119,26 @@ public static class OutsideDisplayDestinationResolver
         string? destinationId,
         string? destinationName)
     {
-        var byId = FindNameById(catalog, protocol, destinationId);
+        var byId = FindListLabelById(catalog, protocol, destinationId);
         if (!string.IsNullOrWhiteSpace(byId))
         {
             return byId;
         }
 
+        // Legacy: gespeicherter Name → ListLabel, falls eindeutig.
+        if (!string.IsNullOrWhiteSpace(destinationName))
+        {
+            var byName = FindEntryByComboLabel(catalog, protocol, destinationName);
+            if (byName is not null)
+            {
+                return string.IsNullOrWhiteSpace(byName.ListLabel) ? byName.Name : byName.ListLabel;
+            }
+        }
+
         return destinationName?.Trim() ?? string.Empty;
     }
 
-    /// <summary>Beim Speichern der Auswahl: Name + ID setzen.</summary>
+    /// <summary>Beim Speichern der Auswahl: Name + ID setzen (ListLabel nur für die Combo-Anzeige).</summary>
     public static void ApplySelection(
         RouteStopItem stop,
         OutsideDisplayProtocolKind protocol,
@@ -94,13 +146,16 @@ public static class OutsideDisplayDestinationResolver
         string? comboName,
         IEnumerable<CatalogEntry> catalog)
     {
-        var name = string.Equals(comboName?.Trim(), RouteStopEditorCatalog.NoDestinationLabel, StringComparison.Ordinal)
-            ? string.Empty
-            : comboName?.Trim() ?? string.Empty;
-        var id = string.IsNullOrEmpty(name)
-            ? string.Empty
-            : FindIdByName(catalog, protocol, name) ?? string.Empty;
+        if (string.Equals(comboName?.Trim(), RouteStopEditorCatalog.NoDestinationLabel, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(comboName))
+        {
+            SetLink(stop, protocol, isEndStop, string.Empty, string.Empty);
+            return;
+        }
 
+        var entry = FindEntryByComboLabel(catalog, protocol, comboName);
+        var name = entry?.Name ?? comboName.Trim();
+        var id = entry?.Id ?? string.Empty;
         SetLink(stop, protocol, isEndStop, name, id);
     }
 

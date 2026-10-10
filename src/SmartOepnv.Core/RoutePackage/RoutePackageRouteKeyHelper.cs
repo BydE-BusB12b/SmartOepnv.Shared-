@@ -1,6 +1,6 @@
 namespace SmartOepnv.Core.RoutePackage;
 
-/// <summary>Einheitliche Routenschlüssel – verhindert Duplikate mit/ohne Verkehrstags-Kennung.</summary>
+/// <summary>Einheitliche Routenschlüssel – Alias mit/ohne Verkehrstags-Kennung, getrennte Tagesvarianten.</summary>
 public static class RoutePackageRouteKeyHelper
 {
     public static bool IsRouteKeyAllowed(string key, IEnumerable<string> allowedRouteKeys)
@@ -51,7 +51,8 @@ public static class RoutePackageRouteKeyHelper
         routeKey.Contains("Verkehr:", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Liefert den StopsByRoute-Schlüssel mit den meisten Haltestellen (bei Alias-Duplikaten).
+    /// StopsByRoute-Schlüssel für eine Route. Tagesvarianten (unterschiedliches „Verkehr:“)
+    /// teilen sich keine Liste; nur echte Aliase (gleiche Verkehrskennung) werden zusammengeführt.
     /// </summary>
     public static string? ResolveRouteKeyWithStops(
         string routeKey,
@@ -63,6 +64,49 @@ public static class RoutePackageRouteKeyHelper
         }
 
         var trimmed = routeKey.Trim();
+        if (stopsByRoute.ContainsKey(trimmed))
+        {
+            return trimmed;
+        }
+
+        var sameSchedule = stopsByRoute
+            .Where(pair => RouteDisplayHelper.RouteKeysMatchSameSchedule(pair.Key, trimmed))
+            .Select(pair => (Key: pair.Key, Count: pair.Value.Count))
+            .OrderByDescending(pair => pair.Count)
+            .Select(pair => pair.Key)
+            .FirstOrDefault();
+        if (!string.IsNullOrEmpty(sameSchedule))
+        {
+            return sameSchedule;
+        }
+
+        var requestVerkehr = RouteDisplayHelper.GetVerkehrLabel(trimmed);
+        if (!string.IsNullOrEmpty(requestVerkehr))
+        {
+            // Andere Tagesvariante oder gemeinsamer Legacy-Bucket – nicht automatisch teilen.
+            var daySpecificKeys = stopsByRoute.Keys
+                .Where(key =>
+                    RouteDisplayHelper.RouteKeysMatch(key, trimmed) &&
+                    !string.IsNullOrEmpty(RouteDisplayHelper.GetVerkehrLabel(key)))
+                .ToList();
+            if (daySpecificKeys.Count > 0)
+            {
+                return null;
+            }
+
+            // Noch kein getrennter Bucket: Legacy ohne Verkehr nutzen (Caller kann klonen).
+            var canonical = RouteDisplayHelper.ToCanonicalRouteKey(trimmed);
+            if (stopsByRoute.ContainsKey(canonical))
+            {
+                return canonical;
+            }
+
+            var legacy = stopsByRoute.Keys.FirstOrDefault(key =>
+                RouteDisplayHelper.RouteKeysMatch(key, trimmed) &&
+                string.IsNullOrEmpty(RouteDisplayHelper.GetVerkehrLabel(key)));
+            return legacy;
+        }
+
         var bestMatch = stopsByRoute
             .Where(pair => RouteDisplayHelper.RouteKeysMatch(pair.Key, trimmed))
             .Select(pair => (Key: pair.Key, Count: pair.Value.Count))
@@ -75,12 +119,24 @@ public static class RoutePackageRouteKeyHelper
             return bestMatch.Key;
         }
 
-        if (stopsByRoute.ContainsKey(trimmed))
+        var fallbackCanonical = RouteDisplayHelper.ToCanonicalRouteKey(trimmed);
+        return stopsByRoute.ContainsKey(fallbackCanonical) ? fallbackCanonical : null;
+    }
+
+    /// <summary>True, wenn <paramref name="storageKey"/> ein gemeinsamer Legacy-Bucket für eine Tagesvariante ist.</summary>
+    public static bool IsLegacySharedStopBucket(string requestRouteKey, string storageKey)
+    {
+        var requestVerkehr = RouteDisplayHelper.GetVerkehrLabel(requestRouteKey);
+        if (string.IsNullOrEmpty(requestVerkehr))
         {
-            return trimmed;
+            return false;
         }
 
-        var canonical = RouteDisplayHelper.ToCanonicalRouteKey(trimmed);
-        return stopsByRoute.ContainsKey(canonical) ? canonical : null;
+        if (RouteDisplayHelper.RouteKeysMatchSameSchedule(requestRouteKey, storageKey))
+        {
+            return false;
+        }
+
+        return RouteDisplayHelper.RouteKeysMatch(requestRouteKey, storageKey);
     }
 }

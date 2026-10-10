@@ -9,8 +9,17 @@ public static class RouteStopEditorCatalog
     /// <summary>Platzhalter-Ziel wie in GPSAnsagen, wenn Starthaltestelle ohne DS021T/Linie gesetzt wird.</summary>
     public const string StartStopPlaceholderDestination = "Starthaltestelle";
 
-    /// <summary>Wie GPSAnsagen: Ziel (inkl. Platzhalter), DS003a-Ziel oder Liniennummer gesetzt.</summary>
+    /// <summary>
+    /// Starthaltestelle (Routenstart): Ziel/Linie gesetzt und kein Zielwechsel.
+    /// Zielwechsel-Halte haben ebenfalls ein Ziel, bleiben aber ansagepflichtig.
+    /// </summary>
     public static bool IsStartStop(RouteStopItem? stop) =>
+        stop is not null &&
+        !stop.ZielwechselEnabled &&
+        HasDestinationLink(stop);
+
+    /// <summary>Ziel- oder Linienfelder gesetzt (Starthaltestelle oder Zielwechsel).</summary>
+    public static bool HasDestinationLink(RouteStopItem? stop) =>
         stop is not null && (
             !string.IsNullOrWhiteSpace(stop.Destination) ||
             !string.IsNullOrWhiteSpace(stop.Ds021NeuDestination) ||
@@ -83,22 +92,115 @@ public static class RouteStopEditorCatalog
         string.Equals(value?.Trim(), emptyLabel, StringComparison.Ordinal) ? string.Empty : value?.Trim() ?? string.Empty;
 
     public static IReadOnlyList<string> LoadDs021tNames(EditableRoutePackage? editor) =>
-        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Ds021T);
+        LoadAllProtocolNames(editor).Ds021t;
 
     public static IReadOnlyList<string> LoadDs021NeuNames(EditableRoutePackage? editor) =>
-        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Ds021Neu);
+        LoadAllProtocolNames(editor).Ds021Neu;
 
     public static IReadOnlyList<string> LoadFmaS1Names(EditableRoutePackage? editor) =>
-        LoadProtocolNames(editor, OutsideDisplayProtocolKind.FmaS1);
+        LoadAllProtocolNames(editor).FmaS1;
 
     public static IReadOnlyList<string> LoadDs003aNames(EditableRoutePackage? editor) =>
-        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Ds003aKrefeld);
+        LoadAllProtocolNames(editor).Ds003a;
 
     public static IReadOnlyList<string> LoadZielnummerNames(EditableRoutePackage? editor) =>
-        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Ds003);
+        LoadAllProtocolNames(editor).Zielnummer;
 
     public static IReadOnlyList<string> LoadMobitecNames(EditableRoutePackage? editor) =>
-        LoadProtocolNames(editor, OutsideDisplayProtocolKind.Mobitec);
+        LoadAllProtocolNames(editor).Mobitec;
+
+    /// <summary>Ein Durchlauf über alle Außenanzeigen – für alle Protokoll-Combos im Stop-Editor.</summary>
+    public static ProtocolNameLists LoadAllProtocolNames(EditableRoutePackage? editor)
+    {
+        var result = new ProtocolNameLists();
+        if (editor is null)
+        {
+            return result;
+        }
+
+        var ds021t = new HashSet<string>(StringComparer.Ordinal);
+        var ds021Neu = new HashSet<string>(StringComparer.Ordinal);
+        var fmaS1 = new HashSet<string>(StringComparer.Ordinal);
+        var ds003a = new HashSet<string>(StringComparer.Ordinal);
+        var mobitec = new HashSet<string>(StringComparer.Ordinal);
+        var ds003Programs = new List<OutsideDisplayProgram>();
+
+        foreach (var entry in editor.OutsideDisplays)
+        {
+            var program = OutsideDisplayProgram.TryParse(entry);
+            if (program is null || string.IsNullOrWhiteSpace(program.Name))
+            {
+                continue;
+            }
+
+            var name = program.Name.Trim();
+            switch (program.Protocol)
+            {
+                case OutsideDisplayProtocolKind.Ds021T:
+                    ds021t.Add(name);
+                    break;
+                case OutsideDisplayProtocolKind.Ds021Neu:
+                    ds021Neu.Add(name);
+                    break;
+                case OutsideDisplayProtocolKind.FmaS1:
+                    fmaS1.Add(name);
+                    break;
+                case OutsideDisplayProtocolKind.Ds003aKrefeld:
+                    ds003a.Add(name);
+                    break;
+                case OutsideDisplayProtocolKind.Ds003:
+                    ds003Programs.Add(program);
+                    break;
+                case OutsideDisplayProtocolKind.Mobitec:
+                    mobitec.Add(name);
+                    break;
+            }
+        }
+
+        var zielnummerOrdered = new List<string>();
+        var zielnummerSeen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var program in ds003Programs
+                     .OrderBy(p => ParseZielnummerSortKey(p.FrontLine1))
+                     .ThenBy(p => p.Ds001Value?.Trim() ?? string.Empty, StringComparer.Ordinal)
+                     .ThenBy(p => p.Name.Trim(), Comparer<string>.Create(OutsideDisplayProgram.CompareZiellisteNames)))
+        {
+            var label = program.Ds003ListLabel;
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                label = program.Name.Trim();
+            }
+
+            if (zielnummerSeen.Add(label))
+            {
+                zielnummerOrdered.Add(label);
+            }
+        }
+
+        var comparer = Comparer<string>.Create(OutsideDisplayProgram.CompareZiellisteNames);
+        result.Ds021t.AddRange(ds021t.OrderBy(n => n, comparer));
+        result.Ds021Neu.AddRange(ds021Neu.OrderBy(n => n, comparer));
+        result.FmaS1.AddRange(fmaS1.OrderBy(n => n, comparer));
+        result.Ds003a.AddRange(ds003a.OrderBy(n => n, comparer));
+        result.Zielnummer.AddRange(zielnummerOrdered);
+        result.Mobitec.AddRange(mobitec.OrderBy(n => n, comparer));
+        return result;
+    }
+
+    private static int ParseZielnummerSortKey(string? frontLine1)
+    {
+        var digits = OutsideDisplayTelegramFactory.NormalizeZielnummer(frontLine1);
+        return int.TryParse(digits, out var n) ? n : int.MaxValue;
+    }
+
+    public sealed class ProtocolNameLists
+    {
+        public List<string> Ds021t { get; } = [];
+        public List<string> Ds021Neu { get; } = [];
+        public List<string> FmaS1 { get; } = [];
+        public List<string> Ds003a { get; } = [];
+        public List<string> Zielnummer { get; } = [];
+        public List<string> Mobitec { get; } = [];
+    }
 
     public static IReadOnlyList<string> LoadLineCourseTripRoutes(EditableRoutePackage? editor)
     {
@@ -107,17 +209,25 @@ public static class RouteStopEditorCatalog
             return [];
         }
 
+        // Voller Anzeigeschlüssel inkl. Verkehrstage – Tagesvarianten nicht zusammenlegen.
         var displays = editor.RouteNames
-            .Select(route => RouteDisplayHelper.Parse(route))
-            .Where(def =>
-                !string.IsNullOrWhiteSpace(def.LineCourse) ||
-                !string.IsNullOrWhiteSpace(def.TripNumber))
-            .Select(RouteDisplayHelper.ToDisplayString)
+            .Where(route =>
+            {
+                var def = RouteDisplayHelper.Parse(route);
+                return !string.IsNullOrWhiteSpace(def.LineCourse) ||
+                       !string.IsNullOrWhiteSpace(def.TripNumber);
+            })
+            .Select(route =>
+            {
+                var days = editor.GetRouteOperatingDays(route);
+                var definition = RouteDisplayHelper.Parse(route);
+                return RouteDisplayHelper.ToDisplayStringWithOperatingDays(definition, days);
+            })
             .Where(display =>
                 !string.IsNullOrWhiteSpace(display) &&
                 display != "()" &&
                 display != " (Linie: , Fahrt: )")
-            .Distinct(StringComparer.OrdinalIgnoreCase);
+            .Distinct(StringComparer.Ordinal);
 
         return RouteDisplayHelper.SortRoutesByLineCourseAndTrip(displays);
     }
@@ -189,24 +299,5 @@ public static class RouteStopEditorCatalog
 
         error = $"Fahrtnummer {tripNumberInput.Trim()} ist mehrfach vorhanden – bitte Linie/Kurs prüfen.";
         return false;
-    }
-
-    private static IReadOnlyList<string> LoadProtocolNames(
-        EditableRoutePackage? editor,
-        OutsideDisplayProtocolKind protocol)
-    {
-        if (editor is null)
-        {
-            return [];
-        }
-
-        // Alle Ziele wählbar (Planer-Haltestellen). „ITCS-Liste“ steuert nur die App-/KOM-Liste.
-        return editor.OutsideDisplays
-            .Select(OutsideDisplayProgram.TryParse)
-            .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Name) && p.Protocol == protocol)
-            .Select(p => p!.Name.Trim())
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(n => n, Comparer<string>.Create(OutsideDisplayProgram.CompareZiellisteNames))
-            .ToList();
     }
 }

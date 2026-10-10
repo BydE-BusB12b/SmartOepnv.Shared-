@@ -152,6 +152,17 @@ public static class BetriebProfileStore
         SaveRegistry(registry);
     }
 
+    /// <summary>Profil mit gleichem Dropbox-Ordner (normalisiert, case-insensitive).</summary>
+    public static BetriebProfile? FindByDropboxFolderPath(string? folderPath)
+    {
+        var normalized = DropboxConstants.NormalizeFolderPath(folderPath);
+        return ListProfiles().FirstOrDefault(p =>
+            string.Equals(
+                DropboxConstants.NormalizeFolderPath(p.DropboxFolderPath),
+                normalized,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
     private static BetriebProfile CreateProfile(
         string displayName,
         string dropboxFolderPath,

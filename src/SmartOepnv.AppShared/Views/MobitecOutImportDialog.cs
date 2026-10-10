@@ -17,16 +17,20 @@ public sealed class MobitecOutImportDialog : Window
 {
     private readonly ObservableCollection<Row> _rows;
     private readonly TextBlock _selectionSummary;
+    private readonly HashSet<string> _existingMobitecIds;
 
     public IReadOnlyList<(MobitecOutImportDestination Destination, string SaveName)> SelectedImports =>
         _rows.Where(r => r.IsSelected)
             .Select(r => (r.Destination, string.IsNullOrWhiteSpace(r.SaveName) ? r.SuggestedName : r.SaveName.Trim()))
             .ToList();
 
-    public MobitecOutImportDialog(string fileName, IReadOnlyList<MobitecOutImportDestination> destinations)
+    public MobitecOutImportDialog(
+        string fileName,
+        IReadOnlyList<MobitecOutImportDestination> destinations,
+        IEnumerable<string>? existingMobitecIds = null)
     {
         Title = $"Mobitec OUT importieren – {fileName}";
-        Width = 980;
+        Width = 1000;
         Height = 640;
         MinWidth = 720;
         MinHeight = 420;
@@ -34,16 +38,34 @@ public sealed class MobitecOutImportDialog : Window
         Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
         Foreground = Brushes.White;
 
+        _existingMobitecIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (existingMobitecIds is not null)
+        {
+            foreach (var raw in existingMobitecIds)
+            {
+                var id = OutsideDisplayId.Normalize(raw);
+                if (id.Length == 4 && id.All(char.IsDigit))
+                {
+                    _existingMobitecIds.Add(id);
+                }
+            }
+        }
+
         var nameCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         _rows = new ObservableCollection<Row>(
             destinations.Select((d, i) =>
             {
                 var suggested = MobitecTransOutImporter.SuggestDisplayName(d, nameCount);
-                var row = new Row(i + 1, d, suggested);
+                var row = new Row(i + 1, d, suggested, IsExistingDestination(d.DestinationNumber));
                 row.PropertyChanged += (_, e) =>
                 {
                     if (e.PropertyName is nameof(Row.IsSelected))
                     {
+                        UpdateSelectionSummary();
+                    }
+                    else if (e.PropertyName is nameof(Row.DestinationNumber))
+                    {
+                        row.SetExistsAlready(IsExistingDestination(row.DestinationNumber));
                         UpdateSelectionSummary();
                     }
                 };
@@ -67,8 +89,9 @@ public sealed class MobitecOutImportDialog : Window
 
         var hint = new TextBlock
         {
-            Text = "Linie zeigt „Grafik“, wenn in der OUT ein Linien-Bitmap steckt (z. B. Tasse, McD-Logo). " +
-                   "Unter „Speichername“ legst du den Namen in der Zielliste fest. Nur markierte Zeilen werden importiert.",
+            Text = "Zielnr. = ICU-/ZEdit-Nummer (Upsert-Schlüssel, unabhängig von der App-ID). " +
+                   "„!“ = diese Zielnummer gibt es bereits – Import aktualisiert dieses Ziel. " +
+                   "Linie zeigt „Grafik“ bei Linien-Bitmap. Nur markierte Zeilen werden importiert.",
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.75,
             FontSize = 12,
@@ -140,9 +163,10 @@ public sealed class MobitecOutImportDialog : Window
     public static IReadOnlyList<(MobitecOutImportDestination Destination, string SaveName)>? Show(
         Window? owner,
         string fileName,
-        IReadOnlyList<MobitecOutImportDestination> destinations)
+        IReadOnlyList<MobitecOutImportDestination> destinations,
+        IEnumerable<string>? existingMobitecIds = null)
     {
-        var dialog = new MobitecOutImportDialog(fileName, destinations);
+        var dialog = new MobitecOutImportDialog(fileName, destinations, existingMobitecIds);
         var ok = DialogOwnerHelper.ShowOwnedDialog(dialog, owner) == true;
         return ok ? dialog.SelectedImports : null;
     }
@@ -176,11 +200,6 @@ public sealed class MobitecOutImportDialog : Window
         checkStyle.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center));
         checkStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(6, 0, 2, 0)));
 
-        var nrStyle = new Style(typeof(TextBlock));
-        nrStyle.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right));
-        nrStyle.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center));
-        nrStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(4, 0, 8, 0)));
-
         var checkCol = new DataGridCheckBoxColumn
         {
             Header = "Imp.",
@@ -197,15 +216,46 @@ public sealed class MobitecOutImportDialog : Window
         };
         grid.Columns.Add(checkCol);
 
-        var nrCol = new DataGridTextColumn
+        var warnBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07));
+        var nrFactory = new FrameworkElementFactory(typeof(DockPanel));
+
+        var bangFactory = new FrameworkElementFactory(typeof(TextBlock));
+        bangFactory.SetValue(DockPanel.DockProperty, Dock.Left);
+        bangFactory.SetValue(FrameworkElement.WidthProperty, 16.0);
+        bangFactory.SetValue(FrameworkElement.MarginProperty, new Thickness(2, 0, 2, 0));
+        bangFactory.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
+        bangFactory.SetValue(TextBlock.FontSizeProperty, 15.0);
+        bangFactory.SetValue(TextBlock.ForegroundProperty, warnBrush);
+        bangFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        bangFactory.SetValue(TextBlock.TextAlignmentProperty, TextAlignment.Center);
+        bangFactory.SetValue(FrameworkElement.ToolTipProperty, "Zielnummer existiert bereits – wird aktualisiert");
+        bangFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(Row.ExistsMarker)));
+
+        var numFactory = new FrameworkElementFactory(typeof(TextBox));
+        numFactory.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 1, 4, 1));
+        numFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        numFactory.SetValue(Control.BackgroundProperty, Brushes.Transparent);
+        numFactory.SetValue(Control.BorderThicknessProperty, new Thickness(0));
+        numFactory.SetValue(Control.ForegroundProperty, Brushes.White);
+        numFactory.SetValue(Control.PaddingProperty, new Thickness(2, 0, 2, 0));
+        numFactory.SetBinding(
+            TextBox.TextProperty,
+            new Binding(nameof(Row.DestinationNumber))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.LostFocus
+            });
+
+        nrFactory.AppendChild(bangFactory);
+        nrFactory.AppendChild(numFactory);
+
+        var nrCol = new DataGridTemplateColumn
         {
-            Header = "Nr.",
-            Binding = new Binding(nameof(Row.Number)),
-            IsReadOnly = true,
-            Width = 56,
-            MinWidth = 56,
+            Header = "Zielnr.",
+            Width = 88,
+            MinWidth = 80,
             CanUserResize = false,
-            ElementStyle = nrStyle
+            CellTemplate = new DataTemplate { VisualTree = nrFactory }
         };
         grid.Columns.Add(nrCol);
 
@@ -248,6 +298,10 @@ public sealed class MobitecOutImportDialog : Window
         return grid;
     }
 
+    private bool IsExistingDestination(int destinationNumber) =>
+        destinationNumber is >= 0 and <= 9999 &&
+        _existingMobitecIds.Contains(destinationNumber.ToString("D4"));
+
     private void SetAll(bool selected)
     {
         foreach (var row in _rows)
@@ -261,7 +315,10 @@ public sealed class MobitecOutImportDialog : Window
     private void UpdateSelectionSummary()
     {
         var n = _rows.Count(r => r.IsSelected);
-        _selectionSummary.Text = $"{n} von {_rows.Count} ausgewählt";
+        var existing = _rows.Count(r => r.IsSelected && r.ExistsAlready);
+        _selectionSummary.Text = existing > 0
+            ? $"{n} von {_rows.Count} ausgewählt ({existing} bereits vorhanden)"
+            : $"{n} von {_rows.Count} ausgewählt";
     }
 
     private static Button MakeButton(string text, RoutedEventHandler onClick, bool outlined = false, double marginLeft = 0)
@@ -292,24 +349,63 @@ public sealed class MobitecOutImportDialog : Window
     {
         private bool _isSelected = true;
         private string _saveName;
+        private bool _existsAlready;
 
-        public Row(int number, MobitecOutImportDestination destination, string suggestedName)
+        public Row(int number, MobitecOutImportDestination destination, string suggestedName, bool existsAlready)
         {
-            Number = number;
             Destination = destination;
+            if (destination.DestinationNumber is < 0 or > 9999)
+            {
+                destination.DestinationNumber = number;
+            }
+
             SuggestedName = suggestedName;
             _saveName = suggestedName;
+            _existsAlready = existsAlready;
             LinePreview = destination.LinePreview;
             FrontPreview = destination.FrontPreview;
             SidePreview = destination.SidePreview;
         }
 
-        public int Number { get; }
         public MobitecOutImportDestination Destination { get; }
         public string SuggestedName { get; }
         public string LinePreview { get; }
         public string FrontPreview { get; }
         public string SidePreview { get; }
+
+        /// <summary>ICU-/ZEdit-Zielnummer (0–9999), editierbar für Upsert.</summary>
+        public int DestinationNumber
+        {
+            get => Destination.DestinationNumber;
+            set
+            {
+                var n = Math.Clamp(value, 0, 9999);
+                if (Destination.DestinationNumber == n)
+                {
+                    return;
+                }
+
+                Destination.DestinationNumber = n;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool ExistsAlready => _existsAlready;
+
+        /// <summary>„!“ wenn die Zielnummer bereits als Mobitec-Programm existiert.</summary>
+        public string ExistsMarker => _existsAlready ? "!" : string.Empty;
+
+        public void SetExistsAlready(bool exists)
+        {
+            if (_existsAlready == exists)
+            {
+                return;
+            }
+
+            _existsAlready = exists;
+            OnPropertyChanged(nameof(ExistsAlready));
+            OnPropertyChanged(nameof(ExistsMarker));
+        }
 
         public bool IsSelected
         {

@@ -118,6 +118,10 @@ public static class RouteDisplayHelper
         return string.IsNullOrEmpty(name) ? prefix : $"{prefix}  {name}";
     }
 
+    /// <summary>Verkehrstags-Kennung aus dem Anzeigeschlüssel (leer = keine / alle Tage).</summary>
+    public static string GetVerkehrLabel(string? displayString) =>
+        ExtractVerkehrLabel(displayString ?? string.Empty);
+
     private static string ExtractVerkehrLabel(string displayString)
     {
         var text = (displayString ?? string.Empty).Trim();
@@ -179,10 +183,21 @@ public static class RouteDisplayHelper
     public static string ToCanonicalRouteKey(string routeKey) =>
         ToDistributionDisplayString(routeKey);
 
+    /// <summary>Gleiche Fahrt (Name/Linie/Kurs/Fahrtnummer), Verkehrstage werden ignoriert.</summary>
     public static bool RouteKeysMatch(string? left, string? right) =>
         string.Equals(
             ToCanonicalRouteKey(left ?? string.Empty),
             ToCanonicalRouteKey(right ?? string.Empty),
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gleiche Fahrt und gleiche Verkehrstags-Kennung (z. B. Di vs. Mo/Mi–Fr bleiben getrennt).
+    /// </summary>
+    public static bool RouteKeysMatchSameSchedule(string? left, string? right) =>
+        RouteKeysMatch(left, right) &&
+        string.Equals(
+            GetVerkehrLabel(left),
+            GetVerkehrLabel(right),
             StringComparison.OrdinalIgnoreCase);
 
     public static RouteDefinition Parse(string displayString)
@@ -471,7 +486,17 @@ public static class RouteDisplayHelper
 
         var name1 = (Parse(route1).Name ?? route1).Trim();
         var name2 = (Parse(route2).Name ?? route2).Trim();
-        return string.Compare(name1, name2, StringComparison.OrdinalIgnoreCase);
+        var nameComparison = string.Compare(name1, name2, StringComparison.OrdinalIgnoreCase);
+        if (nameComparison != 0)
+        {
+            return nameComparison;
+        }
+
+        // Gleiche Linie/Fahrt/Name, aber z. B. „Verkehr: Dienstag“ vs. „Montag…“ getrennt halten.
+        return string.Compare(
+            GetVerkehrLabel(route1),
+            GetVerkehrLabel(route2),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static (string LineCourse, string TripNumber) ExtractLineCourseAndTrip(string route)

@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using SmartOepnv.AppShared.Mitteilungen;
+using SmartOepnv.AppShared.Pdf;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Mitteilungen;
 using SmartOepnv.Core.RoutePackage;
@@ -378,7 +379,7 @@ public partial class MitteilungViewModel : ObservableObject
         ValidFromText = DateTime.Today.ToString("dd.MM.yyyy");
         ValidToText = string.Empty;
         UntilRevoked = false;
-        ShowSmartOepnvLogo = true;
+        ShowSmartOepnvLogo = PlanerPdfBranding.IsSmartOepnvLogoEnabledInPdfs();
         SelectedCompanyLogoId = CompanyLogoOptions.FirstOrDefault()?.Id ?? string.Empty;
         SignerNameAndDate = DateTime.Today.ToString("dd.MM.yyyy");
         SelectedSignatureId = string.Empty;

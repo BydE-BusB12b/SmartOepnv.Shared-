@@ -282,10 +282,17 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
         IEnumerable<string> source = _allNames;
         if (!string.IsNullOrWhiteSpace(query))
         {
-            source = _allNames.Where(n => EmbeddedSoundSearch.Matches(
-                n,
-                query,
-                _searchHintsByFileName.GetValueOrDefault(n)));
+            source = _allNames
+                .Select(n => (
+                    Name: n,
+                    Score: EmbeddedSoundSearch.Score(
+                        n,
+                        query,
+                        _searchHintsByFileName.GetValueOrDefault(n))))
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Name);
         }
 
         foreach (var name in source)

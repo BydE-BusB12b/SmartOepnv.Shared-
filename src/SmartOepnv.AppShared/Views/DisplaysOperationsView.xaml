@@ -55,12 +55,23 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="Anzeigen &amp; Hinweise"
                        FontWeight="SemiBold"
                        FontSize="18"
                        VerticalAlignment="Center" />
-            <StackPanel Grid.Column="1"
+            <TextBox Grid.Column="1"
+                     Margin="16,0,16,0"
+                     VerticalAlignment="Center"
+                     MaxWidth="360"
+                     HorizontalAlignment="Stretch"
+                     materialDesign:HintAssist.Hint="Anzeigen suchen…"
+                     materialDesign:HintAssist.IsFloating="False"
+                     materialDesign:TextFieldAssist.HasClearButton="True"
+                     Text="{Binding OutsideProgramSearchText, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="Suche nach Name, ID, Zielnummer, Linie oder Text" />
+            <StackPanel Grid.Column="2"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center">
@@ -68,7 +79,7 @@
                         Command="{Binding SelectTabCommand}"
                         CommandParameter="zielliste"
                         Style="{StaticResource DisplaysOpsZiellisteTabButtonStyle}"
-                        Margin="12,0,8,0" />
+                        Margin="0,0,8,0" />
                 <Button Content="Datumgesteuerte Hinweise"
                         Command="{Binding SelectTabCommand}"
                         CommandParameter="hints"
@@ -95,7 +106,7 @@
                      VerticalContentAlignment="Stretch">
                 <Grid Margin="0,8,0,0" VerticalAlignment="Stretch">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="300" />
+                        <ColumnDefinition Width="320" MinWidth="280" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
@@ -106,12 +117,51 @@
                                          VerticalAlignment="Stretch"
                                          Background="{StaticResource SmartSurfaceBrush}">
                         <DockPanel LastChildFill="True">
-                            <TextBlock DockPanel.Dock="Top"
-                                       Text="Zielliste"
-                                       FontWeight="SemiBold"
-                                       FontSize="15"
-                                       Margin="0,0,0,8" />
-                            <ListBox ItemsSource="{Binding OutsidePrograms}"
+                            <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0"
+                                           Text="Zielliste"
+                                           FontWeight="SemiBold"
+                                           FontSize="15"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,0,6" />
+                                <ComboBox Grid.Row="1"
+                                          Style="{StaticResource SmartDarkComboBox}"
+                                          ItemsSource="{Binding ProtocolFilterOptions}"
+                                          SelectedItem="{Binding SelectedProtocolFilter, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch"
+                                          MinWidth="280"
+                                          MinHeight="36"
+                                          Margin="0,0,0,6"
+                                          materialDesign:HintAssist.Hint="Protokoll"
+                                          ToolTip="Protokoll filtern">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextTrimming="None" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <ComboBox Grid.Row="2"
+                                          Style="{StaticResource SmartDarkComboBox}"
+                                          ItemsSource="{Binding OutsideProgramSortOptions}"
+                                          SelectedItem="{Binding SelectedOutsideProgramSort, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch"
+                                          MinWidth="280"
+                                          MinHeight="36"
+                                          materialDesign:HintAssist.Hint="Sortierung"
+                                          ToolTip="Zielliste sortieren">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextTrimming="None" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <ListBox ItemsSource="{Binding OutsideProgramsView}"
                                      SelectedItem="{Binding SelectedOutsideProgram}"
                                      BorderThickness="0"
                                      Background="Transparent"
@@ -138,8 +188,8 @@
                                                        Opacity="0.7"
                                                        Margin="0,2,0,0">
                                                 <TextBlock.Text>
-                                                    <MultiBinding StringFormat="ID {0} · {1}">
-                                                        <Binding Path="DisplayNumber" Mode="OneWay" />
+                                                    <MultiBinding StringFormat="{}{0} · {1}">
+                                                        <Binding Path="ListNumberLabel" Mode="OneWay" />
                                                         <Binding Path="ProtocolLabel" Mode="OneWay" />
                                                     </MultiBinding>
                                                 </TextBlock.Text>
@@ -189,11 +239,46 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
+                                            <TextBlock FontSize="11"
+                                                       Opacity="0.9"
+                                                       TextWrapping="Wrap"
+                                                       Text="{Binding Ds003ListLabel, Mode=OneWay}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDs003}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDs003}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
                                                 <Run Text="Front: " FontWeight="SemiBold" />
                                                 <Run Text="{Binding WechseltextPreview, Mode=OneWay}" />
                                             </TextBlock>
                                             <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDs003}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
                                                 <Run Text="Seite: " FontWeight="SemiBold" />
                                                 <Run Text="{Binding SidePreview, Mode=OneWay}" />
                                             </TextBlock>
@@ -342,6 +427,8 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="72" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="72" />
                                             </Grid.ColumnDefinitions>
                                             <TextBox Grid.Column="0"
                                                      Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
@@ -349,11 +436,43 @@
                                             <TextBlock Grid.Column="1"
                                                        Text="ID"
                                                        VerticalAlignment="Center"
-                                                       Margin="0,0,8,0" />
+                                                       Margin="0,0,8,0"
+                                                       ToolTip="App-eigene Ziel-ID (eindeutig, unabhängig von der Mobitec-Zielnummer)." />
                                             <TextBox Grid.Column="2"
                                                      Text="{Binding IdEditText, UpdateSourceTrigger=LostFocus}"
                                                      MaxLength="4"
-                                                     ToolTip="Vierstellige Ziel-ID (0001–9999)" />
+                                                     ToolTip="App-eigene ID (0001–9999). Unabhängig von der ICU-/ZEdit-Zielnummer." />
+                                            <TextBlock Grid.Column="3"
+                                                       Text="Zielnr."
+                                                       VerticalAlignment="Center"
+                                                       Margin="12,0,8,0"
+                                                       ToolTip="Mobitec-/ICU-Zielnummer aus der OUT-Datei (unabhängig von der App-ID).">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBox Grid.Column="4"
+                                                     Text="{Binding DestinationNumberEditText, UpdateSourceTrigger=LostFocus}"
+                                                     MaxLength="4"
+                                                     ToolTip="ICU-/ZEdit-Zielnummer (0000–9999). Erneuter OUT-Import aktualisiert darüber dasselbe Ziel.">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
                                         </Grid>
 
                                         <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
@@ -465,18 +584,44 @@
                                                      Text="{Binding FrontLine2, UpdateSourceTrigger=LostFocus}" />
                                         </Grid>
 
-                                        <!-- Zielnummer -->
+                                        <!-- Zielnummer | Linie (Front z999) -->
                                         <Grid Grid.Row="4" Grid.ColumnSpan="2" Margin="0,0,0,8"
                                               Visibility="{Binding IsZielnummer, Converter={StaticResource BoolToVis}}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0" Text="Zielnummer (DS003)" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                            <TextBox Grid.Column="1"
+                                            <TextBox Grid.Column="1" Margin="0,0,12,0"
                                                      materialDesign:HintAssist.Hint="z. B. 001 … 030"
                                                      ToolTip="IBIS DS003: Tablet sendet z001&lt;CR&gt;+Parität – nur die Nummer, kein Klartext."
                                                      Text="{Binding FrontLine1, UpdateSourceTrigger=LostFocus}" />
+                                            <TextBlock Grid.Column="2" Text="Linie" VerticalAlignment="Center" Margin="0,0,8,0"
+                                                       ToolTip="Front z999 aus der Zielliste (z. B. 681, SEV, [03]). Nur Dokumentation/Liste – wird nicht als DS003 gesendet." />
+                                            <TextBox Grid.Column="3"
+                                                     materialDesign:HintAssist.Hint="z. B. 681 / SEV / [03]"
+                                                     ToolTip="Front z999 aus der Zielliste (z. B. 681, SEV, [03]). Nur Dokumentation/Liste – wird nicht als DS003 gesendet."
+                                                     Text="{Binding Ds001Value, UpdateSourceTrigger=LostFocus}" />
+                                        </Grid>
+
+                                        <!-- Beschreibung/Seite nur bei DS003-Zielnummer (kein Klartext auf der Front) -->
+                                        <Grid Grid.Row="5" Grid.ColumnSpan="2" Margin="0,0,0,8"
+                                              Visibility="{Binding IsZielnummer, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="Beschreibung/Seite"
+                                                       VerticalAlignment="Center"
+                                                       Margin="0,0,8,0"
+                                                       ToolTip="Seite z999: zwei Zeilen mit „/“ verbinden, z. B. Wald-Graf-Wilh.-Platz/Höhscheid-Brockenberg." />
+                                            <TextBox Grid.Column="1"
+                                                     materialDesign:HintAssist.Hint="z. B. Zeile1/Zeile2"
+                                                     ToolTip="Seite z999: zwei Zeilen mit „/“ verbinden, z. B. Wald-Graf-Wilh.-Platz/Höhscheid-Brockenberg."
+                                                     Text="{Binding SideLine1, UpdateSourceTrigger=LostFocus}" />
                                         </Grid>
 
                                         <!-- Seite Zeile 1 | 2 (Wechseltext) -->

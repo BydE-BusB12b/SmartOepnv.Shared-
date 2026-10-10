@@ -282,20 +282,29 @@ public partial class RoutePathEditorView : UserControl
                         GetMessageString(root["to"]));
                     break;
                 case "segmentSelected":
+                    // Kein PushDraftToMap: Karte hat die Auswahl schon – sonst wird ein
+                    // frisches Doppelklick-Symbol mit dem alten Planer-Stand überschrieben.
                     _viewModel?.SetSelectedSegment(
                         GetMessageString(root["from"]),
                         GetMessageString(root["to"]),
                         GetMessageInt(root["maneuverIndex"]),
-                        GetMessageInt(root["segmentOrder"]));
+                        GetMessageInt(root["segmentOrder"]),
+                        pushToMap: false);
                     break;
                 case "navSymbolSelected":
-                    // Nur Auswahl – kein erneutes ApplyDraftJsonFromMap (verhindert Doppel-Liste nach „Symbol übernehmen“ / Klick-Durchgriff).
+                    // Doppelklick: draftJson mitübernehmen und speichern (nicht nur Auswahl).
+                    var navRecordUndo = root["recordUndo"] is JsonValue navUndoFlag &&
+                                        navUndoFlag.TryGetValue<bool>(out var navUndo) &&
+                                        navUndo;
                     _viewModel?.SelectNavManeuverFromMap(
                         GetMessageString(root["from"]),
                         GetMessageString(root["to"]),
                         GetMessageInt(root["maneuverIndex"]),
                         GetMessageString(root["symbolType"]),
-                        GetMessageString(root["instruction"]));
+                        GetMessageString(root["instruction"]),
+                        GetMessageString(root["draftJson"]),
+                        navRecordUndo,
+                        GetMessageString(root["mapMarkerKey"]));
                     break;
                 case "mapSelectionCleared":
                     _viewModel?.ClearNavSymbolSelectionFromMap();

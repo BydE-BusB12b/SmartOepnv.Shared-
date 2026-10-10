@@ -70,6 +70,21 @@
 
                              Margin="0,0,0,6" />
 
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <Button Content="{Binding SortByIdButtonLabel}"
+                                Command="{Binding SortListByIdCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,4,0"
+                                Padding="8,2"
+                                ToolTip="Nach Ansagen-ID sortieren (Klick: auf-/absteigend)" />
+                        <Button Content="{Binding SortByNameButtonLabel}"
+                                Command="{Binding SortListByNameCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="4,0,0,0"
+                                Padding="8,2"
+                                ToolTip="Nach Bezeichnung sortieren (Klick: auf-/absteigend)" />
+                    </UniformGrid>
+
                     <TextBlock Text="✓ Ton zugeordnet   ·   ⚠ keine Tondatei   ·   Gelb = Zusammenfüge-Ansage (_zusammen)"
                                Opacity="0.65"
                                FontSize="10"
@@ -120,7 +135,7 @@
 
                     <Button Grid.Column="0"
 
-                            Content="Neue Ansage"
+                            Content="Neue Ansage(n)"
 
                             Command="{Binding AddAnnouncementWithAudioCommand}"
 
@@ -128,7 +143,8 @@
 
                             Margin="0,0,4,0"
 
-                            Padding="10,4" />
+                            Padding="10,4"
+                            ToolTip="Eine oder viele WAV/MP3 wählen (Strg+A / Mehrfachauswahl). Speichername = Dateiname ohne Endung." />
 
                     <Button Grid.Column="1"
 
@@ -694,9 +710,9 @@
 
                                            Margin="0,0,0,4" />
 
-                                <ListBox ItemsSource="{Binding AnnouncementSequence}"
+                                <ListBox ItemsSource="{Binding DataContext.AnnouncementSequence, RelativeSource={RelativeSource AncestorType=UserControl}}"
 
-                                         SelectedItem="{Binding SelectedSequenceItem}"
+                                         SelectedItem="{Binding DataContext.SelectedSequenceItem, RelativeSource={RelativeSource AncestorType=UserControl}}"
 
                                          DisplayMemberPath="ListLabel"
 
@@ -714,9 +730,12 @@
 
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
 
+                                    <!-- Focusable=False: sonst verliert die ListBox die Auswahl vor dem Command -->
                                     <Button Content="↑"
 
-                                            Command="{Binding MoveSequenceItemUpCommand}"
+                                            Focusable="False"
+
+                                            Command="{Binding DataContext.MoveSequenceItemUpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
 
                                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
@@ -728,7 +747,9 @@
 
                                     <Button Content="↓"
 
-                                            Command="{Binding MoveSequenceItemDownCommand}"
+                                            Focusable="False"
+
+                                            Command="{Binding DataContext.MoveSequenceItemDownCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
 
                                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
@@ -740,7 +761,9 @@
 
                                     <Button Content="Ersetzen"
 
-                                            Command="{Binding ReplaceSequenceItemCommand}"
+                                            Focusable="False"
+
+                                            Command="{Binding DataContext.ReplaceSequenceItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
 
                                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
@@ -752,13 +775,16 @@
 
                                     <Button Content="Löschen"
 
-                                            Command="{Binding RemoveSequenceItemCommand}"
+                                            Focusable="False"
+
+                                            Command="{Binding DataContext.RemoveSequenceItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
 
                                             Style="{StaticResource MaterialDesignOutlinedButton}"
 
                                             Foreground="White"
 
-                                            MinWidth="72" />
+                                            MinWidth="72"
+                                            ToolTip="Gewählten Sequenz-Eintrag entfernen (wie ✕ bei nur einem Ton)" />
 
                                 </StackPanel>
 

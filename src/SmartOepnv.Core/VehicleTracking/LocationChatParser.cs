@@ -75,6 +75,8 @@ public static class LocationChatParser
                 Destination = ReadOptionalString(loc, "destination"),
                 DriverName = driverName,
                 DriverPersonnelNumber = ReadOptionalString(loc, "driverPersonnelNumber"),
+                PasInfoActive = TryReadOptionalBool(loc, "pasInfoActive"),
+                BluetoothActive = TryReadOptionalBool(loc, "bluetoothActive"),
                 BatteryLevel = loc.TryGetProperty("batteryLevel", out var bat) && bat.TryGetInt32(out var b) && b >= 0 ? b : null,
                 DelaySeconds = loc.TryGetProperty("delaySeconds", out var delay) && delay.TryGetInt32(out var d) ? d : null,
                 AppVersion = ReadOptionalString(loc, "appVersion"),
@@ -210,6 +212,24 @@ public static class LocationChatParser
 
         var s = prop.GetString()?.Trim();
         return string.IsNullOrWhiteSpace(s) ? null : s;
+    }
+
+    private static bool? TryReadOptionalBool(JsonElement obj, string property)
+    {
+        if (!obj.TryGetProperty(property, out var prop))
+        {
+            return null;
+        }
+
+        return prop.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number when prop.TryGetInt32(out var n) => n != 0,
+            JsonValueKind.String when bool.TryParse(prop.GetString(), out var b) => b,
+            JsonValueKind.String when int.TryParse(prop.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) => n != 0,
+            _ => null
+        };
     }
 
     private static long? ReadOptionalLong(JsonElement obj, string property)

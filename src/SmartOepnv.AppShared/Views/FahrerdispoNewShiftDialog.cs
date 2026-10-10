@@ -91,7 +91,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
         IReadOnlyList<EmployeeRosterItem> employees,
         DateTime defaultDate,
         DriverDispositionAssignment? existing = null,
-        IReadOnlyList<DriverDispositionAssignment>? existingAssignments = null)
+        IReadOnlyList<DriverDispositionAssignment>? existingAssignments = null,
+        string? defaultDriverKey = null)
     {
         _existingAssignments = existingAssignments ?? [];
         _employees = employees;
@@ -101,17 +102,19 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var isSplitEdit = isEdit && existing!.IsSplitShift;
         var startLocal = isEdit
             ? DateTimeOffset.FromUnixTimeMilliseconds(existing!.StartEpochMs).LocalDateTime
-            : defaultDate;
+            : defaultDate.TimeOfDay == TimeSpan.Zero
+                ? defaultDate.Date.AddHours(6)
+                : defaultDate;
         var endLocal = isEdit
             ? DateTimeOffset.FromUnixTimeMilliseconds(existing!.EndEpochMs).LocalDateTime
-            : defaultDate;
+            : startLocal.AddHours(8);
         var part1EndLocal = isSplitEdit
             ? DateTimeOffset.FromUnixTimeMilliseconds(existing!.Part1EndEpochMs).LocalDateTime
-            : defaultDate.Date.AddHours(10);
+            : startLocal.Date.AddHours(10);
         var part2StartLocal = isSplitEdit
             ? DateTimeOffset.FromUnixTimeMilliseconds(existing!.Part2StartEpochMs).LocalDateTime
-            : defaultDate.Date.AddHours(14);
-        var part2EndLocal = isSplitEdit ? endLocal : defaultDate.Date.AddHours(18);
+            : startLocal.Date.AddHours(14);
+        var part2EndLocal = isSplitEdit ? endLocal : startLocal.Date.AddHours(18);
 
         WindowTitleBarHelper.ApplyDarkWindowBackground(this);
         WindowTitleBarHelper.ApplySmartOepnvTitleBar(this);
@@ -159,6 +162,11 @@ public sealed class FahrerdispoNewShiftDialog : Window
         if (isEdit)
         {
             _employeeBox.SelectedValue = existing!.DriverKey;
+        }
+        else if (!string.IsNullOrWhiteSpace(defaultDriverKey) &&
+                 options.Any(o => string.Equals(o.Key, defaultDriverKey, StringComparison.Ordinal)))
+        {
+            _employeeBox.SelectedValue = defaultDriverKey;
         }
         else if (options.Count > 0)
         {
@@ -235,7 +243,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var existingDutyNumber = isEdit
             ? (!string.IsNullOrWhiteSpace(existing!.DutyNumber) ? existing.DutyNumber : existing.Label)
             : string.Empty;
-        _shiftNameBox = MakeInput("301", existingDutyNumber);
+        _shiftNameBox = MakeInput("301 oder Bereitschaft", existingDutyNumber);
+        _shiftNameBox.TextChanged += (_, _) => UpdateComplianceHints(autoFillTime: false);
         dutyNumberPanel.Children.Add(_shiftNameBox);
         Grid.SetColumn(dutyNumberPanel, 2);
         templateDutyRow.Children.Add(dutyNumberPanel);
@@ -552,7 +561,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
                     Part1EndEpochMs,
                     Part2StartEpochMs,
                     templateMinutes.DrivingMinutes,
-                    templateMinutes.ServiceDurationMinutes))
+                    templateMinutes.ServiceDurationMinutes,
+                    dutyNumber: SelectedDutyNumber))
             {
                 ShowError(complianceError);
                 return;
@@ -607,6 +617,21 @@ public sealed class FahrerdispoNewShiftDialog : Window
             _extendedDrivingCheck.IsEnabled = false;
             _extendedDailyShiftCheck.IsEnabled = false;
             _reducedWeeklyRestCheck.IsEnabled = false;
+            return;
+        }
+
+        if (DriverDispositionDutyNumberRules.IsStandbyDuty(_shiftNameBox.Text))
+        {
+            _earliestStartHint.Text = string.Empty;
+            _complianceHint.Text = DriverDispositionCompliance.StandbyDutyHint;
+            _reducedRestCheck.IsEnabled = false;
+            _reducedRestCheck.IsChecked = false;
+            _extendedDrivingCheck.IsEnabled = false;
+            _extendedDrivingCheck.IsChecked = false;
+            _extendedDailyShiftCheck.IsEnabled = false;
+            _extendedDailyShiftCheck.IsChecked = false;
+            _reducedWeeklyRestCheck.IsEnabled = false;
+            _reducedWeeklyRestCheck.IsChecked = false;
             return;
         }
 
@@ -756,7 +781,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
                 GetPreviewPart1EndEpochMs(),
                 GetPreviewPart2StartEpochMs(),
                 knownDrivingMinutes,
-                knownServiceDurationMinutes))
+                knownServiceDurationMinutes,
+                dutyNumber: _shiftNameBox.Text))
         {
             ShowError(complianceError);
         }

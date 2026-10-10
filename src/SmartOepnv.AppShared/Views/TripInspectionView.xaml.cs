@@ -105,6 +105,17 @@ public partial class TripInspectionView : UserControl
 
         _viewModel.PushTraceToMapRequested -= OnPushTraceToMap;
         _viewModel.PushTraceToMapRequested += OnPushTraceToMap;
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TripInspectionViewModel.IsTimelineOpen) &&
+            _viewModel is { IsTimelineOpen: false })
+        {
+            _ = InvalidateMapSizeAsync();
+        }
     }
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)

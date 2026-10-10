@@ -63,7 +63,8 @@ public static class OutsideDisplayId
         }
 
         var digits = new string(input.Where(char.IsDigit).ToArray());
-        if (digits.Length == 0 || !int.TryParse(digits, out var n) || n is < 1 or > 9999)
+        // 0000 erlaubt (z. B. DS003-Zielnummer 000 = ID 0000)
+        if (digits.Length == 0 || !int.TryParse(digits, out var n) || n is < 0 or > 9999)
         {
             return null;
         }
@@ -77,7 +78,7 @@ public static class OutsideDisplayId
         return id.Length == 4 &&
                id.All(char.IsDigit) &&
                int.TryParse(id, out var n) &&
-               n is >= 1 and <= 9999;
+               n is >= 0 and <= 9999;
     }
 
     public static bool IsValid(string? raw)

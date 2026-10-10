@@ -1,8 +1,10 @@
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Windows;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -29,9 +31,11 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     private int _loadedRevision = -1;
     private OutsideDisplayProgram? _subscribedOutsideProgram;
     private string? _selectedProgramIdSnapshot;
+    private int? _selectedDestinationNumberSnapshot;
     private bool _isSortingPrograms;
     private bool _suppressIdCollisionCheck;
     private CancellationTokenSource? _saveFeedbackCts;
+    private readonly SearchQueryDebouncer _outsideSearchDebouncer;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private DateBasedHintItem? selectedHint;
@@ -42,14 +46,48 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [ObservableProperty] private string newHintEndDate = string.Empty;
     [ObservableProperty] private DisplaysOperationsButtonState saveButtonState = DisplaysOperationsButtonState.Idle;
     [ObservableProperty] private int selectedTabIndex;
+    [ObservableProperty] private string outsideProgramSearchText = string.Empty;
+    [ObservableProperty] private string selectedProtocolFilter = "Alle";
+    [ObservableProperty] private string selectedOutsideProgramSort = "ID ↑";
 
     public ObservableCollection<DateBasedHintItem> DateBasedHints { get; } = [];
     public ObservableCollection<OutsideDisplayProgram> OutsidePrograms { get; } = [];
+
+    /// <summary>Gefilterte Zielliste (Suche + Protokoll).</summary>
+    public ICollectionView OutsideProgramsView { get; }
+
+    public IReadOnlyList<string> ProtocolFilterOptions { get; } =
+    [
+        "Alle",
+        "Mobitec",
+        "DS021T",
+        "DS021neu",
+        "FMA-S1",
+        "DS003",
+        "DS003a Krefeld"
+    ];
+
+    public IReadOnlyList<string> OutsideProgramSortOptions { get; } =
+    [
+        "ID ↑",
+        "ID ↓",
+        "Zielnummer ↑",
+        "Zielnummer ↓",
+        "Linie ↑",
+        "Linie ↓",
+        "Name ↑",
+        "Name ↓"
+    ];
 
     public bool HasPendingChanges => _hasUnsavedChanges;
 
     public DisplaysOperationsViewModel()
     {
+        OutsideProgramsView = CollectionViewSource.GetDefaultView(OutsidePrograms);
+        OutsideProgramsView.Filter = FilterOutsideProgram;
+        ApplyOutsideProgramSort();
+        _outsideSearchDebouncer = new SearchQueryDebouncer(RefreshOutsideProgramsView, delayMilliseconds: 150);
+
         if (AppServices.IsInitialized)
         {
             AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
@@ -200,6 +238,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     {
         if (_isSortingPrograms || OutsidePrograms.Count <= 1)
         {
+            RefreshOutsideProgramsView();
             return;
         }
 
@@ -223,8 +262,227 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         finally
         {
             _isSortingPrograms = false;
+            RefreshOutsideProgramsView();
         }
     }
+
+    private void RefreshOutsideProgramsView()
+    {
+        OutsideProgramsView.Refresh();
+        EnsureSelectedProgramVisibleInFilter();
+    }
+
+    partial void OnSelectedOutsideProgramSortChanged(string value) => ApplyOutsideProgramSort();
+
+    private void ApplyOutsideProgramSort()
+    {
+        if (OutsideProgramsView is not ListCollectionView listView)
+        {
+            OutsideProgramsView.Refresh();
+            return;
+        }
+
+        listView.CustomSort = CreateOutsideProgramComparer(SelectedOutsideProgramSort);
+        EnsureSelectedProgramVisibleInFilter();
+    }
+
+    private static IComparer CreateOutsideProgramComparer(string? sortOption)
+    {
+        var descending = sortOption?.Contains('↓', StringComparison.Ordinal) == true;
+        var mode = sortOption switch
+        {
+            not null when sortOption.StartsWith("Zielnummer", StringComparison.OrdinalIgnoreCase) =>
+                OutsideProgramSortMode.Zielnummer,
+            not null when sortOption.StartsWith("Linie", StringComparison.OrdinalIgnoreCase) =>
+                OutsideProgramSortMode.Linie,
+            not null when sortOption.StartsWith("Name", StringComparison.OrdinalIgnoreCase) =>
+                OutsideProgramSortMode.Name,
+            _ => OutsideProgramSortMode.Id
+        };
+
+        return Comparer<OutsideDisplayProgram>.Create((left, right) =>
+        {
+            var cmp = mode switch
+            {
+                OutsideProgramSortMode.Zielnummer =>
+                    GetZielnummerSortKey(left).CompareTo(GetZielnummerSortKey(right)),
+                OutsideProgramSortMode.Linie =>
+                    CompareLinieSortKeys(left, right),
+                OutsideProgramSortMode.Name =>
+                    OutsideDisplayProgram.CompareZiellisteNames(left.Name, right.Name),
+                _ => GetIdSortKey(left).CompareTo(GetIdSortKey(right))
+            };
+
+            if (cmp == 0)
+            {
+                cmp = string.Compare(left.Name, right.Name, StringComparison.CurrentCultureIgnoreCase);
+            }
+
+            return descending ? -cmp : cmp;
+        });
+    }
+
+    private static int GetIdSortKey(OutsideDisplayProgram program)
+    {
+        if (int.TryParse(OutsideDisplayId.Normalize(program.Id), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
+        {
+            return id;
+        }
+
+        if (int.TryParse(program.DisplayNumber, NumberStyles.Integer, CultureInfo.InvariantCulture, out id))
+        {
+            return id;
+        }
+
+        return int.MaxValue;
+    }
+
+    private static int GetZielnummerSortKey(OutsideDisplayProgram program)
+    {
+        if (program.IsDs003)
+        {
+            var zn = OutsideDisplayTelegramFactory.NormalizeZielnummer(program.FrontLine1);
+            if (int.TryParse(zn, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
+            {
+                return n;
+            }
+        }
+
+        if (program.DestinationNumber is int destNo)
+        {
+            return destNo;
+        }
+
+        var fromFront = OutsideDisplayTelegramFactory.NormalizeZielnummer(program.FrontLine1);
+        if (int.TryParse(fromFront, NumberStyles.Integer, CultureInfo.InvariantCulture, out var frontNo) &&
+            frontNo is >= 0 and <= 9999)
+        {
+            return frontNo;
+        }
+
+        return GetIdSortKey(program);
+    }
+
+    /// <summary>Linie (Ds001Value / Front z999): Zahlen numerisch, sonst Text; leer ans Ende.</summary>
+    private static int CompareLinieSortKeys(OutsideDisplayProgram left, OutsideDisplayProgram right)
+    {
+        var leftRaw = left.Ds001Value?.Trim() ?? string.Empty;
+        var rightRaw = right.Ds001Value?.Trim() ?? string.Empty;
+        var leftEmpty = leftRaw.Length == 0;
+        var rightEmpty = rightRaw.Length == 0;
+        if (leftEmpty && rightEmpty)
+        {
+            return 0;
+        }
+
+        if (leftEmpty)
+        {
+            return 1;
+        }
+
+        if (rightEmpty)
+        {
+            return -1;
+        }
+
+        var leftDigits = ExtractLeadingDigits(leftRaw);
+        var rightDigits = ExtractLeadingDigits(rightRaw);
+        if (leftDigits is int ln && rightDigits is int rn)
+        {
+            var numCmp = ln.CompareTo(rn);
+            if (numCmp != 0)
+            {
+                return numCmp;
+            }
+        }
+        else if (leftDigits is int)
+        {
+            return -1;
+        }
+        else if (rightDigits is int)
+        {
+            return 1;
+        }
+
+        return string.Compare(leftRaw, rightRaw, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private static int? ExtractLeadingDigits(string value)
+    {
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+        {
+            return null;
+        }
+
+        return int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
+            ? n
+            : null;
+    }
+
+    private enum OutsideProgramSortMode
+    {
+        Id,
+        Zielnummer,
+        Linie,
+        Name
+    }
+
+    private void EnsureSelectedProgramVisibleInFilter()
+    {
+        if (SelectedOutsideProgram is null)
+        {
+            return;
+        }
+
+        if (FilterOutsideProgram(SelectedOutsideProgram))
+        {
+            return;
+        }
+
+        // Aktuelle Auswahl ist durch Filter ausgeblendet → erstes sichtbares Ziel wählen
+        SelectedOutsideProgram = OutsideProgramsView.Cast<OutsideDisplayProgram>().FirstOrDefault();
+    }
+
+    private bool FilterOutsideProgram(object obj)
+    {
+        if (obj is not OutsideDisplayProgram program)
+        {
+            return false;
+        }
+
+        if (!string.Equals(SelectedProtocolFilter, "Alle", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(program.ProtocolLabel, SelectedProtocolFilter, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var query = OutsideProgramSearchText?.Trim() ?? string.Empty;
+        if (query.Length == 0)
+        {
+            return true;
+        }
+
+        return ContainsIgnoreCase(program.Name, query) ||
+               ContainsIgnoreCase(program.DisplayNumber, query) ||
+               ContainsIgnoreCase(program.ListNumberLabel, query) ||
+               ContainsIgnoreCase(program.ProtocolLabel, query) ||
+               ContainsIgnoreCase(program.Ds001Value, query) ||
+               ContainsIgnoreCase(program.FrontPreview, query) ||
+               ContainsIgnoreCase(program.SidePreview, query) ||
+               ContainsIgnoreCase(program.WechseltextPreview, query) ||
+               (program.DestinationNumber is int destNo &&
+                (destNo.ToString(CultureInfo.InvariantCulture).Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                 destNo.ToString("D4", CultureInfo.InvariantCulture).Contains(query, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool ContainsIgnoreCase(string? haystack, string needle) =>
+        !string.IsNullOrEmpty(haystack) &&
+        haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
+
+    partial void OnOutsideProgramSearchTextChanged(string value) => _outsideSearchDebouncer.Schedule();
+
+    partial void OnSelectedProtocolFilterChanged(string value) => RefreshOutsideProgramsView();
 
     private void MarkDirty()
     {
@@ -272,6 +530,40 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         return false;
     }
 
+    /// <summary>false = Zielnummer zurückgesetzt (Kollision unter Mobitec).</summary>
+    private bool EnforceUniqueMobitecDestinationNumber(OutsideDisplayProgram program)
+    {
+        if (!program.IsMobitec || program.DestinationNumber is not int destNo)
+        {
+            _selectedDestinationNumberSnapshot = program.DestinationNumber;
+            return true;
+        }
+
+        var clash = OutsidePrograms.Any(p =>
+            !ReferenceEquals(p, program) &&
+            p.IsMobitec &&
+            p.DestinationNumber == destNo);
+        if (!clash)
+        {
+            _selectedDestinationNumberSnapshot = destNo;
+            return true;
+        }
+
+        StatusMessage =
+            $"Zielnummer {destNo:D4} ist bereits vergeben – bitte eine freie ICU-Nummer wählen.";
+        _suppressIdCollisionCheck = true;
+        try
+        {
+            program.DestinationNumber = _selectedDestinationNumberSnapshot;
+        }
+        finally
+        {
+            _suppressIdCollisionCheck = false;
+        }
+
+        return false;
+    }
+
     partial void OnSelectedOutsideProgramChanged(OutsideDisplayProgram? value)
     {
         if (_subscribedOutsideProgram is not null)
@@ -281,6 +573,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
 
         _subscribedOutsideProgram = value;
         _selectedProgramIdSnapshot = value?.Id;
+        _selectedDestinationNumberSnapshot = value?.DestinationNumber;
         SelectedWechseltextIndex = 0;
 
         if (value is not null)
@@ -405,6 +698,18 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             e.PropertyName is nameof(OutsideDisplayProgram.Id) or nameof(OutsideDisplayProgram.IdEditText))
         {
             if (!EnforceUniqueDestinationId(program))
+            {
+                return;
+            }
+        }
+
+        if (!_committingChanges &&
+            !_suppressIdCollisionCheck &&
+            sender is OutsideDisplayProgram destProgram &&
+            e.PropertyName is nameof(OutsideDisplayProgram.DestinationNumber)
+                or nameof(OutsideDisplayProgram.DestinationNumberEditText))
+        {
+            if (!EnforceUniqueMobitecDestinationNumber(destProgram))
             {
                 return;
             }
@@ -666,7 +971,10 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             var selection = Views.MobitecOutImportDialog.Show(
                 DialogOwnerHelper.ResolveOwner(),
                 Path.GetFileName(dialog.FileName),
-                imported);
+                imported,
+                OutsidePrograms
+                    .Where(p => p.IsMobitec && p.DestinationNumber is int)
+                    .Select(p => p.DestinationNumber!.Value.ToString("D4")));
             if (selection is null || selection.Count == 0)
             {
                 StatusMessage = "OUT-Import abgebrochen.";
@@ -676,20 +984,41 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             var usedIds = new HashSet<string>(
                 OutsidePrograms.Select(p => p.Id),
                 StringComparer.OrdinalIgnoreCase);
-            var programs = new List<OutsideDisplayProgram>();
+            var added = 0;
+            var updated = 0;
+            OutsideDisplayProgram? lastTouched = null;
             foreach (var (destination, saveName) in selection)
             {
+                // Upsert über ICU-Zielnummer (nicht über App-ID).
+                var existing = destination.DestinationNumber is >= 0 and <= 9999
+                    ? OutsidePrograms.FirstOrDefault(p =>
+                        p.IsMobitec &&
+                        p.DestinationNumber == destination.DestinationNumber)
+                    : null;
+                if (existing is not null)
+                {
+                    MobitecTransOutImporter.ApplyToExistingProgram(existing, destination, saveName);
+                    updated++;
+                    lastTouched = existing;
+                    continue;
+                }
+
                 var program = MobitecTransOutImporter.ToProgram(destination, saveName, usedIds);
                 OutsidePrograms.Add(program);
-                programs.Add(program);
+                added++;
+                lastTouched = program;
             }
 
             SortOutsidePrograms();
-            SelectedOutsideProgram = programs[^1];
+            if (lastTouched is not null)
+            {
+                SelectedOutsideProgram = lastTouched;
+            }
+
             MarkDirty();
             StatusMessage =
-                $"{programs.Count} Mobitec-Ziel(e) aus „{Path.GetFileName(dialog.FileName)}“ importiert " +
-                $"(inkl. Linien-/Front-Grafiken aus der OUT) – bitte prüfen und speichern.";
+                $"Mobitec OUT „{Path.GetFileName(dialog.FileName)}“: {added} neu, {updated} aktualisiert " +
+                $"(Zielnummer = Upsert-Schlüssel) – bitte prüfen und speichern.";
         }
         catch (Exception ex)
         {

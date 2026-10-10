@@ -21,6 +21,10 @@ public partial class RoutesViewModel
     public ObservableCollection<RouteChangeDatedTargetRow> RouteChangeDatedTargets { get; } = [];
 
     private bool _startStopCheckbox;
+    private bool _suppressSelectedStopSideEffects;
+    private int _stopEditorCatalogFingerprint = int.MinValue;
+    private IReadOnlyList<OutsideDisplayDestinationResolver.CatalogEntry>? _destinationCatalog;
+    private int _destinationCatalogFingerprint = int.MinValue;
 
     public bool HasSelectedStop => SelectedStop is not null;
 
@@ -45,16 +49,30 @@ public partial class RoutesViewModel
             _startStopCheckbox = value;
             if (value)
             {
+                if (SelectedStop.ZielwechselEnabled)
+                {
+                    SelectedStop.ZielwechselEnabled = false;
+                    OnPropertyChanged(nameof(ZielwechselEnabled));
+                    OnPropertyChanged(nameof(ShowZielwechselFields));
+                }
+
                 SelectedStop.IsAnnouncementEnabled = false;
                 RouteStopEditorCatalog.EnsureStartStopMarker(SelectedStop);
+                TryApplyLearnedStartDestinationSuggestion();
             }
-            else
+            else if (!SelectedStop.ZielwechselEnabled)
             {
                 RouteStopEditorCatalog.ClearStartStopFields(SelectedStop);
                 SelectedStop.IsAnnouncementEnabled = true;
             }
+            else
+            {
+                SelectedStop.IsAnnouncementEnabled = true;
+            }
 
             NotifyStopEditorStateChanged();
+            // TextBox/Combo an Property-Änderungen auf RouteStopItem binden (kein INPC).
+            OnPropertyChanged(nameof(SelectedStop));
             MarkStopDetailDirty();
         }
     }
@@ -82,6 +100,152 @@ public partial class RoutesViewModel
     }
 
     public bool ShowAnnouncementHiddenOption => HasSelectedStop && !IsStartStop;
+
+    public bool ZielwechselEnabled
+    {
+        get => SelectedStop?.ZielwechselEnabled ?? false;
+        set
+        {
+            if (SelectedStop is null || SelectedStop.ZielwechselEnabled == value)
+            {
+                return;
+            }
+
+            SelectedStop.ZielwechselEnabled = value;
+            if (value)
+            {
+                // Zielwechsel ≠ Starthaltestelle: Ansage bleibt aktiv.
+                if (_startStopCheckbox)
+                {
+                    _startStopCheckbox = false;
+                    OnPropertyChanged(nameof(IsStartStop));
+                }
+
+                SelectedStop.IsAnnouncementEnabled = true;
+                TryApplyLearnedZielwechselSuggestion();
+                if (SelectedStop.ZielwechselRadius <= 0)
+                {
+                    SelectedStop.ZielwechselRadius = 40;
+                }
+            }
+
+            NotifyStopEditorStateChanged();
+            OnPropertyChanged(nameof(SelectedStop));
+            MarkStopDetailDirty();
+        }
+    }
+
+    /// <summary>
+    /// Zielwechsel-GPS und Ziel aus anderen Routen mit derselben Haltestellen-ID.
+    /// </summary>
+    private bool TryApplyLearnedZielwechselSuggestion()
+    {
+        if (SelectedStop is null || !SelectedStop.ZielwechselEnabled)
+        {
+            return false;
+        }
+
+        var typical = BuildLearnedStopSuggestions();
+        if (!RouteZielwechselLearner.TrySuggest(typical, SelectedStop.PlannerStopCode, out var suggestion) ||
+            !RouteZielwechselLearner.TryApplyZielwechselToEmptyFields(SelectedStop, suggestion))
+        {
+            return false;
+        }
+
+        EnsureCatalogContainsStopSelections(SelectedStop);
+        StatusMessage = FormatLearnedSuggestionMessage("Zielwechsel", SelectedStop.PlannerStopCode, suggestion);
+        return true;
+    }
+
+    /// <summary>Startziel aus anderen Routen mit derselben Haltestellen-ID.</summary>
+    private bool TryApplyLearnedStartDestinationSuggestion()
+    {
+        if (SelectedStop is null || !IsStartStop)
+        {
+            return false;
+        }
+
+        var typical = BuildLearnedStopSuggestions();
+        if (!RouteZielwechselLearner.TrySuggest(typical, SelectedStop.PlannerStopCode, out var suggestion) ||
+            !RouteZielwechselLearner.TryApplyStartDestinationToEmptyFields(SelectedStop, suggestion))
+        {
+            return false;
+        }
+
+        EnsureCatalogContainsStopSelections(SelectedStop);
+        StatusMessage = FormatLearnedSuggestionMessage("Startziel", SelectedStop.PlannerStopCode, suggestion);
+        return true;
+    }
+
+    private IReadOnlyDictionary<string, RouteZielwechselLearner.Suggestion> BuildLearnedStopSuggestions()
+    {
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return new Dictionary<string, RouteZielwechselLearner.Suggestion>(StringComparer.Ordinal);
+        }
+
+        // Aktuelle (noch ungespeicherte) Haltestellenliste mit einbeziehen.
+        var lists = new List<IEnumerable<RouteStopItem>>();
+        var selectedKey = SelectedRoute?.Trim() ?? string.Empty;
+        foreach (var (routeKey, stops) in editor.StopsByRoute)
+        {
+            if (!string.IsNullOrEmpty(selectedKey) &&
+                RouteDisplayHelper.RouteKeysMatch(routeKey, selectedKey) &&
+                Stops.Count > 0)
+            {
+                lists.Add(Stops);
+            }
+            else
+            {
+                lists.Add(stops);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(selectedKey) &&
+            Stops.Count > 0 &&
+            lists.TrueForAll(list => !ReferenceEquals(list, Stops)))
+        {
+            lists.Add(Stops);
+        }
+
+        return RouteZielwechselLearner.BuildTypical(lists);
+    }
+
+    private static string FormatLearnedSuggestionMessage(
+        string kind,
+        string? plannerStopCode,
+        RouteZielwechselLearner.Suggestion suggestion)
+    {
+        var parts = new List<string>();
+        if (suggestion.HasGps && string.Equals(kind, "Zielwechsel", StringComparison.Ordinal))
+        {
+            parts.Add($"GPS {suggestion.GpsCoordinates} ({suggestion.Radius} m)");
+        }
+
+        if (suggestion.HasDestination)
+        {
+            var dest =
+                FirstNonEmpty(
+                    suggestion.ZielnummerDestination,
+                    suggestion.Ds003aDestination,
+                    suggestion.MobitecDestination,
+                    suggestion.Ds021NeuDestination,
+                    suggestion.FmaS1Destination,
+                    suggestion.Destination) ?? "Ziel";
+            parts.Add($"Ziel „{dest}“");
+        }
+
+        var id = PlannerStopCode.Normalize(plannerStopCode);
+        return parts.Count > 0
+            ? $"{kind}-Vorschlag (ID {id}): {string.Join(", ", parts)} – bitte prüfen."
+            : $"{kind}-Vorschlag übernommen – bitte prüfen.";
+    }
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim();
+
+    public bool ShowZielwechselFields => HasSelectedStop && ZielwechselEnabled;
 
     public bool StopHintEnabled
     {
@@ -195,7 +359,7 @@ public partial class RoutesViewModel
                 return;
             }
 
-            var kurz = ExtractEntwerterKurzstrecke(SelectedStop.EntwerterCode);
+            var kurz = EntwerterStopCode.EffectiveKurzstrecke(SelectedStop.EntwerterCode);
             var stored = StoreEntwerterCode(value, kurz);
             if (string.Equals(SelectedStop.EntwerterCode, stored, StringComparison.Ordinal))
             {
@@ -211,14 +375,10 @@ public partial class RoutesViewModel
         }
     }
 
-    /// <summary>Optional DS004a Kurzstrecke (7. Stempelstelle), 0–9.</summary>
+    /// <summary>DS004a Kurzstrecke (7. Stempelstelle), 0–9; Voreinstellung 3 → DS004a <c>0031</c>.</summary>
     public string EntwerterKurzstrecke
     {
-        get
-        {
-            var k = ExtractEntwerterKurzstrecke(SelectedStop?.EntwerterCode);
-            return k <= 0 ? string.Empty : k.ToString();
-        }
+        get => EntwerterStopCode.EffectiveKurzstrecke(SelectedStop?.EntwerterCode).ToString();
         set
         {
             if (SelectedStop is null)
@@ -227,7 +387,10 @@ public partial class RoutesViewModel
             }
 
             var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
-            var kurz = digits.Length == 0 ? 0 : digits[^1] - '0';
+            // Leer = Voreinstellung 0031 (Kurzstrecke 3), nicht 0
+            var kurz = digits.Length == 0
+                ? EntwerterStopCode.DefaultKurzstrecke
+                : digits[^1] - '0';
             var stored = StoreEntwerterCode(EntwerterWabe, kurz);
             if (string.Equals(SelectedStop.EntwerterCode, stored, StringComparison.Ordinal))
             {
@@ -259,14 +422,13 @@ public partial class RoutesViewModel
             var wabe = ExtractEntwerterWabe(SelectedStop?.EntwerterCode);
             if (string.IsNullOrEmpty(wabe))
             {
-                return "Nur Wabe eintragen. Linie kommt automatisch von der Route (DS001). DS004a = Kurzstrecke.";
+                return "Nur Wabe eintragen. Linie kommt automatisch von der Route (DS001). DS004a = 0031.";
             }
 
             var line = ResolveRouteEntwerterLinie();
             var linePart = string.IsNullOrEmpty(line) ? "???" : line;
-            var kurz = ExtractEntwerterKurzstrecke(SelectedStop?.EntwerterCode);
-            var ds004a = $"eA00{kurz}1";
-            // IbisUtility/ELGEBA: e + Linie(3) + Wabe(3)
+            var ds004a = EntwerterStopCode.FormatDs004a(SelectedStop?.EntwerterCode);
+            // IbisUtility/ELGEBA: e + Linie(3) + Wabe(3); DS004a Standard 0031
             return $"DS004: e{linePart}{wabe}  ·  DS004a: {ds004a} (Linie auto)";
         }
     }
@@ -376,58 +538,17 @@ public partial class RoutesViewModel
         return PadEntwerterDrei(leading);
     }
 
-    private static string ExtractEntwerterWabe(string? raw)
-    {
-        var digits = new string((raw ?? string.Empty).Where(char.IsDigit).ToArray());
-        if (digits.Length == 0)
-        {
-            return string.Empty;
-        }
+    private static string ExtractEntwerterWabe(string? raw) =>
+        EntwerterStopCode.ExtractWabe(raw);
 
-        return digits.Length >= 3 ? digits[..3] : digits.PadLeft(3, '0');
-    }
+    private static int ExtractEntwerterKurzstrecke(string? raw) =>
+        EntwerterStopCode.ExtractKurzstrecke(raw);
 
-    private static int ExtractEntwerterKurzstrecke(string? raw)
-    {
-        var digits = new string((raw ?? string.Empty).Where(char.IsDigit).ToArray());
-        return digits.Length switch
-        {
-            >= 7 => digits[6] - '0',
-            4 => digits[3] - '0',
-            _ => 0
-        };
-    }
+    private static string StoreEntwerterCode(string? wabe, int kurzstrecke) =>
+        EntwerterStopCode.Store(wabe, kurzstrecke);
 
-    private static string StoreEntwerterCode(string? wabe, int kurzstrecke)
-    {
-        var w = ExtractEntwerterWabe(wabe);
-        if (string.IsNullOrEmpty(w) || w == "000")
-        {
-            var rawDigits = new string((wabe ?? string.Empty).Where(char.IsDigit).ToArray());
-            if (rawDigits.Length == 0)
-            {
-                return string.Empty;
-            }
-        }
-
-        if (string.IsNullOrEmpty(w))
-        {
-            return string.Empty;
-        }
-
-        return kurzstrecke > 0 ? $"{w}{kurzstrecke}" : w;
-    }
-
-    private static string PadEntwerterDrei(string? raw)
-    {
-        var digits = new string((raw ?? string.Empty).Where(char.IsDigit).ToArray());
-        if (digits.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        return digits.Length >= 3 ? digits[^3..] : digits.PadLeft(3, '0');
-    }
+    private static string PadEntwerterDrei(string? raw) =>
+        EntwerterStopCode.PadDrei(raw);
 
     public bool IsEndStop
     {
@@ -537,7 +658,7 @@ public partial class RoutesViewModel
         }
     }
 
-    public bool ShowStartStopFields => HasSelectedStop && IsStartStop;
+    public bool ShowStartStopFields => HasSelectedStop && (IsStartStop || ZielwechselEnabled);
     /** Begrüßung wie Endhaltestellen-Ansage: an jedem Halt möglich (Einstieg ≠ Starthaltestelle). */
     public bool ShowStartStopGreetingFields => HasSelectedStop;
     public bool ShowStartStopGreetingCoordinatesFields =>
@@ -792,9 +913,57 @@ public partial class RoutesViewModel
         }
     }
 
-    private IReadOnlyList<OutsideDisplayDestinationResolver.CatalogEntry> DestinationCatalog =>
-        OutsideDisplayDestinationResolver.BuildCatalog(
-            AppServices.Routes.Editor?.OutsideDisplays ?? Array.Empty<string>());
+    private IReadOnlyList<OutsideDisplayDestinationResolver.CatalogEntry> DestinationCatalog
+    {
+        get
+        {
+            var editor = AppServices.Routes.Editor;
+            var fingerprint = ComputeOutsideDisplaysFingerprint(editor);
+            if (_destinationCatalog is null || fingerprint != _destinationCatalogFingerprint)
+            {
+                _destinationCatalog = OutsideDisplayDestinationResolver.BuildCatalog(
+                    editor?.OutsideDisplays ?? Array.Empty<string>());
+                _destinationCatalogFingerprint = fingerprint;
+            }
+
+            return _destinationCatalog;
+        }
+    }
+
+    private static int ComputeOutsideDisplaysFingerprint(EditableRoutePackage? editor)
+    {
+        if (editor is null)
+        {
+            return 0;
+        }
+
+        var hash = new HashCode();
+        hash.Add(editor.OutsideDisplays.Count);
+        foreach (var entry in editor.OutsideDisplays)
+        {
+            hash.Add(entry);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    private static int ComputeStopEditorCatalogFingerprint(EditableRoutePackage? editor)
+    {
+        if (editor is null)
+        {
+            return 0;
+        }
+
+        var hash = new HashCode();
+        hash.Add(ComputeOutsideDisplaysFingerprint(editor));
+        hash.Add(editor.RouteNames.Count);
+        foreach (var route in editor.RouteNames)
+        {
+            hash.Add(route);
+        }
+
+        return hash.ToHashCode();
+    }
 
     private string? ResolveComboLabel(
         OutsideDisplayProtocolKind protocol,
@@ -885,7 +1054,7 @@ public partial class RoutesViewModel
             return;
         }
 
-        // Leere Zeile anlegen – Datum und Folgefahrt werden in der Zeile gepflegt.
+        // Leere Zeile anlegen – Verkehrstage/Datum und Folgefahrt werden in der Zeile gepflegt.
         RouteChangeDatedTargets.Add(new RouteChangeDatedTargetRow(
             RouteChangeDatedTargets.Count,
             string.Empty,
@@ -893,7 +1062,7 @@ public partial class RoutesViewModel
             string.Empty,
             PersistRouteChangeDatedTargetsFromRows));
         MarkStopDetailDirty();
-        StatusMessage = "Neue Abweichungszeile hinzugefügt – Datum und Folgefahrt eintragen.";
+        StatusMessage = "Neue Abweichungszeile hinzugefügt – Verkehrstag und/oder Datum sowie Folgefahrt eintragen.";
     }
 
     private bool CanAddRouteChangeDatedTarget() => ShowRouteChangeFields;
@@ -928,7 +1097,8 @@ public partial class RoutesViewModel
                 RouteOperatingDatesEditor.FormatDisplay(entry.OperatingDates),
                 ToComboLabel(entry.SelectedLineCourseTrip, RouteStopEditorCatalog.NoLineCourseTripLabel),
                 entry.SelectedLineCourseTrip,
-                PersistRouteChangeDatedTargetsFromRows));
+                PersistRouteChangeDatedTargetsFromRows,
+                entry.OperatingDays));
         }
 
         AddRouteChangeDatedTargetCommand.NotifyCanExecuteChanged();
@@ -944,8 +1114,10 @@ public partial class RoutesViewModel
         var rebuilt = new List<RouteChangeTargetEntry>();
         foreach (var row in RouteChangeDatedTargets)
         {
-            if (!RouteOperatingDatesEditor.TryParseDateList(row.DatesText, out var dates, out _) ||
-                dates.Count == 0)
+            _ = RouteOperatingDatesEditor.TryParseDateList(row.DatesText, out var dates, out _);
+            dates ??= [];
+            var days = row.SelectedDays.ToList();
+            if (dates.Count == 0 && days.Count == 0)
             {
                 continue;
             }
@@ -959,7 +1131,8 @@ public partial class RoutesViewModel
             rebuilt.Add(new RouteChangeTargetEntry
             {
                 SelectedLineCourseTrip = trip,
-                OperatingDates = dates
+                OperatingDates = dates,
+                OperatingDays = days
             });
         }
 
@@ -1024,6 +1197,100 @@ public partial class RoutesViewModel
             OnPropertyChanged(nameof(SelectedStop));
             MarkStopDetailDirty();
             StatusMessage = "Begrüßungs-GPS auf der Karte gesetzt.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Karte: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void PickZielwechselCoordinatesOnMap()
+    {
+        if (SelectedStop is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var owner = Application.Current?.MainWindow;
+            if (owner is not null && !owner.IsLoaded)
+            {
+                owner = null;
+            }
+
+            var initial = string.IsNullOrWhiteSpace(SelectedStop.ZielwechselGpsCoordinates)
+                ? SelectedStop.GpsCoordinates
+                : SelectedStop.ZielwechselGpsCoordinates;
+            var radius = SelectedStop.ZielwechselRadius > 0
+                ? SelectedStop.ZielwechselRadius
+                : 40;
+            var dialog = new GpsMapPickerDialog(
+                "Zielwechsel-GPS",
+                initial,
+                SelectedStop.GpsCoordinates,
+                "Haltestelle",
+                radiusMeters: radius)
+            {
+                Owner = owner
+            };
+            if (dialog.ShowDialog() != true || !dialog.HasSelection)
+            {
+                return;
+            }
+
+            SelectedStop.ZielwechselGpsCoordinates = dialog.SelectedCoordinates;
+            OnPropertyChanged(nameof(SelectedStop));
+            MarkStopDetailDirty();
+            StatusMessage = "Zielwechsel-GPS auf der Karte gesetzt.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Karte: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void PickStopHintCoordinatesOnMap()
+    {
+        if (SelectedStop is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var owner = Application.Current?.MainWindow;
+            if (owner is not null && !owner.IsLoaded)
+            {
+                owner = null;
+            }
+
+            var initial = string.IsNullOrWhiteSpace(SelectedStop.StopHintGpsCoordinates)
+                ? SelectedStop.GpsCoordinates
+                : SelectedStop.StopHintGpsCoordinates;
+            var radius = SelectedStop.StopHintRadius > 0
+                ? SelectedStop.StopHintRadius
+                : 40;
+            var dialog = new GpsMapPickerDialog(
+                "Hinweis-GPS",
+                initial,
+                SelectedStop.GpsCoordinates,
+                "Haltestelle",
+                radiusMeters: radius)
+            {
+                Owner = owner
+            };
+            if (dialog.ShowDialog() != true || !dialog.HasSelection)
+            {
+                return;
+            }
+
+            SelectedStop.StopHintGpsCoordinates = dialog.SelectedCoordinates;
+            OnPropertyChanged(nameof(SelectedStop));
+            MarkStopDetailDirty();
+            StatusMessage = "Hinweis-GPS auf der Karte gesetzt.";
         }
         catch (Exception ex)
         {
@@ -1122,17 +1389,49 @@ public partial class RoutesViewModel
     /// <summary>Kataloge und ComboBox-Auswahl vor dem Bearbeitungsdialog vorbereiten (verhindert Absturz bei fehlenden Listeneinträgen).</summary>
     public void PrepareStopEditDialog(RouteStopItem stop)
     {
-        SelectedStop = stop;
-        _startStopCheckbox = RouteStopEditorCatalog.IsStartStop(stop);
-        if (_startStopCheckbox)
+        _suppressSelectedStopSideEffects = true;
+        try
         {
-            RouteStopEditorCatalog.EnsureStartStopMarker(stop);
-        }
+            SelectedStop = stop;
+            _startStopCheckbox = RouteStopEditorCatalog.IsStartStop(stop);
+            if (_startStopCheckbox)
+            {
+                RouteStopEditorCatalog.EnsureStartStopMarker(stop);
+            }
 
-        RefreshStopEditorCatalogs();
-        EnsureCatalogContainsStopSelections(stop);
-        SyncSelectedStopVrrStopIdFromStop();
-        ReloadRouteChangeDatedTargets();
+            // Zielwechsel-Halte früher fälschlich als Starthaltestelle ohne Ansage gespeichert.
+            if (stop.ZielwechselEnabled && !stop.IsAnnouncementEnabled)
+            {
+                stop.IsAnnouncementEnabled = true;
+                MarkStopDetailDirty();
+            }
+
+            RefreshStopEditorCatalogs();
+            var learned = false;
+            if (_startStopCheckbox)
+            {
+                learned |= TryApplyLearnedStartDestinationSuggestion();
+            }
+
+            if (stop.ZielwechselEnabled)
+            {
+                learned |= TryApplyLearnedZielwechselSuggestion();
+            }
+
+            if (learned)
+            {
+                MarkStopDetailDirty();
+            }
+
+            EnsureCatalogContainsStopSelections(stop);
+            SyncSelectedStopVrrStopIdFromStop();
+            ReloadRouteChangeDatedTargets();
+            OnPropertyChanged(nameof(SelectedStop));
+        }
+        finally
+        {
+            _suppressSelectedStopSideEffects = false;
+        }
     }
 
     private void SyncSelectedStopVrrStopIdFromStop()
@@ -1148,13 +1447,23 @@ public partial class RoutesViewModel
         EnsureComboValue(Ds021NeuDestinations, ToComboLabel(stop.Ds021NeuDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(FmaS1Destinations, ToComboLabel(stop.FmaS1Destination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds003aDestinations, ToComboLabel(stop.Ds003aDestination, RouteStopEditorCatalog.NoDestinationLabel));
-        EnsureComboValue(ZielnummerDestinations, ToComboLabel(stop.ZielnummerDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(
+            ZielnummerDestinations,
+            ResolveComboLabel(
+                OutsideDisplayProtocolKind.Ds003,
+                stop.ZielnummerDestinationId,
+                stop.ZielnummerDestination));
         EnsureComboValue(MobitecDestinations, ToComboLabel(stop.MobitecDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds021tDestinations, ToComboLabel(stop.EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds021NeuDestinations, ToComboLabel(stop.Ds021NeuEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(FmaS1Destinations, ToComboLabel(stop.FmaS1EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds003aDestinations, ToComboLabel(stop.Ds003aEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
-        EnsureComboValue(ZielnummerDestinations, ToComboLabel(stop.ZielnummerEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(
+            ZielnummerDestinations,
+            ResolveComboLabel(
+                OutsideDisplayProtocolKind.Ds003,
+                stop.ZielnummerEndDestinationId,
+                stop.ZielnummerEndDestination));
         EnsureComboValue(MobitecDestinations, ToComboLabel(stop.MobitecEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(
             LineCourseTripRoutes,
@@ -1173,6 +1482,18 @@ public partial class RoutesViewModel
 
     public void RefreshStopEditorCatalogs()
     {
+        var editor = AppServices.Routes.Editor;
+        var fingerprint = ComputeStopEditorCatalogFingerprint(editor);
+        if (fingerprint == _stopEditorCatalogFingerprint &&
+            Ds021tDestinations.Count > 0 &&
+            LineCourseTripRoutes.Count > 0)
+        {
+            return;
+        }
+
+        _stopEditorCatalogFingerprint = fingerprint;
+        _destinationCatalog = null;
+
         Ds021tDestinations.Clear();
         Ds021NeuDestinations.Clear();
         FmaS1Destinations.Clear();
@@ -1189,38 +1510,38 @@ public partial class RoutesViewModel
         MobitecDestinations.Add(RouteStopEditorCatalog.NoDestinationLabel);
         LineCourseTripRoutes.Add(RouteStopEditorCatalog.NoLineCourseTripLabel);
 
-        var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
             return;
         }
 
-        foreach (var name in RouteStopEditorCatalog.LoadDs021tNames(editor))
+        var names = RouteStopEditorCatalog.LoadAllProtocolNames(editor);
+        foreach (var name in names.Ds021t)
         {
             Ds021tDestinations.Add(name);
         }
 
-        foreach (var name in RouteStopEditorCatalog.LoadDs021NeuNames(editor))
+        foreach (var name in names.Ds021Neu)
         {
             Ds021NeuDestinations.Add(name);
         }
 
-        foreach (var name in RouteStopEditorCatalog.LoadFmaS1Names(editor))
+        foreach (var name in names.FmaS1)
         {
             FmaS1Destinations.Add(name);
         }
 
-        foreach (var name in RouteStopEditorCatalog.LoadDs003aNames(editor))
+        foreach (var name in names.Ds003a)
         {
             Ds003aDestinations.Add(name);
         }
 
-        foreach (var name in RouteStopEditorCatalog.LoadZielnummerNames(editor))
+        foreach (var name in names.Zielnummer)
         {
             ZielnummerDestinations.Add(name);
         }
 
-        foreach (var name in RouteStopEditorCatalog.LoadMobitecNames(editor))
+        foreach (var name in names.Mobitec)
         {
             MobitecDestinations.Add(name);
         }
@@ -1237,6 +1558,8 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(IsStartStop));
         OnPropertyChanged(nameof(IsAnnouncementHidden));
         OnPropertyChanged(nameof(ShowAnnouncementHiddenOption));
+        OnPropertyChanged(nameof(ZielwechselEnabled));
+        OnPropertyChanged(nameof(ShowZielwechselFields));
         OnPropertyChanged(nameof(StopHintEnabled));
         OnPropertyChanged(nameof(ShowStopHintFields));
         OnPropertyChanged(nameof(IsStopHintWithAnnouncement));
@@ -1370,7 +1693,7 @@ public partial class RoutesViewModel
 
     /// <summary>
     /// Freie DS003-Eingabe (1–4 Ziffern): vorhandenes Programm mit dieser Zielnummer nutzen
-    /// oder neu anlegen und den Anzeigenamen zurückgeben.
+    /// oder neu anlegen und das Combo-ListLabel zurückgeben.
     /// </summary>
     public bool TryEnsureDs003DestinationByNumber(string? rawNumber, out string comboLabel)
     {
@@ -1407,7 +1730,9 @@ public partial class RoutesViewModel
                 continue;
             }
 
-            comboLabel = program.Name.Trim();
+            comboLabel = string.IsNullOrWhiteSpace(program.Ds003ListLabel)
+                ? program.Name.Trim()
+                : program.Ds003ListLabel;
             EnsureComboValue(ZielnummerDestinations, comboLabel);
             return true;
         }
@@ -1423,7 +1748,9 @@ public partial class RoutesViewModel
         RefreshStopEditorCatalogs();
         _sync.MarkDirty();
         StatusMessage = $"DS003-Ziel {number} angelegt und übernommen.";
-        comboLabel = number;
+        comboLabel = string.IsNullOrWhiteSpace(created.Ds003ListLabel)
+            ? created.Name.Trim()
+            : created.Ds003ListLabel;
         return true;
     }
 

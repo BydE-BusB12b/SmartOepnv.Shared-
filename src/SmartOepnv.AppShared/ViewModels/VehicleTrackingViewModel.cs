@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -25,6 +26,7 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _geocodeCts;
     private IReadOnlyList<VehicleLiveState> _vehicles = [];
     private string? _pendingDetailPhone;
+    private int _refreshInFlight;
 
     public event Action<string>? PushVehiclesToMapRequested;
     public event Action<string>? FocusVehicleOnMapRequested;
@@ -65,7 +67,27 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
     public void OnViewActivated()
     {
         StartPolling();
-        _ = RefreshAsync();
+
+        if (_vehicles.Count > 0)
+        {
+            // Cache sofort zeigen – Polling aktualisiert im Hintergrund.
+            PushVehiclesToMap();
+            var online = _vehicles.Count(v => v.Status == VehicleOnlineStatus.Online);
+            StatusMessage =
+                $"{_vehicles.Count} Fahrzeuge – {online} online (grün), veraltet rot, offline lila (Cache).";
+            return;
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            _ = RefreshAsync();
+            return;
+        }
+
+        dispatcher.BeginInvoke(
+            () => _ = RefreshAsync(),
+            DispatcherPriority.Background);
     }
 
     /// <summary>Karte ist bereit – vorhandene Fahrzeuge erneut auf die Karte schieben (Race beim ersten Laden).</summary>
@@ -87,18 +109,24 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task RefreshAsync()
+    private Task RefreshAsync() => RefreshCoreAsync(showBusy: true);
+
+    private async Task RefreshCoreAsync(bool showBusy)
     {
-        if (IsBusy)
+        if (System.Threading.Interlocked.CompareExchange(ref _refreshInFlight, 1, 0) != 0)
         {
             return;
         }
 
-        IsBusy = true;
+        if (showBusy)
+        {
+            IsBusy = true;
+        }
+
         try
         {
             var json = AppServices.Routes.CurrentJson;
-            var vehicles = await _tracking.SyncAsync(json);
+            var vehicles = await Task.Run(async () => await _tracking.SyncAsync(json));
 
             await RunOnUiAsync(() =>
             {
@@ -120,7 +148,12 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            IsBusy = false;
+            if (showBusy)
+            {
+                IsBusy = false;
+            }
+
+            System.Threading.Interlocked.Exchange(ref _refreshInFlight, 0);
         }
     }
 
@@ -467,7 +500,7 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
                 try
                 {
                     await Task.Delay(PollInterval, token);
-                    await RefreshAsync();
+                    await RefreshCoreAsync(showBusy: false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -508,6 +541,8 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
     private string? _destination;
     private string? _driverName;
     private string? _driverPersonnelNumber;
+    private bool? _pasInfoActive;
+    private bool? _bluetoothActive;
     private int? _batteryLevel;
     private int? _delaySeconds;
     private string? _appVersion;
@@ -571,6 +606,26 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
     {
         get => _driverPersonnelNumber;
         private set => SetField(ref _driverPersonnelNumber, value);
+    }
+
+    public bool? PasInfoActive
+    {
+        get => _pasInfoActive;
+        private set => SetField(
+            ref _pasInfoActive,
+            value,
+            nameof(PasInfoDisplay),
+            nameof(PasInfoForeground));
+    }
+
+    public bool? BluetoothActive
+    {
+        get => _bluetoothActive;
+        private set => SetField(
+            ref _bluetoothActive,
+            value,
+            nameof(BluetoothDisplay),
+            nameof(BluetoothForeground));
     }
 
     public int? BatteryLevel
@@ -713,6 +768,8 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
         Destination = v.Destination;
         DriverName = v.DriverName;
         DriverPersonnelNumber = v.DriverPersonnelNumber;
+        PasInfoActive = v.PasInfoActive;
+        BluetoothActive = v.BluetoothActive;
         BatteryLevel = v.BatteryLevel;
         DelaySeconds = v.DelaySeconds;
         AppVersion = v.AppVersion;
@@ -781,31 +838,44 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
 
     public string SpeedDisplay => SpeedKmh > 0 ? $"{SpeedKmh} km/h" : "–";
 
-    public string DelayDisplay
-    {
-        get
-        {
-            if (DelaySeconds is not int seconds)
-            {
-                return "–";
-            }
-
-            if (seconds == 0)
-            {
-                return "pünktlich";
-            }
-
-            var minutes = seconds / 60;
-            if (minutes == 0)
-            {
-                return seconds > 0 ? $"+{seconds} s" : $"{seconds} s";
-            }
-
-            return seconds > 0 ? $"+{minutes} min" : $"{minutes} min";
-        }
-    }
+    public string DelayDisplay => VehicleDelayFormatter.FormatForOperations(DelaySeconds);
 
     public string BatteryDisplay => BatteryLevel is >= 0 and <= 100 ? $"{BatteryLevel} %" : "–";
+
+    private static readonly Brush StatusActiveBrush = CreateFrozenBrush(0x90, 0xEE, 0x90);
+    private static readonly Brush StatusInactiveBrush = CreateFrozenBrush(0xEF, 0x53, 0x50);
+    private static readonly Brush StatusUnknownBrush = CreateFrozenBrush(0xB0, 0xBE, 0xC5);
+
+    public string PasInfoDisplay => FormatActiveFlag(PasInfoActive, "Pas.Info aktiv", "Pas.Info aus !");
+
+    public Brush PasInfoForeground => ForegroundForFlag(PasInfoActive);
+
+    public string BluetoothDisplay => FormatActiveFlag(BluetoothActive, "Bluetooth aktiv", "Bluetooth aus !");
+
+    public Brush BluetoothForeground => ForegroundForFlag(BluetoothActive);
+
+    private static string FormatActiveFlag(bool? value, string whenOn, string whenOff) =>
+        value switch
+        {
+            true => whenOn,
+            false => whenOff,
+            null => "–"
+        };
+
+    private static Brush ForegroundForFlag(bool? value) =>
+        value switch
+        {
+            true => StatusActiveBrush,
+            false => StatusInactiveBrush,
+            null => StatusUnknownBrush
+        };
+
+    private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
 
     public string AppVersionDisplay => string.IsNullOrWhiteSpace(AppVersion) ? "–" : AppVersion;
 

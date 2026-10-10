@@ -66,18 +66,31 @@ public static class SmartOepnvAppHost
     }
 
     /// <summary>
-    /// Speichert aktuellen Betrieb, wechselt Profil und startet den Planer neu.
+    /// Speichert aktuellen Betrieb (schnell), meldet ab, wechselt Profil und startet neu.
     /// </summary>
     public static async Task SwitchBetriebAndRestartAsync(
         Window owner,
         string? switchToExistingId,
         string? newDisplayName,
-        string? newDropboxFolderPath)
+        string? newDropboxFolderPath,
+        IProgress<DropboxTransferProgress>? progress = null,
+        Action<string>? statusMessage = null)
     {
         if (!AppServices.IsPlannerApp)
         {
             return;
         }
+
+        var leavingName = BetriebProfileStore.GetActiveProfile()?.DisplayName?.Trim();
+        if (string.IsNullOrWhiteSpace(leavingName))
+        {
+            leavingName = "aktueller Betrieb";
+        }
+
+        void Status(string text) => statusMessage?.Invoke(text);
+
+        Status($"Betrieb „{leavingName}“ wird abgemeldet…");
+        ReportOverall(progress, $"Betrieb „{leavingName}“ wird abgemeldet…", 2);
 
         try
         {
@@ -88,19 +101,7 @@ public static class SmartOepnvAppHost
             // weiter
         }
 
-        if (AppServices.Dropbox.Settings.IsConnected)
-        {
-            try
-            {
-                await PlanerDropboxWorkspaceSync.TryExportAsync(flushBeforeCapture: true).ConfigureAwait(true);
-            }
-            catch
-            {
-                // lokaler Stand bleibt erhalten
-            }
-        }
-
-        // Aktuellen Dropbox-Pfad im Profil festhalten
+        // Dropbox-Pfad im Profil festhalten, bevor wir abmelden/wechseln
         try
         {
             var active = BetriebProfileStore.GetActiveProfile();
@@ -116,6 +117,46 @@ public static class SmartOepnvAppHost
         {
             // optional
         }
+
+        // Sperre sofort freigeben – sichtbar als Abmeldung, bevor der Upload fertig ist
+        Status($"Betrieb „{leavingName}“: Sperre wird freigegeben…");
+        ReportOverall(progress, $"Betrieb „{leavingName}“: Sperre wird freigegeben…", 8);
+        try
+        {
+            await ReleasePlanerSessionAsync().ConfigureAwait(true);
+            Status($"Betrieb „{leavingName}“ abgemeldet – Arbeitsstand wird gesichert…");
+            ReportOverall(progress, $"Betrieb „{leavingName}“ abgemeldet – Arbeitsstand wird gesichert…", 12);
+        }
+        catch
+        {
+            // trotzdem weiterwechseln
+        }
+
+        if (AppServices.Dropbox.Settings.IsConnected)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                await PlanerDropboxWorkspaceSync.TryExportAsync(
+                        flushBeforeCapture: false,
+                        progress: progress,
+                        ct: cts.Token,
+                        skipAnnouncementSounds: true,
+                        skipVersionSnapshots: true)
+                    .ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                Status("Upload-Zeitlimit – Wechsel geht trotzdem weiter (lokal gespeichert).");
+            }
+            catch
+            {
+                // lokaler Stand bleibt erhalten
+            }
+        }
+
+        Status("Neuer Betrieb wird geladen…");
+        ReportOverall(progress, "Neuer Betrieb wird geladen…", 95);
 
         if (!string.IsNullOrWhiteSpace(switchToExistingId))
         {
@@ -134,8 +175,17 @@ public static class SmartOepnvAppHost
         }
 
         SkipShutdownSave = true;
+        ReportOverall(progress, "Planer wird neu gestartet…", 100);
         RestartCurrentProcess(owner);
     }
+
+    private static void ReportOverall(IProgress<DropboxTransferProgress>? progress, string phase, double percent) =>
+        progress?.Report(new DropboxTransferProgress
+        {
+            Phase = phase,
+            BytesTransferred = (long)Math.Round(percent),
+            TotalBytes = 100
+        });
 
     private static void RestartCurrentProcess(Window? owner)
     {

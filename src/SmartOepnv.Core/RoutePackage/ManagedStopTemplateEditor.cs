@@ -50,25 +50,38 @@ public static class ManagedStopTemplateEditor
             StopLng = obj["stopLng"]?.GetValue<string>() ?? string.Empty,
             RadiusMeters = obj["radiusMeters"]?.GetValue<int>() ?? ManagedStopTemplateItem.DefaultRadiusMeters,
             ExternalSoundUri = obj["externalSoundUri"]?.GetValue<string>() ?? string.Empty,
-            EmbeddedSoundFileName = obj["embeddedSoundFileName"]?.GetValue<string>() ?? string.Empty
+            EmbeddedSoundFileName = obj["embeddedSoundFileName"]?.GetValue<string>() ?? string.Empty,
+            EntwerterEnabled = JsonNodeReading.GetBoolean(obj["entwerterEnabled"]),
+            EntwerterCode = JsonNodeReading.GetString(obj["entwerterCode"])
         };
     }
 
-    private static JsonObject Write(ManagedStopTemplateItem t) => new()
+    private static JsonObject Write(ManagedStopTemplateItem t)
     {
-        ["id"] = t.Id,
-        ["stopCode"] = PlannerStopCode.Normalize(t.StopCode),
-        ["stopNameItcs"] = t.StopNameItcs,
-        ["stopDisplay"] = t.StopDisplay,
-        ["vrrStopId"] = t.VrrStopId,
-        ["directionDescription"] = t.DirectionDescription,
-        ["lines"] = t.Lines,
-        ["announcementLat"] = t.AnnouncementLat,
-        ["announcementLng"] = t.AnnouncementLng,
-        ["stopLat"] = t.StopLat,
-        ["stopLng"] = t.StopLng,
-        ["radiusMeters"] = t.RadiusMeters,
-        ["externalSoundUri"] = t.ExternalSoundUri,
-        ["embeddedSoundFileName"] = t.EmbeddedSoundFileName
-    };
+        var obj = new JsonObject
+        {
+            ["id"] = t.Id,
+            ["stopCode"] = PlannerStopCode.Normalize(t.StopCode),
+            ["stopNameItcs"] = t.StopNameItcs,
+            ["stopDisplay"] = t.StopDisplay,
+            ["vrrStopId"] = t.VrrStopId,
+            ["directionDescription"] = t.DirectionDescription,
+            ["lines"] = t.Lines,
+            ["announcementLat"] = t.AnnouncementLat,
+            ["announcementLng"] = t.AnnouncementLng,
+            ["stopLat"] = t.StopLat,
+            ["stopLng"] = t.StopLng,
+            ["radiusMeters"] = t.RadiusMeters,
+            ["externalSoundUri"] = t.ExternalSoundUri,
+            ["embeddedSoundFileName"] = t.EmbeddedSoundFileName
+        };
+
+        if (t.EntwerterEnabled || !string.IsNullOrWhiteSpace(t.EntwerterCode))
+        {
+            obj["entwerterEnabled"] = t.EntwerterEnabled;
+            obj["entwerterCode"] = (t.EntwerterCode ?? string.Empty).Trim();
+        }
+
+        return obj;
+    }
 }

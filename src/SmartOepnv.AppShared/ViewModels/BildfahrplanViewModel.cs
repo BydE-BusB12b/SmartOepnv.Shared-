@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.Pdf;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
@@ -21,6 +22,8 @@ public partial class BildfahrplanViewModel : ObservableObject
     ];
 
     private int _loadedRevision = -1;
+    private readonly SearchQueryDebouncer _windowDebouncer;
+    private bool _suspendWindowRebuild;
 
     /// <summary>Route-Schlüssel der angeklickten Fahrt – MainViewModel öffnet Routen.</summary>
     public event Action<string>? OpenRouteRequested;
@@ -48,10 +51,19 @@ public partial class BildfahrplanViewModel : ObservableObject
     public BildfahrplanViewModel()
     {
         SelectedDirection = DirectionOptions[0];
+        _windowDebouncer = new SearchQueryDebouncer(RebuildChart, delayMilliseconds: 180);
     }
 
     public void RefreshFromEditorIfNeeded()
     {
+        // Tab-Wechsel bei unveränderten Daten: Chart nicht neu berechnen (Draft-JSON + Geometrie).
+        if (_loadedRevision == AppServices.Routes.EditorDataRevision &&
+            CorridorOptions.Count > 0 &&
+            Chart is not null)
+        {
+            return;
+        }
+
         if (_loadedRevision == AppServices.Routes.EditorDataRevision && CorridorOptions.Count > 0)
         {
             RebuildChart();
@@ -112,9 +124,25 @@ public partial class BildfahrplanViewModel : ObservableObject
 
     partial void OnSelectedDirectionChanged(BildfahrplanDirectionOption? value) => RebuildChart();
 
-    partial void OnWindowStartHourChanged(int value) => RebuildChart();
+    partial void OnWindowStartHourChanged(int value)
+    {
+        if (_suspendWindowRebuild)
+        {
+            return;
+        }
 
-    partial void OnWindowEndHourChanged(int value) => RebuildChart();
+        _windowDebouncer.Schedule();
+    }
+
+    partial void OnWindowEndHourChanged(int value)
+    {
+        if (_suspendWindowRebuild)
+        {
+            return;
+        }
+
+        _windowDebouncer.Schedule();
+    }
 
     partial void OnZoomPercentChanged(int value) => OnPropertyChanged(nameof(ZoomLabel));
 
@@ -143,6 +171,7 @@ public partial class BildfahrplanViewModel : ObservableObject
         // Kompletter Tag für PDF, Anzeige-Fenster danach wiederherstellen
         var prevStart = WindowStartHour;
         var prevEnd = WindowEndHour;
+        _suspendWindowRebuild = true;
         try
         {
             WindowStartHour = 0;
@@ -209,6 +238,7 @@ public partial class BildfahrplanViewModel : ObservableObject
         {
             WindowStartHour = prevStart;
             WindowEndHour = prevEnd;
+            _suspendWindowRebuild = false;
             RebuildChart();
         }
     }
@@ -236,6 +266,20 @@ public partial class BildfahrplanViewModel : ObservableObject
         TripLegend.Clear();
         Chart = null;
 
+        try
+        {
+            RebuildChartCore();
+        }
+        catch (Exception ex)
+        {
+            Chart = null;
+            TripLegend.Clear();
+            StatusMessage = $"Bildfahrplan konnte nicht aufgebaut werden: {ex.Message}";
+        }
+    }
+
+    private void RebuildChartCore()
+    {
         var editor = AppServices.Routes.Editor;
         var corridor = SelectedCorridor;
         if (editor is null || string.IsNullOrWhiteSpace(corridor))

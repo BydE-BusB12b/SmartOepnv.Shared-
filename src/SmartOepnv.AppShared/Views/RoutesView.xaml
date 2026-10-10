@@ -21,6 +21,33 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="RoutesDeleteButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="Foreground" Value="#EF5350" />
+            <Setter Property="BorderBrush" Value="#EF5350" />
+        </Style>
+        <Style x:Key="Ds009Length16ButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="MinWidth" Value="40" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsDs009Length16}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="Ds009Length20ButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="MinWidth" Value="40" />
+            <Setter Property="Padding" Value="8,4" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsDs009Length20}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
     <Grid Margin="0,0,0,8">
         <Grid.ColumnDefinitions>
@@ -37,14 +64,28 @@
                          materialDesign:HintAssist.Hint="Suchen (Name, Linie/Kurs, Fahrt)"
                          Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,0,0,12" />
-                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-                    <Button Content="Route hinzufügen" Command="{Binding AddRouteCommand}"
-                            Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,0,8" />
-                    <Button Content="Route bearbeiten" Command="{Binding EditRouteCommand}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,0,8" />
-                    <Button Content="Route löschen" Command="{Binding RemoveRouteCommand}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}" />
-                </StackPanel>
+                <UniformGrid DockPanel.Dock="Top" Columns="2" Margin="0,0,0,12">
+                    <Button Content="Route hinzufügen"
+                            Command="{Binding AddRouteCommand}"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Margin="0,0,4,4"
+                            Padding="8,6" />
+                    <Button Content="Route bearbeiten"
+                            Command="{Binding EditRouteCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Margin="4,0,0,4"
+                            Padding="8,6" />
+                    <Button Content="Route löschen"
+                            Command="{Binding RemoveRouteCommand}"
+                            Style="{StaticResource RoutesDeleteButtonStyle}"
+                            Margin="0,4,4,0"
+                            Padding="8,6" />
+                    <Button Content="Speichern"
+                            Command="{Binding SaveChangesCommand}"
+                            Style="{StaticResource RoutesSaveButtonStyle}"
+                            Margin="4,4,0,0"
+                            Padding="8,6" />
+                </UniformGrid>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <ListBox ItemsSource="{Binding FilteredRoutes}" SelectedItem="{Binding SelectedRoute}"
                              BorderThickness="0" Background="Transparent"
@@ -63,18 +104,12 @@
                              VerticalAlignment="Stretch"
                              Background="{StaticResource SmartSurfaceBrush}">
             <DockPanel LastChildFill="True">
-                <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-                    <Button DockPanel.Dock="Right"
-                            Content="Speichern"
-                            Command="{Binding SaveChangesCommand}"
-                            MinWidth="120"
-                            Margin="12,0,0,0"
-                            Style="{StaticResource RoutesSaveButtonStyle}" />
-                    <TextBlock Text="{Binding StatusMessage}"
-                               VerticalAlignment="Center"
-                               Opacity="0.8"
-                               TextWrapping="Wrap" />
-                </DockPanel>
+                <TextBlock DockPanel.Dock="Bottom"
+                           Margin="0,12,0,0"
+                           Text="{Binding StatusMessage}"
+                           VerticalAlignment="Center"
+                           Opacity="0.8"
+                           TextWrapping="Wrap" />
 
                 <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                     <TextBlock Text="{Binding SelectedRoute, TargetNullValue='— Keine Route ausgewählt —'}"
@@ -83,11 +118,13 @@
                                FontSize="14"
                                Margin="0,0,0,8"
                                Foreground="{StaticResource SmartPrimaryBrush}" />
+                    <TextBlock Text="Haltestellen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8" />
                     <Grid Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="12" />
                             <ColumnDefinition Width="*" MinWidth="140" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Button Grid.Column="0"
                                 Content="{Binding RouteSettingsButtonLabel}"
@@ -98,8 +135,27 @@
                         <TextBox Grid.Column="2"
                                  materialDesign:HintAssist.Hint="Haltestellenanzeige Zieltext"
                                  Text="{Binding RouteInteriorDisplayDestination, UpdateSourceTrigger=PropertyChanged}"
-                                 MaxLength="20"
-                                 VerticalAlignment="Center" />
+                                 MaxLength="{Binding Ds009TextMaxLength}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,8,0" />
+                        <StackPanel Grid.Column="3"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center"
+                                    ToolTip="DS009-Textlänge für Zieltext und Haltestellenanzeige (wie in der App)">
+                            <TextBlock Text="DS009"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       Opacity="0.75"
+                                       FontSize="12" />
+                            <Button Content="16"
+                                    Command="{Binding SetDs009TextLengthCommand}"
+                                    CommandParameter="16"
+                                    Style="{StaticResource Ds009Length16ButtonStyle}" />
+                            <Button Content="20"
+                                    Command="{Binding SetDs009TextLengthCommand}"
+                                    CommandParameter="20"
+                                    Style="{StaticResource Ds009Length20ButtonStyle}" />
+                        </StackPanel>
                     </Grid>
                 </StackPanel>
 
@@ -215,9 +271,6 @@
                     </ScrollViewer>
 
                     <StackPanel Grid.Row="1" Margin="0,0,0,8">
-                        <TextBlock Text="Haltestellen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
-                        <TextBlock Text="Haltestelle anklicken zum Bearbeiten · ▲▼ Reihenfolge · ✕ löschen"
-                                   Opacity="0.75" FontSize="11" Margin="0,0,0,8" />
                         <WrapPanel Margin="0,0,0,4">
                             <Button Content="Aus Kartei" Command="{Binding AddStopFromLibraryCommand}" Margin="0,0,8,8"
                                     Style="{StaticResource MaterialDesignRaisedButton}"
@@ -238,13 +291,10 @@
                                     ToolTip="Nach unten" />
                             <Button Content="Fahrplan" Command="{Binding ShowAutoScheduleCommand}" Margin="0,0,8,8"
                                     Style="{StaticResource MaterialDesignRaisedButton}"
-                                    ToolTip="Automatische Fahrplanerstellung (wie in der App)" />
+                                    ToolTip="Fahrplan automatisch erstellen, Umlauf importieren oder als HTML/PDF öffnen" />
                             <Button Content="Navidaten kopieren" Command="{Binding CopyNavigationDataCommand}" Margin="0,0,8,8"
                                     Style="{StaticResource MaterialDesignOutlinedButton}"
                                     ToolTip="Fahrweg von der Fahrplan-Vorlagen-Route übernehmen (nur Fahrplan-Fahrten)" />
-                            <Button Content="📄 Fahrplan" Command="{Binding ExportScheduleHtmlCommand}" Margin="0,0,8,8"
-                                    Style="{StaticResource MaterialDesignOutlinedButton}"
-                                    ToolTip="HTML-Fahrplan der ausgewählten Route öffnen" />
                             <Button Content="Routenschnur" Command="{Binding ShowRouteChainCommand}" Margin="0,0,8,8"
                                     Style="{StaticResource MaterialDesignRaisedButton}"
                                     ToolTip="Linie/Kurs-Fahrten und verbundene Routenschnur mit Fahrplan prüfen" />

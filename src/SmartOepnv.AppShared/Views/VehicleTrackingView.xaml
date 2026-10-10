@@ -91,6 +91,14 @@
                                                 <Run Text="{Binding LineCourse, Mode=OneWay}" FontWeight="SemiBold" />
                                             </TextBlock>
                                             <TextBlock Text="{Binding DetailLine, Mode=OneWay}" Foreground="#E3F2FD" TextWrapping="Wrap" FontSize="12" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                <TextBlock Text="{Binding PasInfoDisplay, Mode=OneWay}"
+                                                           Foreground="{Binding PasInfoForeground, Mode=OneWay}"
+                                                           FontSize="11" FontWeight="SemiBold" Margin="0,0,10,0" />
+                                                <TextBlock Text="{Binding BluetoothDisplay, Mode=OneWay}"
+                                                           Foreground="{Binding BluetoothForeground, Mode=OneWay}"
+                                                           FontSize="11" FontWeight="SemiBold" />
+                                            </StackPanel>
                                             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                                 <TextBlock Text="{Binding StatusLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Margin="0,0,8,0">
                                                     <TextBlock.Style>

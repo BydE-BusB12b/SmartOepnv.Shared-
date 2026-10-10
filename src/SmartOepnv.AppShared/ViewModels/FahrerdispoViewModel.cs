@@ -1,10 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
+using SmartOepnv.AppShared.Pdf;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dienstvorlagen;
@@ -28,7 +31,10 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
     public const double AssignmentBarLaneGap = 2;
 
-    public const double HourBarStripHeight = 10;
+    public const double HourBarStripHeight = 36;
+
+    /// <summary>Freiraum unten in der Stundenzeile für die gelben Stundenzahlen.</summary>
+    public const double HourNumberReserveHeight = 14;
 
     private static readonly CultureInfo DeCulture = CultureInfo.GetCultureInfo("de-DE");
 
@@ -49,7 +55,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
     public event Action<string?, string?>? NavigateToEmployeeManagementRequested;
 
     public FahrerdispoViewModel()
-        : base("Kalenderschnur: Fahrer links, Tage rechts – Tag anklicken für Stundenansicht.")
+        : base("Kalenderschnur: Fahrer links, Tage rechts – Tag anklicken für neuen Dienst (Fahrer+Datum vorausgefüllt).")
     {
         ViewStartDate = GetWeekStart(DateTime.Today);
         if (AppServices.IsInitialized)
@@ -178,7 +184,136 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
     private void GoToToday() => ViewStartDate = GetWeekStart(DateTime.Today);
 
     [RelayCommand]
-    private void AddShift()
+    private void ExportPdf()
+    {
+        CommitChangesIfDirty();
+
+        var editor = AppServices.Routes.Editor;
+        var employees = editor?.Employees.ToList() ?? [];
+        if (employees.Count == 0)
+        {
+            StatusMessage = "Keine Fahrer – bitte zuerst unter Personalverwaltung anlegen.";
+            return;
+        }
+
+        var driverChoices = employees
+            .Select(e =>
+            {
+                var key = EmployeeDispoKeys.FromEmployee(e);
+                var label = ResolveDriverLabel(key, employees) ?? e.Name.Trim();
+                if (string.IsNullOrWhiteSpace(label))
+                {
+                    label = key;
+                }
+
+                return (Key: key, DisplayName: label);
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+            .GroupBy(x => x.Key, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .OrderBy(x => x.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        var owner = Application.Current?.MainWindow;
+        var rangeDialog = new FahrerdispoPdfExportDialog(
+            driverChoices,
+            ViewStartDate.Date,
+            ViewStartDate.Date.AddDays(VisibleDayCount - 1))
+        {
+            Owner = owner
+        };
+        if (rangeDialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var from = rangeDialog.FromDate.Date;
+        var to = rangeDialog.ToDate.Date;
+        var fromMs = new DateTimeOffset(from).ToUnixTimeMilliseconds();
+        var toExclusiveMs = new DateTimeOffset(to.AddDays(1)).ToUnixTimeMilliseconds();
+
+        var sections = new List<(string DriverKey, string DisplayName, IReadOnlyList<DriverDispositionAssignment> Assignments)>();
+        IEnumerable<(string Key, string DisplayName)> targets = rangeDialog.SelectedDriverKey is { } oneKey
+            ? driverChoices.Where(d => string.Equals(d.Key, oneKey, StringComparison.Ordinal))
+            : driverChoices;
+
+        foreach (var (key, displayName) in targets)
+        {
+            var list = _assignments
+                .Where(a => string.Equals(a.DriverKey, key, StringComparison.Ordinal) &&
+                            a.StartEpochMs < toExclusiveMs &&
+                            a.EndEpochMs > fromMs)
+                .Select(a => a.Clone())
+                .OrderBy(a => a.StartEpochMs)
+                .ToList();
+            sections.Add((key, displayName, list));
+        }
+
+        // Orphan-Dienste (nicht mehr im Roster), nur bei Gesamtausgabe
+        if (rangeDialog.SelectedDriverKey is null)
+        {
+            var known = new HashSet<string>(driverChoices.Select(d => d.Key), StringComparer.Ordinal);
+            foreach (var group in _assignments
+                         .Where(a => !known.Contains(a.DriverKey) &&
+                                     a.StartEpochMs < toExclusiveMs &&
+                                     a.EndEpochMs > fromMs)
+                         .GroupBy(a => a.DriverKey, StringComparer.Ordinal)
+                         .OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                sections.Add((
+                    group.Key,
+                    ResolveDriverLabel(group.Key, employees) ?? group.Key,
+                    group.Select(a => a.Clone()).OrderBy(a => a.StartEpochMs).ToList()));
+            }
+        }
+
+        if (sections.Count == 0)
+        {
+            StatusMessage = "Keine Daten für den gewählten Zeitraum.";
+            return;
+        }
+
+        var scopePart = rangeDialog.SelectedDriverKey is null
+            ? "alle_fahrer"
+            : SafeFilePart(sections[0].DisplayName);
+        var fileName =
+            $"personaldisposition_{scopePart}_{from:yyyy-MM-dd}_{to:yyyy-MM-dd}.pdf";
+
+        var save = new SaveFileDialog
+        {
+            Filter = "PDF (*.pdf)|*.pdf",
+            FileName = fileName,
+            DefaultExt = ".pdf"
+        };
+        if (save.ShowDialog(owner) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            FahrerDispositionPdfGenerator.Generate(save.FileName, from, to, sections);
+            StatusMessage = $"PDF erstellt: {save.FileName}";
+            StatusMessageIsSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"PDF-Erstellung fehlgeschlagen: {ex.Message}";
+            StatusMessageIsSuccess = false;
+        }
+    }
+
+    private static string SafeFilePart(string value)
+    {
+        var safe = string.Join("_", value.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries))
+            .Trim();
+        return string.IsNullOrWhiteSpace(safe) ? "fahrer" : safe;
+    }
+
+    [RelayCommand]
+    private void AddShift() => AddShiftCore(DateTime.Today, defaultDriverKey: null);
+
+    private void AddShiftCore(DateTime defaultDate, string? defaultDriverKey)
     {
         var editor = AppServices.Routes.Editor;
         if (editor is null)
@@ -193,7 +328,12 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             return;
         }
 
-        if (!TryShowShiftDialog(editor.Employees.ToList(), DateTime.Today, existing: null, out var result))
+        if (!TryShowShiftDialog(
+                editor.Employees.ToList(),
+                defaultDate,
+                existing: null,
+                out var result,
+                defaultDriverKey))
         {
             return;
         }
@@ -236,6 +376,112 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
 
         _sync.MarkDirty();
         SaveAndRefresh(result.StartEpochMs, "Dienst gespeichert.");
+    }
+
+    [RelayCommand]
+    private void CopyShifts()
+    {
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            StatusMessage = "Kein Route-Paket geladen – bitte unter Übersicht importieren.";
+            return;
+        }
+
+        if (_assignments.Count == 0)
+        {
+            StatusMessage = "Keine Dienste zum Kopieren vorhanden.";
+            return;
+        }
+
+        var drivers = editor.Employees
+            .Select(e => (EmployeeDispoKeys.FromEmployee(e), ResolveDriverLabel(EmployeeDispoKeys.FromEmployee(e), editor.Employees) ?? e.Name.Trim()))
+            .Where(d => d.Item1.Length > 0)
+            .ToList();
+
+        var dialog = new FahrerdispoCopyDialog(drivers, ViewStartDate.Date)
+        {
+            Owner = Application.Current.MainWindow
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var sourceFrom = dialog.SourceFrom.Date;
+        var sourceTo = dialog.SourceTo.Date;
+        var targetFrom = dialog.TargetFrom.Date;
+        var deltaDays = (int)(targetFrom - sourceFrom).TotalDays;
+        var driverFilter = dialog.SelectedDriverKey;
+
+        var sourceStartMs = new DateTimeOffset(sourceFrom).ToUnixTimeMilliseconds();
+        var sourceEndMs = new DateTimeOffset(sourceTo.AddDays(1)).ToUnixTimeMilliseconds();
+
+        var candidates = _assignments
+            .Where(a => a.StartEpochMs >= sourceStartMs && a.StartEpochMs < sourceEndMs)
+            .Where(a => driverFilter is null ||
+                        string.Equals(a.DriverKey, driverFilter, StringComparison.Ordinal))
+            .OrderBy(a => a.StartEpochMs)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            StatusMessage = "Im Quellzeitraum keine passenden Dienste gefunden.";
+            StatusMessageIsSuccess = false;
+            return;
+        }
+
+        var added = 0;
+        var skipped = 0;
+        foreach (var source in candidates)
+        {
+            var clone = source.Clone();
+            clone.Id = Guid.NewGuid().ToString("N");
+            clone.StartEpochMs = ShiftEpochByDays(source.StartEpochMs, deltaDays);
+            clone.EndEpochMs = ShiftEpochByDays(source.EndEpochMs, deltaDays);
+            if (clone.Part1EndEpochMs > 0)
+            {
+                clone.Part1EndEpochMs = ShiftEpochByDays(source.Part1EndEpochMs, deltaDays);
+            }
+
+            if (clone.Part2StartEpochMs > 0)
+            {
+                clone.Part2StartEpochMs = ShiftEpochByDays(source.Part2StartEpochMs, deltaDays);
+            }
+
+            var dutyDate = DateTimeOffset.FromUnixTimeMilliseconds(clone.StartEpochMs).LocalDateTime.Date;
+            var dutyNumber = !string.IsNullOrWhiteSpace(clone.DutyNumber) ? clone.DutyNumber : clone.Label;
+            if (!string.IsNullOrWhiteSpace(dutyNumber) &&
+                DriverDispositionDutyNumberRules.TryFindConflictingDutyNumber(
+                    _assignments,
+                    dutyNumber,
+                    dutyDate,
+                    excludeAssignmentId: null,
+                    out _))
+            {
+                skipped++;
+                continue;
+            }
+
+            _assignments.Add(clone);
+            added++;
+        }
+
+        if (added == 0)
+        {
+            StatusMessage = skipped > 0
+                ? $"Nichts kopiert – {skipped} Dienst(e) wegen doppelter Dienstnummer übersprungen."
+                : "Nichts kopiert.";
+            StatusMessageIsSuccess = false;
+            return;
+        }
+
+        _sync.MarkDirty();
+        var focusMs = new DateTimeOffset(targetFrom).ToUnixTimeMilliseconds();
+        var msg = skipped > 0
+            ? $"{added} Dienst(e) kopiert, {skipped} wegen doppelter Dienstnummer übersprungen."
+            : $"{added} Dienst(e) kopiert.";
+        SaveAndRefresh(focusMs, msg);
     }
 
     public void EditShift(string assignmentId)
@@ -301,13 +547,11 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             return;
         }
 
-        if (_expandedDriverKey == cell.VehiclePhoneKey && _expandedDate == cell.Date.Value.Date)
-        {
-            CollapseHourView();
-            return;
-        }
-
-        OpenHourView(cell.VehiclePhoneKey, cell.Date.Value);
+        var date = cell.Date.Value.Date;
+        var defaultDate = cell.Hour is int hour
+            ? date.AddHours(hour)
+            : date;
+        AddShiftCore(defaultDate, cell.VehiclePhoneKey);
     }
 
     public void OpenHourViewFromAssignmentBar(string driverKey, DateTime date) =>
@@ -430,7 +674,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
         StatusMessage =
             $"{VisibleDriverCount} von {DriverCount} Fahrern – " +
             $"{ViewStartDate:dd.MM.yyyy} bis {days[^1]:dd.MM.yyyy}. " +
-            "„Neuer Dienst“ zum Eintragen, Rechtsklick auf Balken – FPersV: Ruhe-, Wochenruhe- und Lenkzeiten.";
+            "Zellklick = neuer Dienst; Linksklick auf Balken = Stundenansicht; „Kopieren“ = Tage/Woche.";
     }
 
     private void SaveAndRefresh(long? focusStartEpochMs, string message)
@@ -472,17 +716,23 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                 _rebuildScheduled = false;
                 RebuildGrid();
             },
-            DispatcherPriority.Loaded);
+            DispatcherPriority.Background);
     }
 
     private bool TryShowShiftDialog(
         IReadOnlyList<EmployeeRosterItem> employees,
         DateTime defaultDate,
         DriverDispositionAssignment? existing,
-        out FahrerdispoShiftDialogResult result)
+        out FahrerdispoShiftDialogResult result,
+        string? defaultDriverKey = null)
     {
         result = default;
-        var dialog = new FahrerdispoNewShiftDialog(employees, defaultDate, existing, _assignments)
+        var dialog = new FahrerdispoNewShiftDialog(
+            employees,
+            defaultDate,
+            existing,
+            _assignments,
+            defaultDriverKey)
         {
             Owner = Application.Current.MainWindow
         };
@@ -587,7 +837,8 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                     part1EndEpochMs: part1EndMs,
                     part2StartEpochMs: part2StartMs,
                     knownDrivingMinutes: knownDrivingMinutes,
-                    knownServiceDurationMinutes: knownServiceDurationMinutes))
+                    knownServiceDurationMinutes: knownServiceDurationMinutes,
+                    dutyNumber: part.DutyNumber))
             {
                 StatusMessage = $"Dienst {part.DutyNumber}: {complianceError}";
                 return false;
@@ -728,7 +979,8 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             Header = $"{hour:00}",
             Hour = hour,
             Date = date,
-            CellWidth = HourCellWidth
+            CellWidth = HourCellWidth,
+            Tooltip = $"Neuer Dienst – {date:dd.MM.yyyy} {hour:00}:00 (Fahrer vorausgefüllt)"
         };
 
     private IReadOnlyList<DateTime> BuildVisibleDays()
@@ -822,6 +1074,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                 TimeLabelAboveBar = labelAbove,
                 TimeLabel = timeLabel,
                 Label = shiftName,
+                IsStandbyBar = DriverDispositionDutyNumberRules.IsStandbyAssignment(assignment),
                 IsSplitShiftBar = assignment.IsSplitShift && gapRatio > 0,
                 Work1Ratio = work1Ratio,
                 GapRatio = gapRatio,
@@ -844,7 +1097,8 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
             VehiclePhoneKey = phoneKey,
             Date = date,
             IsExpandedTarget = isExpandedTarget,
-            CellWidth = DayCellWidth
+            CellWidth = DayCellWidth,
+            Tooltip = $"Neuer Dienst – {date:dd.MM.yyyy} (Fahrer vorausgefüllt)"
         };
     }
 
@@ -941,6 +1195,7 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
                 Height = height,
                 LaneIndex = laneIndex,
                 Label = label,
+                IsStandbyBar = DriverDispositionDutyNumberRules.IsStandbyAssignment(assignment),
                 IsSplitShiftBar = assignment.IsSplitShift && gapRatio > 0,
                 Work1Ratio = work1Ratio,
                 GapRatio = gapRatio,
@@ -995,15 +1250,16 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
         int laneIndex,
         int laneCount)
     {
+        var usable = AssignmentBarRowHeight - HourNumberReserveHeight;
         if (laneCount <= 1)
         {
-            return (0, AssignmentBarRowHeight, true);
+            return (2, Math.Max(HourBarStripHeight, usable - 4), true);
         }
 
-        var laneHeight = (AssignmentBarRowHeight - AssignmentBarLaneGap) / 2;
+        var laneHeight = (usable - AssignmentBarLaneGap) / 2;
         return laneIndex == 0
-            ? (0, laneHeight, true)
-            : (laneHeight + AssignmentBarLaneGap, laneHeight, false);
+            ? (2, laneHeight, true)
+            : (2 + laneHeight + AssignmentBarLaneGap, laneHeight, false);
     }
 
     private static (double Top, double Height) GetAssignmentBarVerticalLayout(int laneIndex, int laneCount)
@@ -1130,5 +1386,11 @@ public partial class FahrerdispoViewModel : EditorStatusViewModelBase
     {
         var diff = ((int)date.DayOfWeek + 6) % 7;
         return date.Date.AddDays(-diff);
+    }
+
+    private static long ShiftEpochByDays(long epochMs, int deltaDays)
+    {
+        var local = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).LocalDateTime;
+        return new DateTimeOffset(local.AddDays(deltaDays)).ToUnixTimeMilliseconds();
     }
 }

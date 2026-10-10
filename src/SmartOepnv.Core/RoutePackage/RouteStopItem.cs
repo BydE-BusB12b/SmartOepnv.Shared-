@@ -104,6 +104,15 @@ public sealed class RouteStopItem
     /// <summary>DS004: gespeichert nur Wabe (3, Telegramm-Ziffer 4–6); Linie (Ziffer 1–3) setzt die App zur Fahrt. Optional 4. Ziffer = Kurzstrecke.</summary>
     public string EntwerterCode { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Zielwechsel: an dieser Haltestelle (bzw. am optionalen GPS-Punkt) das hier gesetzte Ziel erneut senden.
+    /// </summary>
+    public bool ZielwechselEnabled { get; set; }
+    /// <summary>Optionaler Auslöse-Punkt (lat,lon). Leer = an der Haltestelle.</summary>
+    public string ZielwechselGpsCoordinates { get; set; } = string.Empty;
+    /// <summary>Radius in Metern für den GPS-Punkt (Default 40).</summary>
+    public int ZielwechselRadius { get; set; } = 40;
+
     public bool IsDisplayEnabled { get; set; }
     public string DisplayText { get; set; } = string.Empty;
     public string DisplayText2 { get; set; } = string.Empty;
@@ -170,6 +179,9 @@ public sealed class RouteStopItem
             StopHintRadius = StopHintRadius,
             EntwerterEnabled = EntwerterEnabled,
             EntwerterCode = EntwerterCode,
+            ZielwechselEnabled = ZielwechselEnabled,
+            ZielwechselGpsCoordinates = ZielwechselGpsCoordinates,
+            ZielwechselRadius = ZielwechselRadius,
             IsDisplayEnabled = IsDisplayEnabled,
         DisplayText = DisplayText,
         DisplayText2 = DisplayText2,
@@ -237,6 +249,9 @@ public sealed class RouteStopItem
         StopHintRadius = other.StopHintRadius;
         EntwerterEnabled = other.EntwerterEnabled;
         EntwerterCode = other.EntwerterCode;
+        ZielwechselEnabled = other.ZielwechselEnabled;
+        ZielwechselGpsCoordinates = other.ZielwechselGpsCoordinates;
+        ZielwechselRadius = other.ZielwechselRadius;
         IsDisplayEnabled = other.IsDisplayEnabled;
         DisplayText = other.DisplayText;
         DisplayText2 = other.DisplayText2;

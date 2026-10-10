@@ -33,19 +33,21 @@
             <!-- App-Bar -->
             <materialDesign:ColorZone Grid.Row="0"
                                       Mode="PrimaryDark"
-                                      Padding="16,12"
-                                      materialDesign:ElevationAssist.Elevation="Dp4">
+                                      Padding="12,6"
+                                      materialDesign:ElevationAssist.Elevation="Dp2">
                 <DockPanel LastChildFill="True">
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                         <materialDesign:PackIcon Kind="BusArticulatedFront"
-                                                 Width="36" Height="36"
+                                                 Width="26" Height="26"
                                                  VerticalAlignment="Center"
-                                                 Margin="0,0,12,0" />
+                                                 Margin="0,0,8,0" />
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="{Binding ProductName}"
-                                       FontSize="20" FontWeight="SemiBold" />
+                                       FontSize="16" FontWeight="SemiBold"
+                                       LineHeight="18" />
                             <TextBlock Text="{Binding ProductSubtitle}"
-                                       FontSize="12" Opacity="0.85" />
+                                       FontSize="11" Opacity="0.85"
+                                       LineHeight="13" />
                         </StackPanel>
                     </StackPanel>
 
@@ -346,25 +348,10 @@
                 </materialDesign:Card>
             </Grid>
 
-            <!-- Statusleiste -->
+            <!-- Schmaler Abschlussstreifen -->
             <Border Grid.Row="2"
                     Background="{StaticResource SmartPrimaryDarkBrush}"
-                    Padding="16,8">
-                <DockPanel LastChildFill="True">
-                    <TextBlock DockPanel.Dock="Left"
-                               Text="{Binding StatusText}"
-                               VerticalAlignment="Center"
-                               Opacity="0.9" />
-                    <TextBlock DockPanel.Dock="Right"
-                               HorizontalAlignment="Right"
-                               VerticalAlignment="Center"
-                               Opacity="0.65">
-                        <Run Text="v" />
-                        <Run Text="{Binding AppVersion}" />
-                        <Run Text=" · Smart-ÖPNV" />
-                    </TextBlock>
-                </DockPanel>
-            </Border>
+                    Height="4" />
         </Grid>
     </materialDesign:DialogHost>
 </Window>

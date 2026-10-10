@@ -31,7 +31,7 @@
       width: 36px; height: 36px; border-radius: 6px;
       background: rgba(255,255,255,0.95); border: 2px solid #1b5e20;
       box-shadow: 0 2px 8px rgba(0,0,0,.45); object-fit: contain; padding: 2px;
-      cursor: pointer; pointer-events: none;
+      cursor: pointer; pointer-events: auto;
     }
     .nav-symbol-icon.nav-selected {
       border-color: #ffeb3b;
@@ -693,6 +693,8 @@
 
     function emitNavSymbolSelected(seg, idx, symbolType, instruction, options) {
       options = options || {};
+      const markerKey = options.mapMarkerKey ||
+        (edgeKey(seg.fromNodeId, seg.toNodeId) + '_m' + idx);
       post({
         type: 'navSymbolSelected',
         draftJson: window.getDraftJson ? window.getDraftJson() : null,
@@ -701,7 +703,8 @@
         to: seg.toNodeId,
         maneuverIndex: idx,
         symbolType: symbolType,
-        instruction: instruction || symbolType
+        instruction: instruction || symbolType,
+        mapMarkerKey: markerKey
       });
     }
 
@@ -729,7 +732,10 @@
       delete draft.navDisplayNumbers;
       render();
       notifyDraftChanged(true);
-      emitNavSymbolSelected(seg, idx, 'straight', 'Manuell', { recordUndo: true });
+      emitNavSymbolSelected(seg, idx, 'straight', 'Manuell', {
+        recordUndo: true,
+        mapMarkerKey: selectedNavMarkerKey
+      });
       post({ type: 'segmentSelected', from: seg.fromNodeId, to: seg.toNodeId, maneuverIndex: idx });
     }
 
@@ -1236,9 +1242,11 @@
         const m = L.marker([c.pos.lat, c.pos.lon], {
           icon,
           draggable: true,
+          interactive: true,
+          bubblingMouseEvents: false,
           pane: 'navManeuverPane',
           className: 'nav-marker-leaflet',
-          zIndexOffset: 3000 + badge + (isNavSelected ? 250 : 0)
+          zIndexOffset: 5000 + badge + (isNavSelected ? 500 : 0)
         }).addTo(map);
         const dist = Math.round(c.along || 0);
         m.bindTooltip(
@@ -1247,11 +1255,14 @@
         );
         m.on('click', ev => {
           if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev);
+          if (ev && ev.originalEvent) L.DomEvent.preventDefault(ev.originalEvent);
           selectedFrom = null;
           selectedNavMarkerKey = c.key;
           draft.selectedNavMarkerKey = c.key;
           render();
-          emitNavSymbolSelected(c.seg, c.idx, c.symbolType, c.maneuver.instruction);
+          emitNavSymbolSelected(c.seg, c.idx, c.symbolType, c.maneuver.instruction, {
+            mapMarkerKey: c.key
+          });
         });
         m.on('drag', () => { constrainMarkerToSegmentPolyline(m, c.seg); });
         m.on('dragend', () => {
@@ -1262,9 +1273,13 @@
           const snap = ensureSegmentSnap(c.seg, hit.latlngs);
           if (snap.maneuvers && snap.maneuvers[c.idx]) snap.maneuvers[c.idx].distanceM = alongDrag;
           selectedNavMarkerKey = c.key;
+          draft.selectedNavMarkerKey = c.key;
           render();
           notifyDraftChanged(true);
-          emitNavSymbolSelected(c.seg, c.idx, c.symbolType, c.maneuver.instruction, { recordUndo: true });
+          emitNavSymbolSelected(c.seg, c.idx, c.symbolType, c.maneuver.instruction, {
+            recordUndo: true,
+            mapMarkerKey: c.key
+          });
         });
         navMarkers[c.key] = m;
       });

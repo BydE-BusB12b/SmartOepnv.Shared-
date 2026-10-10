@@ -43,7 +43,7 @@ public static class KomCommandSendFlow
         CancellationToken ct = default,
         Action? onProgressAck = null)
     {
-        SetStatus(statusLine, "Sende Befehl …");
+        SetStatus(statusLine, "Wird gesendet.");
         long commandId;
         try
         {
@@ -61,12 +61,13 @@ public static class KomCommandSendFlow
             return KomCommandSendOutcome.UploadFailed;
         }
 
+        SetStatus(statusLine, "Senden erfolgreich.");
         KomCommandAckFeedback.ShowSent(
             owner,
             vehicleDisplayName,
             KomCommandAckService.SentHintFor(commandType, vehicleDisplayName));
 
-        SetStatus(statusLine, "Warte auf Bestätigung vom Fahrzeug …");
+        SetStatus(statusLine, "Senden erfolgreich. Warte auf Fahrzeug …");
         var progressShown = false;
         var ack = await KomCommandAckService.WaitForAckAsync(
             AppServices.Dropbox,
@@ -103,9 +104,7 @@ public static class KomCommandSendFlow
                 ack.Message,
                 ack.IsSuccess,
                 commandType);
-            SetStatus(statusLine, ack.IsSuccess
-                ? ack.Message
-                : $"Fehler: {ack.Message}");
+            SetStatus(statusLine, FormatFinalStatus(commandType, ack));
             return ack.IsSuccess ? KomCommandSendOutcome.Success : KomCommandSendOutcome.AckError;
         }
 
@@ -140,11 +139,33 @@ public static class KomCommandSendFlow
         return KomCommandSendOutcome.Timeout;
     }
 
+    private static string FormatFinalStatus(string commandType, KomCommandAckService.AckResult ack)
+    {
+        if (ack.IsSuccess)
+        {
+            return string.IsNullOrWhiteSpace(ack.Message)
+                ? KomCommandAckService.DefaultSuccessMessage(commandType)
+                : ack.Message;
+        }
+
+        if (string.Equals(commandType, KomRemoteRouteService.CommandType, StringComparison.Ordinal) &&
+            string.IsNullOrWhiteSpace(ack.Message))
+        {
+            return "Route nicht verfügbar.";
+        }
+
+        return string.IsNullOrWhiteSpace(ack.Message)
+            ? "Fehler vom Fahrzeug."
+            : ack.Message;
+    }
+
     /// <summary>
     /// Sendet Befehl, schließt den Dialog sofort danach.
     /// Rückmeldung vom Fahrzeug erscheint später als separates Statusfenster (blockiert die Leitstelle nicht).
     /// </summary>
-    /// <remarks><paramref name="dialog"/> muss vor <see cref="Close"/> freigegeben sein (z. B. via <see cref="KomSendDialogGuard.EndSend"/>).</remarks>
+    /// <param name="releaseCloseGuard">
+    /// Muss den Close-Guard freigeben (<see cref="KomSendDialogGuard.EndSend"/>), bevor der Dialog geschlossen wird.
+    /// </param>
     public static async Task<bool> SendAndReleaseDialogAsync(
         Window dialog,
         TextBlock? statusLine,
@@ -152,9 +173,10 @@ public static class KomCommandSendFlow
         string vehiclePhone,
         string commandType,
         Func<CancellationToken, Task<long>> uploadAsync,
+        Action? releaseCloseGuard = null,
         CancellationToken ct = default)
     {
-        SetStatus(statusLine, "Sende Befehl …");
+        SetStatus(statusLine, "Wird gesendet.");
         long commandId;
         try
         {
@@ -172,12 +194,16 @@ public static class KomCommandSendFlow
             return false;
         }
 
+        SetStatus(statusLine, "Senden erfolgreich.");
         var feedbackOwner = KomFeedbackOwner.Resolve(dialog);
         KomCommandAckFeedback.ShowSent(
             feedbackOwner,
             vehicleDisplayName,
             KomCommandAckService.SentHintFor(commandType, vehicleDisplayName));
 
+        // Guard zuerst freigeben – sonst verhindert Closing-Cancel das Schließen
+        // und die Statuszeile bleibt dauerhaft auf „Wird gesendet.“ stehen.
+        releaseCloseGuard?.Invoke();
         dialog.DialogResult = true;
         dialog.Close();
 

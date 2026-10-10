@@ -82,7 +82,16 @@ public partial class RouteStopEditPanel : UserControl
     {
         if (e.PropertyName is nameof(RoutesViewModel.SelectedLineCourseTrip)
             or nameof(RoutesViewModel.IsStartStop)
-            or nameof(RoutesViewModel.ShowStartStopFields))
+            or nameof(RoutesViewModel.ShowStartStopFields)
+            or nameof(RoutesViewModel.SelectedStop)
+            or nameof(RoutesViewModel.SelectedDestinationDs021t)
+            or nameof(RoutesViewModel.SelectedDestinationDs021Neu)
+            or nameof(RoutesViewModel.SelectedDestinationFmaS1)
+            or nameof(RoutesViewModel.SelectedDestinationDs003a)
+            or nameof(RoutesViewModel.SelectedDestinationZielnummer)
+            or nameof(RoutesViewModel.SelectedDestinationMobitec)
+            or nameof(RoutesViewModel.ZielwechselEnabled)
+            or nameof(RoutesViewModel.ShowZielwechselFields))
         {
             SyncComboSelectionsFromViewModel();
         }
@@ -112,7 +121,9 @@ public partial class RouteStopEditPanel : UserControl
                     continue;
                 }
 
-                if (!viewModel.IsStartStop && IsStartDestinationField(fieldKey))
+                if (!viewModel.IsStartStop &&
+                    !viewModel.ZielwechselEnabled &&
+                    IsStartDestinationField(fieldKey))
                 {
                     viewModel.ApplyDestinationComboSelection(
                         fieldKey,
@@ -127,9 +138,13 @@ public partial class RouteStopEditPanel : UserControl
             {
                 viewModel.MaintainStartStopMarkerAfterEdit();
             }
-            else
+            else if (!viewModel.ZielwechselEnabled)
             {
                 RouteStopEditorCatalog.ClearStartStopFields(stop);
+            }
+            else
+            {
+                stop.IsAnnouncementEnabled = true;
             }
 
             viewModel.NotifyStopEditorStateChanged();

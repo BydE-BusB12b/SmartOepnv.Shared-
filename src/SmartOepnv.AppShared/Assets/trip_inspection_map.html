@@ -56,15 +56,27 @@
 
     let layer = L.layerGroup().addTo(map);
     let selectionLayer = L.layerGroup().addTo(map);
-    /** @type {{lat:number, lon:number, t:string, label:string, speed:number, ts:number}[]} */
+    /** @type {{lat:number, lon:number, t:string, label:string, speed:number, ts:number, bt:boolean|null, pi:boolean|null}[]} */
     let tracePoints = [];
-    let polyline = null;
+    /** @type {L.Polyline[]} */
+    let polylines = [];
+
+    const TRACE_YELLOW = '#FFEB3B';
+    const TRACE_BLUE_BT_OFF = '#42A5F5';
+    const TRACE_RED_NO_PAS = '#E53935';
 
     function clearTrace() {
       layer.clearLayers();
       selectionLayer.clearLayers();
       tracePoints = [];
-      polyline = null;
+      polylines = [];
+    }
+
+    function parseOptionalBool(v) {
+      if (typeof v === 'boolean') return v;
+      if (v === 0 || v === '0') return false;
+      if (v === 1 || v === '1') return true;
+      return null;
     }
 
     function normalizePoints(raw) {
@@ -79,7 +91,9 @@
             t: String(p.t || ''),
             label: String(p.label || p.t || ''),
             speed: Number(p.speed) || 0,
-            ts: Number(p.ts) || 0
+            ts: Number(p.ts) || 0,
+            bt: parseOptionalBool(p.bt),
+            pi: parseOptionalBool(p.pi)
           });
           continue;
         }
@@ -88,10 +102,24 @@
           const lat = Number(p[0]);
           const lon = Number(p[1]);
           if (!isFinite(lat) || !isFinite(lon)) continue;
-          out.push({ lat, lon, t: '', label: '', speed: 0, ts: 0 });
+          out.push({ lat, lon, t: '', label: '', speed: 0, ts: 0, bt: null, pi: null });
         }
       }
       return out;
+    }
+
+    /** Bluetooth aus → blau; an oder unbekannt (Altdaten) → gelb. */
+    function isBtOff(p) {
+      return p && p.bt === false;
+    }
+
+    /** Pas.Info aus → rote Streifen; an oder unbekannt (Altdaten) → keine. */
+    function isPasInfoOff(p) {
+      return p && p.pi === false;
+    }
+
+    function styleKey(p) {
+      return (isBtOff(p) ? '1' : '0') + (isPasInfoOff(p) ? '1' : '0');
     }
 
     function haversineM(aLat, aLon, bLat, bLon) {
@@ -158,14 +186,16 @@
       }
 
       const speedPart = center.speed > 0 ? ` · ${center.speed} km/h` : '';
+      const btPart = isBtOff(center) ? ' · BT aus' : '';
+      const pasPart = isPasInfoOff(center) ? ' · Pas.Info aus' : '';
       L.circleMarker([center.lat, center.lon], {
         radius: 10,
-        color: '#ffeb3b',
-        fillColor: '#fff59d',
+        color: isBtOff(center) ? TRACE_BLUE_BT_OFF : '#ffeb3b',
+        fillColor: isBtOff(center) ? '#90caf9' : '#fff59d',
         fillOpacity: 1,
         weight: 3
       })
-        .bindTooltip(`${center.label || center.t || '–'}${speedPart}`, {
+        .bindTooltip(`${center.label || center.t || '–'}${speedPart}${btPart}${pasPart}`, {
           permanent: true,
           direction: 'top',
           offset: [0, -10],
@@ -175,6 +205,62 @@
         .openTooltip();
     }
 
+    function onTraceLineClick(e) {
+      L.DomEvent.stopPropagation(e);
+      const idx = nearestIndex(e.latlng.lat, e.latlng.lng);
+      showPointSelection(idx);
+    }
+
+    /**
+     * Basis: gelb (BT an/unbekannt) bzw. blau (BT aus).
+     * Pas.Info aus: zusätzlich rote Strichelung darüber.
+     */
+    function addColoredPolylines(points) {
+      if (points.length < 2) return;
+      let runStart = 0;
+      let runKey = styleKey(points[0]);
+
+      function flush(endIdx) {
+        if (endIdx <= runStart) return;
+        const latlngs = [];
+        for (let i = runStart; i <= endIdx; i++) {
+          latlngs.push([points[i].lat, points[i].lon]);
+        }
+        const btOff = runKey.charAt(0) === '1';
+        const pasOff = runKey.charAt(1) === '1';
+        const base = L.polyline(latlngs, {
+          color: btOff ? TRACE_BLUE_BT_OFF : TRACE_YELLOW,
+          weight: 6,
+          opacity: 0.92,
+          interactive: true
+        }).addTo(layer);
+        base.on('click', onTraceLineClick);
+        polylines.push(base);
+        if (pasOff) {
+          const stripes = L.polyline(latlngs, {
+            color: TRACE_RED_NO_PAS,
+            weight: 5,
+            opacity: 0.95,
+            dashArray: '14, 12',
+            lineCap: 'butt',
+            interactive: true
+          }).addTo(layer);
+          stripes.on('click', onTraceLineClick);
+          polylines.push(stripes);
+        }
+      }
+
+      for (let i = 1; i < points.length; i++) {
+        const key = styleKey(points[i]);
+        if (key !== runKey) {
+          flush(i);
+          runStart = i;
+          runKey = key;
+        }
+      }
+      flush(points.length - 1);
+    }
+
     function loadTrace(payload) {
       clearTrace();
       tracePoints = normalizePoints(payload && payload.points);
@@ -182,35 +268,38 @@
         return;
       }
 
-      const latlngs = tracePoints.map(p => [p.lat, p.lon]);
-      polyline = L.polyline(latlngs, {
-        color: '#FFEB3B',
-        weight: 6,
-        opacity: 0.92,
-        interactive: true
-      }).addTo(layer);
-
-      polyline.on('click', function (e) {
-        L.DomEvent.stopPropagation(e);
-        const idx = nearestIndex(e.latlng.lat, e.latlng.lng);
-        showPointSelection(idx);
-      });
+      addColoredPolylines(tracePoints);
 
       // Alle Punkte klickbar (klein, unauffällig) – Zeit erst nach Auswahl.
       for (let i = 0; i < tracePoints.length; i++) {
         const p = tracePoints[i];
         const isEnd = i === 0 || i === tracePoints.length - 1;
+        const midBtOff = !isEnd && isBtOff(p);
+        const midPasOff = !isEnd && isPasInfoOff(p);
+        const stroke = i === 0 ? '#43a047'
+          : (i === tracePoints.length - 1 ? '#e53935'
+            : (midPasOff ? TRACE_RED_NO_PAS : (midBtOff ? '#1e88e5' : '#fbc02d')));
+        const fill = i === 0 ? '#66bb6a'
+          : (i === tracePoints.length - 1 ? '#ef5350'
+            : (midPasOff ? '#ef9a9a' : (midBtOff ? '#64b5f6' : '#ffee58')));
+        const midHint = [
+          midBtOff ? 'BT aus' : '',
+          midPasOff ? 'Pas.Info aus' : ''
+        ].filter(Boolean).join(' · ');
         L.circleMarker([p.lat, p.lon], {
           radius: isEnd ? 7 : 4,
-          color: i === 0 ? '#43a047' : (i === tracePoints.length - 1 ? '#e53935' : '#fbc02d'),
-          fillColor: i === 0 ? '#66bb6a' : (i === tracePoints.length - 1 ? '#ef5350' : '#ffee58'),
+          color: stroke,
+          fillColor: fill,
           fillOpacity: isEnd ? 1 : 0.55,
           weight: isEnd ? 2 : 1,
           opacity: isEnd ? 1 : 0.7
         })
-          .bindTooltip(i === 0 ? 'Start' : (i === tracePoints.length - 1 ? 'Ende' : (p.t || '')), {
-            permanent: false
-          })
+          .bindTooltip(
+            i === 0 ? 'Start'
+              : (i === tracePoints.length - 1 ? 'Ende'
+                : ((p.t || '') + (midHint ? ' · ' + midHint : ''))),
+            { permanent: false }
+          )
           .addTo(layer)
           .on('click', function (e) {
             L.DomEvent.stopPropagation(e);
@@ -218,7 +307,10 @@
           });
       }
 
-      map.fitBounds(polyline.getBounds().pad(0.12));
+      const bounds = L.latLngBounds(tracePoints.map(p => [p.lat, p.lon]));
+      if (bounds.isValid()) {
+        map.fitBounds(bounds.pad(0.12));
+      }
       setTimeout(function () { map.invalidateSize(); }, 50);
     }
 

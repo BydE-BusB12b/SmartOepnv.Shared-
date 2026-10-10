@@ -12,6 +12,10 @@
             <TextBlock Text="Einstellungen" Style="{StaticResource SmartPageTitleStyle}" />
             <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
                        Text="Dropbox-Verbindung, Firmenlogos und Ordnerpfad – kompatibel zur GPSAnsagen-App (routes_export.json)." />
+            <TextBlock Margin="0,0,0,16"
+                       Opacity="0.7"
+                       FontSize="12"
+                       Text="{Binding AppVersionLabel}" />
 
             <materialDesign:Card Padding="24"
                                  UniformCornerRadius="12"
@@ -69,6 +73,14 @@
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Visibility="{Binding HasCompanyLogos, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </StackPanel>
+
+                    <Separator Margin="0,16,0,12" Opacity="0.35" />
+                    <TextBlock Text="Smart-ÖPNV-Logo in PDFs" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <CheckBox Content="Smart-ÖPNV-Logo in PDF-Kopfzeilen anzeigen"
+                              IsChecked="{Binding ShowSmartOepnvLogoInPdfs, Mode=TwoWay}"
+                              Margin="0,0,0,4" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                               Text="Gilt für Disposition, Zeitwirtschaft, Bildfahrplan, Routenschnur, Einweisung u. a. Bei Mitteilungen weiterhin separat wählbar." />
                 </StackPanel>
             </materialDesign:Card>
 
@@ -94,6 +106,32 @@
                             Command="{Binding SaveBriefingPasswordsCommand}"
                             HorizontalAlignment="Left"
                             Style="{StaticResource MaterialDesignRaisedButton}" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
+                                 Visibility="{Binding ShowBrandingSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Haltestellenanzeige (DS009)" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Maximale Textlänge für Zieltext und Haltestellenanzeige im Planer. Entspricht der DS009-Einstellung (16/20) in der App – speichert nur die Eingabelänge, nicht das Telegramm." />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="16 Zeichen"
+                                Command="{Binding SetDs009TextLengthCommand}"
+                                CommandParameter="16"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,8,0"
+                                MinWidth="110" />
+                        <Button Content="20 Zeichen"
+                                Command="{Binding SetDs009TextLengthCommand}"
+                                CommandParameter="20"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                MinWidth="110" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Ds009TextLengthStatus}" Opacity="0.85" Margin="0,10,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </materialDesign:Card>
 
@@ -194,7 +232,7 @@
                 <StackPanel>
                     <TextBlock Text="Dropbox-Ordner" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
                     <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
-                               Text="Standard: /smart öpnv – bei geteiltem Ordner ggf. abweichenden Pfad eintragen (wie in der Android-App). Der Pfad wird beim Verbindungstest, beim Verlassen der Seite und in „Dropbox einrichten“ beim Schließen automatisch gespeichert." />
+                               Text="Standard: /smart öpnv – anderer Ordner = anderer Betrieb (wie in der Android-App). „Ordnerpfad speichern“ wechselt bei abweichendem Pfad automatisch den Betrieb, sichert den aktuellen Stand und startet neu, damit die Dropbox-Daten geladen werden." />
                     <TextBox Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}"
                              materialDesign:HintAssist.Hint="Ordnerpfad"
                              Margin="0,0,0,12" />

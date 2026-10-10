@@ -485,12 +485,29 @@ public sealed class EditableRoutePackage
         }
 
         ConsolidateDuplicateRouteKeys();
+        RecoverOperatingDaysFromVerkehrLabels();
         NormalizeRouteDisplayNamesForOperatingDays();
+        SplitSharedStopBucketsForDayVariants();
         OutsideDisplayDestinationResolver.EnsureOutsideDisplayIds(this);
         OutsideDisplayDestinationResolver.SyncStopLinks(this);
+        EnsureZielwechselAnnouncementsEnabled();
         EnsureRouteNamesForStopBuckets();
         RecoverOrphanedStopsAfterTripNumberChange();
         PruneOrphanStopBuckets();
+    }
+
+    /// <summary>
+    /// Zielwechsel-Halte wurden zeitweise wie Starthaltestellen ohne Ansage gespeichert – korrigieren.
+    /// </summary>
+    private void EnsureZielwechselAnnouncementsEnabled()
+    {
+        foreach (var stop in StopsByRoute.Values.SelectMany(stops => stops))
+        {
+            if (stop.ZielwechselEnabled && !stop.IsAnnouncementEnabled)
+            {
+                stop.IsAnnouncementEnabled = true;
+            }
+        }
     }
 
     /// <summary>Routenliste ergänzen, wenn Haltestellen unter einem abweichenden Schlüssel liegen.</summary>
@@ -597,7 +614,9 @@ public sealed class EditableRoutePackage
             return [];
         }
 
-        var storageKey = RoutePackageRouteKeyHelper.ResolveRouteKeyWithStops(routeName, StopsByRoute);
+        var trimmed = routeName.Trim();
+        EnsureDayVariantStopBucket(trimmed);
+        var storageKey = RoutePackageRouteKeyHelper.ResolveRouteKeyWithStops(trimmed, StopsByRoute);
         if (storageKey is not null && StopsByRoute.TryGetValue(storageKey, out var stops))
         {
             return stops;
@@ -617,11 +636,15 @@ public sealed class EditableRoutePackage
             return;
         }
 
+        // Tagesvarianten immer unter dem vollen Anzeigeschlüssel speichern (nicht teilen).
+        var storageKey = !string.IsNullOrEmpty(RouteDisplayHelper.GetVerkehrLabel(trimmed))
+            ? trimmed
+            : RoutePackageRouteKeyHelper.ResolveRouteKeyWithStops(trimmed, StopsByRoute) ?? trimmed;
+
         var list = stops.ToList();
-        var storageKey = RoutePackageRouteKeyHelper.ResolveRouteKeyWithStops(trimmed, StopsByRoute) ?? trimmed;
         foreach (var stop in list)
         {
-            stop.RouteName = storageKey;
+            stop.RouteName = trimmed;
         }
 
         StopsByRoute[storageKey] = list;
@@ -711,17 +734,11 @@ public sealed class EditableRoutePackage
             if (sourceStops.Count > 0)
             {
                 var routeKeyForStops = displayKey;
-                var storageKey = RouteDisplayHelper.ToCanonicalRouteKey(routeKeyForStops);
-                StopsByRoute[storageKey] = sourceStops
+                StopsByRoute[routeKeyForStops] = sourceStops
                     .Select(s => CloneStopForRoute(s, routeKeyForStops))
                     .ToList();
-                if (!string.Equals(storageKey, routeKeyForStops, StringComparison.Ordinal))
-                {
-                    StopsByRoute.Remove(routeKeyForStops);
-                }
 
-                // Kanonischer Schlüssel (Fahrt: 4, nicht 0004) – sonst findet die Route den Snap nicht.
-                RouteNavigationMetadataCopy.CopyForRoute(_root, sourceKey, storageKey);
+                RouteNavigationMetadataCopy.CopyForRoute(_root, sourceKey, routeKeyForStops);
             }
         }
 
@@ -817,10 +834,24 @@ public sealed class EditableRoutePackage
 
     public void RemoveRoute(string routeName)
     {
+        // Exakter Schlüssel bzw. gleiche Verkehrstags-Variante – keine anderen Tagesvarianten löschen.
         var keysToRemove = RouteNames
-            .Where(name => RouteDisplayHelper.RouteKeysMatch(name, routeName))
+            .Where(name =>
+                string.Equals(name, routeName.Trim(), StringComparison.Ordinal) ||
+                RouteDisplayHelper.RouteKeysMatchSameSchedule(name, routeName))
             .Distinct(StringComparer.Ordinal)
             .ToList();
+        if (keysToRemove.Count == 0)
+        {
+            var onlyMatch = RouteNames
+                .Where(name => RouteDisplayHelper.RouteKeysMatch(name, routeName))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (onlyMatch.Count == 1)
+            {
+                keysToRemove = onlyMatch;
+            }
+        }
 
         // Vor dem Entfernen: eingehende Routenwechsel-Verweise leeren,
         // sonst schreibt ApplyToPackage die gelöschte Fahrt als leere Hülle zurück.
@@ -840,7 +871,10 @@ public sealed class EditableRoutePackage
         }
 
         foreach (var stopKey in StopsByRoute.Keys
-                     .Where(key => RouteDisplayHelper.RouteKeysMatch(key, routeName))
+                     .Where(key =>
+                         keysToRemove.Any(removed =>
+                             string.Equals(key, removed, StringComparison.Ordinal) ||
+                             RouteDisplayHelper.RouteKeysMatchSameSchedule(key, removed)))
                      .ToList())
         {
             StopsByRoute.Remove(stopKey);
@@ -948,20 +982,53 @@ public sealed class EditableRoutePackage
 
     private string ResolveExistingRouteKey(string routeDisplayKey)
     {
-        if (RouteNames.Contains(routeDisplayKey))
+        var trimmed = (routeDisplayKey ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(trimmed))
         {
-            return routeDisplayKey;
+            return trimmed;
         }
 
-        foreach (var name in RouteNames)
+        if (RouteNames.Contains(trimmed))
         {
-            if (RouteDisplayHelper.RouteKeysMatch(name, routeDisplayKey))
+            return trimmed;
+        }
+
+        // Zuerst gleiche Verkehrstags-Variante, nie eine andere Tagesvariante der gleichen Fahrt.
+        var sameSchedule = RouteNames
+            .Where(name => RouteDisplayHelper.RouteKeysMatchSameSchedule(name, trimmed))
+            .ToList();
+        if (sameSchedule.Count > 0)
+        {
+            return sameSchedule[0];
+        }
+
+        var sameTrip = RouteNames
+            .Where(name => RouteDisplayHelper.RouteKeysMatch(name, trimmed))
+            .ToList();
+        return sameTrip.Count == 1 ? sameTrip[0] : trimmed;
+    }
+
+    /// <summary>
+    /// Stellt Verkehrstage aus der Anzeige-Kennung wieder her (repariert früher zusammengelegte Einträge).
+    /// </summary>
+    private void RecoverOperatingDaysFromVerkehrLabels()
+    {
+        foreach (var routeKey in RouteNames.ToList())
+        {
+            var label = RouteDisplayHelper.GetVerkehrLabel(routeKey);
+            if (string.IsNullOrEmpty(label))
             {
-                return name;
+                continue;
             }
-        }
 
-        return routeDisplayKey.Trim();
+            var fromLabel = DutyOperatingDayHelper.Parse(label);
+            if (fromLabel.Count == 0)
+            {
+                continue;
+            }
+
+            SetRouteOperatingDays(routeKey, fromLabel);
+        }
     }
 
     private void RenameRouteKey(string oldKey, string newKey)
@@ -1020,6 +1087,7 @@ public sealed class EditableRoutePackage
         AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, oldKey, newKey);
         RouteDateRangeEditor.RenameRouteKey(RouteDateRangesByRoute, oldKey, newKey);
         RouteOperatingDatesEditor.RenameRouteKey(RouteOperatingDatesByRoute, oldKey, newKey);
+        RouteOperatingDaysEditor.RenameRouteKey(RouteOperatingDaysByRoute, oldKey, newKey);
 
         RouteNavigationMetadataCopy.CopyForRoute(_root, oldKey, newKey);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, oldKey);
@@ -1027,8 +1095,11 @@ public sealed class EditableRoutePackage
 
     private void MigrateStopsForRenamedRoute(string oldKey, string newKey)
     {
+        // Nur dieselbe Verkehrstags-Variante verschieben – nicht Mo und Di vermischen.
         var keysToMigrate = StopsByRoute.Keys
-            .Where(key => RouteDisplayHelper.RouteKeysMatch(key, oldKey))
+            .Where(key =>
+                string.Equals(key, oldKey, StringComparison.Ordinal) ||
+                RouteDisplayHelper.RouteKeysMatchSameSchedule(key, oldKey))
             .ToList();
 
         if (keysToMigrate.Count == 0)
@@ -1047,13 +1118,15 @@ public sealed class EditableRoutePackage
             StopsByRoute.Remove(key);
         }
 
-        var newStorageKey = RouteDisplayHelper.ToCanonicalRouteKey(newKey);
+        var newStorageKey = newKey.Trim();
         if (mergedStops.Count == 0)
         {
             return;
         }
 
-        if (StopsByRoute.TryGetValue(newStorageKey, out var existingAtNewKey) && existingAtNewKey.Count > 0)
+        if (StopsByRoute.TryGetValue(newStorageKey, out var existingAtNewKey) &&
+            existingAtNewKey.Count > 0 &&
+            RouteDisplayHelper.RouteKeysMatchSameSchedule(newStorageKey, newKey))
         {
             AppendDistinctStops(existingAtNewKey, mergedStops);
             foreach (var stop in existingAtNewKey)
@@ -1068,6 +1141,69 @@ public sealed class EditableRoutePackage
         foreach (var stop in mergedStops)
         {
             stop.RouteName = newKey;
+        }
+    }
+
+    /// <summary>
+    /// Legt für Tagesvarianten eigene Haltestellenlisten an (Klon vom Legacy-Gemeinschaftsbucket).
+    /// </summary>
+    private void EnsureDayVariantStopBucket(string routeDisplayKey)
+    {
+        var trimmed = routeDisplayKey.Trim();
+        if (string.IsNullOrEmpty(trimmed) ||
+            string.IsNullOrEmpty(RouteDisplayHelper.GetVerkehrLabel(trimmed)))
+        {
+            return;
+        }
+
+        if (StopsByRoute.ContainsKey(trimmed))
+        {
+            return;
+        }
+
+        var resolved = RoutePackageRouteKeyHelper.ResolveRouteKeyWithStops(trimmed, StopsByRoute);
+        if (resolved is null ||
+            !StopsByRoute.TryGetValue(resolved, out var shared) ||
+            shared.Count == 0)
+        {
+            return;
+        }
+
+        if (!RoutePackageRouteKeyHelper.IsLegacySharedStopBucket(trimmed, resolved))
+        {
+            return;
+        }
+
+        StopsByRoute[trimmed] = shared
+            .Select(stop =>
+            {
+                var clone = stop.Clone();
+                clone.RouteName = trimmed;
+                return clone;
+            })
+            .ToList();
+    }
+
+    private void SplitSharedStopBucketsForDayVariants()
+    {
+        foreach (var group in RouteNames
+                     .GroupBy(RouteDisplayHelper.ToCanonicalRouteKey, StringComparer.OrdinalIgnoreCase)
+                     .Where(g => g.Count() > 1)
+                     .ToList())
+        {
+            var variants = group
+                .Where(key => !string.IsNullOrEmpty(RouteDisplayHelper.GetVerkehrLabel(key)))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (variants.Count < 2)
+            {
+                continue;
+            }
+
+            foreach (var variant in variants)
+            {
+                EnsureDayVariantStopBucket(variant);
+            }
         }
     }
 
@@ -1119,14 +1255,12 @@ public sealed class EditableRoutePackage
 
     private void ConsolidateDuplicateRouteKeys()
     {
-        foreach (var group in RouteNames
-                     .GroupBy(RouteDisplayHelper.ToCanonicalRouteKey, StringComparer.OrdinalIgnoreCase)
-                     .Where(group => group.Count() > 1)
-                     .ToList())
+        // Nur echte Alias-Duplikate zusammenführen (mit/ohne Verkehr-Suffix derselben Tage).
+        // Unterschiedliche Verkehrstage (Mo vs Di) sind getrennte Fahrten und bleiben erhalten.
+        foreach (var mergeGroup in BuildRouteKeyMergeGroups(RouteNames))
         {
-            var aliases = group.Distinct(StringComparer.Ordinal).ToList();
-            var primary = RoutePackageRouteKeyHelper.SelectPrimaryDisplayKey(aliases, StopsByRoute);
-            foreach (var alias in aliases)
+            var primary = RoutePackageRouteKeyHelper.SelectPrimaryDisplayKey(mergeGroup, StopsByRoute);
+            foreach (var alias in mergeGroup)
             {
                 if (string.Equals(alias, primary, StringComparison.Ordinal))
                 {
@@ -1137,14 +1271,10 @@ public sealed class EditableRoutePackage
             }
         }
 
-        foreach (var group in StopsByRoute.Keys
-                     .GroupBy(RouteDisplayHelper.ToCanonicalRouteKey, StringComparer.OrdinalIgnoreCase)
-                     .Where(group => group.Count() > 1)
-                     .ToList())
+        foreach (var mergeGroup in BuildRouteKeyMergeGroups(StopsByRoute.Keys))
         {
-            var aliases = group.Distinct(StringComparer.Ordinal).ToList();
-            var primary = RoutePackageRouteKeyHelper.SelectPrimaryDisplayKey(aliases, StopsByRoute);
-            foreach (var alias in aliases)
+            var primary = RoutePackageRouteKeyHelper.SelectPrimaryDisplayKey(mergeGroup, StopsByRoute);
+            foreach (var alias in mergeGroup)
             {
                 if (string.Equals(alias, primary, StringComparison.Ordinal))
                 {
@@ -1161,6 +1291,63 @@ public sealed class EditableRoutePackage
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Gruppiert Schlüssel zum Mergen: gleicher kanonischer Schlüssel und gleiche Verkehr-Kennung.
+    /// Schlüssel ohne „Verkehr:“ werden nur gemerged, wenn es höchstens eine Verkehr-Variante gibt
+    /// (klassisches Alias mit/ohne Suffix) – nie über mehrere Tagesvarianten hinweg.
+    /// </summary>
+    private static List<List<string>> BuildRouteKeyMergeGroups(IEnumerable<string> keys)
+    {
+        var result = new List<List<string>>();
+        foreach (var canonicalGroup in keys
+                     .Where(k => !string.IsNullOrWhiteSpace(k))
+                     .GroupBy(RouteDisplayHelper.ToCanonicalRouteKey, StringComparer.OrdinalIgnoreCase)
+                     .Where(g => g.Count() > 1))
+        {
+            var aliases = canonicalGroup.Distinct(StringComparer.Ordinal).ToList();
+            var byVerkehr = aliases
+                .GroupBy(RouteDisplayHelper.GetVerkehrLabel, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Distinct(StringComparer.Ordinal).ToList(), StringComparer.OrdinalIgnoreCase);
+
+            var withVerkehr = byVerkehr
+                .Where(pair => !string.IsNullOrEmpty(pair.Key))
+                .Select(pair => pair.Value)
+                .ToList();
+            byVerkehr.TryGetValue(string.Empty, out var withoutVerkehr);
+            withoutVerkehr ??= [];
+
+            if (withVerkehr.Count == 0)
+            {
+                if (withoutVerkehr.Count > 1)
+                {
+                    result.Add(withoutVerkehr);
+                }
+
+                continue;
+            }
+
+            if (withVerkehr.Count == 1)
+            {
+                // Eine Tagesvariante + ggf. Alias ohne Verkehr-Suffix → zusammenführen.
+                var merged = withVerkehr[0].Concat(withoutVerkehr).Distinct(StringComparer.Ordinal).ToList();
+                if (merged.Count > 1)
+                {
+                    result.Add(merged);
+                }
+
+                continue;
+            }
+
+            // Mehrere unterschiedliche Verkehrstage: nur identische Labels mergen, nie untereinander.
+            foreach (var sameLabel in withVerkehr.Where(list => list.Count > 1))
+            {
+                result.Add(sameLabel);
+            }
+        }
+
+        return result;
     }
 
     private void MergeRouteAliasInto(string alias, string primary)
@@ -1185,7 +1372,22 @@ public sealed class EditableRoutePackage
 
         RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, alias);
         AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, alias, primary);
+        // Verkehrstage/Datum mitnehmen – sonst landen Alias-Merges wieder bei Mo–So.
+        RouteOperatingDaysEditor.RenameRouteKey(RouteOperatingDaysByRoute, alias, primary);
+        RouteDateRangeEditor.RenameRouteKey(RouteDateRangesByRoute, alias, primary);
         RouteOperatingDatesEditor.RenameRouteKey(RouteOperatingDatesByRoute, alias, primary);
+        if (!RouteItcsRouteListEditor.IsInItcsRouteList(RoutesExcludedFromItcsRouteList, alias))
+        {
+            RouteItcsRouteListEditor.SetInItcsRouteList(RoutesExcludedFromItcsRouteList, primary, false);
+            RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, alias);
+        }
+
+        if (RouteMainDeviceOnlyEditor.IsMainDeviceOnly(RoutesMainDeviceOnly, alias))
+        {
+            RouteMainDeviceOnlyEditor.SetMainDeviceOnly(RoutesMainDeviceOnly, primary, true);
+            RouteMainDeviceOnlyEditor.RemoveRoute(RoutesMainDeviceOnly, alias);
+        }
+
         RouteNavigationMetadataCopy.CopyForRoute(_root, alias, primary);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, alias);
     }
@@ -1357,12 +1559,12 @@ public sealed class EditableRoutePackage
                     display = RouteDisplayHelper.ToDisplayStringWithOperatingDays(definition, days);
                 }
 
-                if (RouteNames.Any(existing => RouteDisplayHelper.RouteKeysMatch(existing, display)))
+                if (RouteNames.Any(existing => RouteDisplayHelper.RouteKeysMatchSameSchedule(existing, display)))
                 {
                     if (!string.IsNullOrEmpty(interiorDestination))
                     {
                         var existingKey = RouteNames.First(existing =>
-                            RouteDisplayHelper.RouteKeysMatch(existing, display));
+                            RouteDisplayHelper.RouteKeysMatchSameSchedule(existing, display));
                         RouteInteriorDisplayDestinationEditor.SetForRoute(
                             RouteInteriorDisplayDestinationsByRoute,
                             existingKey,
@@ -1645,12 +1847,12 @@ public sealed class EditableRoutePackage
 
     private void NormalizeStopsStorageBeforeSave()
     {
-        foreach (var group in RouteNames
-                     .GroupBy(RouteDisplayHelper.ToCanonicalRouteKey, StringComparer.OrdinalIgnoreCase))
+        // Nur echte Aliase derselben Verkehrstags-Variante zusammenführen – nie Mo mit Di.
+        foreach (var mergeGroup in BuildRouteKeyMergeGroups(
+                     StopsByRoute.Keys.Concat(RouteNames)))
         {
-            var routeAliases = group.Distinct(StringComparer.Ordinal).ToList();
-            var stopKeys = StopsByRoute.Keys
-                .Where(key => RouteDisplayHelper.RouteKeysMatch(key, routeAliases[0]))
+            var stopKeys = mergeGroup
+                .Where(key => StopsByRoute.ContainsKey(key))
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
             if (stopKeys.Count <= 1)
@@ -1658,7 +1860,7 @@ public sealed class EditableRoutePackage
                 continue;
             }
 
-            var primary = RoutePackageRouteKeyHelper.SelectPrimaryDisplayKey(routeAliases, StopsByRoute);
+            var primary = RoutePackageRouteKeyHelper.SelectPrimaryDisplayKey(stopKeys, StopsByRoute);
             foreach (var aliasKey in stopKeys)
             {
                 if (string.Equals(aliasKey, primary, StringComparison.Ordinal))
@@ -1669,6 +1871,9 @@ public sealed class EditableRoutePackage
                 MergeRouteStopBuckets(aliasKey, primary);
             }
         }
+
+        // Vor dem Speichern sicherstellen, dass Tagesvarianten eigene Buckets haben.
+        SplitSharedStopBucketsForDayVariants();
     }
 
     private void MergeRouteStopBuckets(string alias, string primary)

@@ -76,7 +76,7 @@ public static class BildfahrplanPdfGenerator
                         .FontSize(8)
                         .FontColor(Muted);
                     footer.ConstantItem(48).Height(36).AlignRight().AlignMiddle()
-                        .Element(PlanerPdfBranding.DrawSmartOepnvLogo);
+                        .Element(PlanerPdfBranding.DrawSmartOepnvLogoIfEnabled);
                 });
             });
         }).GeneratePdf(outputPath);

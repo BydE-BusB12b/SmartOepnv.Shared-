@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using SmartOepnv.Core.Dienstvorlagen;
 
 namespace SmartOepnv.Core.RoutePackage;
 
@@ -21,7 +22,8 @@ public static class GpsAnsagenStopJson
             Time = JsonNodeReading.GetString(obj["time"]),
             IsWaypoint = JsonNodeReading.GetBoolean(obj["isWaypoint"]),
             WaypointName = JsonNodeReading.GetString(obj["waypointName"]),
-            IsAnnouncementEnabled = JsonNodeReading.GetBoolean(obj["isAnnouncementEnabled"], defaultValue: true),
+            IsAnnouncementEnabled = JsonNodeReading.GetBoolean(obj["zielwechselEnabled"])
+                || JsonNodeReading.GetBoolean(obj["isAnnouncementEnabled"], defaultValue: true),
             EmbeddedSoundFileName = JsonNodeReading.GetString(obj["embeddedSoundFileName"]),
             Destination = JsonNodeReading.GetString(obj["destination"]),
             DestinationId = OutsideDisplayId.Normalize(JsonNodeReading.GetString(obj["destinationId"])),
@@ -65,6 +67,9 @@ public static class GpsAnsagenStopJson
             StopHintRadius = JsonNodeReading.GetInt32(obj["stopHintRadius"], 40),
             EntwerterEnabled = JsonNodeReading.GetBoolean(obj["entwerterEnabled"]),
             EntwerterCode = JsonNodeReading.GetString(obj["entwerterCode"]),
+            ZielwechselEnabled = JsonNodeReading.GetBoolean(obj["zielwechselEnabled"]),
+            ZielwechselGpsCoordinates = JsonNodeReading.GetString(obj["zielwechselGpsCoordinates"]),
+            ZielwechselRadius = JsonNodeReading.GetInt32(obj["zielwechselRadius"], 40),
             IsDisplayEnabled = JsonNodeReading.GetBoolean(obj["isDisplayEnabled"]),
             DisplayText = JsonNodeReading.GetString(obj["displayText"]),
             DisplayText2 = JsonNodeReading.GetString(obj["displayText2"]),
@@ -86,7 +91,8 @@ public static class GpsAnsagenStopJson
             ["gpsCoordinates"] = stop.GpsCoordinates,
             ["stopCoordinates"] = stop.StopCoordinates,
             ["radius"] = stop.Radius,
-            ["isAnnouncementEnabled"] = stop.IsAnnouncementEnabled,
+            // Zielwechsel ≠ Starthaltestelle: immer ansagen (auch wenn ältere Daten false hatten).
+            ["isAnnouncementEnabled"] = stop.ZielwechselEnabled || stop.IsAnnouncementEnabled,
             ["time"] = stop.Time,
             ["isWaypoint"] = stop.IsWaypoint,
             ["waypointName"] = stop.WaypointName,
@@ -152,6 +158,10 @@ public static class GpsAnsagenStopJson
             obj["entwerterEnabled"] = stop.EntwerterEnabled;
             obj["entwerterCode"] = (stop.EntwerterCode ?? string.Empty).Trim();
         }
+
+        obj["zielwechselEnabled"] = stop.ZielwechselEnabled;
+        obj["zielwechselGpsCoordinates"] = stop.ZielwechselGpsCoordinates ?? string.Empty;
+        obj["zielwechselRadius"] = stop.ZielwechselRadius > 0 ? stop.ZielwechselRadius : 40;
 
         WriteRouteChangeTargetsByDate(obj, stop.RouteChangeTargetsByDate);
 
@@ -230,7 +240,20 @@ public static class GpsAnsagenStopJson
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(trip) || dates.Count == 0)
+            var days = new List<DutyOperatingDay>();
+            if (entryObj["operatingDays"] is JsonArray daysArr)
+            {
+                foreach (var dayNode in daysArr)
+                {
+                    var raw = dayNode?.GetValue<string>();
+                    if (RouteOperatingDaysEditor.TryParseDayId(raw, out var day))
+                    {
+                        days.Add(day);
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(trip) || (dates.Count == 0 && days.Count == 0))
             {
                 continue;
             }
@@ -238,7 +261,8 @@ public static class GpsAnsagenStopJson
             result.Add(new RouteChangeTargetEntry
             {
                 SelectedLineCourseTrip = trip.Trim(),
-                OperatingDates = dates.Distinct().OrderBy(d => d).ToList()
+                OperatingDates = dates.Distinct().OrderBy(d => d).ToList(),
+                OperatingDays = days.Distinct().OrderBy(d => (int)d).ToList()
             });
         }
 
@@ -255,22 +279,39 @@ public static class GpsAnsagenStopJson
         var arr = new JsonArray();
         foreach (var entry in entries)
         {
-            if (string.IsNullOrWhiteSpace(entry.SelectedLineCourseTrip) || entry.OperatingDates.Count == 0)
+            if (string.IsNullOrWhiteSpace(entry.SelectedLineCourseTrip) || !entry.HasScheduleConstraint)
             {
                 continue;
             }
 
-            var datesArr = new JsonArray();
-            foreach (var date in entry.OperatingDates.Distinct().OrderBy(d => d))
+            var entryObj = new JsonObject
             {
-                datesArr.Add(RouteDateRange.FormatDate(date));
+                ["selectedLineCourseTrip"] = entry.SelectedLineCourseTrip.Trim()
+            };
+
+            if (entry.OperatingDates.Count > 0)
+            {
+                var datesArr = new JsonArray();
+                foreach (var date in entry.OperatingDates.Distinct().OrderBy(d => d))
+                {
+                    datesArr.Add(RouteDateRange.FormatDate(date));
+                }
+
+                entryObj["operatingDates"] = datesArr;
             }
 
-            arr.Add(new JsonObject
+            if (entry.OperatingDays.Count > 0)
             {
-                ["selectedLineCourseTrip"] = entry.SelectedLineCourseTrip.Trim(),
-                ["operatingDates"] = datesArr
-            });
+                var daysArr = new JsonArray();
+                foreach (var day in entry.OperatingDays.Distinct().OrderBy(d => (int)d))
+                {
+                    daysArr.Add(RouteOperatingDaysEditor.ToDayId(day));
+                }
+
+                entryObj["operatingDays"] = daysArr;
+            }
+
+            arr.Add(entryObj);
         }
 
         if (arr.Count > 0)

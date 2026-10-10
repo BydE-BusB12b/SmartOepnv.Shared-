@@ -101,9 +101,9 @@ public sealed class KomRemoteDestinationDialog : Window
                         AppServices.Dropbox,
                         phone,
                         destination.Name,
-                        ct)))
+                        ct),
+                    releaseCloseGuard: () => _sendGuard.EndSend()))
                 {
-                    _sendGuard.EndSend();
                     return;
                 }
             }

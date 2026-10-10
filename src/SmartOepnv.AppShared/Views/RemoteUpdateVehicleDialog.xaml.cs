@@ -18,7 +18,7 @@ public class RemoteUpdateVehicleDialog : Window
 {
     public string? SelectedPhoneNumber { get; private set; }
     public string? SelectedVehicleName { get; private set; }
-    public RemoteRouteTransferMode SelectedTransferMode { get; private set; } = RemoteRouteTransferMode.FullExport;
+    public RemoteRouteTransferMode SelectedTransferMode { get; private set; } = RemoteRouteTransferMode.LiteUpdate;
 
     public RemoteUpdateVehicleDialog(IReadOnlyList<RegisteredVehicleInfo> vehicles)
     {
@@ -36,26 +36,26 @@ public class RemoteUpdateVehicleDialog : Window
         var row = 0;
         root.Children.Add(MakeTextBlock("Fahrzeug und Update-Art wählen", 18, FontWeights.SemiBold, ref row));
         root.Children.Add(MakeTextBlock(
-            "Die gewählte Datei wird nach Dropbox gesendet, danach lädt das Fahrzeug automatisch. Bei aktivem Pas.Info bleibt die Position in der Route erhalten.",
+            "Standard: kleines Update ohne Audio (vermeidet „Update zu groß“ am Tablet). Vollbackup nur bei neuen Tondateien.",
             14,
             FontWeights.Normal,
             ref row));
 
         var modePanel = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        var fullExportRadio = new RadioButton
+        var liteUpdateRadio = new RadioButton
         {
-            Content = $"Gesamtes {DropboxConstants.RouteFileName} (Vollbackup mit Audio)",
+            Content = $"Update {DropboxConstants.RouteUpdateFileName} (ohne Audio, bestehende Ansagen bleiben)",
             IsChecked = true,
             Margin = new Thickness(0, 0, 0, 6),
             GroupName = "RemoteRouteTransferMode"
         };
-        var liteUpdateRadio = new RadioButton
+        var fullExportRadio = new RadioButton
         {
-            Content = $"Update {DropboxConstants.RouteUpdateFileName} (ohne Audio, bestehende Ansagen bleiben)",
+            Content = $"Gesamtes {DropboxConstants.RouteFileName} (Vollbackup mit Audio, ~groß)",
             GroupName = "RemoteRouteTransferMode"
         };
-        modePanel.Children.Add(fullExportRadio);
         modePanel.Children.Add(liteUpdateRadio);
+        modePanel.Children.Add(fullExportRadio);
         Grid.SetRow(modePanel, row++);
         root.Children.Add(modePanel);
 

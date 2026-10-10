@@ -72,6 +72,10 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     [ObservableProperty] private string searchQuery = string.Empty;
 
+    [ObservableProperty] private LibraryListSortField listSortField = LibraryListSortField.Id;
+
+    [ObservableProperty] private LibraryListSortDirection listSortDirection = LibraryListSortDirection.Ascending;
+
     [ObservableProperty] private ManagedAnnouncementTemplateItem? selectedAnnouncement;
 
     [ObservableProperty] private string? selectedAnnouncementAudioHint;
@@ -103,6 +107,12 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         SelectedSequenceItem?.Kind == AnnouncementSequenceEntryKind.Pause;
 
     public IReadOnlyList<string> AnnouncementMergePausePresets { get; } = ["0,5", "1", "2", "3"];
+
+    public string SortByIdButtonLabel =>
+        LibraryListSort.FormatButtonLabel("ID", LibraryListSortField.Id, ListSortField, ListSortDirection);
+
+    public string SortByNameButtonLabel =>
+        LibraryListSort.FormatButtonLabel("Name", LibraryListSortField.Name, ListSortField, ListSortDirection);
 
 
 
@@ -572,6 +582,40 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
     partial void OnSearchQueryChanged(string value) => _searchDebouncer.Schedule();
+
+    partial void OnListSortFieldChanged(LibraryListSortField value)
+    {
+        OnPropertyChanged(nameof(SortByIdButtonLabel));
+        OnPropertyChanged(nameof(SortByNameButtonLabel));
+    }
+
+    partial void OnListSortDirectionChanged(LibraryListSortDirection value)
+    {
+        OnPropertyChanged(nameof(SortByIdButtonLabel));
+        OnPropertyChanged(nameof(SortByNameButtonLabel));
+    }
+
+    [RelayCommand]
+    private void SortListById()
+    {
+        var field = ListSortField;
+        var dir = ListSortDirection;
+        LibraryListSort.Toggle(ref field, ref dir, LibraryListSortField.Id);
+        ListSortField = field;
+        ListSortDirection = dir;
+        ApplyFilter();
+    }
+
+    [RelayCommand]
+    private void SortListByName()
+    {
+        var field = ListSortField;
+        var dir = ListSortDirection;
+        LibraryListSort.Toggle(ref field, ref dir, LibraryListSortField.Name);
+        ListSortField = field;
+        ListSortDirection = dir;
+        ApplyFilter();
+    }
 
     partial void OnSelectedAnnouncementChanged(ManagedAnnouncementTemplateItem? value)
     {
@@ -1824,59 +1868,37 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
     }
 
     private void ApplyFilter()
-
     {
-
         var q = SearchQuery.Trim();
-
         FilteredAnnouncements.Clear();
 
-        IEnumerable<ManagedAnnouncementTemplateItem> source = _allAnnouncements
-
-            .OrderBy(a => a.AnnouncementCode, StringComparer.OrdinalIgnoreCase)
-
-            .ThenBy(a => a.DisplayName, StringComparer.OrdinalIgnoreCase);
-
-
-
+        IEnumerable<ManagedAnnouncementTemplateItem> source = _allAnnouncements;
         if (!string.IsNullOrEmpty(q))
-
         {
-
             source = source.Where(a =>
-
                 (a.AnnouncementCode?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-
                 (a.DisplayName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-
                 (a.Description?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-
                 (a.Lines?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-
                 (a.EmbeddedSoundFileName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
-
         }
 
-
+        source = LibraryListSort.OrderByField(
+            source,
+            ListSortField,
+            ListSortDirection,
+            a => a.AnnouncementCode,
+            a => a.DisplayName);
 
         foreach (var ann in source)
-
         {
-
             FilteredAnnouncements.Add(ann);
-
         }
 
-
-
         if (SelectedAnnouncement is not null &&
-
             !FilteredAnnouncements.Any(a => a.Id == SelectedAnnouncement.Id))
-
         {
-
             SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault();
-
         }
 
     }
@@ -2172,6 +2194,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         DirectionDescription = source.DirectionDescription,
 
+        Lines = source.Lines,
+
         AnnouncementLat = source.AnnouncementLat,
 
         AnnouncementLng = source.AnnouncementLng,
@@ -2184,7 +2208,13 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         ExternalSoundUri = source.ExternalSoundUri,
 
-        EmbeddedSoundFileName = source.EmbeddedSoundFileName
+        EmbeddedSoundFileName = source.EmbeddedSoundFileName,
+
+        LocalAudioPath = source.LocalAudioPath,
+
+        EntwerterEnabled = source.EntwerterEnabled,
+
+        EntwerterCode = source.EntwerterCode
 
     };
 

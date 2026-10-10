@@ -218,7 +218,9 @@ public static class PlanerDropboxWorkspaceSync
     public static async Task<ExportResult> TryExportAsync(
         CancellationToken ct = default,
         bool flushBeforeCapture = true,
-        IProgress<DropboxTransferProgress>? progress = null)
+        IProgress<DropboxTransferProgress>? progress = null,
+        bool skipAnnouncementSounds = false,
+        bool skipVersionSnapshots = false)
     {
         if (!AppServices.IsPlannerApp)
         {
@@ -278,23 +280,55 @@ public static class PlanerDropboxWorkspaceSync
                     .ExportIfChangedAsync(document.RoutesPackageJson, routesProgress, ct)
                     .ConfigureAwait(false);
 
-                var versionsProgress = ScaleProgress(
-                    progress,
-                    $"{DropboxConstants.PlanerVersionSnapshotsFolderName}…",
-                    leitstelleJson is null ? 50 : 45,
-                    leitstelleJson is null ? 65 : 60);
-                var versionsResult = await PlanerVersionSnapshotsDropboxSync
-                    .ExportChangedFilesAsync(document.PackageVersionSnapshots, versionsProgress, ct)
-                    .ConfigureAwait(false);
+                PlanerVersionSnapshotsDropboxSync.SyncResult versionsResult;
+                if (skipVersionSnapshots)
+                {
+                    versionsResult = new PlanerVersionSnapshotsDropboxSync.SyncResult(
+                        0,
+                        0,
+                        0,
+                        "Versionen übersprungen (Schnell-Export).");
+                    ReportOverall(
+                        progress,
+                        "Versionen übersprungen…",
+                        leitstelleJson is null ? 60 : 55);
+                }
+                else
+                {
+                    var versionsProgress = ScaleProgress(
+                        progress,
+                        $"{DropboxConstants.PlanerVersionSnapshotsFolderName}…",
+                        leitstelleJson is null ? 50 : 45,
+                        leitstelleJson is null ? 65 : 60);
+                    versionsResult = await PlanerVersionSnapshotsDropboxSync
+                        .ExportChangedFilesAsync(document.PackageVersionSnapshots, versionsProgress, ct)
+                        .ConfigureAwait(false);
+                }
 
-                var soundsProgress = ScaleProgress(
-                    progress,
-                    $"Ansagen ({DropboxConstants.PlanerAnnouncementRawSoundsFolderName})…",
-                    leitstelleJson is null ? 65 : 60,
-                    leitstelleJson is null ? 100 : 80);
-                var soundsResult = await PlanerAnnouncementRawSoundsDropboxSync
-                    .ExportChangedFilesAsync(document.AnnouncementRawSounds, soundsProgress, ct)
-                    .ConfigureAwait(false);
+                PlanerAnnouncementRawSoundsDropboxSync.SyncResult soundsResult;
+                if (skipAnnouncementSounds)
+                {
+                    soundsResult = new PlanerAnnouncementRawSoundsDropboxSync.SyncResult(
+                        0,
+                        0,
+                        0,
+                        "Ansagen übersprungen (Schnell-Export).");
+                    ReportOverall(
+                        progress,
+                        "Ansagen übersprungen…",
+                        leitstelleJson is null ? 90 : 75);
+                }
+                else
+                {
+                    var soundsProgress = ScaleProgress(
+                        progress,
+                        $"Ansagen ({DropboxConstants.PlanerAnnouncementRawSoundsFolderName})…",
+                        leitstelleJson is null ? 65 : 60,
+                        leitstelleJson is null ? 100 : 80);
+                    soundsResult = await PlanerAnnouncementRawSoundsDropboxSync
+                        .ExportChangedFilesAsync(document.AnnouncementRawSounds, soundsProgress, ct)
+                        .ConfigureAwait(false);
+                }
 
                 if (string.IsNullOrWhiteSpace(leitstelleJson))
                 {

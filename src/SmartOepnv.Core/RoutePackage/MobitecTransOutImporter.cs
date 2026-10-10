@@ -1,8 +1,16 @@
+using System.Buffers.Binary;
+
 namespace SmartOepnv.Core.RoutePackage;
 
 /// <summary>Ein aus ZEdit TRANS.OUT / *.out extrahiertes Mobitec-Ziel.</summary>
 public sealed class MobitecOutImportDestination
 {
+    /// <summary>
+    /// ZEdit-/ICU-Zielnummer (0–9999). Dient im Planer als stabile ID:
+    /// erneuter OUT-Import aktualisiert dasselbe Ziel statt es zu verdoppeln.
+    /// </summary>
+    public int DestinationNumber { get; set; }
+
     public string Line { get; init; } = string.Empty;
     public string FrontText { get; init; } = string.Empty;
     public string SideText { get; init; } = string.Empty;
@@ -15,6 +23,9 @@ public sealed class MobitecOutImportDestination
     public byte[]? SideFrame { get; init; }
     /// <summary>RS485-Wire-Frame Linie (FF 0B A2 …) – Tasse, Schraubenschlüssel, Logo, Smile, …</summary>
     public byte[]? LineFrame { get; init; }
+
+    /// <summary>Dateioffset des ersten Frames dieses Ziels (für Index→Zielnummer).</summary>
+    internal int SourceFileOffset { get; set; } = -1;
 
     public bool HasLineBitmap => MobitecTransOutImporter.FrameHasBitmap(LineFrame);
     public bool HasFrontBitmap => MobitecTransOutImporter.FrameHasBitmap(FrontFrame);
@@ -68,14 +79,37 @@ public static class MobitecTransOutImporter
         byte[]? pendingFrontFrame = null;
         byte[]? pendingSideFrame = null;
         byte[]? pendingLineFrame = null;
+        var pendingSourceOffset = -1;
+        // Nach einem fertigen Ziel dürfen Clear-Frames ein Blank-Ziel („Löschen“) eröffnen
+        var allowBlankDestinationStart = false;
+
+        void NoteSourceOffset(int fileOffset)
+        {
+            if (fileOffset < 0)
+            {
+                return;
+            }
+
+            if (pendingSourceOffset < 0 || fileOffset < pendingSourceOffset)
+            {
+                pendingSourceOffset = fileOffset;
+            }
+        }
 
         void Flush()
         {
+            var hasRawFrames = pendingFrontFrame is { Length: > 0 } ||
+                               pendingSideFrame is { Length: > 0 } ||
+                               pendingLineFrame is { Length: > 0 };
+
+            // Ohne Text und ohne Frames: verwerfen (aber Pending immer leeren)
             if (string.IsNullOrWhiteSpace(pendingFront) &&
                 string.IsNullOrWhiteSpace(pendingSide) &&
                 string.IsNullOrWhiteSpace(pendingLine) &&
-                !pendingFrontSmile && !pendingSideSmile && !pendingLineSmile)
+                !pendingFrontSmile && !pendingSideSmile && !pendingLineSmile &&
+                !hasRawFrames)
             {
+                ClearPending();
                 return;
             }
 
@@ -91,11 +125,7 @@ public static class MobitecTransOutImporter
                 IsNoiseText(front) &&
                 (IsNoiseText(side) || LooksLikeDanke(side));
 
-            // Grafik-Ziele (Logo/Tasse/…) ohne Text trotzdem behalten, wenn Wire-Frames da sind
-            var hasRawFrames = pendingFrontFrame is { Length: > 0 } ||
-                               pendingSideFrame is { Length: > 0 } ||
-                               pendingLineFrame is { Length: > 0 };
-
+            // Leere Textziele mit Wire-Frames behalten (z. B. „Löschen“ / Blank)
             if (string.IsNullOrEmpty(front) && string.IsNullOrEmpty(side) && !smileGraphic && !hasRawFrames)
             {
                 ClearPending();
@@ -113,6 +143,8 @@ public static class MobitecTransOutImporter
             {
                 results.Add(new MobitecOutImportDestination
                 {
+                    DestinationNumber = results.Count + 1,
+                    SourceFileOffset = pendingSourceOffset,
                     Line = string.Empty,
                     FrontText = "Danke",
                     SideText = "Danke",
@@ -122,6 +154,7 @@ public static class MobitecTransOutImporter
                     SideFrame = pendingSideFrame,
                     LineFrame = pendingLineFrame
                 });
+                allowBlankDestinationStart = true;
             }
             else
             {
@@ -140,13 +173,19 @@ public static class MobitecTransOutImporter
                     }
                 }
 
-                if (string.IsNullOrWhiteSpace(frontText) && hasRawFrames)
+                // Nur bei Bitmap ohne Text „Grafik“ setzen – leere Textziele bleiben leer
+                var hasBitmap = FrameHasBitmap(pendingFrontFrame) ||
+                                FrameHasBitmap(pendingSideFrame) ||
+                                FrameHasBitmap(pendingLineFrame);
+                if (string.IsNullOrWhiteSpace(frontText) && hasRawFrames && hasBitmap)
                 {
                     frontText = line.Length > 0 ? line : "Grafik";
                 }
 
                 results.Add(new MobitecOutImportDestination
                 {
+                    DestinationNumber = results.Count + 1,
+                    SourceFileOffset = pendingSourceOffset,
                     Line = line,
                     FrontText = frontText,
                     SideText = string.IsNullOrWhiteSpace(side) ? frontText : side,
@@ -156,6 +195,7 @@ public static class MobitecTransOutImporter
                     SideFrame = pendingSideFrame,
                     LineFrame = pendingLineFrame
                 });
+                allowBlankDestinationStart = true;
             }
 
             ClearPending();
@@ -173,11 +213,42 @@ public static class MobitecTransOutImporter
             pendingFrontFrame = null;
             pendingSideFrame = null;
             pendingLineFrame = null;
+            pendingSourceOffset = -1;
         }
+
+        bool HasPendingSideOrFront() =>
+            !string.IsNullOrWhiteSpace(pendingFront) ||
+            !string.IsNullOrWhiteSpace(pendingSide) ||
+            pendingFrontSmile ||
+            pendingSideSmile ||
+            pendingFrontFrame is { Length: > 0 } ||
+            pendingSideFrame is { Length: > 0 };
+
+        bool HasPendingLine() =>
+            !string.IsNullOrWhiteSpace(pendingLine) ||
+            pendingLineSmile ||
+            pendingLineFrame is { Length: > 0 };
+
+        // Blank-/Clear-Ziel ohne Text (Frames dürfen gesetzt sein)
+        bool IsPendingBlankContent() =>
+            string.IsNullOrWhiteSpace(pendingFront) &&
+            string.IsNullOrWhiteSpace(pendingSide) &&
+            string.IsNullOrWhiteSpace(pendingLine) &&
+            !pendingFrontSmile &&
+            !pendingSideSmile &&
+            !pendingLineSmile;
 
         foreach (var frame in frames)
         {
-            if (frame.IsClearOrEmpty && !frame.HasBitmap)
+            // Führende Clear-Frames ohne offenes Ziel ignorieren
+            if (frame.IsClearOrEmpty && !frame.HasBitmap &&
+                !HasPendingLine() && !HasPendingSideOrFront() &&
+                !allowBlankDestinationStart)
+            {
+                continue;
+            }
+
+            if (frame.IsClearOrEmpty && !frame.HasBitmap && frame.WireFrame is not { Length: > 0 })
             {
                 continue;
             }
@@ -190,12 +261,29 @@ public static class MobitecTransOutImporter
                     // B) SIDE → FRONT → LINE – LINE schließt das Ziel ab
                     // Bitmap-Linie (Logo/Tasse/Baum): Text im Frame ignorieren („!“ / Restzeichen).
                     var lineText = frame.HasBitmap ? string.Empty : frame.Text;
-                    if (HasPendingSideOrFront())
+                    if (HasPendingSideOrFront() &&
+                        !HasPendingLine() &&
+                        IsPendingBlankContent())
+                    {
+                        // Offenes Blank (Clear Front/Seite) ohne eigene Linie:
+                        // nicht die nächste echte Linie „klauen“ – Blank zuerst abschließen.
+                        Flush();
+                        pendingLineSmile = frame.HasBitmap && string.IsNullOrWhiteSpace(frame.Text);
+                        pendingLine = lineText;
+                        pendingLineFrame = frame.WireFrame;
+                        NoteSourceOffset(frame.FileOffset);
+                        if (frame.IntervalSeconds is int ivBlank)
+                        {
+                            pendingInterval = ivBlank;
+                        }
+                    }
+                    else if (HasPendingSideOrFront())
                     {
                         // B: Linie gehört zum aktuellen (offenen) Ziel
                         pendingLineSmile = frame.HasBitmap && string.IsNullOrWhiteSpace(frame.Text);
                         pendingLine = lineText;
                         pendingLineFrame = frame.WireFrame;
+                        NoteSourceOffset(frame.FileOffset);
                         if (frame.IntervalSeconds is int ivB)
                         {
                             pendingInterval = ivB;
@@ -205,10 +293,12 @@ public static class MobitecTransOutImporter
                     }
                     else
                     {
-                        // A: neue Linie startet das nächste Ziel (vorherige Linie ohne Side/Front verwerfen)
+                        // A: neue Linie startet das nächste Ziel
+                        // (vorherige Linie ohne Side/Front verwerfen – ZEdit-Artefakt)
                         pendingLineSmile = frame.HasBitmap && string.IsNullOrWhiteSpace(frame.Text);
                         pendingLine = lineText;
                         pendingLineFrame = frame.WireFrame;
+                        NoteSourceOffset(frame.FileOffset);
                         if (frame.IntervalSeconds is int ivA)
                         {
                             pendingInterval = ivA;
@@ -217,16 +307,22 @@ public static class MobitecTransOutImporter
 
                     break;
                 case 0x06:
-                    if (!string.IsNullOrWhiteSpace(pendingFront) ||
-                        pendingFrontSmile ||
-                        pendingFrontFrame is { Length: > 0 })
+                    var newFrontBlank = frame.IsClearOrEmpty || string.IsNullOrWhiteSpace(frame.Text);
+                    if (pendingFrontFrame is { Length: > 0 } ||
+                        !string.IsNullOrWhiteSpace(pendingFront) ||
+                        pendingFrontSmile)
                     {
-                        Flush();
+                        // Aufeinanderfolgende Blank-Fronts zusammenführen (kein Extra-„Löschen“)
+                        if (!(IsPendingBlankContent() && newFrontBlank))
+                        {
+                            Flush();
+                        }
                     }
 
                     pendingFrontSmile = frame.HasBitmap && string.IsNullOrWhiteSpace(frame.Text);
                     pendingFront = frame.Text;
                     pendingFrontFrame = frame.WireFrame;
+                    NoteSourceOffset(frame.FileOffset);
                     if (frame.IntervalSeconds is int fi)
                     {
                         pendingInterval = fi;
@@ -243,6 +339,7 @@ public static class MobitecTransOutImporter
                     pendingSideSmile = frame.HasBitmap && string.IsNullOrWhiteSpace(frame.Text);
                     pendingSide = frame.Text;
                     pendingSideFrame = frame.WireFrame;
+                    NoteSourceOffset(frame.FileOffset);
                     if (frame.IntervalSeconds is int si)
                     {
                         pendingInterval = si;
@@ -252,22 +349,162 @@ public static class MobitecTransOutImporter
             }
         }
 
-        Flush();
+        // Trailing Blank ohne eigene Linie verwerfen (nur Zwischen-Löschen behalten)
+        if (IsPendingBlankContent() && !HasPendingLine())
+        {
+            ClearPending();
+        }
+        else
+        {
+            Flush();
+        }
 
-        return Deduplicate(results);
+        var list = Deduplicate(CollapseAdjacentBlankDestinations(results));
+        AssignDestinationNumbersFromIndex(data, list);
+        return list;
+    }
 
-        bool HasPendingSideOrFront() =>
-            !string.IsNullOrWhiteSpace(pendingFront) ||
-            !string.IsNullOrWhiteSpace(pendingSide) ||
-            pendingFrontSmile ||
-            pendingSideSmile ||
-            pendingFrontFrame is { Length: > 0 } ||
-            pendingSideFrame is { Length: > 0 };
+    /// <summary>
+    /// Vergibt ICU-/ZEdit-Zielnummern aus der Sparse-Index-Tabelle der OUT-Datei
+    /// (Slot 1…1000, Lücken = leer, z. B. 991/992/993/1000). Fallback: 1…n.
+    /// </summary>
+    private static void AssignDestinationNumbersFromIndex(
+        byte[] data,
+        IReadOnlyList<MobitecOutImportDestination> destinations)
+    {
+        var index = TryParseDestinationIndex(data);
+        if (index.Count == 0)
+        {
+            for (var i = 0; i < destinations.Count; i++)
+            {
+                destinations[i].DestinationNumber = i + 1;
+            }
 
-        bool HasPendingLine() =>
-            !string.IsNullOrWhiteSpace(pendingLine) ||
-            pendingLineSmile ||
-            pendingLineFrame is { Length: > 0 };
+            return;
+        }
+
+        // Index nach Dateioffset sortiert: Ziel belegt [offset, nextOffset)
+        var byOffset = index
+            .Select(kv => (Number: kv.Key, Offset: kv.Value))
+            .OrderBy(e => e.Offset)
+            .ToList();
+
+        var usedNumbers = new HashSet<int>();
+        foreach (var dest in destinations)
+        {
+            var number = ResolveNumberForOffset(byOffset, dest.SourceFileOffset);
+            if (number is >= 0 and <= 9999 && usedNumbers.Add(number))
+            {
+                dest.DestinationNumber = number;
+            }
+            else
+            {
+                // Fallback: nächste freie Nummer ab 1 (sollte selten nötig sein)
+                var n = 1;
+                while (usedNumbers.Contains(n) && n < 9999)
+                {
+                    n++;
+                }
+
+                dest.DestinationNumber = n;
+                usedNumbers.Add(n);
+            }
+        }
+    }
+
+    private static int ResolveNumberForOffset(
+        IReadOnlyList<(int Number, int Offset)> byOffset,
+        int sourceOffset)
+    {
+        if (sourceOffset < 0 || byOffset.Count == 0)
+        {
+            return 0;
+        }
+
+        // Index zeigt oft auf „04 03“ vor dem A2-Frame → Frame-Offset kann leicht dahinter liegen.
+        for (var i = byOffset.Count - 1; i >= 0; i--)
+        {
+            if (byOffset[i].Offset <= sourceOffset + 4)
+            {
+                return byOffset[i].Number;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Liest die ZEdit-Sparse-Tabelle: maxSlots × u32 ab IndexStart.
+    /// Leer = 0x0FF9; belegt = absoluter Offset oder page*4096+offset (page in High-Byte).
+    /// Zielnummer = Slot-Index (0-basiert, ICU 0000–9999).
+    /// </summary>
+    private static Dictionary<int, int> TryParseDestinationIndex(byte[] data)
+    {
+        var result = new Dictionary<int, int>();
+        if (data.Length < 0x20)
+        {
+            return result;
+        }
+
+        var maxSlots = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(0x10));
+        var indexStart = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(0x12));
+        if (maxSlots is < 1 or > 4096 || indexStart < 0x20)
+        {
+            return result;
+        }
+
+        var tableBytes = (long)maxSlots * 4;
+        if (indexStart + tableBytes > data.Length)
+        {
+            return result;
+        }
+
+        const uint emptySentinel = 0x0FF9;
+        for (var slot = 0; slot < maxSlots; slot++)
+        {
+            var pos = indexStart + slot * 4;
+            var val = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(pos));
+            if (val == 0 || val == emptySentinel)
+            {
+                continue;
+            }
+
+            var fileOffset = ResolveIndexEntryOffset(val);
+            if (fileOffset is null || fileOffset.Value < 0 || fileOffset.Value >= data.Length)
+            {
+                continue;
+            }
+
+            // ICU-/ZEdit-Zielnummer = 0-basierter Tabellenindex (nicht slot+1).
+            result[slot] = fileOffset.Value;
+        }
+
+        // Plausibilität: mindestens ein paar Einträge, die in den Datenteil zeigen
+        if (result.Count < 8)
+        {
+            result.Clear();
+        }
+
+        return result;
+    }
+
+    private static int? ResolveIndexEntryOffset(uint value)
+    {
+        // Absoluter Zeiger (z. B. erstes Ziel direkt auf Datenstart 0x0FFA)
+        if (value is >= 4090 and < 0x10000)
+        {
+            return (int)value;
+        }
+
+        // Struktur: u16 offset | u8 0x00 | u8 page  →  page * 4096 + offset
+        var page = (int)((value >> 24) & 0xFF);
+        var offset = (int)(value & 0xFFFF);
+        if (page >= 1)
+        {
+            return page * 4096 + offset;
+        }
+
+        return null;
     }
 
     public static IReadOnlyList<OutsideDisplayProgram> ToPrograms(
@@ -305,6 +542,7 @@ public static class MobitecTransOutImporter
             var smile = OutsideDisplayProgram.CreateMobitecSmile();
             smile.Id = OutsideDisplayId.NewUniqueId(usedIds);
             usedIds.Add(smile.Id);
+            smile.DestinationNumber = NormalizeDestinationNumber(dest.DestinationNumber);
             smile.Name = name;
             smile.IsListEnabled = true;
             ApplyRawFrames(smile, dest);
@@ -312,8 +550,10 @@ public static class MobitecTransOutImporter
         }
 
         var program = OutsideDisplayProgram.CreateMobitec(name);
+        // App-ID bleibt unabhängig von der ICU-Zielnummer (Upsert läuft über DestinationNumber).
         program.Id = OutsideDisplayId.NewUniqueId(usedIds);
         usedIds.Add(program.Id);
+        program.DestinationNumber = NormalizeDestinationNumber(dest.DestinationNumber);
         // Linien-Bitmap (Tasse, Baum, …) ersetzt den Linientext – kein RE10/001 im Feld.
         program.Ds001Value = dest.HasLineBitmap
             ? string.Empty
@@ -327,6 +567,70 @@ public static class MobitecTransOutImporter
         program.SyncLegacyLinesFromCycles();
         ApplyRawFrames(program, dest);
         return program;
+    }
+
+    /// <summary>OUT-Zielnummer → App-ID nur noch als Fallback, wenn die Nummer als ID frei ist.</summary>
+    public static string ResolveDestinationId(int destinationNumber, ISet<string> usedIds)
+    {
+        if (destinationNumber is >= 0 and <= 9999)
+        {
+            var id = destinationNumber.ToString("D4");
+            if (!usedIds.Contains(id))
+            {
+                return id;
+            }
+        }
+
+        return OutsideDisplayId.NewUniqueId(usedIds);
+    }
+
+    private static int? NormalizeDestinationNumber(int destinationNumber) =>
+        destinationNumber is >= 0 and <= 9999 ? destinationNumber : null;
+
+    /// <summary>Übernimmt OUT-Inhalt in ein bestehendes Mobitec-Programm (gleiche Zielnummer).</summary>
+    public static void ApplyToExistingProgram(OutsideDisplayProgram program, MobitecOutImportDestination dest, string displayName)
+    {
+        var keepId = program.Id;
+        // Frisches Programm ohne ID-Konflikt aufbauen, dann Inhalt übernehmen.
+        var fresh = ToProgram(dest, displayName, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        program.Name = fresh.Name;
+        program.Protocol = OutsideDisplayProtocolKind.Mobitec;
+        program.Ds001Value = fresh.Ds001Value;
+        program.IntervalSeconds = fresh.IntervalSeconds;
+        program.AutoFitFonts = fresh.AutoFitFonts;
+        program.IsListEnabled = true;
+        program.DestinationNumber = fresh.DestinationNumber;
+        program.MobitecFrontFrame = fresh.MobitecFrontFrame;
+        program.MobitecSideFrame = fresh.MobitecSideFrame;
+        program.MobitecLineFrame = fresh.MobitecLineFrame;
+        for (var i = 0; i < program.FrontCycles.Count; i++)
+        {
+            if (i < fresh.FrontCycles.Count)
+            {
+                program.FrontCycles[i].SetFromPair(fresh.FrontCycles[i].Line1, fresh.FrontCycles[i].Line2);
+            }
+            else
+            {
+                program.FrontCycles[i].SetFromPair(string.Empty, string.Empty);
+            }
+        }
+
+        for (var i = 0; i < program.SideCycles.Count; i++)
+        {
+            if (i < fresh.SideCycles.Count)
+            {
+                program.SideCycles[i].SetFromPair(fresh.SideCycles[i].Line1, fresh.SideCycles[i].Line2);
+            }
+            else
+            {
+                program.SideCycles[i].SetFromPair(string.Empty, string.Empty);
+            }
+        }
+
+        program.SyncLegacyLinesFromCycles();
+        program.Id = keepId;
+        program.NotifyMobitecGraphicsChanged();
+        program.RefreshListDisplayProperties();
     }
 
     public static string SuggestDisplayName(MobitecOutImportDestination dest) =>
@@ -346,7 +650,11 @@ public static class MobitecTransOutImporter
                     ? dest.Line.Trim()
                     : dest.HasLineBitmap || dest.HasFrontBitmap
                         ? "Grafik"
-                        : "Import";
+                        : dest.FrontFrame is { Length: > 0 } ||
+                          dest.SideFrame is { Length: > 0 } ||
+                          dest.LineFrame is { Length: > 0 }
+                            ? "Löschen"
+                            : "Import";
 
         if (baseName.Length > 48)
         {
@@ -455,7 +763,10 @@ public static class MobitecTransOutImporter
         var list = new List<MobitecOutImportDestination>();
         foreach (var item in items)
         {
-            var key = $"{item.IsSmileGraphic}\n{item.Line}\n{item.FrontText}\n{item.SideText}";
+            // Frames mit einbeziehen – sonst fallen leere/Blank-Ziele mit gleichem Text weg
+            var key =
+                $"{item.IsSmileGraphic}\n{item.Line}\n{item.FrontText}\n{item.SideText}\n" +
+                $"{FrameFingerprint(item.FrontFrame)}|{FrameFingerprint(item.SideFrame)}|{FrameFingerprint(item.LineFrame)}";
             if (seen.Add(key))
             {
                 list.Add(item);
@@ -463,6 +774,72 @@ public static class MobitecTransOutImporter
         }
 
         return list;
+    }
+
+    /// <summary>
+    /// Aufeinanderfolgende Blank-/Löschen-Ziele zu einem Eintrag zusammenführen
+    /// (ZEdit liefert oft mehrere Clear-Frames hintereinander).
+    /// </summary>
+    private static List<MobitecOutImportDestination> CollapseAdjacentBlankDestinations(
+        List<MobitecOutImportDestination> items)
+    {
+        var list = new List<MobitecOutImportDestination>();
+        foreach (var item in items)
+        {
+            if (IsBlankDeleteDestination(item) &&
+                list.Count > 0 &&
+                IsBlankDeleteDestination(list[^1]))
+            {
+                var prev = list[^1];
+                list[^1] = new MobitecOutImportDestination
+                {
+                    DestinationNumber = prev.DestinationNumber > 0 ? prev.DestinationNumber : item.DestinationNumber,
+                    SourceFileOffset = prev.SourceFileOffset >= 0 ? prev.SourceFileOffset : item.SourceFileOffset,
+                    Line = string.Empty,
+                    FrontText = string.Empty,
+                    SideText = string.Empty,
+                    IntervalSeconds = prev.IntervalSeconds,
+                    IsSmileGraphic = false,
+                    FrontFrame = prev.FrontFrame is { Length: > 0 } ? prev.FrontFrame : item.FrontFrame,
+                    SideFrame = prev.SideFrame is { Length: > 0 } ? prev.SideFrame : item.SideFrame,
+                    LineFrame = prev.LineFrame is { Length: > 0 } ? prev.LineFrame : item.LineFrame
+                };
+                continue;
+            }
+
+            list.Add(item);
+        }
+
+        return list;
+    }
+
+    private static bool IsBlankDeleteDestination(MobitecOutImportDestination item) =>
+        !item.IsSmileGraphic &&
+        string.IsNullOrWhiteSpace(item.Line) &&
+        string.IsNullOrWhiteSpace(item.FrontText) &&
+        string.IsNullOrWhiteSpace(item.SideText) &&
+        !item.HasLineBitmap &&
+        !item.HasFrontBitmap &&
+        !item.HasSideBitmap &&
+        (item.FrontFrame is { Length: > 0 } ||
+         item.SideFrame is { Length: > 0 } ||
+         item.LineFrame is { Length: > 0 });
+
+    private static string FrameFingerprint(byte[]? frame)
+    {
+        if (frame is null || frame.Length == 0)
+        {
+            return "-";
+        }
+
+        // Länge + einfache Prüfsumme reicht, um Blank-/Grafik-Frames zu unterscheiden
+        var sum = 0;
+        for (var i = 0; i < frame.Length; i++)
+        {
+            sum = (sum + frame[i] * (i + 1)) & 0x7FFFFFFF;
+        }
+
+        return $"{frame.Length}:{sum}";
     }
 
     private static bool IsNoiseText(string text) =>
@@ -499,6 +876,8 @@ public static class MobitecTransOutImporter
         public int? IntervalSeconds { get; init; }
         public bool IsClearOrEmpty { get; init; }
         public bool HasBitmap { get; init; }
+        /// <summary>Dateioffset des A2-Frames (addr-Byte).</summary>
+        public int FileOffset { get; init; } = -1;
         /// <summary>Vollständiger RS485-Frame inkl. FF … Checksumme … FF.</summary>
         public byte[]? WireFrame { get; init; }
     }
@@ -558,6 +937,7 @@ public static class MobitecTransOutImporter
                 IntervalSeconds = parsed.IntervalSeconds,
                 IsClearOrEmpty = parsed.IsClearOrEmpty,
                 HasBitmap = parsed.HasBitmap,
+                FileOffset = i,
                 WireFrame = wireFrame
             });
             i = end + 1;

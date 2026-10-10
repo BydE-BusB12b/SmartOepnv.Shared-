@@ -87,9 +87,9 @@ public sealed class KomRemoteLockDialog : Window
                         vehicle.DisplayName,
                         phone,
                         KomRemoteLockService.CommandType,
-                        ct => KomRemoteLockService.UploadAsync(AppServices.Dropbox, phone, locked, ct)))
+                        ct => KomRemoteLockService.UploadAsync(AppServices.Dropbox, phone, locked, ct),
+                        releaseCloseGuard: () => _sendGuard.EndSend()))
                 {
-                    _sendGuard.EndSend();
                     return;
                 }
             }

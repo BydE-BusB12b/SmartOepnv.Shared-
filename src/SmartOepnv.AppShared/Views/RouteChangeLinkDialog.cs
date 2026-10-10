@@ -367,7 +367,8 @@ public sealed class RouteChangeLinkDialog : Window
                 RouteOperatingDatesEditor.FormatDisplay(entry.OperatingDates),
                 label,
                 entry.SelectedLineCourseTrip,
-                () => { }));
+                () => { },
+                entry.OperatingDays));
         }
     }
 
@@ -443,7 +444,34 @@ public sealed class RouteChangeLinkDialog : Window
 
         stack.Children.Add(new TextBlock
         {
-            Text = "Datum (kommagetrennt):",
+            Text = "Verkehrstage:",
+            Foreground = Brushes.White,
+            Opacity = 0.9,
+            Margin = new Thickness(0, 0, 0, 4)
+        });
+
+        var daysPanel = new WrapPanel { Margin = new Thickness(0, 0, 0, 10) };
+        foreach (var dayItem in row.DaySelections)
+        {
+            var check = new CheckBox
+            {
+                Content = dayItem.Label,
+                IsChecked = dayItem.IsSelected,
+                Margin = new Thickness(0, 0, 12, 4),
+                Foreground = Brushes.White,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var captured = dayItem;
+            check.Checked += (_, _) => captured.IsSelected = true;
+            check.Unchecked += (_, _) => captured.IsSelected = false;
+            daysPanel.Children.Add(check);
+        }
+
+        stack.Children.Add(daysPanel);
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Zusätzlich Datum (optional, kommagetrennt):",
             Foreground = Brushes.White,
             Opacity = 0.9,
             Margin = new Thickness(0, 0, 0, 4)
@@ -452,7 +480,7 @@ public sealed class RouteChangeLinkDialog : Window
         var datesBox = MakeInputBox();
         datesBox.Text = row.DatesText;
         datesBox.Margin = new Thickness(0, 0, 0, 10);
-        datesBox.ToolTip = "z. B. 20.08 oder 10.08-14.08, 17.08-19.08";
+        datesBox.ToolTip = "Optional zusätzlich zu Verkehrstagen, z. B. 20.08 oder 10.08-14.08";
         datesBox.LostFocus += (_, _) => row.DatesText = datesBox.Text;
         stack.Children.Add(datesBox);
 
@@ -544,8 +572,10 @@ public sealed class RouteChangeLinkDialog : Window
         var rebuilt = new List<RouteChangeTargetEntry>();
         foreach (var row in _datedRows)
         {
-            if (!RouteOperatingDatesEditor.TryParseDateList(row.DatesText, out var dates, out _) ||
-                dates.Count == 0)
+            _ = RouteOperatingDatesEditor.TryParseDateList(row.DatesText, out var dates, out _);
+            dates ??= [];
+            var days = row.SelectedDays.ToList();
+            if (dates.Count == 0 && days.Count == 0)
             {
                 continue;
             }
@@ -561,7 +591,8 @@ public sealed class RouteChangeLinkDialog : Window
             rebuilt.Add(new RouteChangeTargetEntry
             {
                 SelectedLineCourseTrip = trip,
-                OperatingDates = dates
+                OperatingDates = dates,
+                OperatingDays = days
             });
         }
 

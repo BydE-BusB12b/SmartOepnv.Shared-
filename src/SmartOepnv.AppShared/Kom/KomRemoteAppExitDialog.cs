@@ -82,9 +82,9 @@ public sealed class KomRemoteAppExitDialog : Window
                         vehicle.DisplayName,
                         phone,
                         KomRemoteAppExitService.CommandType,
-                        ct => KomRemoteAppExitService.UploadAsync(AppServices.Dropbox, phone, ct)))
+                        ct => KomRemoteAppExitService.UploadAsync(AppServices.Dropbox, phone, ct),
+                        releaseCloseGuard: () => _sendGuard.EndSend()))
                 {
-                    _sendGuard.EndSend();
                     return;
                 }
             }

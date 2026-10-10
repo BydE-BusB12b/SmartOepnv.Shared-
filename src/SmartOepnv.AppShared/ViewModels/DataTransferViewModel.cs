@@ -44,7 +44,6 @@ public partial class DataTransferViewModel : ObservableObject
     [ObservableProperty] private TransferButtonVisualState planerWorkspaceExportButtonState = TransferButtonVisualState.Idle;
     private bool _remoteUpdateFlowRunning;
     [ObservableProperty] private bool isDropboxConnected;
-    [ObservableProperty] private string localWorkspaceHint = string.Empty;
     [ObservableProperty] private bool hasInspectionWarnings;
     [ObservableProperty] private bool hasDriverCredentialWarnings;
     [ObservableProperty] private bool hasDocumentCheckWarnings;
@@ -78,7 +77,6 @@ public partial class DataTransferViewModel : ObservableObject
         if (!_isLeitstelleProfile)
         {
             RefreshStats();
-            UpdateLocalWorkspaceHint();
             RefreshPackageVersions();
         }
     }
@@ -100,30 +98,6 @@ public partial class DataTransferViewModel : ObservableObject
 
     /// <summary>Nur Planer: planer_workspace.json manuell mit Dropbox abgleichen.</summary>
     public bool ShowPlanerWorkspaceSync => !_isLeitstelleProfile && AppServices.IsPlannerApp;
-
-    public string PlannerLocalOverlayHint =>
-        AppServices.PlannerLocal is null
-            ? string.Empty
-            : $"Fahrer & Fahrzeuge (Planer, Priorität): {AppServices.PlannerLocal.OverlayFilePath}";
-
-    private void UpdateLocalWorkspaceHint()
-    {
-        if (!AppServices.IsInitialized)
-        {
-            LocalWorkspaceHint = string.Empty;
-            return;
-        }
-
-        var routesHint =
-            $"Planer-Arbeitsstand: {new PlanerWorkspaceService(AppServices.SettingsSubfolder).LocalFilePath} " +
-            $"(lokaler Routen-Cache: {AppServices.Workspace.PackageFilePath}; " +
-            $"App-Vollstand routes_export.json nur manuell nach Dropbox).";
-        var overlayHint = PlannerLocalOverlayHint;
-        LocalWorkspaceHint = string.IsNullOrWhiteSpace(overlayHint)
-            ? routesHint
-            : $"{routesHint} {overlayHint}";
-        OnPropertyChanged(nameof(PlannerLocalOverlayHint));
-    }
 
     public void RefreshPackageVersions()
     {
@@ -157,7 +131,6 @@ public partial class DataTransferViewModel : ObservableObject
         DriverCount = stats.DriverCount;
         HasLoadedPackage = AppServices.Routes.HasPackage;
         IsDropboxConnected = AppServices.Dropbox.Settings.IsConnected;
-        UpdateLocalWorkspaceHint();
         RefreshInspectionWarnings();
         RefreshDriverCredentialWarnings();
         RefreshDocumentCheckWarnings();

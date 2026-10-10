@@ -55,7 +55,9 @@ public sealed class PlanerAppSettingsStore
             specialBuildingBlockLinesHidden = settings.SpecialBuildingBlockLinesHidden,
             suppressedStopAnnouncementSoundKeys = settings.SuppressedStopAnnouncementSoundKeys,
             lastRoutesExportPackageVersion = settings.LastRoutesExportPackageVersion,
-            lastRoutesUpdatePackageVersion = settings.LastRoutesUpdatePackageVersion
+            lastRoutesUpdatePackageVersion = settings.LastRoutesUpdatePackageVersion,
+            showSmartOepnvLogoInPdfs = settings.ShowSmartOepnvLogoInPdfs,
+            ds009TextLength = settings.Ds009TextLength <= 16 ? 16 : 20
         };
         SafeDataFileStore.WriteAllText(_settingsPath, JsonSerializer.Serialize(document, JsonOptions));
     }

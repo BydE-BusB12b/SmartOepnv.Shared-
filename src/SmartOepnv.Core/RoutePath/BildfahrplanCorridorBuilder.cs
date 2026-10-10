@@ -154,7 +154,10 @@ public static class BildfahrplanCorridorBuilder
         PlaceDepotStopsBeyondNeighbor(editor, routeKeys, stations, meters);
         stations = EnforceMinimumSeparation(stations);
         // Pause/Morper/Depot-Abstände nach Separation erneut absichern
-        PlacePauseBeyondParentAfterOrient(editor, routeKeys, stations, meters, Math.Max(total, stations.Max(s => s.DistanceMeters)));
+        var extentAfterSeparation = stations.Count == 0
+            ? total
+            : Math.Max(total, stations.Max(s => s.DistanceMeters));
+        PlacePauseBeyondParentAfterOrient(editor, routeKeys, stations, meters, extentAfterSeparation);
         FixMorperBeyondGerresheim(stations, meters);
         RebuildMetersLookup(editor, routeKeys, refStops, stations, meters);
 
@@ -307,6 +310,11 @@ public static class BildfahrplanCorridorBuilder
                 // Wendefahrt Morper: nicht per GPS zwischen Gerresheim/Erkrath – Fahrtenreihenfolge gilt
                 if (BildfahrplanStopAxis.MatchKey(name)
                         .Contains("morper", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (stations.Count == 0)
                 {
                     continue;
                 }
@@ -933,6 +941,11 @@ public static class BildfahrplanCorridorBuilder
             .ToList();
         if (line.Count == 0)
         {
+            if (stations.Count == 0)
+            {
+                return -1;
+            }
+
             return parentM <= stations.Average(s => s.DistanceMeters) ? -1 : 1;
         }
 

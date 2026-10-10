@@ -130,17 +130,9 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="28" />
                 </Grid.ColumnDefinitions>
-                <ContentPresenter Grid.Column="0"
-                                  Margin="{TemplateBinding Padding}"
-                                  HorizontalAlignment="Stretch"
-                                  VerticalAlignment="Center"
-                                  Content="{TemplateBinding Content}"
-                                  ContentTemplate="{TemplateBinding ContentTemplate}"
-                                  ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}"
-                                  IsHitTestVisible="False"
-                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                <!-- Nur Pfeil; Auswahltext liegt im ComboBox-Template darüber. -->
                 <Path Grid.Column="1"
                       HorizontalAlignment="Center"
                       VerticalAlignment="Center"
@@ -159,13 +151,13 @@
     </ControlTemplate>
 
     <ControlTemplate x:Key="SmartDarkComboBoxTemplate" TargetType="ComboBox">
+        <!-- Auswahltext neben dem Toggle (nicht als Toggle-Content), sonst kollabiert die Breite auf „A..“. -->
         <Grid SnapsToDevicePixels="True"
-              HorizontalAlignment="Stretch">
+              HorizontalAlignment="Stretch"
+              MinWidth="{TemplateBinding MinWidth}">
             <ToggleButton x:Name="ToggleButton"
                           HorizontalAlignment="Stretch"
-                          HorizontalContentAlignment="Stretch"
                           VerticalAlignment="Stretch"
-                          VerticalContentAlignment="Center"
                           Background="{TemplateBinding Background}"
                           BorderBrush="{TemplateBinding BorderBrush}"
                           BorderThickness="{TemplateBinding BorderThickness}"
@@ -174,14 +166,16 @@
                           IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
                           ClickMode="Press"
                           Padding="{TemplateBinding Padding}"
-                          Template="{StaticResource SmartDarkComboBoxToggleTemplate}">
-                <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
-                                  ContentTemplate="{TemplateBinding ItemTemplate}"
-                                  ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
-                                  HorizontalAlignment="Stretch"
-                                  VerticalAlignment="Center"
-                                  IsHitTestVisible="False" />
-            </ToggleButton>
+                          Template="{StaticResource SmartDarkComboBoxToggleTemplate}" />
+            <ContentPresenter x:Name="ContentSite"
+                              Margin="8,0,28,0"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center"
+                              Content="{TemplateBinding SelectionBoxItem}"
+                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                              IsHitTestVisible="False"
+                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
             <Popup x:Name="PART_Popup"
                    AllowsTransparency="True"
                    Placement="Bottom"

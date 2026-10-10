@@ -117,9 +117,9 @@ public sealed class VehicleKomMessageDialog : Window
                     vehicle.DisplayName,
                     phone,
                     ZblMessageService.CommandType,
-                    ct => AppServices.Dropbox.UploadZblMessageAsync(phone, text, ct)))
+                    ct => AppServices.Dropbox.UploadZblMessageAsync(phone, text, ct),
+                    releaseCloseGuard: () => _sendGuard.EndSend()))
                 {
-                    _sendGuard.EndSend();
                     return;
                 }
             }

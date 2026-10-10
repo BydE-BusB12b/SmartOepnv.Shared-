@@ -5,10 +5,14 @@ namespace SmartOepnv.AppShared.Helpers;
 
 /// <summary>
 /// Suche in eingebetteten Tondateinamen (z. B. „Wuppertal Vohwinkel“ → WUPPERTAL_VOHWINKEL).
+/// Tokenbasiert: „Dingshaus / SWS“ findet auch „0025_Dingshaus.wav“.
 /// </summary>
 public static class EmbeddedSoundSearch
 {
-    private static readonly char[] QuerySeparators = [' ', ',', ';', '/', '\\', '-', '_', '.'];
+    private static readonly char[] QuerySeparators = [' ', ',', ';', '/', '\\', '-', '_', '.', '(', ')', '[', ']'];
+
+    /// <summary>Mindestlänge für „bedeutsame“ Tokens (Kurztokens wie „S“ allein reichen nicht).</summary>
+    private const int SignificantTokenMinLength = 3;
 
     public static bool Matches(string fileName, string query, string? extraSearchText = null)
     {
@@ -17,34 +21,47 @@ public static class EmbeddedSoundSearch
             return true;
         }
 
-        if (MatchesInternal(fileName, query))
-        {
-            return true;
-        }
-
-        // Zusatztext (Haltestelle, Linien …) nur bei mehreren Suchbegriffen –
-        // sonst liefert z. B. „Düs“ alle Einträge mit „Düsseldorf“ in der Beschreibung.
-        var tokens = Tokenize(query);
-        if (tokens.Count >= 2 && !string.IsNullOrWhiteSpace(extraSearchText))
-        {
-            return MatchesInternal(extraSearchText, query);
-        }
-
-        return false;
+        return Score(fileName, query, extraSearchText) > 0;
     }
 
-    private static bool MatchesInternal(string text, string query)
+    /// <summary>
+    /// Höher = besserer Treffer. 0 = kein Treffer.
+    /// Bevorzugt Dateinamen-Treffer und mehr passende Tokens.
+    /// </summary>
+    public static int Score(string fileName, string query, string? extraSearchText = null)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return 1;
+        }
+
+        var fileScore = ScoreInternal(fileName, query);
+        if (fileScore > 0)
+        {
+            // Dateiname-Treffer stärker gewichten als nur Zusatztext
+            return fileScore + 100;
+        }
+
+        if (!string.IsNullOrWhiteSpace(extraSearchText))
+        {
+            return ScoreInternal(extraSearchText, query);
+        }
+
+        return 0;
+    }
+
+    private static int ScoreInternal(string text, string query)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
-            return false;
+            return 0;
         }
 
         var haystack = Normalize(text);
         var normalizedQuery = Normalize(query);
         if (haystack.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            return 50 + Math.Min(normalizedQuery.Length, 40);
         }
 
         var compactHaystack = Compact(haystack);
@@ -52,18 +69,32 @@ public static class EmbeddedSoundSearch
         if (!string.IsNullOrEmpty(compactQuery) &&
             compactHaystack.Contains(compactQuery, StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            return 40 + Math.Min(compactQuery.Length, 40);
         }
 
         var tokens = Tokenize(query);
         if (tokens.Count == 0)
         {
-            return true;
+            return 1;
         }
 
         var words = haystack.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var matchedTokens = tokens.Count(token => TokenMatches(token, words, compactHaystack));
-        return matchedTokens == tokens.Count;
+        var matched = tokens.Count(token => TokenMatches(token, words, compactHaystack));
+        if (matched == tokens.Count)
+        {
+            return 30 + matched * 5;
+        }
+
+        // Teiltreffer: mind. ein bedeutsames Token trifft (z. B. Dingshaus aus „Dingshaus / SWS“)
+        var significantMatched = tokens
+            .Where(t => Compact(t).Length >= SignificantTokenMinLength)
+            .Count(token => TokenMatches(token, words, compactHaystack));
+        if (significantMatched > 0)
+        {
+            return 10 + significantMatched * 5;
+        }
+
+        return 0;
     }
 
     private static bool TokenMatches(string token, string[] words, string compactHaystack)
@@ -73,12 +104,15 @@ public static class EmbeddedSoundSearch
             return false;
         }
 
-        if (compactHaystack.Contains(token, StringComparison.OrdinalIgnoreCase))
+        var compactToken = Compact(token);
+        if (compactToken.Length > 0 &&
+            compactHaystack.Contains(compactToken, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        return words.Any(word => word.Contains(token, StringComparison.OrdinalIgnoreCase));
+        return words.Any(word => word.Contains(token, StringComparison.OrdinalIgnoreCase) ||
+                                 Compact(word).Contains(compactToken, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string Normalize(string text)
