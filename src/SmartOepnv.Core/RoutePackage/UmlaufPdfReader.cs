@@ -797,14 +797,29 @@ public static class UmlaufPdfReader
                     label = below!;
                     stopName = CleanStopHint(label);
                 }
-                else if (!string.IsNullOrWhiteSpace(lastStopName) &&
-                         lastWasAnAb &&
-                         (IsAbAnLabel(rawLabel) ||
-                          string.IsNullOrWhiteSpace(rawLabel) ||
-                          LooksLikeOrphanTimeRoleRow(rawLabel)))
+
+                // GWP an/ab: Namenszeile oft nur auf einer der beiden Zeilen – oben oder unten suchen
+                if (string.IsNullOrWhiteSpace(stopName))
                 {
-                    // Nur direkte Folgezeile ab/an zur vorherigen an/ab
-                    label = $"{lastStopName} ab/an";
+                    var above = FindStopLabelJustAbove(rows, rowIndex, times[0].Y);
+                    if (!string.IsNullOrWhiteSpace(above))
+                    {
+                        label = MergeRoleOntoStopLabel(above!, rawLabel);
+                        stopName = CleanStopHint(label);
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(stopName) &&
+                    !string.IsNullOrWhiteSpace(lastStopName) &&
+                    lastWasAnAb &&
+                    (IsAbAnLabel(rawLabel) ||
+                     IsPureDepartureLabel(rawLabel) ||
+                     string.IsNullOrWhiteSpace(rawLabel) ||
+                     LooksLikeOrphanTimeRoleRow(rawLabel)))
+                {
+                    // Nur Folgezeile zur vorherigen an/ab (nicht Bf. Mitte → GWP-an)
+                    label = MergeRoleOntoStopLabel(lastStopName!, rawLabel);
+                    stopName = CleanStopHint(label);
                 }
             }
 
@@ -831,6 +846,85 @@ public static class UmlaufPdfReader
         }
 
         return timeCells;
+    }
+
+    private static string MergeRoleOntoStopLabel(string stopName, string? roleRaw)
+    {
+        var role = (roleRaw ?? string.Empty).Trim().ToLowerInvariant();
+        if (IsAbAnLabel(roleRaw) || role is "ab" or "ab/an")
+        {
+            return $"{stopName} ab/an";
+        }
+
+        if (IsAnAbLabel(roleRaw) || role is "an" or "an/ab")
+        {
+            return $"{stopName} an/ab";
+        }
+
+        if (IsPureDepartureLabel(roleRaw))
+        {
+            return $"{stopName} ab";
+        }
+
+        if (IsPureArrivalLabel(roleRaw))
+        {
+            return $"{stopName} an";
+        }
+
+        return stopName;
+    }
+
+    /// <summary>
+    /// Wie FindStopLabelJustBelow, aber Zeile darüber (GWP-Name auf der ab-Zeile, Zeit auf an darüber).
+    /// </summary>
+    private static string? FindStopLabelJustAbove(
+        IReadOnlyList<List<PdfWord>> rows,
+        int timeRowIndex,
+        double timeY)
+    {
+        for (var i = timeRowIndex - 1; i >= 0 && i >= timeRowIndex - 3; i--)
+        {
+            var row = rows[i];
+            if (row.Count == 0)
+            {
+                continue;
+            }
+
+            if (row.Any(w => IsTimeToken(w.Text)))
+            {
+                // Zeitzeile darüber – weiter suchen (Doppelzeit an/ab)
+            }
+
+            if (row.Count(w => IsTripToken(w.Text)) >= 3)
+            {
+                continue;
+            }
+
+            var y = row.Average(w => w.Y);
+            var dy = y - timeY;
+            if (dy < -0.5 || dy > RowTolerance * 3)
+            {
+                if (dy > RowTolerance * 3)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            var raw = NormalizeRoleSlashes(string.Join(
+                " ",
+                row.Where(w => !IsTimeToken(w.Text) && !IsTripToken(w.Text)).Select(w => w.Text)));
+            var name = CleanStopHint(raw);
+            if (string.IsNullOrWhiteSpace(name) || IsStopNameNoise(name))
+            {
+                continue;
+            }
+
+            return raw.Trim().Length > 0 ? raw.Trim() : name;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -900,7 +994,7 @@ public static class UmlaufPdfReader
         return t.Length <= 3 && !char.IsLetter(t[0]);
     }
 
-    /// <summary>Einzelziffern/Satzzeichen aus senkrechtem PDF-Text – kein Haltestellenname.</summary>
+    /// <summary>Einzelziffern/Satzzeichen / OCR-Reste („o“, „e“) – kein Haltestellenname.</summary>
     private static bool IsStopNameNoise(string? stopName)
     {
         if (string.IsNullOrWhiteSpace(stopName))
@@ -908,13 +1002,18 @@ public static class UmlaufPdfReader
             return true;
         }
 
-        var t = stopName.Trim();
+        var t = stopName.Trim().ToLowerInvariant();
         if (t.Length <= 2 && t.All(c => !char.IsLetter(c)))
         {
             return true;
         }
 
-        // „1 hauptbahnhof“ / „- 61“: führende Artefakte, Kern trotzdem nutzbar → kein Noise
+        // PdfPig-Artefakte: alleinstehendes „o“/„e“/„r“ (oft GWP-an-Zeile ohne Namen)
+        if (t.Length <= 2 && t.All(char.IsLetter))
+        {
+            return true;
+        }
+
         return false;
     }
 
@@ -1297,6 +1396,8 @@ public static class UmlaufPdfReader
     /// Planzeiten in Leserichtung (oben → unten).
     /// Doppelzeile eng beieinander (GWP an/ab+ab/an) = ein Halt; zweiter Besuch derselben Hst
     /// weiter unten (Rundkurs 683) = eigener TimingPoint.
+    /// OCR-Reste („o“) werden an die nächste echte Halt-Zeile gehängt – sonst zerbricht
+    /// Bf. Mitte→GWP (Phantom-Anker zwischen den korrekten Zeiten).
     /// </summary>
     private static IReadOnlyList<TimingPoint> ExtractTimingPoints(
         IReadOnlyList<TimeCell> halfTimes,
@@ -1305,20 +1406,72 @@ public static class UmlaufPdfReader
         IReadOnlyList<(string Number, double Y)> tripNumbers,
         bool preferUpperHalf)
     {
+        const double doubleLineGapPt = 28.0;
+
         // PdfPig: größeres Y = weiter oben → absteigend = Leserichtung
-        var cells = halfTimes
+        var rawCells = halfTimes
             .Where(c => !string.IsNullOrWhiteSpace(c.Time))
-            .Select(c => (Hint: CleanStopHint(c.RowLabel), Cell: c))
-            .Where(x => !string.IsNullOrWhiteSpace(x.Hint))
-            .OrderByDescending(x => x.Cell.Y)
+            .OrderByDescending(c => c.Y)
             .ToList();
 
-        const double doubleLineGapPt = 28.0;
+        // Orphan-Zeiten (leerer/Noise-Hint) dem nächsten echten Halt in Y-Nähe zuordnen
+        var cells = new List<(string Hint, TimeCell Cell)>();
+        for (var idx = 0; idx < rawCells.Count; idx++)
+        {
+            var cell = rawCells[idx];
+            var hint = CleanStopHint(cell.RowLabel);
+            if (string.IsNullOrWhiteSpace(hint))
+            {
+                string? donor = null;
+                for (var d = idx + 1; d < rawCells.Count; d++)
+                {
+                    if (cell.Y - rawCells[d].Y > doubleLineGapPt)
+                    {
+                        break;
+                    }
+
+                    var h = CleanStopHint(rawCells[d].RowLabel);
+                    if (!string.IsNullOrWhiteSpace(h))
+                    {
+                        donor = h;
+                        break;
+                    }
+                }
+
+                if (donor is null)
+                {
+                    for (var d = idx - 1; d >= 0; d--)
+                    {
+                        if (rawCells[d].Y - cell.Y > doubleLineGapPt)
+                        {
+                            break;
+                        }
+
+                        var h = CleanStopHint(rawCells[d].RowLabel);
+                        if (!string.IsNullOrWhiteSpace(h))
+                        {
+                            donor = h;
+                            break;
+                        }
+                    }
+                }
+
+                if (donor is null)
+                {
+                    continue;
+                }
+
+                hint = donor;
+            }
+
+            cells.Add((hint!, cell));
+        }
+
         var points = new List<TimingPoint>();
         var i = 0;
         while (i < cells.Count)
         {
-            var hint = cells[i].Hint!;
+            var hint = cells[i].Hint;
             var cluster = new List<TimeCell> { cells[i].Cell };
             var j = i + 1;
             while (j < cells.Count &&
@@ -1348,7 +1501,7 @@ public static class UmlaufPdfReader
             }
             else
             {
-                // Doppelzeile: Abfahrt = spätere Uhrzeit
+                // Doppelzeile: Abfahrt = spätere Uhrzeit (2. Zeile / ab)
                 chosen = cluster.OrderByDescending(c => ParseMinutes(c.Time)).First();
             }
 
@@ -1538,7 +1691,12 @@ public static class UmlaufPdfReader
         }
 
         var key = NormalizeStopKey(rowLabel);
-        return string.IsNullOrWhiteSpace(key) ? null : key;
+        if (string.IsNullOrWhiteSpace(key) || IsStopNameNoise(key))
+        {
+            return null;
+        }
+
+        return key;
     }
 
     /// <summary>
