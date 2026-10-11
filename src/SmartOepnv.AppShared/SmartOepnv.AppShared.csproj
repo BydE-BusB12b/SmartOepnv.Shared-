@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <RootNamespace>SmartOepnv.AppShared</RootNamespace>
+    <!-- Verwaiste MarkupCompile-Temp-Projekte nicht als Quellen einbeziehen -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/*_wpftmp.csproj;**/*_wpftmp.*</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

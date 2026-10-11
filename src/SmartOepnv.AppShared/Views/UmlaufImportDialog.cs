@@ -478,6 +478,7 @@ public sealed class UmlaufImportDialog : Window
                     routeKey: string.Empty,
                     einRaw,
                     ausfahrt: false));
+            UmlaufImportPlanner.EnsureDienstfahrtEndBeforeEinfahrt(_trips[^1].Stops);
         }
     }
 
@@ -1028,7 +1029,17 @@ public sealed class UmlaufImportDialog : Window
                 trip.EndTime = trip.Stops[^1].Time!;
             }
 
-            trip.Stops[^1].IsEndStop = true;
+            if (string.Equals(
+                    trip.Stops[^1].Name,
+                    UmlaufImportPlanner.SwsEinfahrtStopName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                UmlaufImportPlanner.EnsureDienstfahrtEndBeforeEinfahrt(trip.Stops);
+            }
+            else
+            {
+                trip.Stops[^1].IsEndStop = true;
+            }
         }
 
         RebuildTripCards();

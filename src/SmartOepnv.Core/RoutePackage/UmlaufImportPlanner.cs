@@ -560,20 +560,74 @@ public static class UmlaufImportPlanner
             stops.RemoveAt(stops.Count - 1);
         }
 
-        // Endhalt der Fahrgastfahrt bleibt Endhalt für Routenwechsel; Einfahrt danach
-        if (stops.Count > 0)
-        {
-            stops[^1].IsEndStop = true;
-        }
-
         var stop = CreateSwsDepotStop(editor, routeKey, einfahrtTime, ausfahrt: false, warnings);
-        stop.IsEndStop = true;
         stops.Add(stop);
+        EnsureDienstfahrtEndBeforeEinfahrt(stops);
         editor.ReplaceStopsForRoute(routeKey, stops);
 
         if (string.IsNullOrWhiteSpace(einfahrtTime))
         {
             warnings.Add("SWS Einfahrt ohne Zeit (Einfahrtzeit leer, Vorlage hatte Einfahrt).");
+        }
+    }
+
+    /// <summary>
+    /// Letzter Fahrgasthalt vor SWS Einfahrt = Endhaltestelle mit Ziel „Dienstfahrt“.
+    /// SWS Einfahrt selbst ist nur Depot-Halt danach.
+    /// </summary>
+    public static void EnsureDienstfahrtEndBeforeEinfahrt(IList<RouteStopItem> stops)
+    {
+        if (stops.Count < 2 || !IsDepotEinfahrt(stops[^1].Name))
+        {
+            return;
+        }
+
+        for (var i = 0; i < stops.Count; i++)
+        {
+            if (!IsSwsDepotStopName(stops[i].Name))
+            {
+                stops[i].IsEndStop = false;
+            }
+        }
+
+        var passengerEnd = stops[^2];
+        if (IsSwsDepotStopName(passengerEnd.Name))
+        {
+            return;
+        }
+
+        passengerEnd.IsEndStop = true;
+        ApplyDienstfahrtEndDestination(passengerEnd);
+
+        // Einfahrt: letzter Listeneintrag, aber kein Fahrgast-Endziel
+        stops[^1].IsEndStop = false;
+    }
+
+    private static void ApplyDienstfahrtEndDestination(RouteStopItem stop)
+    {
+        const string dienstfahrt = "Dienstfahrt";
+        stop.EndDestination = dienstfahrt;
+        stop.Ds021NeuEndDestination = dienstfahrt;
+        stop.FmaS1EndDestination = dienstfahrt;
+        if (string.IsNullOrWhiteSpace(stop.Ds003aEndDestination))
+        {
+            stop.Ds003aEndDestination = dienstfahrt;
+        }
+
+        if (string.IsNullOrWhiteSpace(stop.ZielnummerEndDestination))
+        {
+            stop.ZielnummerEndDestination = dienstfahrt;
+        }
+
+        if (string.IsNullOrWhiteSpace(stop.MobitecEndDestination))
+        {
+            stop.MobitecEndDestination = dienstfahrt;
+        }
+
+        // Fallback, falls Anzeige nur Destination (ohne End*-Felder) liest
+        if (!RouteStopEditorCatalog.HasStartStopDestination(stop.Destination))
+        {
+            stop.Destination = dienstfahrt;
         }
     }
 
@@ -625,11 +679,7 @@ public static class UmlaufImportPlanner
 
             RouteStopEditorCatalog.EnsureStartStopMarker(stop);
         }
-        else
-        {
-            stop.IsEndStop = true;
-        }
-
+        // Einfahrt: IsEndStop setzt EnsureDienstfahrtEndBeforeEinfahrt am Fahrgasthalt davor
         return stop;
     }
 
@@ -1535,15 +1585,18 @@ public static class UmlaufImportPlanner
         }
 
         var nGaps = toIdx - fromIdx;
+        // Zwischen PDF-Taktpunkten gleichmäßig verteilen (Bf. Mitte 06:31 → GWP 06:37
+        // → Werwolf 06:33, Entenpfuhl 06:35). Vorlagen-3/2/1 und gelernte Mediane aus
+        // Plan-Routen erzeugen hier systematisch die falschen Einzelminuten.
         var weights = new int[nGaps];
-        for (var g = 0; g < nGaps; g++)
+        Array.Fill(weights, 1);
+
+        // Wenn in bestehenden Routen für jede Lücke dieselbe Minute gelernt wurde
+        // (typisch 2/2/2 nach manueller Korrektur), diese Proportion bevorzugen.
+        if (TryGetUniformLearnedGaps(
+                stops, fromIdx, toIdx, typicalMinutes, out var learnedWeights))
         {
-            weights[g] = ResolveGapMinutes(
-                stops,
-                templateStops,
-                fromIdx + g,
-                fromIdx + g + 1,
-                typicalMinutes);
+            weights = learnedWeights;
         }
 
         var gaps = AllocateGapMinutes(span, weights);
@@ -1553,6 +1606,45 @@ public static class UmlaufImportPlanner
             cursor = cursor.AddMinutes(gaps[g]);
             stops[fromIdx + 1 + g].Time = FormatTime(cursor);
         }
+    }
+
+    /// <summary>
+    /// Gelernt nur nutzen, wenn alle Lücken belegt sind und die Werte nah an gleichmäßig liegen
+    /// (sonst schlagen alte Vorlagen-Mediane 3/2/1 wieder durch).
+    /// </summary>
+    private static bool TryGetUniformLearnedGaps(
+        IReadOnlyList<RouteStopItem> stops,
+        int fromIdx,
+        int toIdx,
+        IReadOnlyDictionary<(string FromCode, string ToCode), int> typicalMinutes,
+        out int[] weights)
+    {
+        var nGaps = toIdx - fromIdx;
+        weights = new int[nGaps];
+        if (typicalMinutes.Count == 0 || nGaps <= 0)
+        {
+            return false;
+        }
+
+        for (var g = 0; g < nGaps; g++)
+        {
+            var fromCode = PlannerStopCode.Normalize(stops[fromIdx + g].PlannerStopCode);
+            var toCode = PlannerStopCode.Normalize(stops[fromIdx + g + 1].PlannerStopCode);
+            if (!PlannerStopCode.IsValid(fromCode) ||
+                !PlannerStopCode.IsValid(toCode) ||
+                !typicalMinutes.TryGetValue((fromCode, toCode), out var learned) ||
+                learned <= 0)
+            {
+                return false;
+            }
+
+            weights[g] = learned;
+        }
+
+        var min = weights.Min();
+        var max = weights.Max();
+        // Erlaubt 2/2/2 oder 2/2/3 – nicht 3/2/1 aus unveränderten Vorlagen
+        return max - min <= 1;
     }
 
     private static void FillForwardFromAnchor(
@@ -1648,20 +1740,86 @@ public static class UmlaufImportPlanner
             return Math.Max(1, learned);
         }
 
+        return ResolveTemplateGapMinutes(stops, templateStops, fromIdx, toIdx);
+    }
+
+    /// <summary>
+    /// Abstand laut gewählter Vorlagenkette (gleiche Indizes wie die gebauten Stops).
+    /// </summary>
+    private static int ResolveTemplateGapMinutes(
+        IReadOnlyList<RouteStopItem> stops,
+        IReadOnlyList<RouteStopItem> templateStops,
+        int fromIdx,
+        int toIdx)
+    {
+        if (fromIdx < 0 ||
+            toIdx < 0 ||
+            fromIdx >= stops.Count ||
+            toIdx >= stops.Count ||
+            AreEquivalentStopNames(stops[fromIdx].Name, stops[toIdx].Name))
+        {
+            return 0;
+        }
+
         if (fromIdx < templateStops.Count &&
             toIdx < templateStops.Count &&
+            string.Equals(
+                CleanNameKey(stops[fromIdx].Name),
+                CleanNameKey(templateStops[fromIdx].Name),
+                StringComparison.Ordinal) &&
+            string.Equals(
+                CleanNameKey(stops[toIdx].Name),
+                CleanNameKey(templateStops[toIdx].Name),
+                StringComparison.Ordinal) &&
             RouteScheduleTimeCalculator.TryParseTime(templateStops[fromIdx].Time, out var tFrom) &&
             RouteScheduleTimeCalculator.TryParseTime(templateStops[toIdx].Time, out var tTo))
         {
-            var templateGap = ForwardMinutes(tFrom, tTo);
+            var templateGap = TemplateGapMinutes(tFrom, tTo);
             if (templateGap > 0)
             {
-                return Math.Max(1, templateGap);
+                return templateGap;
+            }
+        }
+
+        // Index-Drift: per Name in der Vorlage suchen
+        var iFrom = FindStopIndexByHint(templateStops, stops[fromIdx].Name);
+        var iTo = FindStopIndexByHint(templateStops, stops[toIdx].Name);
+        if (iFrom >= 0 &&
+            iTo >= 0 &&
+            iFrom != iTo &&
+            RouteScheduleTimeCalculator.TryParseTime(templateStops[iFrom].Time, out tFrom) &&
+            RouteScheduleTimeCalculator.TryParseTime(templateStops[iTo].Time, out tTo))
+        {
+            var templateGap = TemplateGapMinutes(tFrom, tTo);
+            if (templateGap > 0)
+            {
+                return templateGap;
             }
         }
 
         return 1;
     }
+
+    /// <summary>
+    /// Vorlagen-Abstand zwischen zwei aufeinanderfolgenden Halten (ohne Mitternachts-Wrap).
+    /// Bei umgedrehter Kette zählen rückläufige Vorlagenzeiten mit Abs.
+    /// </summary>
+    private static int TemplateGapMinutes(TimeOnly from, TimeOnly to)
+    {
+        var a = from.Hour * 60 + from.Minute;
+        var b = to.Hour * 60 + to.Minute;
+        var delta = Math.Abs(b - a);
+        // Benachbarte Hst: typisch 1–15 Min.; Wrap (~23h) verwerfen
+        if (delta is <= 0 or > 45)
+        {
+            return 0;
+        }
+
+        return delta;
+    }
+
+    private static string CleanNameKey(string? name) =>
+        string.Join(' ', TokenizeStopHint(name));
 
     private static int[] AllocateGapMinutes(int span, IReadOnlyList<int> weights)
     {
