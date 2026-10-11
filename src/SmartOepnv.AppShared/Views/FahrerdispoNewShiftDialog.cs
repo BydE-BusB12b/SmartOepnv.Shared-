@@ -91,7 +91,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
         IReadOnlyList<EmployeeRosterItem> employees,
         DateTime defaultDate,
         DriverDispositionAssignment? existing = null,
-        IReadOnlyList<DriverDispositionAssignment>? existingAssignments = null)
+        IReadOnlyList<DriverDispositionAssignment>? existingAssignments = null,
+        string? defaultDriverKey = null)
     {
         _existingAssignments = existingAssignments ?? [];
         _employees = employees;
@@ -101,17 +102,19 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var isSplitEdit = isEdit && existing!.IsSplitShift;
         var startLocal = isEdit
             ? DateTimeOffset.FromUnixTimeMilliseconds(existing!.StartEpochMs).LocalDateTime
-            : defaultDate;
+            : defaultDate.TimeOfDay == TimeSpan.Zero
+                ? defaultDate.Date.AddHours(6)
+                : defaultDate;
         var endLocal = isEdit
             ? DateTimeOffset.FromUnixTimeMilliseconds(existing!.EndEpochMs).LocalDateTime
-            : defaultDate;
+            : startLocal.AddHours(8);
         var part1EndLocal = isSplitEdit
             ? DateTimeOffset.FromUnixTimeMilliseconds(existing!.Part1EndEpochMs).LocalDateTime
-            : defaultDate.Date.AddHours(10);
+            : startLocal.Date.AddHours(10);
         var part2StartLocal = isSplitEdit
             ? DateTimeOffset.FromUnixTimeMilliseconds(existing!.Part2StartEpochMs).LocalDateTime
-            : defaultDate.Date.AddHours(14);
-        var part2EndLocal = isSplitEdit ? endLocal : defaultDate.Date.AddHours(18);
+            : startLocal.Date.AddHours(14);
+        var part2EndLocal = isSplitEdit ? endLocal : startLocal.Date.AddHours(18);
 
         WindowTitleBarHelper.ApplyDarkWindowBackground(this);
         WindowTitleBarHelper.ApplySmartOepnvTitleBar(this);
@@ -160,6 +163,11 @@ public sealed class FahrerdispoNewShiftDialog : Window
         {
             _employeeBox.SelectedValue = existing!.DriverKey;
         }
+        else if (!string.IsNullOrWhiteSpace(defaultDriverKey) &&
+                 options.Any(o => string.Equals(o.Key, defaultDriverKey, StringComparison.Ordinal)))
+        {
+            _employeeBox.SelectedValue = defaultDriverKey;
+        }
         else if (options.Count > 0)
         {
             _employeeBox.SelectedIndex = 0;
@@ -173,6 +181,16 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var templateOptions = new List<TemplateOption> { new(string.Empty, string.Empty, 0, "(keine Vorlage)") };
         foreach (var template in _templates)
         {
+            if (template.IsSplitShift && template.Part2Rows.Count > 0)
+            {
+                templateOptions.Add(new TemplateOption(
+                    $"{template.Id}:1",
+                    template.Id,
+                    1,
+                    FormatTemplatePartLabel(template, 1)));
+                continue;
+            }
+
             foreach (var partIndex in DutyTemplateDispositionMapper.EnumeratePartIndexes(template))
             {
                 templateOptions.Add(new TemplateOption(
@@ -225,7 +243,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var existingDutyNumber = isEdit
             ? (!string.IsNullOrWhiteSpace(existing!.DutyNumber) ? existing.DutyNumber : existing.Label)
             : string.Empty;
-        _shiftNameBox = MakeInput("301", existingDutyNumber);
+        _shiftNameBox = MakeInput("301 oder Bereitschaft", existingDutyNumber);
+        _shiftNameBox.TextChanged += (_, _) => UpdateComplianceHints(autoFillTime: false);
         dutyNumberPanel.Children.Add(_shiftNameBox);
         Grid.SetColumn(dutyNumberPanel, 2);
         templateDutyRow.Children.Add(dutyNumberPanel);
@@ -303,6 +322,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var timeFromPanel = new StackPanel();
         timeFromPanel.Children.Add(MakeLabel("Uhrzeit von"));
         _timeFromBox = MakeInput("HH:mm", startLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_timeFromBox);
         timeFromPanel.Children.Add(_timeFromBox);
         Grid.SetColumn(timeFromPanel, 0);
         timeRow.Children.Add(timeFromPanel);
@@ -310,6 +330,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var timeToPanel = new StackPanel();
         timeToPanel.Children.Add(MakeLabel("Uhrzeit bis"));
         _timeToBox = MakeInput("HH:mm", endLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_timeToBox);
         timeToPanel.Children.Add(_timeToBox);
         Grid.SetColumn(timeToPanel, 2);
         timeRow.Children.Add(timeToPanel);
@@ -328,12 +349,14 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var part1FromPanel = new StackPanel();
         part1FromPanel.Children.Add(MakeLabel("Teil 1 von"));
         _part1FromBox = MakeInput("HH:mm", startLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_part1FromBox);
         part1FromPanel.Children.Add(_part1FromBox);
         Grid.SetColumn(part1FromPanel, 0);
         part1Row.Children.Add(part1FromPanel);
         var part1ToPanel = new StackPanel();
         part1ToPanel.Children.Add(MakeLabel("Teil 1 bis"));
         _part1ToBox = MakeInput("HH:mm", part1EndLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_part1ToBox);
         part1ToPanel.Children.Add(_part1ToBox);
         Grid.SetColumn(part1ToPanel, 2);
         part1Row.Children.Add(part1ToPanel);
@@ -346,12 +369,14 @@ public sealed class FahrerdispoNewShiftDialog : Window
         var part2FromPanel = new StackPanel();
         part2FromPanel.Children.Add(MakeLabel("Teil 2 von"));
         _part2FromBox = MakeInput("HH:mm", part2StartLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_part2FromBox);
         part2FromPanel.Children.Add(_part2FromBox);
         Grid.SetColumn(part2FromPanel, 0);
         part2Row.Children.Add(part2FromPanel);
         var part2ToPanel = new StackPanel();
         part2ToPanel.Children.Add(MakeLabel("Teil 2 bis"));
         _part2ToBox = MakeInput("HH:mm", part2EndLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_part2ToBox);
         part2ToPanel.Children.Add(_part2ToBox);
         Grid.SetColumn(part2ToPanel, 2);
         part2Row.Children.Add(part2ToPanel);
@@ -536,7 +561,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
                     Part1EndEpochMs,
                     Part2StartEpochMs,
                     templateMinutes.DrivingMinutes,
-                    templateMinutes.ServiceDurationMinutes))
+                    templateMinutes.ServiceDurationMinutes,
+                    dutyNumber: SelectedDutyNumber))
             {
                 ShowError(complianceError);
                 return;
@@ -591,6 +617,21 @@ public sealed class FahrerdispoNewShiftDialog : Window
             _extendedDrivingCheck.IsEnabled = false;
             _extendedDailyShiftCheck.IsEnabled = false;
             _reducedWeeklyRestCheck.IsEnabled = false;
+            return;
+        }
+
+        if (DriverDispositionDutyNumberRules.IsStandbyDuty(_shiftNameBox.Text))
+        {
+            _earliestStartHint.Text = string.Empty;
+            _complianceHint.Text = DriverDispositionCompliance.StandbyDutyHint;
+            _reducedRestCheck.IsEnabled = false;
+            _reducedRestCheck.IsChecked = false;
+            _extendedDrivingCheck.IsEnabled = false;
+            _extendedDrivingCheck.IsChecked = false;
+            _extendedDailyShiftCheck.IsEnabled = false;
+            _extendedDailyShiftCheck.IsChecked = false;
+            _reducedWeeklyRestCheck.IsEnabled = false;
+            _reducedWeeklyRestCheck.IsChecked = false;
             return;
         }
 
@@ -740,7 +781,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
                 GetPreviewPart1EndEpochMs(),
                 GetPreviewPart2StartEpochMs(),
                 knownDrivingMinutes,
-                knownServiceDurationMinutes))
+                knownServiceDurationMinutes,
+                dutyNumber: _shiftNameBox.Text))
         {
             ShowError(complianceError);
         }
@@ -873,6 +915,30 @@ public sealed class FahrerdispoNewShiftDialog : Window
         }
 
         var dutyDateSingle = _dateFromField.SelectedDate?.Date ?? DateTime.Today;
+
+        if (template.IsSplitShift && template.Part2Rows.Count > 0)
+        {
+            var mappedSplit = DutyTemplateDispositionMapper.TryMapSplitShift(template, dutyDateSingle);
+            if (mappedSplit is null)
+            {
+                ShowError("Die Vorlage enthält keine gültigen Zeiten für den geteilten Dienst.");
+                return;
+            }
+
+            _errorPanel.Visibility = Visibility.Collapsed;
+            _shiftNameBox.Text = mappedSplit.DutyNumber;
+            SelectedDutyNumber = mappedSplit.DutyNumber;
+            _splitShiftCheck.IsChecked = true;
+            ToggleSplitMode(true);
+            _splitDateField.SetDate(mappedSplit.StartLocal.Date);
+            _part1FromBox.Text = mappedSplit.StartLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
+            _part1ToBox.Text = mappedSplit.Part1EndLocal!.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
+            _part2FromBox.Text = mappedSplit.Part2StartLocal!.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
+            _part2ToBox.Text = mappedSplit.EndLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
+            UpdateComplianceHints(autoFillTime: false);
+            return;
+        }
+
         var mapped = DutyTemplateDispositionMapper.TryMapPart(template, dutyDateSingle, option.PartIndex);
         if (mapped is null)
         {
@@ -1175,13 +1241,26 @@ public sealed class FahrerdispoNewShiftDialog : Window
     private static bool TryParseTime(string text, out TimeSpan time)
     {
         time = default;
-        var trimmed = text.Trim();
-        if (TimeSpan.TryParseExact(trimmed, "hh\\:mm", CultureInfo.InvariantCulture, out time))
+        var normalized = RouteScheduleTimeCalculator.NormalizeTimeInput(text);
+        if (!RouteScheduleTimeCalculator.TryParseTime(normalized, out var timeOnly))
         {
-            return true;
+            return false;
         }
 
-        return TimeSpan.TryParseExact(trimmed, "h\\:mm", CultureInfo.InvariantCulture, out time);
+        time = timeOnly.ToTimeSpan();
+        return true;
+    }
+
+    private static void AttachTimeNormalization(TextBox box)
+    {
+        box.LostFocus += (_, _) =>
+        {
+            var normalized = RouteScheduleTimeCalculator.NormalizeTimeInput(box.Text);
+            if (!string.Equals(box.Text, normalized, StringComparison.Ordinal))
+            {
+                box.Text = normalized;
+            }
+        };
     }
 
     private static string BuildEmployeeLabel(EmployeeRosterItem employee)
@@ -1571,8 +1650,16 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
     private static string FormatTemplatePartLabel(DutyTemplate template, int partIndex)
     {
-        var dutyNumber = DutyTemplateDispositionMapper.ResolveDutyNumberForPart(template, partIndex);
-        var label = dutyNumber.Length > 0 ? dutyNumber : $"Teil {partIndex}";
+        if (template.IsSplitShift && partIndex == 1)
+        {
+            var splitDutyNumber = template.DutyNumber.Trim();
+            var splitLabel = splitDutyNumber.Length > 0 ? $"{splitDutyNumber} (geteilter Dienst)" : "Geteilter Dienst";
+            var templateName = template.Name.Trim();
+            return templateName.Length > 0 ? $"{splitLabel} – {templateName}" : splitLabel;
+        }
+
+        var dutyNumberPart = DutyTemplateDispositionMapper.ResolveDutyNumberForPart(template, partIndex);
+        var label = dutyNumberPart.Length > 0 ? dutyNumberPart : $"Teil {partIndex}";
         var name = template.Name.Trim();
         return name.Length > 0 ? $"{label} – {name}" : label;
     }

@@ -1,8 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.ViewModels;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 
@@ -33,6 +35,62 @@ internal static class VehicleKomUi
         };
     }
 
+    /// <summary>MessageBox ohne Absturz, wenn das Owner-Fenster gerade geschlossen wird.</summary>
+    public static void SafeShowMessage(
+        Window? owner,
+        string message,
+        string title,
+        MessageBoxImage icon = MessageBoxImage.Information,
+        MessageBoxButton buttons = MessageBoxButton.OK)
+    {
+        if (TryShowOwnedMessage(owner, message, title, icon, buttons))
+        {
+            return;
+        }
+
+        MessageBox.Show(message, title, buttons, icon);
+    }
+
+    public static MessageBoxResult SafeShowQuestion(Window? owner, string message, string title)
+    {
+        if (owner is { IsLoaded: true, IsVisible: true })
+        {
+            try
+            {
+                return MessageBox.Show(owner, message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+            }
+            catch (InvalidOperationException)
+            {
+                // Owner wird gerade geschlossen
+            }
+        }
+
+        return MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+    }
+
+    private static bool TryShowOwnedMessage(
+        Window? owner,
+        string message,
+        string title,
+        MessageBoxImage icon,
+        MessageBoxButton buttons)
+    {
+        if (owner is not { IsLoaded: true, IsVisible: true })
+        {
+            return false;
+        }
+
+        try
+        {
+            MessageBox.Show(owner, message, title, buttons, icon);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     public static bool EnsureDropboxConnected(Window owner)
     {
         if (AppServices.Dropbox.Settings.IsConnected)
@@ -40,11 +98,9 @@ internal static class VehicleKomUi
             return true;
         }
 
-        MessageBox.Show(owner,
-            "Dropbox nicht verbunden – bitte unter Einstellungen verbinden.",
+        SmartConfirmDialog.ShowInfo(owner,
             "Fernsteuerung",
-            MessageBoxButton.OK,
-            MessageBoxImage.Warning);
+            "Dropbox nicht verbunden – bitte unter Einstellungen verbinden.");
         return false;
     }
 
@@ -56,11 +112,9 @@ internal static class VehicleKomUi
             return phone;
         }
 
-        MessageBox.Show(owner,
-            $"Für „{vehicle.DisplayName}“ ist keine Telefonnummer bekannt – Fernsteuerung nicht möglich.",
+        SmartConfirmDialog.ShowInfo(owner,
             "Fernsteuerung",
-            MessageBoxButton.OK,
-            MessageBoxImage.Warning);
+            $"Für „{vehicle.DisplayName}“ ist keine Telefonnummer bekannt – Fernsteuerung nicht möglich.");
         return null;
     }
 
@@ -139,6 +193,7 @@ internal static class VehicleKomUi
         style.Setters.Add(new Setter(Control.ForegroundProperty, ForegroundBrush));
         style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 6, 8, 6)));
+        style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
 
         var selected = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
         selected.Setters.Add(new Setter(Control.BackgroundProperty, AccentBackground));
@@ -149,6 +204,40 @@ internal static class VehicleKomUi
         style.Triggers.Add(hover);
 
         list.ItemContainerStyle = style;
+    }
+
+    public static DataTemplate MakeNameProtocolListItemTemplate()
+    {
+        var template = new DataTemplate();
+        var grid = new FrameworkElementFactory(typeof(Grid));
+        grid.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+
+        var nameColumn = new FrameworkElementFactory(typeof(ColumnDefinition));
+        nameColumn.SetValue(ColumnDefinition.WidthProperty, new GridLength(1, GridUnitType.Star));
+        grid.AppendChild(nameColumn);
+
+        var protocolColumn = new FrameworkElementFactory(typeof(ColumnDefinition));
+        protocolColumn.SetValue(ColumnDefinition.WidthProperty, GridLength.Auto);
+        grid.AppendChild(protocolColumn);
+
+        var name = new FrameworkElementFactory(typeof(TextBlock));
+        name.SetBinding(TextBlock.TextProperty, new Binding("Name"));
+        name.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        name.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+        name.SetValue(Grid.ColumnProperty, 0);
+        grid.AppendChild(name);
+
+        var protocol = new FrameworkElementFactory(typeof(TextBlock));
+        protocol.SetBinding(TextBlock.TextProperty, new Binding("ProtocolLabel"));
+        protocol.SetValue(TextBlock.HorizontalAlignmentProperty, HorizontalAlignment.Right);
+        protocol.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        protocol.SetValue(TextBlock.ForegroundProperty, MutedForeground);
+        protocol.SetValue(FrameworkElement.MarginProperty, new Thickness(12, 0, 0, 0));
+        protocol.SetValue(Grid.ColumnProperty, 1);
+        grid.AppendChild(protocol);
+
+        template.VisualTree = grid;
+        return template;
     }
 
     public static void StyleComboBox(ComboBox comboBox)

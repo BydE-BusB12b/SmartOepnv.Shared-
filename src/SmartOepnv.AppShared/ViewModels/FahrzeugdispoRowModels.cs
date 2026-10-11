@@ -67,6 +67,9 @@ public sealed partial class FahrzeugdispoAssignmentBarVm : ObservableObject
 
     public bool IsSplitShiftBar { get; init; }
 
+    /// <summary>Dienstnummer „Bereitschaft“ – lila Balken, flexible Zeit.</summary>
+    public bool IsStandbyBar { get; init; }
+
     public string Tooltip { get; init; } = string.Empty;
 }
 

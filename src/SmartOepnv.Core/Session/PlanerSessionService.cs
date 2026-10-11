@@ -124,6 +124,13 @@ public sealed class PlanerSessionService
         }
         catch (Exception ex)
         {
+            if (ex.Message.Contains("too_many_write_operations", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlanerSessionLoginResult.Fail(
+                    "Dropbox ist gerade ausgelastet (zu viele Schreibvorgänge).\n\n" +
+                    "Bitte 30 Sekunden warten und erneut anmelden.");
+            }
+
             return PlanerSessionLoginResult.Fail($"Sperre in Dropbox fehlgeschlagen: {ex.Message}");
         }
 

@@ -30,8 +30,49 @@ public sealed class ManagedAnnouncementTemplateItem : INotifyPropertyChanged
 
     public string EmbeddedSoundFileName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Stereo-Zone Tablet: innen | aussen | beide (Default innen).
+    /// Wirksam nur wenn auf dem Gerät „Stereo-Zonen“ aktiv ist.
+    /// </summary>
+    private string _audioOutput = AnnouncementAudioOutput.Inside;
+
+    public string AudioOutput
+    {
+        get => _audioOutput;
+        set
+        {
+            var normalized = AnnouncementAudioOutput.Normalize(value);
+            if (_audioOutput == normalized)
+            {
+                return;
+            }
+
+            _audioOutput = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AudioOutputLabel));
+            OnPropertyChanged(nameof(DisplayLabel));
+        }
+    }
+
+    public string AudioOutputLabel => AnnouncementAudioOutput.ToLabel(AudioOutput);
+
+    public void CycleAudioOutput() =>
+        AudioOutput = AnnouncementAudioOutput.Next(AudioOutput);
+
     /// <summary>In Sonderansagen-Listen (ITCS) anzeigen – entspricht Android-Slider.</summary>
     public bool IncludeInSpecialAnnouncements { get; set; }
+
+    public bool IncludeGong { get; set; }
+    public bool IncludeSondergong { get; set; }
+    public bool IncludeNextStopGerman { get; set; }
+    public bool IncludeNextStopMp3 { get; set; }
+    public bool IncludeFollowingStops { get; set; }
+
+    /// <summary>Dateiname des Sondergongs in embeddedSounds (nur wenn IncludeSondergong).</summary>
+    public string SondergongFileName { get; set; } = string.Empty;
+
+    /// <summary>Audio/Pause-Schritte für App-Sequenz-Wiedergabe (ohne Standard-Prefix).</summary>
+    public List<AnnouncementSequenceEntry> AnnouncementSequence { get; set; } = [];
 
     /// <summary>Nur Planer: lokale Audiodatei vor dem Einbetten in embeddedSounds.</summary>
     public string? LocalAudioPath { get; set; }
@@ -42,7 +83,15 @@ public sealed class ManagedAnnouncementTemplateItem : INotifyPropertyChanged
     public string DisplayLabel => FormatDisplayLabel(
         HasAssignedAudio || !string.IsNullOrWhiteSpace(EmbeddedSoundFileName));
 
-    public void NotifyDisplayLabelChanged() => OnPropertyChanged(nameof(DisplayLabel));
+    /// <summary>Zusammenfüge-Datei (<c>…_zusammen.wav</c>) – in der Kartei gelb markieren.</summary>
+    public bool IsMergedAnnouncement =>
+        AnnouncementSequenceExport.IsLegacyMergedFileName(EmbeddedSoundFileName);
+
+    public void NotifyDisplayLabelChanged()
+    {
+        OnPropertyChanged(nameof(DisplayLabel));
+        OnPropertyChanged(nameof(IsMergedAnnouncement));
+    }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
@@ -54,7 +103,9 @@ public sealed class ManagedAnnouncementTemplateItem : INotifyPropertyChanged
         var desc = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim();
         var prefix = hasAudio ? "✓ " : "⚠ ";
         var title = desc is null ? name : $"{name} – {desc}";
-        return string.IsNullOrEmpty(code) ? $"{prefix}{title}" : $"{prefix}{code} – {title}";
+        var zone = AudioOutputLabel;
+        var baseLabel = string.IsNullOrEmpty(code) ? $"{prefix}{title}" : $"{prefix}{code} – {title}";
+        return $"{baseLabel} · {zone}";
     }
 
     public static string NormalizeCode(string? raw)
@@ -83,15 +134,7 @@ public sealed class ManagedAnnouncementTemplateItem : INotifyPropertyChanged
 
     public static string SuggestNextCode(IEnumerable<string?> existingCodes)
     {
-        var used = new HashSet<int>();
-        foreach (var raw in existingCodes)
-        {
-            var norm = NormalizeCode(raw);
-            if (norm.Length == 4 && int.TryParse(norm, out var n) && n >= 0 && n <= 9999)
-            {
-                used.Add(n);
-            }
-        }
+        var used = CollectUsedCodeNumbers(existingCodes);
 
         for (var i = 1; i <= 9999; i++)
         {
@@ -102,6 +145,66 @@ public sealed class ManagedAnnouncementTemplateItem : INotifyPropertyChanged
         }
 
         return "0001";
+    }
+
+    /// <summary>
+    /// Nächste freie ID ab der höchsten vergebenen Nummer (für Mehrfach-Import ohne Lücken füllen).
+    /// </summary>
+    public static string SuggestNextSequentialCode(IEnumerable<string?> existingCodes)
+    {
+        var used = CollectUsedCodeNumbers(existingCodes);
+        var next = used.Count > 0 ? used.Max() + 1 : 1;
+        while (next <= 9999 && used.Contains(next))
+        {
+            next++;
+        }
+
+        return next <= 9999 ? next.ToString("D4") : "9999";
+    }
+
+    public static IReadOnlyList<string> AllocateSequentialCodes(IEnumerable<string?> existingCodes, int count)
+    {
+        if (count <= 0)
+        {
+            return [];
+        }
+
+        var used = CollectUsedCodeNumbers(existingCodes);
+        var next = used.Count > 0 ? used.Max() + 1 : 1;
+        var codes = new List<string>(count);
+        while (codes.Count < count && next <= 9999)
+        {
+            while (used.Contains(next))
+            {
+                next++;
+            }
+
+            if (next > 9999)
+            {
+                break;
+            }
+
+            codes.Add(next.ToString("D4"));
+            used.Add(next);
+            next++;
+        }
+
+        return codes;
+    }
+
+    private static HashSet<int> CollectUsedCodeNumbers(IEnumerable<string?> existingCodes)
+    {
+        var used = new HashSet<int>();
+        foreach (var raw in existingCodes)
+        {
+            var norm = NormalizeCode(raw);
+            if (norm.Length == 4 && int.TryParse(norm, out var n) && n >= 0 && n <= 9999)
+            {
+                used.Add(n);
+            }
+        }
+
+        return used;
     }
 
     public static string DefaultEmbeddedFileName(string code, string displayName)

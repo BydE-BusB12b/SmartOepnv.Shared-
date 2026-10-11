@@ -7,61 +7,125 @@ public sealed class RegisteredVehicleInfo
     public required string Name { get; init; }
     public required string PhoneNumber { get; init; }
 
+    /// <summary>Name des Hauptnutzers aus employeeRoster (gleiche Telefonnummer).</summary>
+    public string? MainDeviceEmployeeName { get; init; }
+
     public static IReadOnlyList<RegisteredVehicleInfo> ParseFromJson(string json)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        var vehicles = new List<RegisteredVehicleInfo>();
-        var seenPhones = new HashSet<string>(StringComparer.Ordinal);
+        var byPhone = new Dictionary<string, RegisteredVehicleInfo>(StringComparer.Ordinal);
 
         if (root.TryGetProperty("registeredVehicles", out var registered) &&
             registered.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in registered.EnumerateArray())
             {
-                AddVehicle(vehicles, seenPhones, item);
+                MergeRegisteredVehicle(byPhone, item);
             }
         }
 
-        if (vehicles.Count == 0 &&
-            root.TryGetProperty("employeeRoster", out var roster) &&
+        if (root.TryGetProperty("employeeRoster", out var roster) &&
             roster.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in roster.EnumerateArray())
             {
-                AddVehicle(vehicles, seenPhones, item);
+                MergeEmployeeRoster(byPhone, item);
             }
         }
 
-        return vehicles;
+        return byPhone.Values.ToList();
     }
 
-    private static void AddVehicle(
-        List<RegisteredVehicleInfo> vehicles,
-        HashSet<string> seenPhones,
+    private static void MergeRegisteredVehicle(
+        Dictionary<string, RegisteredVehicleInfo> byPhone,
         JsonElement item)
     {
-        var phone = item.TryGetProperty("phoneNumber", out var phoneProp)
+        var phoneDigits = NormalizePhoneDigits(ReadPhone(item));
+        if (phoneDigits is null)
+        {
+            return;
+        }
+
+        var name = ReadName(item) ?? phoneDigits;
+        if (byPhone.TryGetValue(phoneDigits, out var existing))
+        {
+            byPhone[phoneDigits] = new RegisteredVehicleInfo
+            {
+                Name = name,
+                PhoneNumber = existing.PhoneNumber,
+                MainDeviceEmployeeName = existing.MainDeviceEmployeeName
+            };
+            return;
+        }
+
+        byPhone[phoneDigits] = new RegisteredVehicleInfo
+        {
+            Name = name,
+            PhoneNumber = ReadPhone(item) ?? phoneDigits
+        };
+    }
+
+    private static void MergeEmployeeRoster(
+        Dictionary<string, RegisteredVehicleInfo> byPhone,
+        JsonElement item)
+    {
+        var loginAsMainDevice = item.TryGetProperty("loginAsMainDevice", out var flag) &&
+                                flag.ValueKind == JsonValueKind.True;
+        if (!loginAsMainDevice)
+        {
+            return;
+        }
+
+        var phoneDigits = NormalizePhoneDigits(ReadPhone(item));
+        if (phoneDigits is null)
+        {
+            return;
+        }
+
+        var employeeName = ReadName(item);
+        if (string.IsNullOrWhiteSpace(employeeName))
+        {
+            return;
+        }
+
+        if (byPhone.TryGetValue(phoneDigits, out var existing))
+        {
+            byPhone[phoneDigits] = new RegisteredVehicleInfo
+            {
+                Name = existing.Name,
+                PhoneNumber = existing.PhoneNumber,
+                MainDeviceEmployeeName = employeeName
+            };
+            return;
+        }
+
+        byPhone[phoneDigits] = new RegisteredVehicleInfo
+        {
+            Name = employeeName,
+            PhoneNumber = ReadPhone(item) ?? phoneDigits,
+            MainDeviceEmployeeName = employeeName
+        };
+    }
+
+    private static string? ReadPhone(JsonElement item) =>
+        item.TryGetProperty("phoneNumber", out var phoneProp)
             ? phoneProp.GetString()?.Trim()
             : null;
-        if (string.IsNullOrWhiteSpace(phone))
-        {
-            return;
-        }
 
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
-        if (digits.Length == 0 || !seenPhones.Add(digits))
-        {
-            return;
-        }
-
-        var name = item.TryGetProperty("name", out var nameProp)
+    private static string? ReadName(JsonElement item) =>
+        item.TryGetProperty("name", out var nameProp)
             ? nameProp.GetString()?.Trim()
             : null;
-        vehicles.Add(new RegisteredVehicleInfo
+
+    private static string? NormalizePhoneDigits(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
         {
-            Name = string.IsNullOrWhiteSpace(name) ? digits : name!,
-            PhoneNumber = phone
-        });
+            return null;
+        }
+
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        return digits.Length > 0 ? digits : null;
     }
 }

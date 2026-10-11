@@ -30,6 +30,19 @@ public static class DutyOperatingDayHelper
     public static string GetName(DutyOperatingDay day) =>
         Definitions.First(d => d.Day == day).Name;
 
+    /// <summary>Kalendertag → Verkehrstag (Sonnabend=Samstag, Sonntag=Sonn-/Feiertag).</summary>
+    public static DutyOperatingDay FromDate(DateOnly date) =>
+        date.DayOfWeek switch
+        {
+            DayOfWeek.Monday => DutyOperatingDay.Monday,
+            DayOfWeek.Tuesday => DutyOperatingDay.Tuesday,
+            DayOfWeek.Wednesday => DutyOperatingDay.Wednesday,
+            DayOfWeek.Thursday => DutyOperatingDay.Thursday,
+            DayOfWeek.Friday => DutyOperatingDay.Friday,
+            DayOfWeek.Saturday => DutyOperatingDay.Saturday,
+            _ => DutyOperatingDay.SundayHoliday
+        };
+
     public static string FormatDisplay(IEnumerable<DutyOperatingDay> selectedDays)
     {
         var sorted = selectedDays.Distinct().OrderBy(day => (int)day).ToList();

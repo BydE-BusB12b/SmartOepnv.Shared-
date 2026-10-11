@@ -705,7 +705,7 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         if (allFiles.Count == 0)
         {
             return $"Keine Dateien in Dropbox-Ordner „{folder}“ lesbar. " +
-                   "Bitte unter Einstellungen Dropbox testen und Ordnerpfad prüfen (z. B. /App/Smart ÖPNV). " +
+                   "Bitte unter Einstellungen Dropbox testen und Ordnerpfad prüfen (z. B. /smart öpnv). " +
                    "Alternativ „Aus Ordner laden“ für einen lokalen Dropbox-Sync-Ordner.";
         }
 

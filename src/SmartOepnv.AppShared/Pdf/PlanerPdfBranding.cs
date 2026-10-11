@@ -17,26 +17,82 @@ public static class PlanerPdfBranding
 
     public static void ComposeHeaderWithSmartLogo(IContainer container, Action<IContainer> leftContent)
     {
+        ComposeHeaderWithOptionalSmartLogo(container, IsSmartOepnvLogoEnabledInPdfs(), leftContent);
+    }
+
+    /// <summary>Liest die Planer-Einstellung „Smart-ÖPNV-Logo in PDFs“ (Standard: an).</summary>
+    public static bool IsSmartOepnvLogoEnabledInPdfs()
+    {
+        if (!AppServices.IsInitialized || AppServices.PlanerAppSettings is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            return AppServices.PlanerAppSettings.Load().ShowSmartOepnvLogoInPdfs;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    public static void SetSmartOepnvLogoEnabledInPdfs(bool enabled)
+    {
+        if (!AppServices.IsInitialized || AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var settings = AppServices.PlanerAppSettings.Load();
+        if (settings.ShowSmartOepnvLogoInPdfs == enabled)
+        {
+            return;
+        }
+
+        settings.ShowSmartOepnvLogoInPdfs = enabled;
+        AppServices.PlanerAppSettings.Save(settings);
+    }
+
+    public static void ComposeHeaderWithOptionalSmartLogo(
+        IContainer container,
+        bool showSmartLogo,
+        Action<IContainer> leftContent)
+    {
         container.AlignMiddle().Row(row =>
         {
             row.RelativeItem().AlignMiddle().Element(leftContent);
-            row.ConstantItem(HeaderLogoSize).Height(HeaderLogoSize).AlignRight().AlignMiddle()
-                .Element(DrawSmartOepnvLogo);
+            if (showSmartLogo)
+            {
+                row.ConstantItem(HeaderLogoSize).Height(HeaderLogoSize).AlignRight().AlignMiddle()
+                    .Element(DrawSmartOepnvLogo);
+            }
         });
     }
 
     public static void ComposeStandardFooter(IContainer container, DateTime? timestamp = null)
     {
-        var companyLogoPath = ResolveDefaultCompanyLogoPath();
+        ComposeFooter(container, ResolveDefaultCompanyLogoPath(), timestamp);
+    }
+
+    public static void ComposeFooter(
+        IContainer container,
+        string? companyLogoPath,
+        DateTime? timestamp = null,
+        string? leftText = null)
+    {
         var stamp = timestamp ?? DateTime.Now;
+        var left = string.IsNullOrWhiteSpace(leftText)
+            ? $"Smart-ÖPNV · {stamp:dd.MM.yyyy HH:mm}"
+            : leftText.Trim();
 
         container.PaddingTop(4).Row(footerRow =>
         {
             footerRow.RelativeItem().AlignMiddle().Text(text =>
             {
                 text.DefaultTextStyle(PlanerPdfTextStyles.Body(8).FontColor("#4A5F82"));
-                text.Span("Smart-ÖPNV · ");
-                text.Span(stamp.ToString("dd.MM.yyyy HH:mm")).FontColor("#5472D3");
+                text.Span(left);
             });
 
             footerRow.ConstantItem(FooterLogoWidth).Height(FooterLogoHeight).AlignRight().AlignMiddle()
@@ -49,8 +105,20 @@ public static class PlanerPdfBranding
         DrawImageIfExists(container, ResolveSmartOepnvLogoPath());
     }
 
-    private static void DrawCompanyLogo(IContainer container, string? logoPath) =>
+    /// <summary>Zeichnet das Smart-ÖPNV-Logo nur wenn in den Einstellungen aktiv.</summary>
+    public static void DrawSmartOepnvLogoIfEnabled(IContainer container)
+    {
+        if (IsSmartOepnvLogoEnabledInPdfs())
+        {
+            DrawSmartOepnvLogo(container);
+        }
+    }
+
+    public static void DrawCompanyLogo(IContainer container, string? logoPath) =>
         DrawImageIfExists(container, logoPath);
+
+    public static void DrawImage(IContainer container, string? path) =>
+        DrawImageIfExists(container, path);
 
     private static void DrawImageIfExists(IContainer container, string? path)
     {
@@ -96,5 +164,15 @@ public static class PlanerPdfBranding
         }
 
         return PlanerBrandingWorkspace.TryGetLogoPath(AppServices.SettingsSubfolder, first.Id);
+    }
+
+    public static string? ResolveCompanyLogoPathById(string? logoId)
+    {
+        if (!AppServices.IsInitialized || string.IsNullOrWhiteSpace(logoId))
+        {
+            return null;
+        }
+
+        return PlanerBrandingWorkspace.TryGetLogoPath(AppServices.SettingsSubfolder, logoId);
     }
 }

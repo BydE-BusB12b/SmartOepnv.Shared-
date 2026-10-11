@@ -5,6 +5,7 @@ namespace SmartOepnv.Core.VehicleTracking;
 
 public sealed class VehicleTrackingService
 {
+    private const int MaxParallelDownloads = 8;
     private readonly DropboxApiClient _dropbox;
 
     public VehicleTrackingService(DropboxApiClient dropbox)
@@ -21,29 +22,43 @@ public sealed class VehicleTrackingService
             : RegisteredVehicleInfo.ParseFromJson(routePackageJson);
 
         var files = await _dropbox.ListLocationChatFilesAsync(ct);
-        var byId = new Dictionary<string, VehicleLiveState>(StringComparer.Ordinal);
-
-        foreach (var fileName in files)
+        if (files.Count == 0)
         {
-            ct.ThrowIfCancellationRequested();
+            return [];
+        }
+
+        using var gate = new SemaphoreSlim(MaxParallelDownloads);
+        var tasks = files.Select(async fileName =>
+        {
+            await gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var content = await _dropbox.DownloadNamedFileAsync(fileName, ct);
-                var state = LocationChatParser.TryParse(content, fileName, roster);
-                if (state is null || state.Status == VehicleOnlineStatus.Hidden)
-                {
-                    continue;
-                }
-
-                if (!byId.TryGetValue(state.Id, out var existing) ||
-                    state.TimestampEpochMs >= existing.TimestampEpochMs)
-                {
-                    byId[state.Id] = state;
-                }
+                var content = await _dropbox.DownloadNamedFileAsync(fileName, ct).ConfigureAwait(false);
+                return LocationChatParser.TryParse(content, fileName, roster);
             }
             catch
             {
-                // Einzelne defekte Datei überspringen
+                return null;
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+        var byId = new Dictionary<string, VehicleLiveState>(StringComparer.Ordinal);
+        foreach (var state in results)
+        {
+            if (state is null || state.Status == VehicleOnlineStatus.Hidden)
+            {
+                continue;
+            }
+
+            if (!byId.TryGetValue(state.Id, out var existing) ||
+                state.TimestampEpochMs >= existing.TimestampEpochMs)
+            {
+                byId[state.Id] = state;
             }
         }
 

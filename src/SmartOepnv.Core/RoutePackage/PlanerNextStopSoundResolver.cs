@@ -37,6 +37,13 @@ internal static class PlanerHamblochAnsagenSoundResolver
             return workspacePath;
         }
 
+        var rawPath = PlanerAnnouncementRawSoundsWorkspace.TryGetLocalFilePath(workspace, fileName);
+        if (rawPath is not null)
+        {
+            TryCopyToWorkspace(workspace, rawPath, fileName);
+            return PlanerEmbeddedSoundsWorkspace.TryGetLocalFilePath(workspace, fileName) ?? rawPath;
+        }
+
         foreach (var candidate in EnumerateCandidatePaths(fileName, dropboxApiFolderPath))
         {
             if (!File.Exists(candidate))
@@ -53,6 +60,12 @@ internal static class PlanerHamblochAnsagenSoundResolver
 
     private static IEnumerable<string> EnumerateCandidatePaths(string fileName, string? dropboxApiFolderPath)
     {
+        var ansagenFolder = DropboxSyncFolderLocator.TryResolveHamblochAnsagenFolder();
+        if (!string.IsNullOrWhiteSpace(ansagenFolder))
+        {
+            yield return Path.Combine(ansagenFolder, fileName);
+        }
+
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         foreach (var rootName in DropboxRootFolderNames)
         {

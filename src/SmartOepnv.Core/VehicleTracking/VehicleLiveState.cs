@@ -23,8 +23,18 @@ public sealed class VehicleLiveState
     public string? Destination { get; init; }
     public string? DriverName { get; init; }
     public string? DriverPersonnelNumber { get; init; }
+    /// <summary>Pas.Info aktiv (Live-JSON <c>pasInfoActive</c>); null = ältere Meldung ohne Feld.</summary>
+    public bool? PasInfoActive { get; init; }
+    /// <summary>Bluetooth-Audio (A2DP) aktiv (Live-JSON <c>bluetoothActive</c>); null = ältere Meldung.</summary>
+    public bool? BluetoothActive { get; init; }
     public int? BatteryLevel { get; init; }
     public int? DelaySeconds { get; init; }
+    /// <summary>App-Versionslabel, z. B. V8.2 #371.</summary>
+    public string? AppVersion { get; init; }
+    /// <summary>Zuletzt installierte packageVersion von routes_export.json.</summary>
+    public long? RoutesExportPackageVersion { get; init; }
+    /// <summary>Zuletzt installierte packageVersion von routes_update.json.</summary>
+    public long? RoutesUpdatePackageVersion { get; init; }
     public long TimestampEpochMs { get; init; }
     public long FileTimestampEpochMs { get; init; }
     public VehicleOnlineStatus Status { get; init; }

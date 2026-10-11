@@ -3,30 +3,46 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SmartOepnv.AppShared.Views"
         Title="Haltestelle bearbeiten"
-        Width="520"
-        MinWidth="460"
-        Height="640"
-        MinHeight="480"
+        Width="1100"
+        MinWidth="720"
+        Height="700"
+        MinHeight="420"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource SmartPrimaryDarkBrush}"
         Foreground="White"
-        ResizeMode="CanResize">
-    <DockPanel Margin="20">
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button x:Name="CancelButton" Content="Abbrechen" MinWidth="100" MinHeight="36" Margin="0,0,8,0"
-                    IsCancel="True" Click="CancelButton_Click"
-                    Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5" />
-            <Button x:Name="SaveButton" Content="Speichern" MinWidth="110" MinHeight="36"
-                    IsDefault="True" Click="SaveButton_Click"
-                    Background="#0D47A1" Foreground="White" BorderBrush="#42A5F5" />
-        </StackPanel>
-        <TextBlock x:Name="TitleText" DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold"
+        ResizeMode="CanResize"
+        ShowInTaskbar="False">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock x:Name="TitleText" Grid.Row="0" FontSize="18" FontWeight="SemiBold"
                    Margin="0,0,0,12" TextWrapping="Wrap" />
-        <ScrollViewer VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer x:Name="EditorScroll"
+                      Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      CanContentScroll="False">
             <ScrollViewer.Resources>
                 <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
             </ScrollViewer.Resources>
-            <local:RouteStopEditPanel x:Name="EditPanel" />
+            <local:RouteStopEditPanel x:Name="EditPanel"
+                                      HorizontalAlignment="Stretch" />
         </ScrollViewer>
-    </DockPanel>
+        <Border Grid.Row="2"
+                Background="{StaticResource SmartPrimaryDarkBrush}"
+                Padding="0,12,0,0"
+                Margin="0,8,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="CancelButton" Content="Abbrechen" MinWidth="100" MinHeight="36" Margin="0,0,8,0"
+                        IsCancel="True" Click="CancelButton_Click"
+                        Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5" />
+                <Button x:Name="SaveButton" Content="Speichern" MinWidth="110" MinHeight="36"
+                        IsDefault="True" Click="SaveButton_Click"
+                        Background="#0D47A1" Foreground="White" BorderBrush="#42A5F5" />
+            </StackPanel>
+        </Border>
+    </Grid>
 </Window>

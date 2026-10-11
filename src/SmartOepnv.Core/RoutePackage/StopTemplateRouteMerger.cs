@@ -23,6 +23,8 @@ public static class StopTemplateRouteMerger
                 .Where(c => c.Length == PlannerStopCode.DigitCount),
             StringComparer.Ordinal);
 
+        var index = TemplateIndex.Build(templates);
+
         var routeNames = string.IsNullOrWhiteSpace(onlyRouteName)
             ? editor.RouteNames
             : editor.RouteNames.Where(r =>
@@ -39,10 +41,17 @@ public static class StopTemplateRouteMerger
 
                 routeStopCount++;
 
-                if (TryFindMatch(templates, stop, out var existing))
+                if (index.TryFind(stop, out var existing) && existing is not null)
                 {
-                    if (EnrichFromRouteStop(existing!, stop, routeName))
+                    var hadCode = PlannerStopCode.IsValid(PlannerStopCode.Normalize(existing.StopCode));
+                    var hadVrr = !string.IsNullOrWhiteSpace(existing.VrrStopId);
+                    if (EnrichFromRouteStop(existing, stop))
                     {
+                        if (!hadCode || !hadVrr)
+                        {
+                            index.Index(existing);
+                        }
+
                         enriched++;
                     }
 
@@ -61,12 +70,8 @@ public static class StopTemplateRouteMerger
 
                 usedCodes.Add(code);
 
-                if (string.IsNullOrWhiteSpace(tpl.DirectionDescription))
-                {
-                    tpl.DirectionDescription = routeName;
-                }
-
                 templates.Add(tpl);
+                index.Index(tpl);
                 added++;
             }
         }
@@ -82,32 +87,56 @@ public static class StopTemplateRouteMerger
         EditableRoutePackage editor,
         IEnumerable<ManagedStopTemplateItem> templates)
     {
-        var updated = 0;
-        foreach (var template in templates)
+        var persistable = templates.Where(static t => !t.IsEmptyDraft()).ToList();
+        if (persistable.Count == 0)
         {
-            if (template.IsEmptyDraft())
-            {
-                continue;
-            }
+            return 0;
+        }
 
-            foreach (var routeName in editor.RouteNames)
+        var index = TemplateIndex.Build(persistable);
+        var updated = 0;
+        foreach (var routeName in editor.RouteNames)
+        {
+            foreach (var stop in editor.GetStops(routeName))
             {
-                foreach (var stop in editor.GetStops(routeName))
+                if (stop.IsWaypoint || !index.TryFind(stop, out var template) || template is null)
                 {
-                    if (stop.IsWaypoint || !MatchesRouteStop(template, stop))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    if (ApplySharedFieldsFromTemplate(stop, template, routeName))
-                    {
-                        updated++;
-                    }
+                if (ApplySharedFieldsFromTemplate(stop, template, routeName))
+                {
+                    updated++;
                 }
             }
         }
 
         return updated;
+    }
+
+    /// <summary>Fingerprint der Felder, die auf Routen-Haltestellen übertragen werden.</summary>
+    public static string ComputeApplyFingerprint(IEnumerable<ManagedStopTemplateItem> templates)
+    {
+        var parts = templates
+            .Where(static t => !t.IsEmptyDraft())
+            .OrderBy(static t => t.Id, StringComparer.Ordinal)
+            .Select(static t =>
+                string.Join(
+                    '\u001f',
+                    t.Id,
+                    PlannerStopCode.Normalize(t.StopCode),
+                    t.StopNameItcs.Trim(),
+                    t.StopDisplay.Trim(),
+                    t.VrrStopId.Trim(),
+                    t.AnnouncementLat.Trim(),
+                    t.AnnouncementLng.Trim(),
+                    t.StopLat.Trim(),
+                    t.StopLng.Trim(),
+                    t.RadiusMeters.ToString(),
+                    t.EmbeddedSoundFileName.Trim(),
+                    t.EntwerterEnabled ? "1" : "0",
+                    (t.EntwerterCode ?? string.Empty).Trim()));
+        return string.Join('\n', parts);
     }
 
     private static bool ApplySharedFieldsFromTemplate(
@@ -118,9 +147,22 @@ public static class StopTemplateRouteMerger
         var source = template.ToRouteStop(routeName);
         var changed = false;
 
-        if (!string.Equals(stop.PlannerStopCode, source.PlannerStopCode, StringComparison.Ordinal))
+        var routeCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
+        var templateCode = PlannerStopCode.Normalize(template.StopCode);
+        if (!PlannerStopCode.IsValid(routeCode))
         {
-            stop.PlannerStopCode = source.PlannerStopCode;
+            if (PlannerStopCode.IsValid(templateCode) &&
+                !string.Equals(stop.PlannerStopCode, templateCode, StringComparison.Ordinal))
+            {
+                stop.PlannerStopCode = templateCode;
+                changed = true;
+            }
+        }
+        else if (PlannerStopCode.IsValid(templateCode) &&
+                 string.Equals(routeCode, templateCode, StringComparison.Ordinal) &&
+                 !string.Equals(stop.PlannerStopCode, templateCode, StringComparison.Ordinal))
+        {
+            stop.PlannerStopCode = templateCode;
             changed = true;
         }
 
@@ -170,56 +212,119 @@ public static class StopTemplateRouteMerger
             changed = true;
         }
 
-        return changed;
-    }
-
-    private static bool TryFindMatch(
-        IEnumerable<ManagedStopTemplateItem> templates,
-        RouteStopItem stop,
-        out ManagedStopTemplateItem? match)
-    {
-        foreach (var template in templates)
+        // Entwerter nur übernehmen, wenn die Bibliothek eine Vorgabe hat.
+        // Ist die Bibliothek deaktiviert/leer, bleiben routenspezifische Aktivierungen unangetastet
+        // (sonst würden alle Vorkommen der Haltestelle mitgezogen).
+        if (source.EntwerterEnabled || !string.IsNullOrWhiteSpace(source.EntwerterCode))
         {
-            if (MatchesRouteStop(template, stop))
+            if (stop.EntwerterEnabled != source.EntwerterEnabled)
             {
-                match = template;
-                return true;
+                stop.EntwerterEnabled = source.EntwerterEnabled;
+                changed = true;
+            }
+
+            var entwerterCode = (source.EntwerterCode ?? string.Empty).Trim();
+            if (!string.Equals(stop.EntwerterCode, entwerterCode, StringComparison.Ordinal))
+            {
+                stop.EntwerterCode = entwerterCode;
+                changed = true;
             }
         }
 
-        match = null;
-        return false;
+        return changed;
     }
 
-    private static bool MatchesRouteStop(ManagedStopTemplateItem template, RouteStopItem stop)
+    private sealed class TemplateIndex
     {
-        var routeCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
-        var templateCode = PlannerStopCode.Normalize(template.StopCode);
-        if (routeCode.Length == PlannerStopCode.DigitCount &&
-            templateCode.Length == PlannerStopCode.DigitCount &&
-            string.Equals(routeCode, templateCode, StringComparison.Ordinal))
+        private readonly Dictionary<string, ManagedStopTemplateItem> _byCode =
+            new(StringComparer.Ordinal);
+        private readonly Dictionary<string, ManagedStopTemplateItem> _byVrr =
+            new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<ManagedStopTemplateItem>> _byName =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public static TemplateIndex Build(IEnumerable<ManagedStopTemplateItem> templates)
         {
-            return true;
+            var index = new TemplateIndex();
+            foreach (var template in templates)
+            {
+                if (!template.IsEmptyDraft())
+                {
+                    index.Index(template);
+                }
+            }
+
+            return index;
         }
 
-        var vrrRoute = stop.VrrStopId.Trim();
-        var vrrTemplate = template.VrrStopId.Trim();
-        if (vrrRoute.Length > 0 &&
-            vrrTemplate.Length > 0 &&
-            string.Equals(vrrRoute, vrrTemplate, StringComparison.OrdinalIgnoreCase))
+        public void Index(ManagedStopTemplateItem template)
         {
-            return true;
+            var code = PlannerStopCode.Normalize(template.StopCode);
+            if (PlannerStopCode.IsValid(code))
+            {
+                _byCode.TryAdd(code, template);
+            }
+
+            var vrr = template.VrrStopId.Trim();
+            if (vrr.Length > 0)
+            {
+                _byVrr.TryAdd(vrr, template);
+            }
+
+            var name = template.StopNameItcs.Trim();
+            if (name.Length == 0)
+            {
+                return;
+            }
+
+            if (!_byName.TryGetValue(name, out var list))
+            {
+                list = [];
+                _byName[name] = list;
+            }
+
+            if (!list.Contains(template))
+            {
+                list.Add(template);
+            }
         }
 
-        if (!string.Equals(
-                template.StopNameItcs.Trim(),
-                stop.Name.Trim(),
-                StringComparison.OrdinalIgnoreCase))
+        public bool TryFind(RouteStopItem stop, out ManagedStopTemplateItem? match)
         {
+            var routeCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
+            if (PlannerStopCode.IsValid(routeCode))
+            {
+                if (_byCode.TryGetValue(routeCode, out match))
+                {
+                    return true;
+                }
+
+                match = null;
+                return false;
+            }
+
+            var vrr = stop.VrrStopId.Trim();
+            if (vrr.Length > 0 && _byVrr.TryGetValue(vrr, out match))
+            {
+                return true;
+            }
+
+            var name = stop.Name.Trim();
+            if (name.Length > 0 && _byName.TryGetValue(name, out var named))
+            {
+                foreach (var template in named)
+                {
+                    if (AnnouncementCoordinatesMatch(template, stop))
+                    {
+                        match = template;
+                        return true;
+                    }
+                }
+            }
+
+            match = null;
             return false;
         }
-
-        return AnnouncementCoordinatesMatch(template, stop);
     }
 
     private static bool AnnouncementCoordinatesMatch(ManagedStopTemplateItem template, RouteStopItem stop)
@@ -256,8 +361,7 @@ public static class StopTemplateRouteMerger
 
     private static bool EnrichFromRouteStop(
         ManagedStopTemplateItem template,
-        RouteStopItem stop,
-        string routeName)
+        RouteStopItem stop)
     {
         var changed = false;
 
@@ -312,31 +416,185 @@ public static class StopTemplateRouteMerger
             changed = true;
         }
 
-        changed |= AppendRouteHint(template, routeName);
+        // Entwerter bewusst nicht aus der Route in die Bibliothek übernehmen:
+        // eine routenspezifische Aktivierung soll andere Haltestellen/Routen nicht mitaktivieren.
+
         return changed;
     }
 
-    private static bool AppendRouteHint(ManagedStopTemplateItem template, string routeName)
+    /// <summary>
+    /// Ergänzt das Feld „Linien“ aus den Routen, in denen die Haltestelle vorkommt.
+    /// Zuordnung ausschließlich über Haltestellen-ID (PlannerStopCode); ohne gültige ID
+    /// optional über VRR-ID – nie über den Namen (gleiche Namen / verschiedene Ansagepunkte).
+    /// Nur Liniennummer (ohne Kurs „/xx“). Bestehende Einträge bleiben;
+    /// fehlende Linien bzw. leeres Feld werden ergänzt. Vorhandene /Kurs-Tokens werden bereinigt.
+    /// </summary>
+    public static int SyncLinesFromRoutes(
+        IList<ManagedStopTemplateItem> templates,
+        EditableRoutePackage editor)
     {
-        var route = routeName.Trim();
-        if (route.Length == 0)
+        var linesByStopCode = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var linesByVrr = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var routeName in editor.RouteNames)
         {
-            return false;
+            var parsed = RouteDisplayHelper.Parse(routeName);
+            var lineOnly = ToLineNumberOnly(parsed.LineCourse);
+            if (string.IsNullOrWhiteSpace(lineOnly))
+            {
+                // Fallback: Fahrgastlinie, falls kein Linie/Kurs (z. B. nur Anzeigename)
+                lineOnly = ToLineNumberOnly(parsed.PassengerDisplayLine);
+            }
+
+            if (string.IsNullOrWhiteSpace(lineOnly))
+            {
+                continue;
+            }
+
+            foreach (var stop in editor.GetStops(routeName))
+            {
+                if (stop.IsWaypoint)
+                {
+                    continue;
+                }
+
+                var code = PlannerStopCode.Normalize(stop.PlannerStopCode);
+                if (PlannerStopCode.IsValid(code))
+                {
+                    AddLineKey(linesByStopCode, code, lineOnly);
+                    continue;
+                }
+
+                // Ohne ID: nur VRR – Namen würden unterschiedliche Ansagepunkte vermischen.
+                AddLineKey(linesByVrr, stop.VrrStopId?.Trim(), lineOnly);
+            }
         }
 
-        var dir = template.DirectionDescription.Trim();
-        if (dir.Length == 0)
+        var updated = 0;
+        foreach (var template in templates)
         {
-            template.DirectionDescription = route;
-            return true;
+            var fromRoutes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            CollectLinesForTemplate(template, linesByStopCode, linesByVrr, fromRoutes);
+
+            var existing = ParseLineTokens(template.Lines);
+            var existingLineNumbers = new HashSet<string>(
+                existing.Select(ToLineNumberOnly).Where(l => !string.IsNullOrEmpty(l)),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var line in fromRoutes)
+            {
+                if (existingLineNumbers.Add(line))
+                {
+                    existing.Add(line);
+                }
+            }
+
+            // Immer Liniennummern ohne /Kurs speichern (auch wenn nichts Neues dazukam).
+            var next = string.Join(", ", existing
+                .Select(ToLineNumberOnly)
+                .Where(l => !string.IsNullOrEmpty(l))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(l => l, StringComparer.OrdinalIgnoreCase));
+
+            if (string.Equals(template.Lines?.Trim(), next, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            template.Lines = next;
+            updated++;
         }
 
-        if (dir.Contains(route, StringComparison.OrdinalIgnoreCase))
+        return updated;
+    }
+
+    /// <summary>„681/95“ → „681“, „681“ → „681“. Kein Kursanteil.</summary>
+    internal static string ToLineNumberOnly(string? lineCourseOrToken)
+    {
+        var raw = (lineCourseOrToken ?? string.Empty).Trim();
+        if (raw.Length == 0)
         {
-            return false;
+            return string.Empty;
         }
 
-        template.DirectionDescription = $"{dir} · {route}";
-        return true;
+        var normalized = RouteDisplayHelper.NormalizeLineCourse(raw);
+        var slash = normalized.IndexOf('/');
+        if (slash > 0)
+        {
+            return normalized[..slash].Trim();
+        }
+
+        // Reine Ziffern: auf 3 Stellen bringen wenn sinnvoll (Buslinie)
+        if (normalized.All(char.IsDigit) && normalized.Length is > 0 and <= 3)
+        {
+            return normalized.PadLeft(3, '0');
+        }
+
+        return normalized;
+    }
+
+    private static List<string> ParseLineTokens(string? lines)
+    {
+        if (string.IsNullOrWhiteSpace(lines))
+        {
+            return [];
+        }
+
+        return lines
+            .Split([',', ';', '\n', '\r', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(t => t.Length > 0)
+            .ToList();
+    }
+
+    private static void AddLineKey(
+        Dictionary<string, HashSet<string>> map,
+        string? key,
+        string token)
+    {
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(token))
+        {
+            return;
+        }
+
+        if (!map.TryGetValue(key, out var set))
+        {
+            set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            map[key] = set;
+        }
+
+        set.Add(token);
+    }
+
+    private static void CollectLinesForTemplate(
+        ManagedStopTemplateItem template,
+        Dictionary<string, HashSet<string>> linesByStopCode,
+        Dictionary<string, HashSet<string>> linesByVrr,
+        HashSet<string> target)
+    {
+        void Take(Dictionary<string, HashSet<string>> map, string? key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            if (map.TryGetValue(key.Trim(), out var set))
+            {
+                foreach (var line in set)
+                {
+                    target.Add(line);
+                }
+            }
+        }
+
+        var code = PlannerStopCode.Normalize(template.StopCode);
+        if (PlannerStopCode.IsValid(code))
+        {
+            Take(linesByStopCode, code);
+            return;
+        }
+
+        // Nur ohne gültige ID: VRR – nie Name.
+        Take(linesByVrr, template.VrrStopId);
     }
 }

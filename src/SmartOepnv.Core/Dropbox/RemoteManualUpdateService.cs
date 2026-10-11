@@ -24,14 +24,23 @@ public static class RemoteManualUpdateService
         return $"kom_remote_manual_update_{normalized}.json";
     }
 
-    public static string BuildPayloadJson()
-    {
-        var commandId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        return JsonSerializer.Serialize(new
+    public static string BuildPayloadJson(long commandId) =>
+        JsonSerializer.Serialize(new
         {
             type = CommandType,
             commandId,
             sentAt = commandId
         });
+
+    public static async Task<long> UploadAsync(
+        DropboxApiClient dropbox,
+        string phoneRaw,
+        CancellationToken ct = default)
+    {
+        var commandId = KomCommandId.New();
+        var fileName = BuildCommandFileName(phoneRaw);
+        var payload = BuildPayloadJson(commandId);
+        await dropbox.UploadNamedFileAsync(fileName, payload, ct).ConfigureAwait(false);
+        return commandId;
     }
 }

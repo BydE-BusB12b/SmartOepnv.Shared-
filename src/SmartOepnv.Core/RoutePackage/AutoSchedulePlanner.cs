@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text;
+using SmartOepnv.Core.Dienstvorlagen;
 
 namespace SmartOepnv.Core.RoutePackage;
-
 /// <summary>Automatische Fahrplanerstellung wie GPSAnsagen <c>createAutoSchedule</c> / <c>updateSchedulePreview</c>.</summary>
 public static class AutoSchedulePlanner
 {
@@ -47,7 +47,7 @@ public static class AutoSchedulePlanner
 
     public static string? TryBuildPreview(EditableRoutePackage editor, Request request, int tripIndex)
     {
-        if (!TryValidateRequest(request, out var error))
+        if (!TryValidateRequest(editor, request, out var error))
         {
             return error;
         }
@@ -63,10 +63,11 @@ public static class AutoSchedulePlanner
             tripIndex = 0;
         }
 
-        var tripNumbers = ResolveTripNumbers(editor, request);
+        var tripNumbers = NormalizeTripNumbers(request.TripNumbers);
         var tripStartTime = RouteScheduleTimeCalculator.CalculateTripStartTime(
             request.StartTime,
             tripIndex * request.IntervalMinutes);
+        var templateStartTime = ResolveTemplateStartTime(templateStops, request.StartTime);
         var tripNumber = tripNumbers[tripIndex];
         var (routeName, lineCourse) = ExtractRouteParts(request.TemplateRouteKey);
         var previewRoute = RouteDisplayHelper.ToDisplayString(new RouteDefinition(routeName, lineCourse, tripNumber));
@@ -84,9 +85,9 @@ public static class AutoSchedulePlanner
                 continue;
             }
 
-            var calculated = RouteScheduleTimeCalculator.CalculateStopTime(
+            var calculated = CalculateStopTimeFromTemplate(
                 tripStartTime,
-                templateStops[0].Time,
+                templateStartTime,
                 stop.Time);
             preview.AppendLine($"  {stop.Name}: {calculated ?? "--:--"}");
         }
@@ -109,42 +110,79 @@ public static class AutoSchedulePlanner
 
         var tripNumbers = ResolveTripNumbers(editor, request);
         var (routeName, lineCourse) = ExtractRouteParts(request.TemplateRouteKey);
+        // Leeres Set = Vorlage ohne Eintrag = alle Verkehrstage (wie RouteOperatingDaysEditor).
+        var templateOperatingDays = RouteOperatingDaysEditor.EffectiveDaySet(
+            editor.GetRouteOperatingDays(request.TemplateRouteKey));
+        var templateDateRange = editor.GetRouteDateRange(request.TemplateRouteKey);
+        var templateDateRangeArg = templateDateRange.IsRestricted ? templateDateRange : null;
+        var templateOperatingDates = editor.GetRouteOperatingDates(request.TemplateRouteKey);
+        var templateOperatingDatesArg = RouteOperatingDatesEditor.IsRestricted(templateOperatingDates)
+            ? templateOperatingDates
+            : null;
+        var templateTripNumber = RouteDisplayHelper.NormalizeTripNumber(
+            RouteDisplayHelper.Parse(request.TemplateRouteKey).TripNumber);
+        var templateInteriorDestination = editor.GetRouteInteriorDisplayDestination(request.TemplateRouteKey);
+        var templateInItcsRouteList = editor.IsRouteInItcsRouteList(request.TemplateRouteKey);
+        var templateMainDeviceOnly = editor.IsRouteMainDeviceOnly(request.TemplateRouteKey);
+        var templateStartTime = ResolveTemplateStartTime(templateStops, request.StartTime);
         string? firstRouteKey = null;
+        var createdCount = 0;
 
         for (var tripIndex = 0; tripIndex < request.TripCount; tripIndex++)
         {
             var tripStartTime = RouteScheduleTimeCalculator.CalculateTripStartTime(
                 request.StartTime,
                 tripIndex * request.IntervalMinutes);
-            var tripNumber = tripNumbers[tripIndex];
+            var tripNumber = RouteDisplayHelper.NormalizeTripNumber(tripNumbers[tripIndex]);
+            if (!string.IsNullOrEmpty(templateTripNumber) &&
+                string.Equals(tripNumber, templateTripNumber, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
             var definition = new RouteDefinition(routeName, lineCourse, tripNumber);
 
-            if (!editor.TryAddRoute(definition, null, out var displayKey, out var addError))
+            if (!editor.TryAddRoute(
+                    definition,
+                    templateOperatingDays,
+                    request.TemplateRouteKey,
+                    out var displayKey,
+                    out var addError,
+                    inItcsRouteList: templateInItcsRouteList,
+                    mainDeviceOnly: templateMainDeviceOnly,
+                    dateRange: templateDateRangeArg,
+                    operatingDates: templateOperatingDatesArg))
             {
                 throw new InvalidOperationException(addError ?? "Route konnte nicht angelegt werden.");
             }
 
+            createdCount++;
             firstRouteKey ??= displayKey;
-            var newStops = new List<RouteStopItem>();
-            for (var stopIndex = 0; stopIndex < templateStops.Count; stopIndex++)
+            var newStops = editor.GetStops(displayKey).ToList();
+            for (var stopIndex = 0; stopIndex < newStops.Count; stopIndex++)
             {
-                var templateStop = templateStops[stopIndex];
-                var clone = templateStop.Clone();
-                clone.RouteName = displayKey;
-                clone.Time = stopIndex == 0
+                var stop = newStops[stopIndex];
+                stop.RouteName = displayKey;
+                stop.Time = stopIndex == 0
                     ? tripStartTime
-                    : RouteScheduleTimeCalculator.CalculateStopTime(
+                    : CalculateStopTimeFromTemplate(
                           tripStartTime,
-                          templateStops[0].Time,
-                          templateStop.Time) ?? string.Empty;
-                newStops.Add(clone);
+                          templateStartTime,
+                          templateStops[stopIndex].Time) ?? string.Empty;
             }
 
-            editor.StopsByRoute[displayKey] = newStops;
-            RouteNavigationMetadataCopy.CopyForRoute(
-                editor.PackageRoot,
-                request.TemplateRouteKey,
-                displayKey);
+            if (!string.IsNullOrWhiteSpace(templateInteriorDestination))
+            {
+                editor.SetRouteInteriorDisplayDestination(displayKey, templateInteriorDestination);
+            }
+
+            editor.SetAutoScheduleSourceRoute(displayKey, request.TemplateRouteKey);
+        }
+
+        if (createdCount == 0)
+        {
+            throw new InvalidOperationException(
+                "Keine neue Fahrt angelegt – die Vorlagen-Fahrtnummer wird nicht erneut erstellt.");
         }
 
         return firstRouteKey ?? string.Empty;
@@ -205,6 +243,21 @@ public static class AutoSchedulePlanner
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var (routeName, lineCourse) = ExtractRouteParts(templateRouteKey);
+        var templateTripNumber = RouteDisplayHelper.NormalizeTripNumber(
+            RouteDisplayHelper.Parse(templateRouteKey).TripNumber);
+        IReadOnlyCollection<DutyOperatingDay> templateOperatingDays = editor is null
+            ? RouteOperatingDaysEditor.AllDays
+            : RouteOperatingDaysEditor.EffectiveDaySet(editor.GetRouteOperatingDays(templateRouteKey));
+        RouteDateRange? templateDateRange = null;
+        IReadOnlyCollection<DateOnly>? templateOperatingDates = null;
+        if (editor is not null)
+        {
+            var range = editor.GetRouteDateRange(templateRouteKey);
+            templateDateRange = range.IsRestricted ? range : null;
+            var dates = editor.GetRouteOperatingDates(templateRouteKey);
+            templateOperatingDates = RouteOperatingDatesEditor.IsRestricted(dates) ? dates : null;
+        }
+
         for (var i = 0; i < tripNumbers.Count; i++)
         {
             if (!AutoScheduleTripNumber.TryNormalize(tripNumbers[i], out var normalized))
@@ -224,8 +277,28 @@ public static class AutoSchedulePlanner
                 continue;
             }
 
-            var definition = new RouteDefinition(routeName, lineCourse, normalized);
-            if (RouteDisplayHelper.HasDuplicateTripInLineCourse(editor.RouteNames, definition))
+            if (!string.IsNullOrEmpty(templateTripNumber) &&
+                string.Equals(
+                    RouteDisplayHelper.NormalizeTripNumber(normalized),
+                    templateTripNumber,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var definition = new RouteDefinition(
+                routeName,
+                lineCourse,
+                RouteDisplayHelper.NormalizeTripNumber(normalized));
+            if (RouteDisplayHelper.HasRouteScheduleConflict(
+                    editor.RouteNames,
+                    editor.RouteOperatingDaysByRoute,
+                    editor.RouteDateRangesByRoute,
+                    definition,
+                    templateOperatingDays,
+                    templateDateRange,
+                    editor.RouteOperatingDatesByRoute,
+                    templateOperatingDates))
             {
                 error = $"Fahrtnummer {normalized} existiert in dieser Linie/Kurs bereits.";
                 return false;
@@ -242,19 +315,44 @@ public static class AutoSchedulePlanner
             throw new InvalidOperationException(error);
         }
 
-        return request.TripNumbers
+        return NormalizeTripNumbers(request.TripNumbers);
+    }
+
+    private static List<string> NormalizeTripNumbers(IReadOnlyList<string> tripNumbers) =>
+        tripNumbers
             .Select(raw =>
             {
                 AutoScheduleTripNumber.TryNormalize(raw, out var normalized);
                 return normalized;
             })
             .ToList();
-    }
 
     private static List<RouteStopItem> GetTemplateStops(EditableRoutePackage editor, string templateRouteKey) =>
         editor.GetStops(templateRouteKey)
             .Where(s => !s.IsWaypoint)
             .ToList();
+
+    private static string ResolveTemplateStartTime(IReadOnlyList<RouteStopItem> templateStops, string requestStartTime)
+    {
+        if (templateStops.Count == 0)
+        {
+            return RouteScheduleTimeCalculator.NormalizeTimeInput(requestStartTime);
+        }
+
+        var firstStopTime = RouteScheduleTimeCalculator.NormalizeTimeInput(templateStops[0].Time);
+        return RouteScheduleTimeCalculator.TryParseTime(firstStopTime, out _)
+            ? firstStopTime
+            : RouteScheduleTimeCalculator.NormalizeTimeInput(requestStartTime);
+    }
+
+    private static string? CalculateStopTimeFromTemplate(
+        string tripStartTime,
+        string templateStartTime,
+        string? templateStopTime) =>
+        RouteScheduleTimeCalculator.CalculateStopTime(
+            RouteScheduleTimeCalculator.NormalizeTimeInput(tripStartTime),
+            templateStartTime,
+            RouteScheduleTimeCalculator.NormalizeTimeInput(templateStopTime));
 
     private static (string RouteName, string LineCourse) ExtractRouteParts(string templateRouteKey)
     {

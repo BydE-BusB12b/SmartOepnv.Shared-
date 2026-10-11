@@ -5,6 +5,15 @@ namespace SmartOepnv.Core.RoutePackage;
 /// <summary>Jede Dienstnummer darf pro Kalendertag nur einmal in der Fahrerdisposition vorkommen.</summary>
 public static class DriverDispositionDutyNumberRules
 {
+    /// <summary>Flexible Bereitschaft – keine FPersV-Zeitregeln, Darstellung lila.</summary>
+    public const string StandbyDutyNumber = "Bereitschaft";
+
+    public static bool IsStandbyDuty(string? dutyNumber) =>
+        string.Equals(NormalizeDutyNumber(dutyNumber), StandbyDutyNumber, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsStandbyAssignment(DriverDispositionAssignment assignment) =>
+        IsStandbyDuty(ResolveDutyNumber(assignment));
+
     public static string ResolveDutyNumber(DriverDispositionAssignment assignment)
     {
         if (!string.IsNullOrWhiteSpace(assignment.DutyNumber))
@@ -33,8 +42,9 @@ public static class DriverDispositionDutyNumberRules
     {
         conflict = null;
         var normalized = NormalizeDutyNumber(dutyNumber);
-        if (normalized.Length == 0)
+        if (normalized.Length == 0 || IsStandbyDuty(normalized))
         {
+            // Bereitschaft darf mehrfach am selben Tag stehen (flexible Einsätze).
             return false;
         }
 

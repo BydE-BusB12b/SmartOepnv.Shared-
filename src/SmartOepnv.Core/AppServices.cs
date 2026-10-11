@@ -1,5 +1,6 @@
 using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.Dropbox;
+using SmartOepnv.Core.Mitteilungen;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.Sev;
 using SmartOepnv.Core.Session;
@@ -12,6 +13,7 @@ public static class AppServices
     private static DropboxSettingsStore? _dropboxSettingsStore;
     private static DropboxApiClient? _dropbox;
     private static VehicleTrackingService? _vehicleTracking;
+    private static GpsTripTraceService? _gpsTripTraces;
     private static LocalWorkspaceStore? _workspace;
     private static bool _initialized;
 
@@ -29,6 +31,9 @@ public static class AppServices
     public static VehicleTrackingService VehicleTracking =>
         _vehicleTracking ?? throw new InvalidOperationException("AppServices.Initialize wurde nicht aufgerufen.");
 
+    public static GpsTripTraceService GpsTripTraces =>
+        _gpsTripTraces ?? throw new InvalidOperationException("AppServices.Initialize wurde nicht aufgerufen.");
+
     public static string SettingsSubfolder { get; private set; } = "Planer";
 
     public static bool IsPlannerApp =>
@@ -44,6 +49,8 @@ public static class AppServices
 
     public static SevSignDraftStore? SevSignDrafts => _sevSignDrafts;
 
+    public static MitteilungDraftStore? MitteilungDrafts => _mitteilungDrafts;
+
     public static DutyTemplateStore? DutyTemplates => _dutyTemplates;
 
     public static DutyTemplateEditorSessionStore? DutyTemplateEditorSession => _dutyTemplateEditorSession;
@@ -56,6 +63,7 @@ public static class AppServices
     private static PlannerPackageVersionStore? _plannerVersions;
     private static DeviceRegistrationDropboxService? _deviceRegistration;
     private static SevSignDraftStore? _sevSignDrafts;
+    private static MitteilungDraftStore? _mitteilungDrafts;
     private static DutyTemplateStore? _dutyTemplates;
     private static DutyTemplateEditorSessionStore? _dutyTemplateEditorSession;
     private static PlanerSessionService? _planerSession;
@@ -65,6 +73,12 @@ public static class AppServices
 
     /// <summary>Registriert z. B. „Ansagen speichern“ vor Dropbox-Export.</summary>
     public static void RegisterFlushBeforeExport(Action flush) => _flushBeforeExport.Add(flush);
+
+    /// <summary>Fahrerdisposition: Dienste eines gelöschten Mitarbeiters aus der UI entfernen.</summary>
+    public static event Action<string>? EmployeeRemovedFromRoster;
+
+    public static void NotifyEmployeeRemovedFromRoster(string driverKey) =>
+        EmployeeRemovedFromRoster?.Invoke(driverKey);
 
     public static void FlushAllPendingEdits()
     {
@@ -102,9 +116,15 @@ public static class AppServices
     public static void Initialize(string settingsSubfolder)
     {
         SettingsSubfolder = settingsSubfolder;
+        if (string.Equals(settingsSubfolder, "Planer", StringComparison.OrdinalIgnoreCase))
+        {
+            Betrieb.BetriebProfileStore.EnsureMigratedAndActivate();
+        }
+
         _dropboxSettingsStore = new DropboxSettingsStore(settingsSubfolder);
         _dropbox = new DropboxApiClient(_dropboxSettingsStore);
         _vehicleTracking = new VehicleTrackingService(_dropbox);
+        _gpsTripTraces = new GpsTripTraceService(_dropbox);
         _workspace = new LocalWorkspaceStore(settingsSubfolder);
         if (IsPlannerApp)
         {
@@ -112,6 +132,7 @@ public static class AppServices
             _plannerVersions = new PlannerPackageVersionStore(settingsSubfolder);
             _deviceRegistration = new DeviceRegistrationDropboxService();
             _sevSignDrafts = new SevSignDraftStore(settingsSubfolder);
+            _mitteilungDrafts = new MitteilungDraftStore(settingsSubfolder);
             _dutyTemplates = new DutyTemplateStore(settingsSubfolder);
             _dutyTemplateEditorSession = new DutyTemplateEditorSessionStore(settingsSubfolder);
             _planerSession = new PlanerSessionService(_dropbox);

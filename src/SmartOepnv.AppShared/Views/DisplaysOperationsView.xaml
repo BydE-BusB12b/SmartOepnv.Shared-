@@ -2,132 +2,374 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch">
-    <DockPanel Margin="0,0,0,8">
-        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-            <TextBlock Text="Anzeigen &amp; Hinweise"
-                       FontWeight="SemiBold" FontSize="18" Margin="0,0,0,4" />
-            <TextBlock Text="Zielanzeigen und datumgesteuerte Hinweise – werden mit dem Routen-JSON (Dropbox) übertragen. Linienführung über Navidaten."
-                       TextWrapping="Wrap" Opacity="0.7" FontSize="11" />
-        </StackPanel>
-        <TextBlock DockPanel.Dock="Bottom"
-                   Text="{Binding StatusMessage}"
-                   Margin="0,8,0,0"
-                   TextWrapping="Wrap"
-                   Opacity="0.85"
-                   FontSize="12" />
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <Style x:Key="DisplaysOpsSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SaveButtonState}" Value="{x:Static vm:DisplaysOperationsButtonState.Success}">
+                    <Setter Property="Foreground" Value="{StaticResource SmartSuccessOnDarkForegroundBrush}" />
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <!-- Aktiver Tab oben grün, inaktiver Tab dunkelblau -->
+        <Style x:Key="DisplaysOpsZiellisteTabButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource SmartPrimaryDarkBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SelectedTabIndex}" Value="0">
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessForegroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessForegroundBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="DisplaysOpsHintsTabButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource SmartPrimaryDarkBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SelectedTabIndex}" Value="1">
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessForegroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessForegroundBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+    <!-- Kein äußerer ScrollViewer: Zielliste scrollt links, Statuszeile bleibt sichtbar -->
+    <Grid VerticalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-        <TabControl Style="{StaticResource MaterialDesignFilledTabControl}" VerticalAlignment="Stretch">
-            <TabItem Header="Zielliste / Außenanzeigen">
-                <Grid Margin="0,8,0,0" MinHeight="420">
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Anzeigen &amp; Hinweise"
+                       FontWeight="SemiBold"
+                       FontSize="18"
+                       VerticalAlignment="Center" />
+            <TextBox Grid.Column="1"
+                     Margin="16,0,16,0"
+                     VerticalAlignment="Center"
+                     MaxWidth="360"
+                     HorizontalAlignment="Stretch"
+                     materialDesign:HintAssist.Hint="Anzeigen suchen…"
+                     materialDesign:HintAssist.IsFloating="False"
+                     materialDesign:TextFieldAssist.HasClearButton="True"
+                     Text="{Binding OutsideProgramSearchText, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="Suche nach Name, ID, Zielnummer, Linie oder Text" />
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
+                <Button Content="Zielliste / Außenanzeigen"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="zielliste"
+                        Style="{StaticResource DisplaysOpsZiellisteTabButtonStyle}"
+                        Margin="0,0,8,0" />
+                <Button Content="Datumgesteuerte Hinweise"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="hints"
+                        Style="{StaticResource DisplaysOpsHintsTabButtonStyle}" />
+            </StackPanel>
+        </Grid>
+
+        <TabControl Grid.Row="1"
+                    SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}"
+                    VerticalAlignment="Stretch"
+                    HorizontalAlignment="Stretch">
+            <TabControl.Template>
+                <ControlTemplate TargetType="{x:Type TabControl}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}">
+                        <ContentPresenter x:Name="PART_SelectedContentHost"
+                                          ContentSource="SelectedContent" />
+                    </Border>
+                </ControlTemplate>
+            </TabControl.Template>
+            <TabItem Header="Zielliste / Außenanzeigen"
+                     HorizontalContentAlignment="Stretch"
+                     VerticalContentAlignment="Stretch">
+                <Grid Margin="0,8,0,0" VerticalAlignment="Stretch">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="300" />
+                        <ColumnDefinition Width="320" MinWidth="280" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- Liste (eigener Scrollbereich) -->
-                    <materialDesign:Card Grid.Column="0" Margin="0,0,10,0" Padding="12" UniformCornerRadius="12"
+                    <materialDesign:Card Grid.Column="0"
+                                         Margin="0,0,10,0"
+                                         Padding="12"
+                                         UniformCornerRadius="12"
+                                         VerticalAlignment="Stretch"
                                          Background="{StaticResource SmartSurfaceBrush}">
-                        <DockPanel>
-                            <TextBlock DockPanel.Dock="Top"
-                                       Text="Zielliste"
-                                       FontWeight="SemiBold"
-                                       FontSize="15"
-                                       Margin="0,0,0,8" />
-                            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled">
-                                <ListBox ItemsSource="{Binding OutsidePrograms}"
-                                         SelectedItem="{Binding SelectedOutsideProgram}"
-                                         BorderThickness="0"
-                                         Background="Transparent"
-                                         MinHeight="120">
-                                    <ListBox.ItemTemplate>
+                        <DockPanel LastChildFill="True">
+                            <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0"
+                                           Text="Zielliste"
+                                           FontWeight="SemiBold"
+                                           FontSize="15"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,0,6" />
+                                <ComboBox Grid.Row="1"
+                                          Style="{StaticResource SmartDarkComboBox}"
+                                          ItemsSource="{Binding ProtocolFilterOptions}"
+                                          SelectedItem="{Binding SelectedProtocolFilter, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch"
+                                          MinWidth="280"
+                                          MinHeight="36"
+                                          Margin="0,0,0,6"
+                                          materialDesign:HintAssist.Hint="Protokoll"
+                                          ToolTip="Protokoll filtern">
+                                    <ComboBox.ItemTemplate>
                                         <DataTemplate>
-                                            <StackPanel Margin="0,4">
-                                                <TextBlock Text="{Binding Name}"
-                                                           FontWeight="SemiBold"
-                                                           FontSize="13"
-                                                           TextWrapping="Wrap" />
-                                                <TextBlock Text="{Binding ProtocolLabel}"
-                                                           Opacity="0.65"
-                                                           FontSize="11"
-                                                           Margin="0,2,0,4" />
-                                                <TextBlock FontSize="10" Opacity="0.75" Margin="0,0,0,4">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="ITCS-Liste: aus" />
-                                                            <Setter Property="Foreground" Value="#FFB0B0B0" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsListEnabled}" Value="True">
-                                                                    <Setter Property="Text" Value="ITCS-Liste: an" />
-                                                                    <Setter Property="Foreground" Value="#FF81C784" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
-                                                    <Run Text="Front: " FontWeight="SemiBold" />
-                                                    <Run Text="{Binding FrontPreview, Mode=OneWay}" />
-                                                </TextBlock>
-                                                <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
-                                                    <Run Text="Seite: " FontWeight="SemiBold" />
-                                                    <Run Text="{Binding SidePreview, Mode=OneWay}" />
-                                                </TextBlock>
-                                            </StackPanel>
+                                            <TextBlock Text="{Binding}" TextTrimming="None" />
                                         </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </ScrollViewer>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <ComboBox Grid.Row="2"
+                                          Style="{StaticResource SmartDarkComboBox}"
+                                          ItemsSource="{Binding OutsideProgramSortOptions}"
+                                          SelectedItem="{Binding SelectedOutsideProgramSort, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch"
+                                          MinWidth="280"
+                                          MinHeight="36"
+                                          materialDesign:HintAssist.Hint="Sortierung"
+                                          ToolTip="Zielliste sortieren">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextTrimming="None" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <ListBox ItemsSource="{Binding OutsideProgramsView}"
+                                     SelectedItem="{Binding SelectedOutsideProgram}"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.CanContentScroll="False"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     VirtualizingPanel.VirtualizationMode="Recycling">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+                                        <Setter Property="Padding" Value="8,4" />
+                                        <Setter Property="Margin" Value="0,0,0,2" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,2">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="13"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock FontSize="11"
+                                                       Opacity="0.7"
+                                                       Margin="0,2,0,0">
+                                                <TextBlock.Text>
+                                                    <MultiBinding StringFormat="{}{0} · {1}">
+                                                        <Binding Path="ListNumberLabel" Mode="OneWay" />
+                                                        <Binding Path="ProtocolLabel" Mode="OneWay" />
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                            </TextBlock>
+                                            <TextBlock FontSize="10" Opacity="0.75" Margin="0,0,0,4">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="ITCS-Liste: aus" />
+                                                        <Setter Property="Foreground" Value="#FFB0B0B0" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsListEnabled}" Value="True">
+                                                                <Setter Property="Text" Value="ITCS-Liste: an" />
+                                                                <Setter Property="Foreground" Value="#FF81C784" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#FF64B5F6"
+                                                       Margin="0,0,0,4"
+                                                       Text="{Binding MobitecGraphicsLabel, Mode=OneWay}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasMobitecBitmapGraphic}" Value="False">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11"
+                                                       Opacity="0.85"
+                                                       Margin="0,0,0,2"
+                                                       Text="{Binding MobitecLineListLabel, Mode=OneWay}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding MobitecLineListLabel}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11"
+                                                       Opacity="0.9"
+                                                       TextWrapping="Wrap"
+                                                       Text="{Binding Ds003ListLabel, Mode=OneWay}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDs003}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDs003}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                                <Run Text="Front: " FontWeight="SemiBold" />
+                                                <Run Text="{Binding WechseltextPreview, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Opacity="0.9" TextWrapping="Wrap">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDs003}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                                <Run Text="Seite: " FontWeight="SemiBold" />
+                                                <Run Text="{Binding SidePreview, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </DockPanel>
                     </materialDesign:Card>
 
-                    <!-- Bearbeiten + Aktionen -->
-                    <materialDesign:Card Grid.Column="1" Padding="14" UniformCornerRadius="12"
+                    <materialDesign:Card Grid.Column="1"
+                                         Padding="14"
+                                         UniformCornerRadius="12"
+                                         VerticalAlignment="Stretch"
                                          Background="{StaticResource SmartSurfaceBrush}">
-                        <DockPanel>
-                            <TextBlock DockPanel.Dock="Top"
-                                       Text="Zielanzeige bearbeiten"
-                                       FontWeight="SemiBold"
-                                       FontSize="15"
-                                       Margin="0,0,0,6" />
-                            <TextBlock DockPanel.Dock="Top"
-                                       TextWrapping="Wrap"
-                                       Opacity="0.75"
-                                       FontSize="11"
-                                       Margin="0,0,0,10"
-                                       Text="DS021T: Schleifenprogramm mit Intervall. DS003a Krefeld: 2×16 Zeichen Front/Seite, DS001, optional Steuerblock (12 Zeichen)." />
+                        <Grid VerticalAlignment="Stretch">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                            <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-                                <WrapPanel Margin="0,0,0,8">
-                                    <Button Content="+ DS021T"
-                                            Command="{Binding AddOutsideProgramDs021tCommand}"
+                            <DockPanel Grid.Row="0" Margin="0,0,0,6" LastChildFill="True">
+                                <StackPanel DockPanel.Dock="Right"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center"
+                                            Margin="12,0,0,0">
+                                    <Button Content="PDF aller Ziele"
+                                            Command="{Binding ExportDestinationsPdfCommand}"
                                             Style="{StaticResource MaterialDesignRaisedButton}"
-                                            Margin="0,0,8,6" />
-                                    <Button Content="+ DS003a Krefeld"
-                                            Command="{Binding AddOutsideProgramKrefeldCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}"
-                                            Margin="0,0,8,6" />
-                                    <Button Content="Auswahl löschen"
-                                            Command="{Binding RemoveOutsideProgramCommand}"
-                                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                                            Margin="0,0,8,6" />
-                                    <Button Content="Alle in ITCS-Liste"
-                                            Command="{Binding EnableAllInItcsListCommand}"
-                                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                                            Margin="0,0,8,6" />
-                                    <Button Content="Speichern"
-                                            Command="{Binding SaveCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}"
-                                            Margin="0,0,0,6" />
-                                </WrapPanel>
-                            </StackPanel>
+                                            Padding="12,4"
+                                            Margin="0,0,12,0"
+                                            VerticalAlignment="Center"
+                                            ToolTip="PDF mit allen Zielen der Zielliste (Name, Linie, Front/Seite, Wechsel)" />
+                                    <StackPanel Orientation="Horizontal"
+                                                VerticalAlignment="Center">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedOutsideProgram}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="Liste"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0" />
+                                        <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                      IsChecked="{Binding SelectedOutsideProgram.IsListEnabled, UpdateSourceTrigger=PropertyChanged}"
+                                                      VerticalAlignment="Center" />
+                                        <TextBlock Text="In ITCS-Anzeigenliste"
+                                                   VerticalAlignment="Center"
+                                                   Margin="10,0,0,0"
+                                                   Opacity="0.75"
+                                                   FontSize="11" />
+                                        <StackPanel Orientation="Horizontal" Margin="20,0,0,0" VerticalAlignment="Center">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedOutsideProgram.IsMobitec}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
+                                            <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                          IsChecked="{Binding SelectedOutsideProgram.AutoFitFonts, UpdateSourceTrigger=PropertyChanged}"
+                                                          VerticalAlignment="Center"
+                                                          ToolTip="Font automatisch nach Displaybreite wählen (darf von ZEdit abweichen)" />
+                                            <TextBlock Text="Autoanpassung"
+                                                       VerticalAlignment="Center"
+                                                       Margin="10,0,0,0"
+                                                       Opacity="0.75"
+                                                       FontSize="11" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                                <TextBlock Text="Zielanzeige bearbeiten"
+                                           FontWeight="SemiBold"
+                                           FontSize="15"
+                                           VerticalAlignment="Center" />
+                            </DockPanel>
 
-                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                            <ScrollViewer Grid.Row="1"
+                                          VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled"
-                                          MaxHeight="340">
-                                <StackPanel DataContext="{Binding SelectedOutsideProgram}">
+                                          Margin="0,0,0,10">
+                                <StackPanel>
                                     <TextBlock Text="Links ein Ziel wählen oder unten neu anlegen."
                                                Opacity="0.7"
                                                TextWrapping="Wrap"
@@ -136,7 +378,7 @@
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                    <DataTrigger Binding="{Binding SelectedOutsideProgram}" Value="{x:Null}">
                                                         <Setter Property="Visibility" Value="Visible" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
@@ -144,7 +386,7 @@
                                         </TextBlock.Style>
                                     </TextBlock>
 
-                                    <Grid>
+                                    <Grid DataContext="{Binding SelectedOutsideProgram}">
                                         <Grid.Style>
                                             <Style TargetType="Grid">
                                                 <Style.Triggers>
@@ -179,80 +421,430 @@
                                                   IsChecked="{Binding IsStartTarget, UpdateSourceTrigger=PropertyChanged}"
                                                   Margin="0,0,0,10" />
 
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Liste" VerticalAlignment="Center" Margin="0,0,8,10" />
-                                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
-                                            <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                                                          IsChecked="{Binding IsListEnabled, UpdateSourceTrigger=PropertyChanged}"
-                                                          VerticalAlignment="Center" />
-                                            <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Opacity="0.75" FontSize="11"
-                                                       Text="In ITCS-Anzeigenliste (wie Slider „Liste“ auf dem Handy)" />
-                                        </StackPanel>
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Anzeigename" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                        <Grid Grid.Row="1" Grid.Column="1" Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="72" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="72" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0"
+                                                     Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                     Margin="0,0,12,0" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="ID"
+                                                       VerticalAlignment="Center"
+                                                       Margin="0,0,8,0"
+                                                       ToolTip="App-eigene Ziel-ID (eindeutig, unabhängig von der Mobitec-Zielnummer)." />
+                                            <TextBox Grid.Column="2"
+                                                     Text="{Binding IdEditText, UpdateSourceTrigger=LostFocus}"
+                                                     MaxLength="4"
+                                                     ToolTip="App-eigene ID (0001–9999). Unabhängig von der ICU-/ZEdit-Zielnummer." />
+                                            <TextBlock Grid.Column="3"
+                                                       Text="Zielnr."
+                                                       VerticalAlignment="Center"
+                                                       Margin="12,0,8,0"
+                                                       ToolTip="Mobitec-/ICU-Zielnummer aus der OUT-Datei (unabhängig von der App-ID).">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBox Grid.Column="4"
+                                                     Text="{Binding DestinationNumberEditText, UpdateSourceTrigger=LostFocus}"
+                                                     MaxLength="4"
+                                                     ToolTip="ICU-/ZEdit-Zielnummer (0000–9999). Erneuter OUT-Import aktualisiert darüber dasselbe Ziel.">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
+                                        </Grid>
 
-                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Anzeigename" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="2" Grid.Column="1"
-                                                 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Front Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="3" Grid.Column="1"
-                                                 Text="{Binding FrontLine1, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="4" Grid.Column="1"
-                                                 Text="{Binding FrontLine2, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="5" Grid.Column="1"
-                                                 Text="{Binding SideLine1, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="6" Grid.Column="1"
-                                                 Text="{Binding SideLine2, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="DS001 Typ" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <ComboBox Grid.Row="7" Grid.Column="1"
-                                                  SelectedValue="{Binding Ds001Type}"
-                                                  SelectedValuePath="Content"
-                                                  Margin="0,0,0,8">
-                                            <ComboBoxItem Content="line" />
-                                            <ComboBoxItem Content="special" />
-                                        </ComboBox>
-
-                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="DS001 Wert" VerticalAlignment="Center" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="8" Grid.Column="1"
-                                                 Text="{Binding Ds001Value, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8" />
-
-                                        <TextBlock Grid.Row="9" Grid.Column="0" Text="Intervall (Sek.)" VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
+                                                   Text="Wechseltext (DS021T / FMA-S1 / Mobitec) – Ziel 1 bis 4:"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,4,0,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="False">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBox Grid.Row="9" Grid.Column="1"
-                                                 Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8">
-                                            <TextBox.Style>
-                                                <Style TargetType="TextBox">
+
+                                        <UniformGrid Grid.Row="3" Grid.ColumnSpan="2" Columns="4" Margin="0,0,0,10">
+                                            <UniformGrid.Style>
+                                                <Style TargetType="UniformGrid">
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="False">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
-                                            </TextBox.Style>
-                                        </TextBox>
+                                            </UniformGrid.Style>
+                                            <Button Content="Ziel 1" Margin="0,0,4,0"
+                                                    Command="{Binding DataContext.SelectWechseltextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="0" />
+                                            <Button Content="Ziel 2" Margin="0,0,4,0"
+                                                    Command="{Binding DataContext.SelectWechseltextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="1" />
+                                            <Button Content="Ziel 3" Margin="0,0,4,0"
+                                                    Command="{Binding DataContext.SelectWechseltextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="2" />
+                                            <Button Content="Ziel 4"
+                                                    Command="{Binding DataContext.SelectWechseltextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="3" />
+                                        </UniformGrid>
 
-                                        <TextBlock Grid.Row="10" Grid.Column="0" Text="DS001 Sonderz." VerticalAlignment="Center" Margin="0,0,8,8">
+                                        <!-- Front Zeile 1 | 2 (Wechseltext) -->
+                                        <Grid Grid.Row="4" Grid.ColumnSpan="2" Margin="0,0,0,8"
+                                              Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Front Zeile 1" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Text" Value="Zieltext" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBox Grid.Column="1" Margin="0,0,12,0"
+                                                     ToolTip="Nur Zieltext. Mobitec ohne OUT-Rohframe: die Linie aus dem Feld „Linie“ erscheint separat auf Linienanzeige und in der Front-Linienzone (28 px), das Ziel zentriert in den restlichen 100 px. Mit OUT-Rohframe bleibt der Hex unverändert."
+                                                     Text="{Binding DataContext.ActiveFrontLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Front Zeile 2" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Text" Value="Ziel Zeile 2" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBox Grid.Column="3"
+                                                     ToolTip="Optional zweite Zeile (z. B. bei Ersatzverkehr / Stadt)."
+                                                     Text="{Binding DataContext.ActiveFrontLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                        </Grid>
+
+                                        <!-- Front Zeile 1 | 2 (einfach) -->
+                                        <Grid Grid.Row="4" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Front Zeile 1" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="1" Margin="0,0,12,0"
+                                                     Text="{Binding FrontLine1, UpdateSourceTrigger=LostFocus}" />
+                                            <TextBlock Grid.Column="2" Text="Front Zeile 2" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="3"
+                                                     Text="{Binding FrontLine2, UpdateSourceTrigger=LostFocus}" />
+                                        </Grid>
+
+                                        <!-- Zielnummer | Linie (Front z999) -->
+                                        <Grid Grid.Row="4" Grid.ColumnSpan="2" Margin="0,0,0,8"
+                                              Visibility="{Binding IsZielnummer, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Zielnummer (DS003)" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="1" Margin="0,0,12,0"
+                                                     materialDesign:HintAssist.Hint="z. B. 001 … 030"
+                                                     ToolTip="IBIS DS003: Tablet sendet z001&lt;CR&gt;+Parität – nur die Nummer, kein Klartext."
+                                                     Text="{Binding FrontLine1, UpdateSourceTrigger=LostFocus}" />
+                                            <TextBlock Grid.Column="2" Text="Linie" VerticalAlignment="Center" Margin="0,0,8,0"
+                                                       ToolTip="Front z999 aus der Zielliste (z. B. 681, SEV, [03]). Nur Dokumentation/Liste – wird nicht als DS003 gesendet." />
+                                            <TextBox Grid.Column="3"
+                                                     materialDesign:HintAssist.Hint="z. B. 681 / SEV / [03]"
+                                                     ToolTip="Front z999 aus der Zielliste (z. B. 681, SEV, [03]). Nur Dokumentation/Liste – wird nicht als DS003 gesendet."
+                                                     Text="{Binding Ds001Value, UpdateSourceTrigger=LostFocus}" />
+                                        </Grid>
+
+                                        <!-- Beschreibung/Seite nur bei DS003-Zielnummer (kein Klartext auf der Front) -->
+                                        <Grid Grid.Row="5" Grid.ColumnSpan="2" Margin="0,0,0,8"
+                                              Visibility="{Binding IsZielnummer, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="Beschreibung/Seite"
+                                                       VerticalAlignment="Center"
+                                                       Margin="0,0,8,0"
+                                                       ToolTip="Seite z999: zwei Zeilen mit „/“ verbinden, z. B. Wald-Graf-Wilh.-Platz/Höhscheid-Brockenberg." />
+                                            <TextBox Grid.Column="1"
+                                                     materialDesign:HintAssist.Hint="z. B. Zeile1/Zeile2"
+                                                     ToolTip="Seite z999: zwei Zeilen mit „/“ verbinden, z. B. Wald-Graf-Wilh.-Platz/Höhscheid-Brockenberg."
+                                                     Text="{Binding SideLine1, UpdateSourceTrigger=LostFocus}" />
+                                        </Grid>
+
+                                        <!-- Seite Zeile 1 | 2 (Wechseltext) -->
+                                        <Grid Grid.Row="5" Grid.ColumnSpan="2" Margin="0,0,0,8"
+                                              Visibility="{Binding UsesCycleEditor, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="1" Margin="0,0,12,0"
+                                                     Text="{Binding DataContext.ActiveSideLine1, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBlock Grid.Column="2" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="3"
+                                                     Text="{Binding DataContext.ActiveSideLine2, RelativeSource={RelativeSource AncestorType=UserControl}, UpdateSourceTrigger=PropertyChanged}" />
+                                        </Grid>
+
+                                        <!-- Seite Zeile 1 | 2 (einfach) -->
+                                        <Grid Grid.Row="5" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding UsesCycleEditor}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Seite Zeile 1" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="1" Margin="0,0,12,0"
+                                                     Text="{Binding SideLine1, UpdateSourceTrigger=LostFocus}" />
+                                            <TextBlock Grid.Column="2" Text="Seite Zeile 2" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="3"
+                                                     Text="{Binding SideLine2, UpdateSourceTrigger=LostFocus}" />
+                                        </Grid>
+
+                                        <!-- Linie | Sonderz. | Intervall -->
+                                        <Grid Grid.Row="6" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsZielnummer}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="DS001 Linie" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Text" Value="Linie" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBox Grid.Column="1" Margin="0,0,12,0"
+                                                     materialDesign:HintAssist.Hint="z. B. RE10 / S8 / RB3"
+                                                     ToolTip="Mobitec: Anzeigewert für Linienanzeige und Front-Linienzone (28 px), z. B. RE10, S8, RB3. Ohne OUT-Rohframe wird daraus die Anzeige neu erzeugt (Font 6C bei 4 Zeichen, sonst 69). Mit OUT-Rohframe nur Optik – Hex bleibt 1:1."
+                                                     Text="{Binding Ds001Value, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBlock Grid.Column="2" Text="DS001 Sonderz." VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBox Grid.Column="3" Margin="0,0,12,0"
+                                                     materialDesign:HintAssist.Hint="z. B. E00"
+                                                     Text="{Binding Ds001Spec, UpdateSourceTrigger=PropertyChanged}">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMobitec}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
+                                            <TextBlock Grid.Column="4" Text="Intervall (Sek.)" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding UsesIntervalSeconds}" Value="False">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBox Grid.Column="5"
+                                                     Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="DS021T-Wechselintervall bzw. Mobitec B0-Takt (z. B. 3 oder 6 Sekunden)">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding UsesIntervalSeconds}" Value="False">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
+                                        </Grid>
+
+                                        <TextBlock Grid.Row="7" Grid.ColumnSpan="2"
+                                                   Margin="0,0,0,8"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#FF64B5F6"
+                                                   Text="{Binding MobitecGraphicsLabel, Mode=OneWay}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasMobitecBitmapGraphic}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <TextBlock Grid.Row="7" Grid.ColumnSpan="2"
+                                                   Text="Schrift Front (DS021neu):"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,4,0,8">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDs021Neu}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <Grid Grid.Row="8" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDs021Neu}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="60" />
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Zeile 1 Stärke" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="1"
+                                                     materialDesign:HintAssist.Hint="Normal oder Fett"
+                                                     Text="{Binding FontLine1Weight, UpdateSourceTrigger=LostFocus}"
+                                                     Margin="0,0,12,0" />
+                                            <TextBlock Grid.Column="2" Text="Zeile 1 Höhe (0–9)" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="3"
+                                                     Text="{Binding FontLine1Height, UpdateSourceTrigger=LostFocus}" />
+                                        </Grid>
+
+                                        <Grid Grid.Row="9" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDs021Neu}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="60" />
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Zeile 2 Stärke" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="1"
+                                                     materialDesign:HintAssist.Hint="Normal oder Fett"
+                                                     Text="{Binding FontLine2Weight, UpdateSourceTrigger=LostFocus}"
+                                                     Margin="0,0,12,0" />
+                                            <TextBlock Grid.Column="2" Text="Zeile 2 Höhe (0–9)" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="3"
+                                                     Text="{Binding FontLine2Height, UpdateSourceTrigger=LostFocus}" />
+                                        </Grid>
+
+                                        <TextBlock Grid.Row="10" Grid.Column="0" Text="Steuerblock" VerticalAlignment="Center" Margin="0,0,8,8">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -265,33 +857,6 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                         <TextBox Grid.Row="10" Grid.Column="1"
-                                                 Text="{Binding Ds001Spec, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="0,0,0,8">
-                                            <TextBox.Style>
-                                                <Style TargetType="TextBox">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBox.Style>
-                                        </TextBox>
-
-                                        <TextBlock Grid.Row="11" Grid.Column="0" Text="Steuerblock" VerticalAlignment="Center" Margin="0,0,8,8">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKrefeld}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                        <TextBox Grid.Row="11" Grid.Column="1"
                                                  materialDesign:HintAssist.Hint="leer = DG5DG7DG7DG7"
                                                  Text="{Binding ControlCodes, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="0,0,0,8">
@@ -307,7 +872,7 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <StackPanel Grid.Row="12" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,4">
+                                        <StackPanel Grid.Row="11" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,4">
                                             <StackPanel.Style>
                                                 <Style TargetType="StackPanel">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -325,69 +890,110 @@
                                     </Grid>
                                 </StackPanel>
                             </ScrollViewer>
-                        </DockPanel>
+
+                            <WrapPanel Grid.Row="2">
+                                <Button Content="+ DS021T"
+                                        Command="{Binding AddOutsideProgramDs021tCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ DS021neu"
+                                        Command="{Binding AddOutsideProgramDs021NeuCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ FMA-S1"
+                                        Command="{Binding AddOutsideProgramFmaS1Command}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ DS003a Krefeld"
+                                        Command="{Binding AddOutsideProgramKrefeldCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ DS003"
+                                        Command="{Binding AddOutsideProgramZielnummerCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6"
+                                        ToolTip="IBIS DS003: nur Zielnummer z001… (wie IBISUtility)" />
+                                <Button Content="+ Mobitec"
+                                        Command="{Binding AddOutsideProgramMobitecCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="+ Mobitec Danke/Smile"
+                                        Command="{Binding AddOutsideProgramMobitecSmileCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,6"
+                                        ToolTip="Mobitec-Smile wie DS021T-Danke (Verspätungsanzeigen-Klick)" />
+                                <Button Content="Mobitec OUT importieren"
+                                        Command="{Binding ImportMobitecOutCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,6"
+                                        ToolTip="ZEdit32 TRANS.OUT / *.out einlesen und als Mobitec-Ziele in die Anzeigenliste übernehmen" />
+                                <Button Content="Auswahl löschen"
+                                        Command="{Binding RemoveOutsideProgramCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,6" />
+                                <Button Content="Alle in ITCS-Liste"
+                                        Command="{Binding EnableAllInItcsListCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,6" />
+                            </WrapPanel>
+                        </Grid>
                     </materialDesign:Card>
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Datumgesteuerte Hinweise">
-                <Grid Margin="0,8,0,0" MinHeight="380">
+            <TabItem Header="Datumgesteuerte Hinweise"
+                     HorizontalContentAlignment="Stretch"
+                     VerticalContentAlignment="Stretch">
+                <Grid Margin="0,8,0,0" VerticalAlignment="Stretch">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="300" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <materialDesign:Card Grid.Column="0" Margin="0,0,10,0" Padding="12"
+
+                    <materialDesign:Card Grid.Column="0"
+                                         Margin="0,0,10,0"
+                                         Padding="12"
+                                         VerticalAlignment="Stretch"
                                          Background="{StaticResource SmartSurfaceBrush}">
-                        <DockPanel>
+                        <DockPanel LastChildFill="True">
                             <TextBlock DockPanel.Dock="Top" Text="Hinweise" FontWeight="SemiBold" Margin="0,0,0,8" />
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <ListBox ItemsSource="{Binding DateBasedHints}"
-                                         SelectedItem="{Binding SelectedHint}"
-                                         BorderThickness="0"
-                                         Background="Transparent">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Margin="0,2">
-                                                <TextBlock Text="{Binding HintText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                                <TextBlock Opacity="0.7" FontSize="11">
-                                                    <Run Text="{Binding StartDate, Mode=OneWay}" />
-                                                    <Run Text=" – " />
-                                                    <Run Text="{Binding EndDate, Mode=OneWay}" />
-                                                </TextBlock>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </ScrollViewer>
+                            <ListBox ItemsSource="{Binding DateBasedHints}"
+                                     SelectedItem="{Binding SelectedHint}"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.CanContentScroll="False">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,2">
+                                            <TextBlock Text="{Binding HintText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <TextBlock Opacity="0.7" FontSize="11">
+                                                <Run Text="{Binding StartDate, Mode=OneWay}" />
+                                                <Run Text=" – " />
+                                                <Run Text="{Binding EndDate, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </DockPanel>
                     </materialDesign:Card>
-                    <materialDesign:Card Grid.Column="1" Padding="14" Background="{StaticResource SmartSurfaceBrush}">
-                        <DockPanel>
-                            <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-                                <TextBox materialDesign:HintAssist.Hint="Neuer Hinweistext"
-                                         Text="{Binding NewHintText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6" />
-                                <Grid Margin="0,0,0,6">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" Margin="0,0,6,0"
-                                             materialDesign:HintAssist.Hint="Start TT.MM.JJJJ"
-                                             Text="{Binding NewHintStartDate, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBox Grid.Column="1"
-                                             materialDesign:HintAssist.Hint="Ende TT.MM.JJJJ"
-                                             Text="{Binding NewHintEndDate, UpdateSourceTrigger=PropertyChanged}" />
-                                </Grid>
-                                <WrapPanel>
-                                    <Button Content="Hinweis hinzufügen" Command="{Binding AddDateBasedHintCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0" />
-                                    <Button Content="Auswahl löschen" Command="{Binding RemoveDateBasedHintCommand}"
-                                            Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" />
-                                    <Button Content="Speichern" Command="{Binding SaveCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}" />
-                                </WrapPanel>
-                            </StackPanel>
-                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="280">
+
+                    <materialDesign:Card Grid.Column="1"
+                                         Padding="14"
+                                         VerticalAlignment="Stretch"
+                                         Background="{StaticResource SmartSurfaceBrush}">
+                        <Grid VerticalAlignment="Stretch">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <ScrollViewer Grid.Row="0"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          Margin="0,0,0,10">
                                 <StackPanel DataContext="{Binding SelectedHint}">
                                     <TextBlock Text="Hinweis bearbeiten" FontWeight="SemiBold" Margin="0,0,0,10" />
                                     <Grid>
@@ -420,10 +1026,64 @@
                                     </Grid>
                                 </StackPanel>
                             </ScrollViewer>
-                        </DockPanel>
+
+                            <StackPanel Grid.Row="1">
+                                <TextBox materialDesign:HintAssist.Hint="Neuer Hinweistext"
+                                         Text="{Binding NewHintText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6" />
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Margin="0,0,6,0"
+                                             materialDesign:HintAssist.Hint="Start TT.MM.JJJJ"
+                                             Text="{Binding NewHintStartDate, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Grid.Column="1"
+                                             materialDesign:HintAssist.Hint="Ende TT.MM.JJJJ"
+                                             Text="{Binding NewHintEndDate, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                                <WrapPanel>
+                                    <Button Content="Hinweis hinzufügen" Command="{Binding AddDateBasedHintCommand}"
+                                            Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0" />
+                                    <Button Content="Auswahl löschen" Command="{Binding RemoveDateBasedHintCommand}"
+                                            Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Grid>
                     </materialDesign:Card>
                 </Grid>
             </TabItem>
         </TabControl>
-    </DockPanel>
+
+        <DockPanel Grid.Row="2" Margin="0,10,0,0">
+            <Button DockPanel.Dock="Right"
+                    Content="Speichern"
+                    Command="{Binding SaveCommand}"
+                    MinWidth="120"
+                    Margin="12,0,0,0"
+                    Style="{StaticResource DisplaysOpsSaveButtonStyle}" />
+            <Button DockPanel.Dock="Right"
+                    Content="PDF aller Ziele"
+                    Command="{Binding ExportDestinationsPdfCommand}"
+                    MinWidth="140"
+                    Margin="12,0,0,0"
+                    ToolTip="PDF mit allen Zielen der Zielliste">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedTabIndex}" Value="1">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <TextBlock Text="{Binding StatusMessage}"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap"
+                       Opacity="0.85"
+                       FontSize="12" />
+        </DockPanel>
+    </Grid>
 </UserControl>

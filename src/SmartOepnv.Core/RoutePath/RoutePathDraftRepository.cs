@@ -28,27 +28,119 @@ public static class RoutePathDraftRepository
             drafts = new JsonObject();
             packageRoot["routePathDrafts"] = drafts;
         }
-        drafts[draft.RouteName] = JsonValue.Create(RoutePathDraftSerializer.ToJson(draft));
+
+        // Unter kanonischem Schlüssel speichern und alle Alias-Keys entfernen,
+        // sonst verwirft NormalizeDraftKeysToCanonical den neuen Stand zugunsten eines alten Keys.
+        var canonical = RouteDisplayHelper.ToCanonicalRouteKey(draft.RouteName);
+        if (string.IsNullOrWhiteSpace(canonical))
+        {
+            canonical = draft.RouteName;
+        }
+
+        foreach (var key in drafts.Select(e => e.Key).ToList())
+        {
+            if (RouteDisplayHelper.RouteKeysMatch(key, draft.RouteName) ||
+                RouteDisplayHelper.RouteKeysMatch(key, canonical))
+            {
+                drafts.Remove(key);
+            }
+        }
+
+        draft.RouteName = canonical;
+        drafts[canonical] = JsonValue.Create(RoutePathDraftSerializer.ToJson(draft));
     }
 
     public static string? TryGetDraftJson(JsonObject? packageRoot, string routeName)
     {
         if (packageRoot?["routePathDrafts"] is not JsonObject drafts) return null;
-        return DraftNodeToJsonText(drafts[routeName]);
+        var direct = DraftNodeToJsonText(drafts[routeName]);
+        if (!string.IsNullOrWhiteSpace(direct))
+        {
+            return direct;
+        }
+
+        // Auto-Fahrplan speicherte zeitweise „Fahrt: 0004“ statt „Fahrt: 4“
+        string? bestJson = null;
+        var bestUpdatedAt = long.MinValue;
+        foreach (var entry in drafts)
+        {
+            if (!RouteDisplayHelper.RouteKeysMatch(entry.Key, routeName))
+            {
+                continue;
+            }
+
+            var text = DraftNodeToJsonText(entry.Value);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                continue;
+            }
+
+            var updatedAt = TryPeekUpdatedAtEpochMs(text);
+            if (bestJson is null || updatedAt >= bestUpdatedAt)
+            {
+                bestJson = text;
+                bestUpdatedAt = updatedAt;
+            }
+        }
+
+        return bestJson;
     }
 
-    private static void RefreshNodesFromStops(RoutePathDraft draft, IList<RouteStopItem> stops)
+    /// <summary>
+    /// Schreibt Drafts unter kanonischem Routenschlüssel (ohne führende Nullen in der Fahrtnummer).
+    /// Bei Kollision gewinnt der neuere <c>updatedAtEpochMs</c>.
+    /// </summary>
+    public static void NormalizeDraftKeysToCanonical(JsonObject packageRoot)
     {
-        var seeded = RoutePathDraftBuilder.BuildSeedNodes(stops);
-        var preserved = draft.Nodes
-            .Where(n => n.Type is RoutePathNodeType.AUTO_WAYPOINT or RoutePathNodeType.MANUAL_WAYPOINT)
-            .ToList();
-        draft.Nodes = seeded.Concat(preserved).ToList();
-        var validIds = draft.Nodes.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
-        draft.Segments = draft.Segments
-            .Where(s => validIds.Contains(s.FromNodeId) && validIds.Contains(s.ToNodeId))
-            .OrderBy(s => s.Order)
-            .Select((s, idx) => new RoutePathSegment { Order = idx + 1, FromNodeId = s.FromNodeId, ToNodeId = s.ToNodeId })
-            .ToList();
+        if (packageRoot["routePathDrafts"] is not JsonObject drafts || drafts.Count == 0)
+        {
+            return;
+        }
+
+        var normalized = new JsonObject();
+        var updatedAtByCanonical = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in drafts)
+        {
+            var text = DraftNodeToJsonText(entry.Value);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                continue;
+            }
+
+            var canonical = RouteDisplayHelper.ToCanonicalRouteKey(entry.Key);
+            if (string.IsNullOrWhiteSpace(canonical))
+            {
+                canonical = entry.Key;
+            }
+
+            var updatedAt = TryPeekUpdatedAtEpochMs(text);
+            if (normalized[canonical] is not null &&
+                updatedAtByCanonical.TryGetValue(canonical, out var existingAt) &&
+                existingAt > updatedAt)
+            {
+                continue;
+            }
+
+            normalized[canonical] = JsonValue.Create(text);
+            updatedAtByCanonical[canonical] = updatedAt;
+        }
+
+        packageRoot["routePathDrafts"] = normalized;
+    }
+
+    private static void RefreshNodesFromStops(RoutePathDraft draft, IList<RouteStopItem> stops) =>
+        RoutePathNodeRefresh.RefreshNodesFromStops(draft, stops);
+
+    private static long TryPeekUpdatedAtEpochMs(string draftJson)
+    {
+        try
+        {
+            var node = JsonNode.Parse(draftJson) as JsonObject;
+            return node?["updatedAtEpochMs"]?.GetValue<long>() ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 }

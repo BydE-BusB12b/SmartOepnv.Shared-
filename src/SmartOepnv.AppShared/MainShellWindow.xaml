@@ -4,6 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
+        xmlns:models="clr-namespace:SmartOepnv.AppShared.Models"
         mc:Ignorable="d"
         Title="{Binding ProductName}"
         Height="900" Width="1440"
@@ -16,6 +18,10 @@
         TextElement.FontSize="14"
         FontFamily="{materialDesign:MaterialDesignFont}">
 
+    <Window.Resources>
+        <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+    </Window.Resources>
+
     <materialDesign:DialogHost Identifier="RootDialog">
         <Grid>
             <Grid.RowDefinitions>
@@ -27,20 +33,79 @@
             <!-- App-Bar -->
             <materialDesign:ColorZone Grid.Row="0"
                                       Mode="PrimaryDark"
-                                      Padding="16,12"
-                                      materialDesign:ElevationAssist.Elevation="Dp4">
+                                      Padding="12,6"
+                                      materialDesign:ElevationAssist.Elevation="Dp2">
                 <DockPanel LastChildFill="True">
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                         <materialDesign:PackIcon Kind="BusArticulatedFront"
-                                                 Width="36" Height="36"
+                                                 Width="26" Height="26"
                                                  VerticalAlignment="Center"
-                                                 Margin="0,0,12,0" />
+                                                 Margin="0,0,8,0" />
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="{Binding ProductName}"
-                                       FontSize="20" FontWeight="SemiBold" />
+                                       FontSize="16" FontWeight="SemiBold"
+                                       LineHeight="18" />
                             <TextBlock Text="{Binding ProductSubtitle}"
-                                       FontSize="12" Opacity="0.85" />
+                                       FontSize="11" Opacity="0.85"
+                                       LineHeight="13" />
                         </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Margin="16,0"
+                                MaxWidth="780">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsLeitstelleApp}" Value="True" />
+                                            <Condition Binding="{Binding LeitstelleMessagesInbox.HasHeaderAlerts}" Value="True" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="{Binding LeitstelleMessagesInbox.HeaderAlertLine1.HeaderDisplayText}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding LeitstelleMessagesInbox.HeaderAlertLine1.HeaderDisplayText}"
+                                   Visibility="{Binding LeitstelleMessagesInbox.HeaderAlertLine1, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#FFF9C4" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LeitstelleMessagesInbox.HeaderAlertLine1.IsSos}" Value="True">
+                                            <Setter Property="Foreground" Value="#FFCDD2" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="{Binding LeitstelleMessagesInbox.HeaderAlertLine2.HeaderDisplayText}"
+                                   FontSize="11"
+                                   Opacity="0.92"
+                                   Margin="0,2,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding LeitstelleMessagesInbox.HeaderAlertLine2.HeaderDisplayText}"
+                                   Visibility="{Binding LeitstelleMessagesInbox.HeaderAlertLine2, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#E3F2FD" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LeitstelleMessagesInbox.HeaderAlertLine2.IsSos}" Value="True">
+                                            <Setter Property="Foreground" Value="#FFCDD2" />
+                                            <Setter Property="Opacity" Value="1" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal"
@@ -54,7 +119,7 @@
                                    FontWeight="SemiBold"
                                    Opacity="0.9"
                                    Visibility="Collapsed"
-                                   ToolTip="Verbleibende Zeit bis zur automatischen Abmeldung bei Inaktivität" />
+                                   ToolTip="Uhrzeit der automatischen Abmeldung bei Inaktivität (10 Min.) und verbleibende Zeit" />
                         <Button x:Name="LogoutButton"
                                 Style="{StaticResource MaterialDesignIconForegroundButton}"
                                 ToolTip="Abmelden"
@@ -74,12 +139,13 @@
             <!-- Hauptbereich mit Navigation -->
             <Grid Grid.Row="1" ClipToBounds="True">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="280" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <materialDesign:Card Grid.Column="0"
-                                     Margin="12"
+                                     HorizontalAlignment="Left"
+                                     Margin="12,12,6,12"
                                      Padding="0"
                                      UniformCornerRadius="12"
                                      Background="{StaticResource SmartSurfaceBrush}">
@@ -89,57 +155,180 @@
                                    Margin="20,20,20,8"
                                    FontWeight="SemiBold"
                                    Opacity="0.7" />
-                        <ListBox ItemsSource="{Binding NavigationItems}"
-                                 SelectedItem="{Binding SelectedNavigationItem}"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 Margin="8,0,8,12">
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
-                                    <Setter Property="Padding" Value="12,10" />
-                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border Width="22" Height="22"
-                                                    CornerRadius="11"
-                                                    Background="#FBC02D"
-                                                    Margin="0,0,8,0"
-                                                    VerticalAlignment="Center">
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding BadgeText}" Value="">
-                                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Border.Style>
-                                                <TextBlock Text="{Binding BadgeText}"
-                                                           HorizontalAlignment="Center"
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Margin="8,0,8,12">
+                            <ItemsControl ItemsSource="{Binding NavigationMenu}">
+                                <ItemsControl.Resources>
+                                    <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+                                    <!-- Einzelner Menüpunkt -->
+                                    <DataTemplate DataType="{x:Type models:NavigationItem}">
+                                        <Button Command="{Binding DataContext.SelectNavigationCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                HorizontalContentAlignment="Left"
+                                                HorizontalAlignment="Stretch"
+                                                Margin="0,3"
+                                                Padding="12,12"
+                                                Cursor="Hand"
+                                                BorderThickness="0"
+                                                Background="Transparent"
+                                                Foreground="White">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+                                                    <Setter Property="Background" Value="Transparent" />
+                                                    <Setter Property="MinHeight" Value="44" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                            <Setter Property="Background" Value="#28FFFFFF" />
+                                                        </DataTrigger>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#18FFFFFF" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="22" Height="22"
+                                                        CornerRadius="11"
+                                                        Background="#FBC02D"
+                                                        Margin="0,0,8,0"
+                                                        VerticalAlignment="Center">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding BadgeText}" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="{Binding BadgeText}"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               FontWeight="Bold"
+                                                               FontSize="10"
+                                                               Foreground="#1B1B1B" />
+                                                </Border>
+                                                <materialDesign:PackIcon Kind="{Binding Icon}"
+                                                                         Width="22" Height="22"
+                                                                         VerticalAlignment="Center"
+                                                                         Margin="0,0,14,0"
+                                                                         Foreground="{StaticResource SmartAccentBrush}" />
+                                                <TextBlock Text="{Binding Title}"
                                                            VerticalAlignment="Center"
-                                                           FontWeight="Bold"
-                                                           FontSize="10"
-                                                           Foreground="#1B1B1B" />
-                                            </Border>
-                                            <materialDesign:PackIcon Kind="{Binding Icon}"
-                                                                     Width="22" Height="22"
-                                                                     VerticalAlignment="Center"
-                                                                     Margin="0,0,14,0"
-                                                                     Foreground="{StaticResource SmartAccentBrush}" />
-                                            <TextBlock Text="{Binding Title}"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="15" />
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                                                           FontSize="15"
+                                                           FontFamily="Segoe UI"
+                                                           LineHeight="22"
+                                                           TextWrapping="NoWrap" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+
+                                    <!-- Gruppe mit Hover-Untermenü -->
+                                    <DataTemplate DataType="{x:Type models:NavigationGroup}">
+                                        <Border Background="Transparent"
+                                                MouseEnter="NavigationGroup_MouseEnter"
+                                                MouseLeave="NavigationGroup_MouseLeave"
+                                                Margin="0,3">
+                                            <StackPanel>
+                                                <Border Padding="12,12" Background="Transparent">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Width="22" Height="22"
+                                                                CornerRadius="11"
+                                                                Background="#FBC02D"
+                                                                Margin="0,0,8,0"
+                                                                VerticalAlignment="Center">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding BadgeText}" Value="">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <TextBlock Text="{Binding BadgeText}"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       FontWeight="Bold"
+                                                                       FontSize="10"
+                                                                       Foreground="#1B1B1B" />
+                                                        </Border>
+                                                        <materialDesign:PackIcon Kind="{Binding Icon}"
+                                                                                 Width="22" Height="22"
+                                                                                 VerticalAlignment="Center"
+                                                                                 Margin="0,0,14,0"
+                                                                                 Foreground="{StaticResource SmartAccentBrush}" />
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   VerticalAlignment="Center"
+                                                                   FontSize="15"
+                                                                   FontWeight="SemiBold"
+                                                                   FontFamily="Segoe UI"
+                                                                   LineHeight="22"
+                                                                   TextWrapping="NoWrap" />
+                                                        <materialDesign:PackIcon Kind="ChevronDown"
+                                                                                 Width="16" Height="16"
+                                                                                 Margin="8,0,0,0"
+                                                                                 VerticalAlignment="Center"
+                                                                                 Opacity="0.55"
+                                                                                 Foreground="White" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <ItemsControl ItemsSource="{Binding Children}"
+                                                              Margin="12,0,0,4"
+                                                              Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="{x:Type models:NavigationItem}">
+                                                            <Button Command="{Binding DataContext.SelectNavigationCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                    CommandParameter="{Binding}"
+                                                                    HorizontalContentAlignment="Left"
+                                                                    HorizontalAlignment="Stretch"
+                                                                    Margin="0,2"
+                                                                    Padding="12,10"
+                                                                    Cursor="Hand"
+                                                                    BorderThickness="0"
+                                                                    Background="Transparent"
+                                                                    Foreground="White">
+                                                                <Button.Style>
+                                                                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+                                                                        <Setter Property="Background" Value="Transparent" />
+                                                                        <Setter Property="MinHeight" Value="40" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                                            </DataTrigger>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter Property="Background" Value="#18FFFFFF" />
+                                                                            </Trigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Button.Style>
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <materialDesign:PackIcon Kind="{Binding Icon}"
+                                                                                             Width="20" Height="20"
+                                                                                             VerticalAlignment="Center"
+                                                                                             Margin="0,0,12,0"
+                                                                                             Foreground="{StaticResource SmartAccentBrush}" />
+                                                                    <TextBlock Text="{Binding Title}"
+                                                                               VerticalAlignment="Center"
+                                                                               FontSize="14"
+                                                                               FontFamily="Segoe UI"
+                                                                               LineHeight="20"
+                                                                               TextWrapping="NoWrap" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.Resources>
+                            </ItemsControl>
+                        </ScrollViewer>
                     </DockPanel>
                 </materialDesign:Card>
 
@@ -159,25 +348,10 @@
                 </materialDesign:Card>
             </Grid>
 
-            <!-- Statusleiste -->
+            <!-- Schmaler Abschlussstreifen -->
             <Border Grid.Row="2"
                     Background="{StaticResource SmartPrimaryDarkBrush}"
-                    Padding="16,8">
-                <DockPanel LastChildFill="True">
-                    <TextBlock DockPanel.Dock="Left"
-                               Text="{Binding StatusText}"
-                               VerticalAlignment="Center"
-                               Opacity="0.9" />
-                    <TextBlock DockPanel.Dock="Right"
-                               HorizontalAlignment="Right"
-                               VerticalAlignment="Center"
-                               Opacity="0.65">
-                        <Run Text="v" />
-                        <Run Text="{Binding AppVersion}" />
-                        <Run Text=" · Smart-ÖPNV" />
-                    </TextBlock>
-                </DockPanel>
-            </Border>
+                    Height="4" />
         </Grid>
     </materialDesign:DialogHost>
 </Window>

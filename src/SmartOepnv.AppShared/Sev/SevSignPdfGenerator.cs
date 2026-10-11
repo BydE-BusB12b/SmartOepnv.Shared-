@@ -58,6 +58,9 @@ public static class SevSignPdfGenerator
     private const float DestinationBandHeightDefaultMm = 75f;
     private const float DestinationBandHeightTwoLinesMm = 88f;
     private const float DestinationBandHeightThreeLinesMm = 98f;
+    /// <summary>Variante 2: Start · Pfeile · Ziel.</summary>
+    private const float DestinationBandHeightStartDestMm = 112f;
+    private const float StartDestMiddleChevronScale = 0.62f;
     /// <summary>SEV-Piktogramm (Zug→Bus): quadratisch, RE13-Vorlage.</summary>
     private const float SevIconSizeMm = 82f;
     private const float SevIconGapBelowBlueHeaderMm = 4f;
@@ -121,9 +124,16 @@ public static class SevSignPdfGenerator
     {
         var assets = assetsDirectory ?? SevAssetPaths.RootDirectory;
         var selectedOperators = SevOperatorCatalog.GetMany(data.Operators);
-        var destinationBandHeightMm = ResolveDestinationBandHeightMm(data.DestinationLayout);
-        var (chevronHeightMm, chevronWidthMm) = ResolveChevronSizeMm(data.DestinationLayout);
-        var middleHeightMm = PageHeightMm - HeaderHeightMm - FooterHeightMm - destinationBandHeightMm;
+        var useStartDestination = data.IsStartDestinationVariant;
+        var destinationBandHeightMm = useStartDestination
+            ? DestinationBandHeightStartDestMm
+            : ResolveDestinationBandHeightMm(data.DestinationLayout);
+        var (chevronHeightMm, chevronWidthMm) = useStartDestination
+            ? ResolveLineChevronSizeMm(data.ResolveStartStation(), data.Destination.Trim())
+            : ResolveChevronSizeMm(data.DestinationLayout);
+        // Gesamter Bereich zwischen Kopf und Fuß – Zielband sitzt oben darin
+        // (nicht destinationBand abziehen, sonst „conflicting size“ bei Variante 2).
+        var middleHeightMm = PageHeightMm - HeaderHeightMm - FooterHeightMm;
         var chevronTopMm = HeaderHeightMm + (destinationBandHeightMm - chevronHeightMm) / 2f;
 
         Document.Create(document =>
@@ -155,15 +165,18 @@ public static class SevSignPdfGenerator
                         .Height(HeaderHeightMm - HeaderBarTopMm, Mm)
                         .Element(c => DrawHeaderBar(c, data));
 
-                    layers.Layer()
-                        .Unconstrained()
-                        .AlignTop()
-                        .AlignLeft()
-                        .PaddingTop(chevronTopMm, Mm)
-                        .PaddingLeft(ChevronLeftMm, Mm)
-                        .Width(chevronWidthMm, Mm)
-                        .Height(chevronHeightMm, Mm)
-                        .Element(c => DrawChevron(c, assets));
+                    if (!useStartDestination)
+                    {
+                        layers.Layer()
+                            .Unconstrained()
+                            .AlignTop()
+                            .AlignLeft()
+                            .PaddingTop(chevronTopMm, Mm)
+                            .PaddingLeft(ChevronLeftMm, Mm)
+                            .Width(chevronWidthMm, Mm)
+                            .Height(chevronHeightMm, Mm)
+                            .Element(c => DrawChevron(c, assets));
+                    }
 
                     layers.Layer()
                         .Unconstrained()
@@ -283,13 +296,19 @@ public static class SevSignPdfGenerator
         }).GeneratePdf(outputPath);
     }
 
-    private static void DrawChevron(IContainer container, string assetsDirectory)
+    private static void DrawChevron(IContainer container, string assetsDirectory, bool mirrored = false)
     {
         var svgPath = Path.Combine(assetsDirectory, DestinationChevronAsset);
         if (File.Exists(svgPath))
         {
             var svg = File.ReadAllText(svgPath)
-                .Replace("#29235c", HeaderBlue, StringComparison.OrdinalIgnoreCase);
+                .Replace("#29235c", HeaderBlue, StringComparison.OrdinalIgnoreCase)
+                .Replace("#001F5B", HeaderBlue, StringComparison.OrdinalIgnoreCase);
+            if (mirrored)
+            {
+                svg = MirrorSvgHorizontally(svg);
+            }
+
             container.Svg(svg).FitArea();
             return;
         }
@@ -300,6 +319,12 @@ public static class SevSignPdfGenerator
             using var stream = new MemoryStream();
             using (var canvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
             {
+                if (mirrored)
+                {
+                    canvas.Translate(size.Width, 0);
+                    canvas.Scale(-1, 1);
+                }
+
                 if (chevronImage is not null)
                 {
                     using var bitmap = SKBitmap.Decode(chevronImage);
@@ -325,6 +350,36 @@ public static class SevSignPdfGenerator
 
             return Encoding.UTF8.GetString(stream.ToArray());
         });
+    }
+
+    /// <summary>Spiegelt denselben SVG-Pfeil horizontal (ohne QuestPDF ScaleHorizontal).</summary>
+    private static string MirrorSvgHorizontally(string svg)
+    {
+        var viewBoxMatch = System.Text.RegularExpressions.Regex.Match(
+            svg,
+            """viewBox\s*=\s*["']\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s*["']""",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!viewBoxMatch.Success)
+        {
+            return svg;
+        }
+
+        var minX = float.Parse(viewBoxMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+        var width = float.Parse(viewBoxMatch.Groups[3].Value, CultureInfo.InvariantCulture);
+        var pivotX = minX + width;
+        var open = svg.IndexOf('>', svg.IndexOf("<svg", StringComparison.OrdinalIgnoreCase));
+        var close = svg.LastIndexOf("</svg>", StringComparison.OrdinalIgnoreCase);
+        if (open < 0 || close < 0 || close <= open)
+        {
+            return svg;
+        }
+
+        var inner = svg[(open + 1)..close];
+        return svg[..(open + 1)] +
+               $"""<g transform="translate({pivotX.ToString(CultureInfo.InvariantCulture)},0) scale(-1,1)">""" +
+               inner +
+               "</g>" +
+               svg[close..];
     }
 
     private static byte[]? TryLoadRasterPngBytes(string assetsDirectory, string fileName, bool removeDarkBackground)
@@ -486,6 +541,21 @@ public static class SevSignPdfGenerator
         return (heightMm, widthMm);
     }
 
+    /// <summary>Pfeilhöhe für eine Zielzeile (Variante 2: Start- bzw. Zielzeile).</summary>
+    private static (float HeightMm, float WidthMm) ResolveLineChevronSizeMm(string startStation, string destination)
+    {
+        var startSize = string.IsNullOrWhiteSpace(startStation)
+            ? DestinationFontSizeDefault
+            : ResolveDestinationLineFontSize(startStation);
+        var destSize = string.IsNullOrWhiteSpace(destination)
+            ? DestinationFontSizeDefault
+            : ResolveDestinationLineFontSize(destination);
+        var lineHeightPt = Math.Max(startSize, destSize) * DestinationLineHeightFactor;
+        var heightMm = lineHeightPt * 25.4f / 72f;
+        var widthMm = heightMm * ChevronSvgAspectWidthOverHeight;
+        return (heightMm, widthMm);
+    }
+
     private static float ResolveDestinationLineFontSize(string line) =>
         line.Trim().Length >= DestinationFontSizeCompactFromLength
             ? DestinationFontSizeCompact
@@ -524,6 +594,12 @@ public static class SevSignPdfGenerator
         float destinationBandHeightMm,
         float chevronWidthMm)
     {
+        if (data.IsStartDestinationVariant)
+        {
+            DrawMiddleStartAndDestination(container, data, assetsDirectory, destinationBandHeightMm);
+            return;
+        }
+
         container
             .PaddingLeft(ContentInsetHorizontalMm, Mm)
             .PaddingRight(ContentAreaRightPaddingMm, Mm)
@@ -572,6 +648,76 @@ public static class SevSignPdfGenerator
                 row.ConstantItem(SevIconSizeMm, Mm);
             });
         });
+    }
+
+    private static void DrawMiddleStartAndDestination(
+        IContainer container,
+        SevSignData data,
+        string assetsDirectory,
+        float destinationBandHeightMm)
+    {
+        var start = data.ResolveStartStation();
+        var destination = data.Destination.Trim();
+        var (chevronHeightMm, chevronWidthMm) = ResolveLineChevronSizeMm(start, destination);
+        chevronHeightMm *= StartDestMiddleChevronScale;
+        chevronWidthMm *= StartDestMiddleChevronScale;
+        var chevronPairGapMm = 4f;
+        var arrowRowWidthMm = chevronWidthMm * 2f + chevronPairGapMm;
+
+        container
+            .PaddingLeft(ContentInsetHorizontalMm, Mm)
+            .PaddingRight(ContentAreaRightPaddingMm, Mm)
+            .Column(column =>
+            {
+                column.Item().Height(destinationBandHeightMm, Mm).Row(row =>
+                {
+                    // Zeile 1 Start · Zeile 2 Pfeile < > · Zeile 3 Ziel; rechts SEV-Icon.
+                    row.RelativeItem().AlignMiddle().Column(dest =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(start))
+                        {
+                            dest.Item().AlignCenter()
+                                .Text(start)
+                                .FontFamily(FontFamily)
+                                .FontSize(ResolveDestinationLineFontSize(start))
+                                .LineHeight(0.92f)
+                                .Bold()
+                                .FontColor(HeaderBlue);
+                        }
+
+                        dest.Item().Height(2f, Mm);
+
+                        dest.Item()
+                            .AlignCenter()
+                            .Width(arrowRowWidthMm, Mm)
+                            .Height(chevronHeightMm, Mm)
+                            .Row(arrowRow =>
+                            {
+                                // zuerst unterer/gespiegelter Pfeil, daneben Start-Pfeil
+                                arrowRow.ConstantItem(chevronWidthMm, Mm)
+                                    .Element(c => DrawChevron(c, assetsDirectory, mirrored: true));
+                                arrowRow.ConstantItem(chevronPairGapMm, Mm);
+                                arrowRow.ConstantItem(chevronWidthMm, Mm)
+                                    .Element(c => DrawChevron(c, assetsDirectory));
+                            });
+
+                        dest.Item().Height(2f, Mm);
+
+                        if (!string.IsNullOrWhiteSpace(destination))
+                        {
+                            dest.Item().AlignCenter()
+                                .Text(destination)
+                                .FontFamily(FontFamily)
+                                .FontSize(ResolveDestinationLineFontSize(destination))
+                                .LineHeight(0.92f)
+                                .Bold()
+                                .FontColor(HeaderBlue);
+                        }
+                    });
+
+                    row.ConstantItem(SevIconSizeMm, Mm);
+                });
+            });
     }
 
     private static void DrawRouteDiagram(IContainer container, SevSignData data, string assetsDirectory)

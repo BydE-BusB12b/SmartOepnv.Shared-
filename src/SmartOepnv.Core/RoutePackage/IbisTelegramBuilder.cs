@@ -19,6 +19,27 @@ public static class IbisTelegramBuilder
 
     public static byte[] CreateIbisMessage(string message) => Build(message);
 
+    /// <summary>DS001 Linie (z. B. <c>l001</c>).</summary>
+    public static byte[] CreateDs001Line(string lineNumber) => Build("l" + lineNumber);
+
+    /// <summary>DS001 Sonderzeichen (z. B. <c>lE03</c>).</summary>
+    public static byte[] CreateDs001Special(string code) => Build("l" + code);
+
+    /// <summary>DS003 Zielnummernabruf (z. B. <c>z003</c>).</summary>
+    public static byte[] CreateDs003DestinationNumber(string number) => Build("z" + number);
+
+    /// <summary>Entwerter / Tarifstufe (z. B. <c>e508500</c>).</summary>
+    public static byte[] CreateEntwerterCode(string code)
+    {
+        var digits = new string((code ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+        {
+            throw new ArgumentException("Entwerter-Code leer", nameof(code));
+        }
+
+        return Build("e" + digits);
+    }
+
     public static byte[] CreateDs003aTwoLine(string line1, string line2)
     {
         var l1 = Pad16(line1);
@@ -158,15 +179,81 @@ public static class OutsideDisplayTelegramFactory
 
     public static (byte[] Front, byte[] Side) BuildDs021tTelegrams(OutsideDisplayProgram program)
     {
-        var goals = new List<(string, string)> { (program.FrontLine1, program.FrontLine2) };
-        var sideGoals = !string.IsNullOrWhiteSpace(program.SideLine1) || !string.IsNullOrWhiteSpace(program.SideLine2)
-            ? new List<(string, string)> { (program.SideLine1, program.SideLine2) }
-            : goals;
+        var frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(program.FrontCycles);
+        if (frontGoals.Count == 0)
+        {
+            frontGoals = [(program.FrontLine1, program.FrontLine2)];
+        }
 
-        string? special = program.Ds001Type == "special" ? program.Ds001Value.ToUpperInvariant() : null;
-        var front = Ds021tProgramBuilder.CreateFrontProgramA2(goals, program.IntervalSeconds, special);
+        var sideGoals = OutsideDisplayCycleParser.CollectSideGoals(program.SideCycles, frontGoals);
+
+        string? special = ResolveDs001Special(program.Ds001Spec);
+        var front = Ds021tProgramBuilder.CreateFrontProgramA2(frontGoals, program.IntervalSeconds, special);
         var side = Ds021tProgramBuilder.CreateSideProgramA2(sideGoals, program.IntervalSeconds, special);
         return (front, side);
+    }
+
+    public static (byte[] Front, byte[] Side) BuildDs021NeuTelegrams(OutsideDisplayProgram program)
+    {
+        var (front, side) = Ds021NeuProgramBuilder.CreateDestinationTelegrams(
+            program.FrontLine1,
+            program.FrontLine2,
+            program.SideLine1,
+            program.SideLine2,
+            program.FontControl);
+        return (front, side);
+    }
+
+    public static (byte[] Front, byte[] Side) BuildFmaS1Telegrams(OutsideDisplayProgram program)
+    {
+        var frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(program.FrontCycles);
+        if (frontGoals.Count == 0)
+        {
+            frontGoals = [(program.FrontLine1, program.FrontLine2)];
+        }
+
+        var sideGoals = OutsideDisplayCycleParser.CollectSideGoals(program.SideCycles, frontGoals);
+        var lineNumber = FmaS1ProgramBuilder.ResolveYLineNumber(program.Ds001Value, program.Ds001Spec);
+        var frontCycles = frontGoals.Select(g => new FmaS1ProgramBuilder.TextCycle(g.Line1, g.Line2)).ToList();
+        var sideCycles = sideGoals.Select(g => new FmaS1ProgramBuilder.TextCycle(g.Line1, g.Line2)).ToList();
+        return FmaS1ProgramBuilder.CreateDestinationTelegrams(frontCycles, sideCycles, lineNumber);
+    }
+
+    /// <summary>Zielnummer (DS001+DS003 klassisch): DS001 unverändert im Programm; Ziel als <c>z###</c>.</summary>
+    public static (byte[] Front, byte[] Side) BuildZielnummerTelegrams(OutsideDisplayProgram program)
+    {
+        var number = NormalizeZielnummer(program.FrontLine1);
+        var telegram = IbisTelegramBuilder.CreateDs003DestinationNumber(number);
+        return (telegram, telegram);
+    }
+
+    /// <summary>Alias: DS003-Telegramm (nur Zielnummer).</summary>
+    public static (byte[] Front, byte[] Side) BuildDs003Telegrams(OutsideDisplayProgram program) =>
+        BuildZielnummerTelegrams(program);
+
+    /// <summary>Zielnummer normalisieren: 1–4 Ziffern, auf mind. 3 Stellen mit führenden Nullen auffüllen.</summary>
+    public static string NormalizeZielnummer(string? value)
+    {
+        var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+        {
+            return "000";
+        }
+
+        if (digits.Length > 4)
+        {
+            digits = digits[..4];
+        }
+
+        return digits.Length < 3 ? digits.PadLeft(3, '0') : digits;
+    }
+
+    private static string? ResolveDs001Special(string? raw)
+    {
+        var spec = raw?.Trim().ToUpperInvariant();
+        return !string.IsNullOrWhiteSpace(spec) && Regex.IsMatch(spec, @"^[A-Z][0-9]{2}$")
+            ? spec
+            : null;
     }
 
     private static string NormalizeLine(string value)

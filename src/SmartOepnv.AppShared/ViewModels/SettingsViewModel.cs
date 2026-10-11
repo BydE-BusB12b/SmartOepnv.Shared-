@@ -1,12 +1,21 @@
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Reflection;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Betrieb;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.AppShared;
+using SmartOepnv.AppShared.Helpers;
+using SmartOepnv.AppShared.Pdf;
 using SmartOepnv.AppShared.Views;
+using SmartOepnv.AppShared.Voip;
+using SmartOepnv.AppShared.Employees;
+using SmartOepnv.Core.Voip;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
@@ -37,13 +46,25 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string routeFileInfo = "—";
     [ObservableProperty] private string folderFilesSummary = "—";
     [ObservableProperty] private string planerFolderInfo = "—";
+    [ObservableProperty] private string activeBetriebLabel = "—";
     [ObservableProperty] private bool isConnected;
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private string brandingStatus = string.Empty;
+    [ObservableProperty] private bool showSmartOepnvLogoInPdfs = true;
+    [ObservableProperty] private string ds009TextLengthStatus = string.Empty;
     [ObservableProperty] private CompanyLogoListItem? selectedCompanyLogo;
     [ObservableProperty] private string devicePassword = string.Empty;
     [ObservableProperty] private string unlockPassword = string.Empty;
     [ObservableProperty] private string briefingPasswordsStatus = string.Empty;
+    [ObservableProperty] private string sondergongFileLabel = "—";
+    [ObservableProperty] private string sondergongStatus = string.Empty;
+    [ObservableProperty] private string voipStatusMessage = "—";
+    [ObservableProperty] private string voipPublishStatus = string.Empty;
+    [ObservableProperty] private string operatorManualExportStatus = string.Empty;
+
+    public VoipLeitstelleHost? VoipHost { get; set; }
+
+    public bool ShowVoipSection => VoipHost is not null;
 
     public ObservableCollection<CompanyLogoListItem> CompanyLogos { get; } = [];
 
@@ -51,24 +72,150 @@ public partial class SettingsViewModel : ObservableObject
 
     public bool ShowPlanerFolderSection => AppServices.IsPlannerApp;
 
+    public bool ShowBetriebSwitch => AppServices.IsPlannerApp;
+
+    public bool ShowPlannerManualExport => AppServices.IsPlannerApp;
+
+    public bool ShowLeitstelleManualExport => !AppServices.IsPlannerApp;
+
     public bool HasCompanyLogos => CompanyLogos.Count > 0;
+
+    public string AppVersionLabel { get; } = $"Version {ResolveDisplayedAppVersion()} · Smart-ÖPNV";
+
+    /// <summary>Dropbox-OAuth erfolgreich abgeschlossen (Leitstelle: Daten nachladen).</summary>
+    public event EventHandler? DropboxConnectionEstablished;
 
     public SettingsViewModel()
     {
         ReloadFromStore();
     }
 
+    private static string ResolveDisplayedAppVersion()
+    {
+        var assembly = Assembly.GetEntryAssembly() ?? typeof(SettingsViewModel).Assembly;
+        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            var cut = informational.IndexOf('+', StringComparison.Ordinal);
+            return cut > 0 ? informational[..cut] : informational;
+        }
+
+        var version = assembly.GetName().Version;
+        return version is null ? "0.3.0" : version.ToString(3);
+    }
+
     public void ReloadFromStore()
     {
         var s = AppServices.Dropbox.Settings;
-        FolderPath = s.FolderPath;
+        FolderPath = NormalizeFolderPath(s.FolderPath);
         IsConnected = s.IsConnected;
         AccountInfo = s.IsConnected
             ? $"{s.ConnectedAccountName} ({s.ConnectedAccountEmail})"
             : "—";
         ConnectionStatus = s.IsConnected ? "Verbunden" : "Nicht verbunden";
+        ActiveBetriebLabel = BuildActiveBetriebLabel();
         ReloadBranding();
         ReloadBriefingPasswords();
+        ReloadSondergong();
+        ReloadDs009TextLength();
+        RefreshVoipStatus();
+    }
+
+    private void ReloadDs009TextLength()
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            Ds009TextLengthStatus = string.Empty;
+            return;
+        }
+
+        var length = PlanerDs009TextLength.Read();
+        Ds009TextLengthStatus = $"Aktuell: {length} Zeichen.";
+    }
+
+    [RelayCommand]
+    private void SetDs009TextLength(string? lengthText)
+    {
+        if (!AppServices.IsPlannerApp || !int.TryParse(lengthText, out var length))
+        {
+            return;
+        }
+
+        PlanerDs009TextLength.Save(length);
+        ReloadDs009TextLength();
+    }
+
+    private static string BuildActiveBetriebLabel()
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return "—";
+        }
+
+        var active = BetriebProfileStore.GetActiveProfile();
+        return active is null ? "—" : active.ListLabel;
+    }
+
+    public void RefreshVoipStatus()
+    {
+        if (VoipHost is null)
+        {
+            VoipStatusMessage = "—";
+            return;
+        }
+
+        VoipStatusMessage = VoipHost.StatusMessage ?? "—";
+    }
+
+    [RelayCommand]
+    private void OpenVoipSettings()
+    {
+        if (VoipHost is null)
+        {
+            return;
+        }
+
+        var owner = Application.Current.MainWindow;
+        if (owner is null)
+        {
+            return;
+        }
+
+        var dlg = new VoipSettingsDialog(owner, VoipHost.Settings);
+        if (dlg.ShowDialog() != true)
+        {
+            return;
+        }
+
+        VoipHost.SaveSettings(dlg.Settings);
+        VoipPublishStatus = "VoIP-Einstellungen gespeichert.";
+        RefreshVoipStatus();
+        _ = VoipHost.EnsurePortAndStartAsync();
+    }
+
+    [RelayCommand]
+    private async Task PublishVoipConfigAsync()
+    {
+        if (VoipHost is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await VoipHost.PublishConfigsAsync().ConfigureAwait(true);
+            VoipPublishStatus = result.Summary;
+            RefreshVoipStatus();
+        }
+        catch (Exception ex)
+        {
+            VoipPublishStatus = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private void ReloadBriefingPasswords()
@@ -87,15 +234,116 @@ public partial class SettingsViewModel : ObservableObject
         BriefingPasswordsStatus = string.Empty;
     }
 
+    private void ReloadSondergong()
+    {
+        if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)
+        {
+            SondergongFileLabel = "—";
+            SondergongStatus = string.Empty;
+            return;
+        }
+
+        var settings = AppServices.PlanerAppSettings.Load();
+        var name = settings.SondergongFileName?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            SondergongFileLabel = "Keine Datei gewählt";
+            SondergongStatus = "Unter Ansagen → Sondergong wird diese Tondatei vor die Sequenz gesetzt.";
+            return;
+        }
+
+        var path = PlanerSondergongSoundStore.TryGetLocalFilePath(AppServices.SettingsSubfolder, name);
+        SondergongFileLabel = name;
+        SondergongStatus = path is not null
+            ? "Sondergong-Datei gespeichert – in Ansagen per Checkbox nutzbar."
+            : "Dateiname hinterlegt, lokale Datei fehlt – bitte erneut wählen.";
+    }
+
+    [RelayCommand]
+    private void ChooseSondergongSound()
+    {
+        if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Sondergong-Tondatei wählen",
+            Filter = "Audiodateien (*.wav;*.mp3)|*.wav;*.mp3|Alle Dateien (*.*)|*.*"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var fileName = PlanerSondergongSoundStore.SaveFromFile(
+                AppServices.SettingsSubfolder,
+                dialog.FileName);
+            var stored = AppServices.PlanerAppSettings.Load();
+            stored.SondergongFileName = fileName;
+            AppServices.PlanerAppSettings.Save(stored);
+            ReloadSondergong();
+        }
+        catch (Exception ex)
+        {
+            SondergongStatus = $"Sondergong konnte nicht gespeichert werden: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void ClearSondergongSound()
+    {
+        if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var stored = AppServices.PlanerAppSettings.Load();
+        var previous = stored.SondergongFileName?.Trim() ?? string.Empty;
+        stored.SondergongFileName = string.Empty;
+        AppServices.PlanerAppSettings.Save(stored);
+
+        if (!string.IsNullOrWhiteSpace(previous))
+        {
+            try
+            {
+                var path = PlanerSondergongSoundStore.TryGetLocalFilePath(
+                    AppServices.SettingsSubfolder,
+                    previous);
+                if (path is not null)
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+                // Datei kann fehlen
+            }
+        }
+
+        ReloadSondergong();
+        SondergongStatus = "Sondergong-Zuordnung entfernt.";
+    }
+
     private void ReloadBranding()
     {
         CompanyLogos.Clear();
         SelectedCompanyLogo = null;
+        ShowSmartOepnvLogoInPdfs = true;
 
         if (!AppServices.IsPlannerApp)
         {
             OnPropertyChanged(nameof(HasCompanyLogos));
             return;
+        }
+
+        if (AppServices.PlanerAppSettings is not null)
+        {
+            ShowSmartOepnvLogoInPdfs = AppServices.PlanerAppSettings.Load().ShowSmartOepnvLogoInPdfs;
         }
 
         foreach (var entry in PlanerBrandingWorkspace.GetLogos(AppServices.SettingsSubfolder))
@@ -114,6 +362,16 @@ public partial class SettingsViewModel : ObservableObject
             ? $"{CompanyLogos.Count} Logo(s) gespeichert – in Dienstvorlagen auswählbar."
             : "Noch kein Firmenlogo hinterlegt.";
         OnPropertyChanged(nameof(HasCompanyLogos));
+    }
+
+    partial void OnShowSmartOepnvLogoInPdfsChanged(bool value)
+    {
+        if (!AppServices.IsPlannerApp || AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        PlanerPdfBranding.SetSmartOepnvLogoEnabledInPdfs(value);
     }
 
     [RelayCommand]
@@ -227,6 +485,7 @@ public partial class SettingsViewModel : ObservableObject
             ReloadFromStore();
             ConnectionStatus = "Dropbox verbunden";
             await TestConnectionAsync();
+            DropboxConnectionEstablished?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -240,30 +499,235 @@ public partial class SettingsViewModel : ObservableObject
         FolderFilesSummary = "—";
     }
 
+    /// <summary>Ordnerpfad aus der UI übernehmen (Speichern-Button / Setup schließen).</summary>
+    public Task CommitFolderPathAsync() => SaveFolderPathAsync();
+
     [RelayCommand]
-    private void SaveFolderPath()
+    private async Task SaveFolderPathAsync()
     {
-        if (PersistFolderPath())
+        var normalized = NormalizeFolderPath(FolderPath);
+        FolderPath = normalized;
+        var storedNorm = NormalizeFolderPath(AppServices.Dropbox.Settings.FolderPath);
+
+        if (string.Equals(storedNorm, normalized, StringComparison.OrdinalIgnoreCase))
         {
+            PersistFolderPath();
             TestResult = "Ordnerpfad gespeichert.";
+            return;
         }
+
+        // Ohne Planer-Betriebe: Pfad nur umbinden (kein lokaler Betrieb-Workspace).
+        if (!AppServices.IsPlannerApp)
+        {
+            var stored = AppServices.Dropbox.Settings;
+            stored.FolderPath = normalized;
+            AppServices.Dropbox.SaveSettings(stored);
+            TestResult = "Ordnerpfad gespeichert.";
+            return;
+        }
+
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            "Anderer Dropbox-Ordner = anderer Betrieb.\n\n" +
+            $"Aktuell: {storedNorm}\nNeu: {normalized}\n\n" +
+            "Der aktuelle Betrieb wird gesichert und abgemeldet. " +
+            "Der Planer startet neu und lädt die Daten aus dem neuen Ordner.",
+            "Betrieb wechseln",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+        {
+            FolderPath = storedNorm;
+            TestResult = "Ordnerpfad nicht geändert.";
+            return;
+        }
+
+        var existing = BetriebProfileStore.FindByDropboxFolderPath(normalized);
+        var activeId = BetriebProfileStore.GetActiveProfile()?.Id;
+        if (existing is not null &&
+            !string.IsNullOrWhiteSpace(activeId) &&
+            string.Equals(existing.Id, activeId, StringComparison.Ordinal))
+        {
+            // Sollte nicht vorkommen (Pfade unterschiedlich) – Meta trotzdem synchron halten.
+            PersistFolderPathAllowRebind();
+            TestResult = "Ordnerpfad gespeichert.";
+            return;
+        }
+
+        if (existing is not null)
+        {
+            await RunBetriebSwitchAndRestartAsync(
+                switchToExistingId: existing.Id,
+                newDisplayName: null,
+                newDropboxFolderPath: null).ConfigureAwait(true);
+            return;
+        }
+
+        await RunBetriebSwitchAndRestartAsync(
+            switchToExistingId: null,
+            newDisplayName: BetriebProfileStore.DeriveDisplayName(normalized),
+            newDropboxFolderPath: normalized).ConfigureAwait(true);
     }
 
-    /// <summary>Speichert den Ordnerpfad aus der Eingabe (z. B. beim Schließen des Setup-Dialogs).</summary>
+    /// <summary>
+    /// Speichert den Ordnerpfad nur, wenn er dem aktuellen Betrieb entspricht.
+    /// Anderer Dropbox-Ordner wird nicht still umgebunden (sonst bleiben alte lokale Daten).
+    /// </summary>
     public bool PersistFolderPath()
     {
         var normalized = NormalizeFolderPath(FolderPath);
-        var stored = AppServices.Dropbox.Settings;
-        if (string.Equals(stored.FolderPath, normalized, StringComparison.Ordinal))
+        var storedNorm = NormalizeFolderPath(AppServices.Dropbox.Settings.FolderPath);
+        if (!string.Equals(storedNorm, normalized, StringComparison.OrdinalIgnoreCase))
         {
-            FolderPath = normalized;
+            // Eingabe verwerfen – Wechsel nur über „Ordnerpfad speichern“ / „Betrieb wechseln“.
+            FolderPath = storedNorm;
             return false;
         }
 
-        stored.FolderPath = normalized;
-        AppServices.Dropbox.SaveSettings(stored);
+        return PersistFolderPathAllowRebind();
+    }
+
+    /// <summary>Pfad/Meta am aktiven Betrieb schreiben (gleicher Ordner oder Leitstelle).</summary>
+    private bool PersistFolderPathAllowRebind()
+    {
+        var normalized = NormalizeFolderPath(FolderPath);
+        var stored = AppServices.Dropbox.Settings;
+        var changed = !string.Equals(stored.FolderPath, normalized, StringComparison.Ordinal);
+        if (changed)
+        {
+            stored.FolderPath = normalized;
+            AppServices.Dropbox.SaveSettings(stored);
+        }
+
         FolderPath = normalized;
-        return true;
+        if (AppServices.IsPlannerApp)
+        {
+            var active = BetriebProfileStore.GetActiveProfile();
+            if (active is not null)
+            {
+                var name = active.DisplayName;
+                if (string.IsNullOrWhiteSpace(name) ||
+                    string.Equals(
+                        BetriebProfileStore.DeriveDisplayName(active.DropboxFolderPath),
+                        name,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    name = BetriebProfileStore.DeriveDisplayName(normalized);
+                }
+
+                BetriebProfileStore.UpdateProfileMeta(active.Id, name, normalized);
+                ActiveBetriebLabel = BuildActiveBetriebLabel();
+            }
+        }
+
+        return changed;
+    }
+
+    [RelayCommand]
+    private async Task SwitchBetriebAsync()
+    {
+        if (!AppServices.IsPlannerApp || IsBusy)
+        {
+            return;
+        }
+
+        var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive)
+            ?? Application.Current?.MainWindow;
+        if (owner is null)
+        {
+            return;
+        }
+
+        PersistFolderPath();
+        var dialog = new BetriebSelectDialog(owner);
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        if (dialog.CreateNew)
+        {
+            await RunBetriebSwitchAndRestartAsync(
+                switchToExistingId: null,
+                newDisplayName: dialog.NewDisplayName,
+                newDropboxFolderPath: dialog.NewDropboxFolderPath).ConfigureAwait(true);
+            return;
+        }
+
+        await RunBetriebSwitchAndRestartAsync(
+            switchToExistingId: dialog.SelectedBetriebId,
+            newDisplayName: null,
+            newDropboxFolderPath: null).ConfigureAwait(true);
+    }
+
+    private async Task RunBetriebSwitchAndRestartAsync(
+        string? switchToExistingId,
+        string? newDisplayName,
+        string? newDropboxFolderPath)
+    {
+        var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive)
+            ?? Application.Current?.MainWindow;
+        if (owner is null)
+        {
+            return;
+        }
+
+        var leavingName = BetriebProfileStore.GetActiveProfile()?.DisplayName?.Trim();
+        if (string.IsNullOrWhiteSpace(leavingName))
+        {
+            leavingName = "aktueller Betrieb";
+        }
+
+        IsBusy = true;
+        TestResult = $"Betrieb „{leavingName}“ wird abgemeldet…";
+        owner.IsEnabled = false;
+
+        var savingDialog = new AppExitSavingDialog(
+            $"Betrieb „{leavingName}“ wird abgemeldet…\n\nSperre freigeben, Arbeitsstand sichern, dann neuer Betrieb.")
+        {
+            Owner = owner
+        };
+        Helpers.WindowTitleBarHelper.ShowWhenContentReady(savingDialog);
+        await Helpers.WindowTitleBarHelper.WaitForInitialRenderAsync(savingDialog).ConfigureAwait(true);
+        await savingDialog.Dispatcher.InvokeAsync(
+            () => savingDialog.StartBusAnimation(),
+            System.Windows.Threading.DispatcherPriority.Render).Task.ConfigureAwait(true);
+
+        var progress = new Progress<DropboxTransferProgress>(p =>
+        {
+            savingDialog.UpdateTransferProgress(p);
+            if (!string.IsNullOrWhiteSpace(p.Phase))
+            {
+                TestResult = p.Phase;
+            }
+        });
+
+        try
+        {
+            await SmartOepnvAppHost.SwitchBetriebAndRestartAsync(
+                owner,
+                switchToExistingId: switchToExistingId,
+                newDisplayName: newDisplayName,
+                newDropboxFolderPath: newDropboxFolderPath,
+                progress: progress,
+                statusMessage: msg =>
+                {
+                    savingDialog.SetMessage(msg);
+                    TestResult = msg;
+                }).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            savingDialog.PrepareToClose();
+            savingDialog.Close();
+            owner.IsEnabled = true;
+            TestResult = $"Betrieb wechseln fehlgeschlagen: {ex.Message}";
+            IsBusy = false;
+        }
     }
 
     public bool PersistBriefingPasswords()
@@ -305,16 +769,7 @@ public partial class SettingsViewModel : ObservableObject
         BriefingPasswordsStatus = "Keine Änderungen an den Passwörtern.";
     }
 
-    private static string NormalizeFolderPath(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return DropboxConstants.DefaultFolderPath;
-        }
-
-        var trimmed = path.Trim();
-        return trimmed.StartsWith('/') ? trimmed : $"/{trimmed}";
-    }
+    private static string NormalizeFolderPath(string? path) => DropboxConstants.NormalizeFolderPath(path);
 
     [RelayCommand]
     private async Task TestConnectionAsync()
@@ -409,6 +864,40 @@ public partial class SettingsViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private void ExportPlannerOperatorManualPdf() =>
+        ExportOperatorManualPdf(PlannerOperatorManualContent.Document, PlannerOperatorManualContent.AssetSubfolder, "planer_unterweisung");
+
+    [RelayCommand]
+    private void ExportLeitstelleOperatorManualPdf() =>
+        ExportOperatorManualPdf(LeitstelleOperatorManualContent.Document, LeitstelleOperatorManualContent.AssetSubfolder, "leitstelle_unterweisung");
+
+    private void ExportOperatorManualPdf(OperatorManualDocument document, string assetSubfolder, string filePrefix)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Filter = "PDF (*.pdf)|*.pdf",
+            FileName = OperatorManualPdfGenerator.BuildDefaultFileName(filePrefix),
+            DefaultExt = ".pdf",
+            Title = "Unterweisungsanleitung speichern"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            OperatorManualPdfGenerator.Generate(dialog.FileName, document, assetSubfolder);
+            OperatorManualExportStatus = $"PDF erstellt: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            OperatorManualExportStatus = $"PDF-Erstellung fehlgeschlagen: {ex.Message}";
         }
     }
 }

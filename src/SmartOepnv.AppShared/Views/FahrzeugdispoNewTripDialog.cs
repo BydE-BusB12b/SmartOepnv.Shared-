@@ -139,6 +139,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
         var timeFromPanel = new StackPanel();
         timeFromPanel.Children.Add(MakeLabel("Uhrzeit von"));
         _timeFromBox = MakeInput("HH:mm", startLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_timeFromBox);
         timeFromPanel.Children.Add(_timeFromBox);
         Grid.SetColumn(timeFromPanel, 0);
         timeRow.Children.Add(timeFromPanel);
@@ -146,6 +147,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
         var timeToPanel = new StackPanel();
         timeToPanel.Children.Add(MakeLabel("Uhrzeit bis"));
         _timeToBox = MakeInput("HH:mm", endLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_timeToBox);
         timeToPanel.Children.Add(_timeToBox);
         Grid.SetColumn(timeToPanel, 2);
         timeRow.Children.Add(timeToPanel);
@@ -270,13 +272,13 @@ public sealed class FahrzeugdispoNewTripDialog : Window
 
         if (!TryParseTime(_timeFromBox.Text, out var timeFrom))
         {
-            error = "Uhrzeit von ist ungültig (Format: HH:mm).";
+            error = "Uhrzeit von ist ungültig (z. B. 04:29 oder 429).";
             return false;
         }
 
         if (!TryParseTime(_timeToBox.Text, out var timeTo))
         {
-            error = "Uhrzeit bis ist ungültig (Format: HH:mm).";
+            error = "Uhrzeit bis ist ungültig (z. B. 04:29 oder 429).";
             return false;
         }
 
@@ -299,13 +301,26 @@ public sealed class FahrzeugdispoNewTripDialog : Window
     private static bool TryParseTime(string text, out TimeSpan time)
     {
         time = default;
-        var trimmed = text.Trim();
-        if (TimeSpan.TryParseExact(trimmed, "hh\\:mm", CultureInfo.InvariantCulture, out time))
+        var normalized = RouteScheduleTimeCalculator.NormalizeTimeInput(text);
+        if (!RouteScheduleTimeCalculator.TryParseTime(normalized, out var timeOnly))
         {
-            return true;
+            return false;
         }
 
-        return TimeSpan.TryParseExact(trimmed, "h\\:mm", CultureInfo.InvariantCulture, out time);
+        time = timeOnly.ToTimeSpan();
+        return true;
+    }
+
+    private static void AttachTimeNormalization(TextBox box)
+    {
+        box.LostFocus += (_, _) =>
+        {
+            var normalized = RouteScheduleTimeCalculator.NormalizeTimeInput(box.Text);
+            if (!string.Equals(box.Text, normalized, StringComparison.Ordinal))
+            {
+                box.Text = normalized;
+            }
+        };
     }
 
     private static string BuildVehicleLabel(RegisteredVehicleItem vehicle)

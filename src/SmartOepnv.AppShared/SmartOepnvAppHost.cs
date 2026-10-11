@@ -1,10 +1,13 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using MaterialDesignColors;
 using MaterialDesignThemes.Wpf;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Betrieb;
+using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.Session;
 using SmartOepnv.Core.Updates;
@@ -28,8 +31,209 @@ public static class SmartOepnvAppHost
         if (!profile.IsLeitstelle)
         {
             PlanerSyncBusAnimation.PreloadBusImage();
+            SyncActiveBetriebFolderPathFromDropboxSettings();
         }
         RegisterShutdownHandlersIfNeeded();
+    }
+
+    /// <summary>Profil-Metadaten an aktuellen Dropbox-Pfad anbinden (falls manuell geändert).</summary>
+    private static void SyncActiveBetriebFolderPathFromDropboxSettings()
+    {
+        try
+        {
+            var active = BetriebProfileStore.GetActiveProfile();
+            if (active is null)
+            {
+                return;
+            }
+
+            var folder = DropboxConstants.NormalizeFolderPath(AppServices.Dropbox.Settings.FolderPath);
+            if (string.Equals(active.DropboxFolderPath, folder, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(active.DisplayName))
+            {
+                return;
+            }
+
+            var name = string.IsNullOrWhiteSpace(active.DisplayName)
+                ? BetriebProfileStore.DeriveDisplayName(folder)
+                : active.DisplayName;
+            BetriebProfileStore.UpdateProfileMeta(active.Id, name, folder);
+        }
+        catch
+        {
+            // optional
+        }
+    }
+
+    /// <summary>
+    /// Speichert aktuellen Betrieb (schnell), meldet ab, wechselt Profil und startet neu.
+    /// </summary>
+    public static async Task SwitchBetriebAndRestartAsync(
+        Window owner,
+        string? switchToExistingId,
+        string? newDisplayName,
+        string? newDropboxFolderPath,
+        IProgress<DropboxTransferProgress>? progress = null,
+        Action<string>? statusMessage = null)
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return;
+        }
+
+        var leavingName = BetriebProfileStore.GetActiveProfile()?.DisplayName?.Trim();
+        if (string.IsNullOrWhiteSpace(leavingName))
+        {
+            leavingName = "aktueller Betrieb";
+        }
+
+        void Status(string text) => statusMessage?.Invoke(text);
+
+        Status($"Betrieb „{leavingName}“ wird abgemeldet…");
+        ReportOverall(progress, $"Betrieb „{leavingName}“ wird abgemeldet…", 2);
+
+        try
+        {
+            AppServices.FlushAllPendingEditsBestEffort();
+        }
+        catch
+        {
+            // weiter
+        }
+
+        // Dropbox-Pfad im Profil festhalten, bevor wir abmelden/wechseln
+        try
+        {
+            var active = BetriebProfileStore.GetActiveProfile();
+            if (active is not null)
+            {
+                BetriebProfileStore.UpdateProfileMeta(
+                    active.Id,
+                    active.DisplayName,
+                    AppServices.Dropbox.Settings.FolderPath);
+            }
+        }
+        catch
+        {
+            // optional
+        }
+
+        // Sperre sofort freigeben – sichtbar als Abmeldung, bevor der Upload fertig ist
+        Status($"Betrieb „{leavingName}“: Sperre wird freigegeben…");
+        ReportOverall(progress, $"Betrieb „{leavingName}“: Sperre wird freigegeben…", 8);
+        try
+        {
+            await ReleasePlanerSessionAsync().ConfigureAwait(true);
+            Status($"Betrieb „{leavingName}“ abgemeldet – Arbeitsstand wird gesichert…");
+            ReportOverall(progress, $"Betrieb „{leavingName}“ abgemeldet – Arbeitsstand wird gesichert…", 12);
+        }
+        catch
+        {
+            // trotzdem weiterwechseln
+        }
+
+        if (AppServices.Dropbox.Settings.IsConnected)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                await PlanerDropboxWorkspaceSync.TryExportAsync(
+                        flushBeforeCapture: false,
+                        progress: progress,
+                        ct: cts.Token,
+                        skipAnnouncementSounds: true,
+                        skipVersionSnapshots: true)
+                    .ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                Status("Upload-Zeitlimit – Wechsel geht trotzdem weiter (lokal gespeichert).");
+            }
+            catch
+            {
+                // lokaler Stand bleibt erhalten
+            }
+        }
+
+        Status("Neuer Betrieb wird geladen…");
+        ReportOverall(progress, "Neuer Betrieb wird geladen…", 95);
+
+        if (!string.IsNullOrWhiteSpace(switchToExistingId))
+        {
+            BetriebProfileStore.SwitchTo(switchToExistingId);
+        }
+        else if (!string.IsNullOrWhiteSpace(newDisplayName) && !string.IsNullOrWhiteSpace(newDropboxFolderPath))
+        {
+            BetriebProfileStore.CreateAndActivate(
+                newDisplayName,
+                newDropboxFolderPath,
+                AppServices.Dropbox.Settings);
+        }
+        else
+        {
+            throw new InvalidOperationException("Kein Betrieb gewählt.");
+        }
+
+        SkipShutdownSave = true;
+        ReportOverall(progress, "Planer wird neu gestartet…", 100);
+        RestartCurrentProcess(owner);
+    }
+
+    private static void ReportOverall(IProgress<DropboxTransferProgress>? progress, string phase, double percent) =>
+        progress?.Report(new DropboxTransferProgress
+        {
+            Phase = phase,
+            BytesTransferred = (long)Math.Round(percent),
+            TotalBytes = 100
+        });
+
+    private static void RestartCurrentProcess(Window? owner)
+    {
+        var exe = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(exe))
+        {
+            try
+            {
+                exe = Process.GetCurrentProcess().MainModule?.FileName;
+            }
+            catch
+            {
+                exe = null;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe))
+        {
+            MessageBox.Show(
+                owner,
+                "Betrieb wurde umgestellt. Bitte den Planer manuell neu starten.",
+                "Betrieb wechseln",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            Application.Current?.Shutdown();
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                owner,
+                $"Neustart fehlgeschlagen ({ex.Message}). Bitte den Planer manuell neu starten.",
+                "Betrieb wechseln",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+
+        Application.Current?.Shutdown();
     }
 
     private static void RegisterShutdownHandlersIfNeeded()
@@ -146,6 +350,48 @@ public static class SmartOepnvAppHost
         }
 
         await AppServices.PlanerSession.ReleaseLockAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Dropbox-Export nach UI-Commit (ohne Dispatcher). Für Logout-Dialog und Hintergrund-Beenden.
+    /// </summary>
+    public static async Task ExportPlanerWorkspaceForShutdownAsync(
+        IProgress<DropboxTransferProgress>? transferProgress = null)
+    {
+        PlanerDropboxWorkspaceSync.ExportResult? exportResult = null;
+        await Task.Run(async () =>
+        {
+            const int maxExportAttempts = 3;
+            for (var attempt = 1; attempt <= maxExportAttempts; attempt++)
+            {
+                exportResult = await PlanerDropboxWorkspaceSync.TryExportAsync(
+                        flushBeforeCapture: false,
+                        progress: transferProgress)
+                    .ConfigureAwait(false);
+                if (exportResult is { Exported: true })
+                {
+                    return;
+                }
+
+                if (exportResult?.Message.Contains("payload_too_large", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    break;
+                }
+
+                if (attempt < maxExportAttempts)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(8 * attempt)).ConfigureAwait(false);
+                }
+            }
+        }).ConfigureAwait(false);
+
+        if (exportResult is { Exported: false })
+        {
+            var hint = exportResult.LocalSaved
+                ? "\n\nDer Arbeitsstand liegt lokal vor – bitte Internetverbindung prüfen und erneut speichern."
+                : string.Empty;
+            throw new InvalidOperationException(exportResult.Message + hint);
+        }
     }
 
     /// <summary>Beim Beenden synchron speichern und Dropbox-Sperre freigeben (blockiert bis Upload fertig).</summary>

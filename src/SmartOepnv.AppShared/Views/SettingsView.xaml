@@ -12,6 +12,10 @@
             <TextBlock Text="Einstellungen" Style="{StaticResource SmartPageTitleStyle}" />
             <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
                        Text="Dropbox-Verbindung, Firmenlogos und Ordnerpfad – kompatibel zur GPSAnsagen-App (routes_export.json)." />
+            <TextBlock Margin="0,0,0,16"
+                       Opacity="0.7"
+                       FontSize="12"
+                       Text="{Binding AppVersionLabel}" />
 
             <materialDesign:Card Padding="24"
                                  UniformCornerRadius="12"
@@ -69,6 +73,14 @@
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Visibility="{Binding HasCompanyLogos, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </StackPanel>
+
+                    <Separator Margin="0,16,0,12" Opacity="0.35" />
+                    <TextBlock Text="Smart-ÖPNV-Logo in PDFs" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <CheckBox Content="Smart-ÖPNV-Logo in PDF-Kopfzeilen anzeigen"
+                              IsChecked="{Binding ShowSmartOepnvLogoInPdfs, Mode=TwoWay}"
+                              Margin="0,0,0,4" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12"
+                               Text="Gilt für Disposition, Zeitwirtschaft, Bildfahrplan, Routenschnur, Einweisung u. a. Bei Mitteilungen weiterhin separat wählbar." />
                 </StackPanel>
             </materialDesign:Card>
 
@@ -94,6 +106,103 @@
                             Command="{Binding SaveBriefingPasswordsCommand}"
                             HorizontalAlignment="Left"
                             Style="{StaticResource MaterialDesignRaisedButton}" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
+                                 Visibility="{Binding ShowBrandingSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Haltestellenanzeige (DS009)" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Maximale Textlänge für Zieltext und Haltestellenanzeige im Planer. Entspricht der DS009-Einstellung (16/20) in der App – speichert nur die Eingabelänge, nicht das Telegramm." />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="16 Zeichen"
+                                Command="{Binding SetDs009TextLengthCommand}"
+                                CommandParameter="16"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,8,0"
+                                MinWidth="110" />
+                        <Button Content="20 Zeichen"
+                                Command="{Binding SetDs009TextLengthCommand}"
+                                CommandParameter="20"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                MinWidth="110" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Ds009TextLengthStatus}" Opacity="0.85" Margin="0,10,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
+                                 Visibility="{Binding ShowBrandingSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Ansagen – Sondergong" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Tondatei für die Checkbox „Sondergong“ unter Ansagen → Ton &amp; Import. Wird vor die Zusammenfüge-Sequenz gesetzt (nach dem normalen Gong, falls aktiv)." />
+                    <TextBlock Text="{Binding SondergongFileLabel}" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding SondergongStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Sondergong wählen…"
+                                Command="{Binding ChooseSondergongSoundCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="Entfernen"
+                                Command="{Binding ClearSondergongSoundCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                    </StackPanel>
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16"
+                                 Visibility="{Binding ShowVoipSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Funk / VoIP" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Smart ÖPNV Funk – Server-Einstellungen und Konfiguration für Tablets (Dropbox)." />
+                    <TextBlock Text="{Binding VoipStatusMessage}" Opacity="0.85" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="VoIP-Einstellungen"
+                                Command="{Binding OpenVoipSettingsCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="VoIP-Config nach Dropbox"
+                                Command="{Binding PublishVoipConfigCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding VoipPublishStatus}" Opacity="0.85" TextWrapping="Wrap" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16"
+                                 Visibility="{Binding ShowPlannerManualExport, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Unterweisungsanleitung Planer" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Vollständige PDF-Anleitung für alle Planer-Bereiche (Routen, Disposition, Versand, …). Screenshots unter Assets/briefing/planner/ – siehe PLANER_LEITSTELLE_SCREENSHOT_GUIDE.md." />
+                    <Button Content="Planer-Anleitung als PDF erstellen"
+                            Command="{Binding ExportPlannerOperatorManualPdfCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                    <TextBlock Text="{Binding OperatorManualExportStatus}" Opacity="0.85" Margin="0,12,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartSurfaceBrush}" Margin="0,0,0,16"
+                                 Visibility="{Binding ShowLeitstelleManualExport, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Unterweisungsanleitung Leitstelle" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Vollständige PDF-Anleitung für Live-Karte, Fernsteuerung, Funk, Nachrichten und Versand. Screenshots unter Assets/briefing/leitstelle/." />
+                    <Button Content="Leitstelle-Anleitung als PDF erstellen"
+                            Command="{Binding ExportLeitstelleOperatorManualPdfCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                    <TextBlock Text="{Binding OperatorManualExportStatus}" Opacity="0.85" Margin="0,12,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </materialDesign:Card>
 
@@ -123,14 +232,25 @@
                 <StackPanel>
                     <TextBlock Text="Dropbox-Ordner" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
                     <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
-                               Text="Standard: /App/Smart ÖPNV – bei geteiltem Ordner ggf. abweichenden Pfad eintragen (wie in der Android-App). Der Pfad wird beim Verbindungstest, beim Verlassen der Seite und in „Dropbox einrichten“ beim Schließen automatisch gespeichert." />
+                               Text="Standard: /smart öpnv – anderer Ordner = anderer Betrieb (wie in der Android-App). „Ordnerpfad speichern“ wechselt bei abweichendem Pfad automatisch den Betrieb, sichert den aktuellen Stand und startet neu, damit die Dropbox-Daten geladen werden." />
                     <TextBox Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}"
                              materialDesign:HintAssist.Hint="Ordnerpfad"
                              Margin="0,0,0,12" />
-                    <Button Content="Ordnerpfad speichern"
-                            Command="{Binding SaveFolderPathCommand}"
-                            HorizontalAlignment="Left"
-                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <Button Content="Ordnerpfad speichern"
+                                Command="{Binding SaveFolderPathCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="Betrieb wechseln"
+                                Command="{Binding SwitchBetriebCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Visibility="{Binding ShowBetriebSwitch, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+                    <TextBlock Opacity="0.85" TextWrapping="Wrap"
+                               Visibility="{Binding ShowBetriebSwitch, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Run Text="Aktiver Betrieb: " FontWeight="SemiBold" />
+                        <Run Text="{Binding ActiveBetriebLabel}" />
+                    </TextBlock>
                 </StackPanel>
             </materialDesign:Card>
 

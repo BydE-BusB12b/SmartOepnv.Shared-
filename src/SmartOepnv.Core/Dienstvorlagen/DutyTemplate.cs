@@ -5,7 +5,7 @@ namespace SmartOepnv.Core.Dienstvorlagen;
 /// <summary>Wiederverwendbare Dienstvorlage für den Planer.</summary>
 public sealed class DutyTemplate
 {
-    public const int FileVersion = 8;
+    public const int FileVersion = 10;
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
@@ -26,6 +26,12 @@ public sealed class DutyTemplate
     public string Contractor { get; set; } = string.Empty;
 
     public string OperatingDay { get; set; } = string.Empty;
+
+    /// <summary>Optionales Gültigkeitsdatum von (TT.MM.JJJJ).</summary>
+    public string ValidFrom { get; set; } = string.Empty;
+
+    /// <summary>Optionales Gültigkeitsdatum bis (TT.MM.JJJJ).</summary>
+    public string ValidTo { get; set; } = string.Empty;
 
     public string VehicleNumber { get; set; } = string.Empty;
 
@@ -65,8 +71,17 @@ public sealed class DutyTemplate
     /// <summary>Teil 3 bei dreigeteiltem Dienst.</summary>
     public List<DutyTemplateRow> Part3Rows { get; set; } = [];
 
+    /// <summary>
+    /// FPersV geteilter Dienst: eine Dienstnummer, Arbeitsteil 1 + dienstfreie Pause + Arbeitsteil 2.
+    /// Nicht zu verwechseln mit der Dienstaufteilung (G1/G2) über <see cref="DutyNumberPart2"/>.
+    /// </summary>
+    public bool IsSplitShift { get; set; }
+
     [JsonIgnore]
     public bool IsSplitDuty => Part2Rows.Count > 0 || Part3Rows.Count > 0;
+
+    [JsonIgnore]
+    public bool IsDutyDivision => IsSplitDuty && !IsSplitShift;
 
     [JsonIgnore]
     public bool IsThreePartDuty => Part3Rows.Count > 0;
@@ -80,9 +95,11 @@ public sealed class DutyTemplate
             ? DateTimeOffset.FromUnixTimeMilliseconds(UpdatedAtUtcMs).ToLocalTime().ToString("dd.MM.yyyy HH:mm")
             : "–";
         var stats = DutyTemplateCalculator.ComputeSummary(this);
-        var partLabel = IsSplitDuty && !string.IsNullOrWhiteSpace(DutyNumberPart2)
-            ? $"{DutyNumber.Trim()} + {DutyNumberPart2.Trim()} · "
-            : IsSplitDuty ? "2 Teile · " : string.Empty;
+        var partLabel = IsSplitShift && Part2Rows.Count > 0
+            ? $"{DutyNumber.Trim()} (geteilter Dienst) · "
+            : IsDutyDivision && !string.IsNullOrWhiteSpace(DutyNumberPart2)
+                ? $"{DutyNumber.Trim()} + {DutyNumberPart2.Trim()} · "
+                : IsDutyDivision ? "2 Teile · " : string.Empty;
         return $"{partLabel}{stats.ServiceDurationDisplay} · {Rows.Count + Part2Rows.Count + Part3Rows.Count} Abschnitt(e) · {when}";
     }
 
@@ -96,6 +113,8 @@ public sealed class DutyTemplate
         DutyNumberPart3 = DutyNumberPart3,
         Contractor = Contractor,
         OperatingDay = OperatingDay,
+        ValidFrom = ValidFrom,
+        ValidTo = ValidTo,
         VehicleNumber = VehicleNumber,
         DefaultLineCourse = DefaultLineCourse,
         ImportedLine = ImportedLine,
@@ -107,6 +126,7 @@ public sealed class DutyTemplate
         CustomUnpaidBreakDeductionMinutes = CustomUnpaidBreakDeductionMinutes,
         WorkPreparationMinutes = WorkPreparationMinutes,
         WorkFollowUpMinutes = WorkFollowUpMinutes,
+        IsSplitShift = IsSplitShift,
         Rows = Rows.Select(r => r.Clone()).ToList(),
         Part2Rows = Part2Rows.Select(r => r.Clone()).ToList(),
         Part3Rows = Part3Rows.Select(r => r.Clone()).ToList()

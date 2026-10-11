@@ -6,8 +6,12 @@ public static class NavManeuverDisplayHelper
     public static string EffectiveSymbolType(RoutePathSnapManeuver maneuver)
     {
         var explicitType = (maneuver.NavSymbolType ?? string.Empty).Trim();
-        if (!string.IsNullOrEmpty(explicitType) &&
-            !string.Equals(explicitType, NavSymbolCatalog.Hidden, StringComparison.Ordinal))
+        if (string.Equals(explicitType, NavSymbolCatalog.Hidden, StringComparison.Ordinal))
+        {
+            return NavSymbolCatalog.Hidden;
+        }
+
+        if (!string.IsNullOrEmpty(explicitType))
         {
             return explicitType;
         }
@@ -20,7 +24,8 @@ public static class NavManeuverDisplayHelper
         string symbolType,
         double segmentLengthMeters)
     {
-        if (string.Equals(symbolType, NavSymbolCatalog.Hidden, StringComparison.Ordinal))
+        if (string.Equals((maneuver.NavSymbolType ?? string.Empty).Trim(), NavSymbolCatalog.Hidden, StringComparison.Ordinal) ||
+            string.Equals(symbolType, NavSymbolCatalog.Hidden, StringComparison.Ordinal))
         {
             return false;
         }
@@ -128,18 +133,12 @@ public static class NavManeuverDisplayHelper
         if (t.Contains("kreisverkehr", StringComparison.Ordinal) ||
             t.Contains("ausfahrt", StringComparison.Ordinal))
         {
-            if (t.Contains('5') || t.Contains("fünf", StringComparison.Ordinal))
-            {
-                if (t.Contains('4')) return "roundabout_4_5";
-                if (t.Contains('3')) return "roundabout_3_5";
-                if (t.Contains('2')) return "roundabout_2_5";
-                return "roundabout_5_5";
-            }
-
-            if (t.Contains('4')) return "roundabout_4_4";
-            if (t.Contains('3')) return "roundabout_3_4";
-            if (t.Contains('2')) return "roundabout_2_4";
-            return "roundabout_2_4";
+            var isFiveArm = t.Contains('5') || t.Contains("fünf", StringComparison.Ordinal);
+            var suffix = isFiveArm ? "_5" : "_4";
+            if (t.Contains('4')) return "roundabout_4" + suffix;
+            if (t.Contains('3')) return "roundabout_3" + suffix;
+            if (t.Contains('2')) return "roundabout_2" + suffix;
+            return "roundabout_1" + suffix;
         }
 
         var hasLeft = t.Contains("links", StringComparison.Ordinal);
@@ -190,21 +189,39 @@ public static class NavManeuverDisplayHelper
         return byEdge.Values.OrderBy(s => s.Order).ToList();
     }
 
-    /// <summary>Sichtbare Navi-Hinweise in derselben Reihenfolge und Nummerierung wie auf der Karte.</summary>
+    /// <summary>
+    /// Sichtbare Navi-Hinweise in Reihenfolge der Snap-Route
+    /// (Segment-Order + Distanz im Segment). Keine Shape-Nähe-Projektion –
+    /// sonst greifen wiederholte Kreuzungen die frühe Passage (z. B. 3 statt 7).
+    /// </summary>
     public static IEnumerable<VisibleNavManeuverEntry> EnumerateVisibleMapManeuvers(RoutePathDraft draft)
     {
-        var displayNumber = 0;
-        var seenMarkerKeys = new HashSet<string>(StringComparer.Ordinal);
+        if (draft.SnappedShape is null || draft.SnappedShape.Count < 2)
+        {
+            RoutePathSnapOrchestrator.RebuildMergedShapeAndManeuvers(draft);
+        }
 
-        foreach (var segment in SegmentsForMapDisplay(draft))
+        var collected = new List<(
+            RoutePathSegment Segment,
+            int ManeuverIndex,
+            RoutePathSnapManeuver Maneuver,
+            string SymbolType,
+            string MarkerKey,
+            double Prefer)>();
+
+        var seenMarkerKeys = new HashSet<string>(StringComparer.Ordinal);
+        var cumulative = 0.0;
+
+        foreach (var segment in draft.Segments.OrderBy(s => s.Order))
         {
             var edgeKey = RoutePathDraft.SegmentEdgeKey(segment.FromNodeId, segment.ToNodeId);
+            var segmentLength = SegmentLengthMeters(draft, segment);
             if (!draft.RoadSegmentManeuvers.TryGetValue(edgeKey, out var maneuvers) || maneuvers.Count == 0)
             {
+                cumulative += segmentLength;
                 continue;
             }
 
-            var segmentLength = SegmentLengthMeters(draft, segment);
             for (var i = 0; i < maneuvers.Count; i++)
             {
                 var maneuver = maneuvers[i];
@@ -217,18 +234,39 @@ public static class NavManeuverDisplayHelper
                 var markerKey = $"{edgeKey}_m{i}";
                 if (!seenMarkerKeys.Add(markerKey))
                 {
-                    continue;
+                    markerKey = $"{edgeKey}_o{segment.Order}_m{i}";
+                    if (!seenMarkerKeys.Add(markerKey))
+                    {
+                        continue;
+                    }
                 }
 
-                displayNumber++;
-                yield return new VisibleNavManeuverEntry(
-                    segment,
-                    i,
-                    maneuver,
-                    symbolType,
-                    displayNumber,
-                    markerKey);
+                var rawD = Math.Max(0, maneuver.DistanceM);
+                var localD = segmentLength > 1 && rawD > segmentLength + 15
+                    ? Math.Min(Math.Max(0, rawD - cumulative), segmentLength)
+                    : Math.Min(rawD, segmentLength > 0 ? segmentLength : rawD);
+                var prefer = cumulative + localD;
+                collected.Add((segment, i, maneuver, symbolType, markerKey, prefer));
             }
+
+            cumulative += segmentLength;
+        }
+
+        var displayNumber = 0;
+        foreach (var entry in collected
+                     .OrderBy(e => e.Prefer)
+                     .ThenBy(e => e.Segment.Order)
+                     .ThenBy(e => e.Maneuver.DistanceM)
+                     .ThenBy(e => e.ManeuverIndex))
+        {
+            displayNumber++;
+            yield return new VisibleNavManeuverEntry(
+                entry.Segment,
+                entry.ManeuverIndex,
+                entry.Maneuver,
+                entry.SymbolType,
+                displayNumber,
+                entry.MarkerKey);
         }
     }
 
