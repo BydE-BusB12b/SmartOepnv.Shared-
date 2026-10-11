@@ -12,13 +12,18 @@ public static class GpsAnsagenRouteExportSync
 {
     public const string LiteExportProfile = "lite";
 
+    /// <summary>
+    /// <c>routeStops</c> als Kartei-Verweis + Overlay (siehe <see cref="GpsAnsagenStopJson.WriteCatalogOverlay"/>).
+    /// </summary>
+    public const string RouteStopsFormatCatalogOverlay = "catalogOverlay";
+
     private static readonly string[] LiteVehicleUpdateStripKeys =
     [
         "embeddedSounds",
         "specialAnnouncements",
         "allowedRoutes",
         "managedAnnouncementTemplates",
-        "managedStopTemplates",
+        // managedStopTemplates bewusst NICHT strippen – nötig für Katalog-Overlays auf dem Gerät
         "employeeRoster",
         "employeeRosterMeta",
         "registeredVehicles",
@@ -63,7 +68,9 @@ public static class GpsAnsagenRouteExportSync
             .ToList();
 
         SyncRoutesAndLineCourse(packageRoutes, root, package.RouteInteriorDisplayDestinationsByRoute);
-        SyncRouteStops(package, packageRoutes, root);
+        // Wie Lite-Update: routeStops als Kartei-Overlays (Audio weiterhin separat in embeddedSounds).
+        ManagedStopTemplateEditor.SaveToRoot(root, package.StopTemplates);
+        SyncRouteStops(package, packageRoutes, root, catalogOverlays: true);
         root.Remove("routeDirections");
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", packageRoutes);
         RoutePathDraftRepository.NormalizeDraftKeysToCanonical(root);
@@ -80,7 +87,6 @@ public static class GpsAnsagenRouteExportSync
             package.RegisteredVehicles,
             package.RegisteredVehiclePhoneRedirects);
         MessageTemplatesEditor.SaveToRoot(root, package.MessageTemplates, package.MailTemplates);
-        ManagedStopTemplateEditor.SaveToRoot(root, package.StopTemplates);
         AnnouncementSoundFileResolver.ApplyResolvedFileNames(
             package.AnnouncementTemplates,
             root,
@@ -380,7 +386,8 @@ public static class GpsAnsagenRouteExportSync
         EditableRoutePackage package,
         IEnumerable<string> routesToExport,
         JsonObject root,
-        bool replaceAll = true)
+        bool replaceAll = true,
+        bool catalogOverlays = false)
     {
         var routeStopsObject = replaceAll
             ? new JsonObject()
@@ -396,6 +403,20 @@ public static class GpsAnsagenRouteExportSync
             }
         }
 
+        Dictionary<string, ManagedStopTemplateItem>? templatesByCode = null;
+        if (catalogOverlays)
+        {
+            templatesByCode = new Dictionary<string, ManagedStopTemplateItem>(StringComparer.Ordinal);
+            foreach (var template in package.StopTemplates)
+            {
+                var code = PlannerStopCode.Normalize(template.StopCode);
+                if (!string.IsNullOrEmpty(code) && !templatesByCode.ContainsKey(code))
+                {
+                    templatesByCode[code] = template;
+                }
+            }
+        }
+
         foreach (var canonical in routesToExport
                      .Select(RouteDisplayHelper.ToCanonicalRouteKey)
                      .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -405,13 +426,30 @@ public static class GpsAnsagenRouteExportSync
             var stopsArray = new JsonArray();
             foreach (var stop in ResolveStopsForExport(package, canonical))
             {
-                stopsArray.Add(GpsAnsagenStopJson.Write(stop, distributionKey));
+                if (catalogOverlays && templatesByCode != null)
+                {
+                    var code = PlannerStopCode.Normalize(stop.PlannerStopCode);
+                    templatesByCode.TryGetValue(code, out var catalog);
+                    stopsArray.Add(GpsAnsagenStopJson.WriteCatalogOverlay(stop, distributionKey, catalog));
+                }
+                else
+                {
+                    stopsArray.Add(GpsAnsagenStopJson.Write(stop, distributionKey));
+                }
             }
 
             routeStopsObject[distributionKey] = stopsArray;
         }
 
         root["routeStops"] = routeStopsObject;
+        if (catalogOverlays)
+        {
+            root["routeStopsFormat"] = RouteStopsFormatCatalogOverlay;
+        }
+        else
+        {
+            root.Remove("routeStopsFormat");
+        }
     }
 
     private static IEnumerable<RouteStopItem> ResolveStopsForExport(EditableRoutePackage package, string canonical)
@@ -467,13 +505,16 @@ public static class GpsAnsagenRouteExportSync
         var root = JsonNode.Parse(package.ToJson()) as JsonObject
             ?? throw new InvalidOperationException("Route-Paket konnte nicht gelesen werden.");
 
+        // Immer Kartei + Overlays; Voll-Transfer behält Audio, Lite strippt es danach.
+        ManagedStopTemplateEditor.SaveToRoot(root, package.StopTemplates);
         ApplyRouteSubsetToRoot(
             package,
             root,
             routesToExport,
             workspace,
             pruneOthersOnDevice,
-            includeEmbeddedSounds: !liteVehicleUpdate);
+            includeEmbeddedSounds: !liteVehicleUpdate,
+            catalogOverlays: true);
 
         if (pruneOthersOnDevice)
         {
@@ -532,7 +573,9 @@ public static class GpsAnsagenRouteExportSync
             .ToList();
 
         SyncRoutesAndLineCourse(packageRoutes, root, package.RouteInteriorDisplayDestinationsByRoute);
-        SyncRouteStops(package, packageRoutes, root);
+        // Lite-Update: Kartei + schlanke Overlays statt voller Stop-Kopien
+        ManagedStopTemplateEditor.SaveToRoot(root, package.StopTemplates);
+        SyncRouteStops(package, packageRoutes, root, catalogOverlays: true);
         root.Remove("routeDirections");
         RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", packageRoutes);
         RoutePathDraftRepository.NormalizeDraftKeysToCanonical(root);
@@ -584,7 +627,8 @@ public static class GpsAnsagenRouteExportSync
         HashSet<string> routesToExport,
         LocalWorkspaceStore? workspace,
         bool pruneOthersOnDevice,
-        bool includeEmbeddedSounds = true)
+        bool includeEmbeddedSounds = true,
+        bool catalogOverlays = false)
     {
         if (pruneOthersOnDevice)
         {
@@ -592,14 +636,14 @@ public static class GpsAnsagenRouteExportSync
                 routesToExport,
                 root,
                 package.RouteInteriorDisplayDestinationsByRoute);
-            SyncRouteStops(package, routesToExport, root, replaceAll: true);
+            SyncRouteStops(package, routesToExport, root, replaceAll: true, catalogOverlays: catalogOverlays);
             RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", routesToExport);
             RoutePathDraftRepository.NormalizeDraftKeysToCanonical(root);
             RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routePathDrafts", routesToExport);
         }
         else
         {
-            SyncRouteStops(package, routesToExport, root, replaceAll: false);
+            SyncRouteStops(package, routesToExport, root, replaceAll: false, catalogOverlays: catalogOverlays);
             SyncRoutesAndLineCourse(
                 routesToExport,
                 root,

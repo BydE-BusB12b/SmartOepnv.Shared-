@@ -29,7 +29,7 @@ public static class LiteRouteUpdateMerge
 
         "managedAnnouncementTemplates",
 
-        "managedStopTemplates",
+        // managedStopTemplates kommen im Katalog-Overlay-Update mit und ersetzen die Basis-Kartei
 
         "employeeRoster",
 

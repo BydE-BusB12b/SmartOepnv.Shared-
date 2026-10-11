@@ -176,6 +176,201 @@ public static class GpsAnsagenStopJson
     }
 
     /// <summary>
+    /// Schlankes Fahrt-Overlay: Verweis auf die Haltestellen-Kartei + nur Abweichungen / Trip-Felder.
+    /// Ohne gültigen Katalog-Treffer → volles <see cref="Write"/> (Abwärtskompatibilität).
+    /// </summary>
+    public static JsonObject WriteCatalogOverlay(
+        RouteStopItem stop,
+        string routeName,
+        ManagedStopTemplateItem? catalog)
+    {
+        var plannerCode = PlannerStopCode.Normalize(stop.PlannerStopCode);
+        if (string.IsNullOrEmpty(plannerCode) || catalog == null)
+        {
+            return Write(stop, routeName);
+        }
+
+        var catalogBase = catalog.ToRouteStop(routeName);
+        var obj = new JsonObject
+        {
+            ["plannerStopCode"] = plannerCode,
+            ["stopCode"] = plannerCode
+        };
+
+        if (stop.IsWaypoint)
+        {
+            obj["isWaypoint"] = true;
+            PutNonEmpty(obj, "waypointName", stop.WaypointName);
+            PutNonEmpty(obj, "name", stop.Name);
+            PutNonEmpty(obj, "gpsCoordinates", stop.GpsCoordinates);
+            PutNonEmpty(obj, "stopCoordinates", stop.StopCoordinates);
+            if (stop.Radius > 0)
+            {
+                obj["radius"] = stop.Radius;
+            }
+
+            PutNonEmpty(obj, "time", stop.Time);
+            return obj;
+        }
+
+        // Stammdaten nur bei Abweichung vom Katalog
+        if (!StringEq(stop.Name, catalogBase.Name))
+        {
+            PutNonEmpty(obj, "name", stop.Name);
+        }
+
+        if (!StringEq(stop.StopDisplay, catalogBase.StopDisplay))
+        {
+            PutNonEmpty(obj, "stopDisplay", stop.StopDisplay);
+        }
+
+        if (!StringEq(stop.VrrStopId, catalogBase.VrrStopId))
+        {
+            PutNonEmpty(obj, "vrrStopId", stop.VrrStopId);
+        }
+
+        if (!StringEq(stop.GpsCoordinates, catalogBase.GpsCoordinates))
+        {
+            PutNonEmpty(obj, "gpsCoordinates", stop.GpsCoordinates);
+        }
+
+        if (!StringEq(stop.StopCoordinates, catalogBase.StopCoordinates))
+        {
+            PutNonEmpty(obj, "stopCoordinates", stop.StopCoordinates);
+        }
+
+        if (stop.Radius > 0 && stop.Radius != catalogBase.Radius)
+        {
+            obj["radius"] = stop.Radius;
+        }
+
+        if (!StringEq(stop.EmbeddedSoundFileName, catalogBase.EmbeddedSoundFileName))
+        {
+            PutNonEmpty(obj, "embeddedSoundFileName", stop.EmbeddedSoundFileName);
+        }
+
+        if (stop.EntwerterEnabled != catalogBase.EntwerterEnabled ||
+            !StringEq(stop.EntwerterCode, catalogBase.EntwerterCode))
+        {
+            if (stop.EntwerterEnabled || !string.IsNullOrWhiteSpace(stop.EntwerterCode))
+            {
+                obj["entwerterEnabled"] = stop.EntwerterEnabled;
+                obj["entwerterCode"] = (stop.EntwerterCode ?? string.Empty).Trim();
+            }
+        }
+
+        // Trip-/Overlay-Felder
+        PutNonEmpty(obj, "time", stop.Time);
+        var announce = stop.ZielwechselEnabled || stop.IsAnnouncementEnabled;
+        if (!announce)
+        {
+            obj["isAnnouncementEnabled"] = false;
+        }
+
+        if (stop.IsDisplayEnabled ||
+            !string.IsNullOrWhiteSpace(stop.DisplayText) ||
+            !string.IsNullOrWhiteSpace(stop.DisplayText2) ||
+            !string.IsNullOrWhiteSpace(stop.DisplayText3) ||
+            !string.IsNullOrWhiteSpace(stop.NextStop) ||
+            stop.Abstand != 0)
+        {
+            obj["isDisplayEnabled"] = stop.IsDisplayEnabled;
+            obj["displayText"] = stop.DisplayText ?? string.Empty;
+            obj["displayText2"] = stop.DisplayText2 ?? string.Empty;
+            obj["displayText3"] = stop.DisplayText3 ?? string.Empty;
+            obj["useDisplayText2"] = stop.UseDisplayText2;
+            obj["useDisplayText3"] = stop.UseDisplayText3;
+            obj["displayInterval"] = stop.DisplayInterval;
+            obj["nextStop"] = stop.NextStop ?? string.Empty;
+            obj["abstand"] = stop.Abstand;
+        }
+
+        PutNonEmpty(obj, "destination", stop.Destination);
+        PutNonEmpty(obj, "destinationId", stop.DestinationId);
+        PutNonEmpty(obj, "ds021NeuDestination", stop.Ds021NeuDestination);
+        PutNonEmpty(obj, "ds021NeuDestinationId", stop.Ds021NeuDestinationId);
+        PutNonEmpty(obj, "fmaS1Destination", stop.FmaS1Destination);
+        PutNonEmpty(obj, "fmaS1DestinationId", stop.FmaS1DestinationId);
+        PutNonEmpty(obj, "ds003aDestination", stop.Ds003aDestination);
+        PutNonEmpty(obj, "ds003aDestinationId", stop.Ds003aDestinationId);
+        PutNonEmpty(obj, "zielnummerDestination", stop.ZielnummerDestination);
+        PutNonEmpty(obj, "zielnummerDestinationId", stop.ZielnummerDestinationId);
+        PutNonEmpty(obj, "mobitecDestination", stop.MobitecDestination);
+        PutNonEmpty(obj, "mobitecDestinationId", stop.MobitecDestinationId);
+        PutNonEmpty(obj, "lineNumber", stop.LineNumber);
+        PutNonEmpty(obj, "endDestination", stop.EndDestination);
+        PutNonEmpty(obj, "endDestinationId", stop.EndDestinationId);
+        PutNonEmpty(obj, "ds021NeuEndDestination", stop.Ds021NeuEndDestination);
+        PutNonEmpty(obj, "ds021NeuEndDestinationId", stop.Ds021NeuEndDestinationId);
+        PutNonEmpty(obj, "fmaS1EndDestination", stop.FmaS1EndDestination);
+        PutNonEmpty(obj, "fmaS1EndDestinationId", stop.FmaS1EndDestinationId);
+        PutNonEmpty(obj, "ds003aEndDestination", stop.Ds003aEndDestination);
+        PutNonEmpty(obj, "ds003aEndDestinationId", stop.Ds003aEndDestinationId);
+        PutNonEmpty(obj, "zielnummerEndDestination", stop.ZielnummerEndDestination);
+        PutNonEmpty(obj, "zielnummerEndDestinationId", stop.ZielnummerEndDestinationId);
+        PutNonEmpty(obj, "mobitecEndDestination", stop.MobitecEndDestination);
+        PutNonEmpty(obj, "mobitecEndDestinationId", stop.MobitecEndDestinationId);
+        PutNonEmpty(obj, "endDestinationCoordinates", stop.EndDestinationCoordinates);
+
+        if (stop.IsEndStop)
+        {
+            obj["isEndStop"] = true;
+        }
+
+        if (stop.PlayEndStopAnnouncement || stop.PlayEndStopAnnouncementEn || stop.PlayEndStopAnnouncementNl)
+        {
+            obj["playEndStopAnnouncement"] = stop.PlayEndStopAnnouncement;
+            obj["playEndStopAnnouncementEn"] = stop.PlayEndStopAnnouncementEn;
+            obj["playEndStopAnnouncementNl"] = stop.PlayEndStopAnnouncementNl;
+        }
+
+        if (stop.PlayStartStopGreeting || !string.IsNullOrWhiteSpace(stop.StartStopGreetingCoordinates))
+        {
+            obj["playStartStopGreeting"] = stop.PlayStartStopGreeting;
+            PutNonEmpty(obj, "startStopGreetingCoordinates", stop.StartStopGreetingCoordinates);
+        }
+
+        if (stop.RouteChangeEnabled ||
+            !string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip) ||
+            (stop.RouteChangeTargetsByDate?.Count ?? 0) > 0)
+        {
+            obj["routeChangeEnabled"] = stop.RouteChangeEnabled;
+            PutNonEmpty(obj, "selectedLineCourseTrip", stop.SelectedLineCourseTrip);
+            WriteRouteChangeTargetsByDate(obj, stop.RouteChangeTargetsByDate);
+        }
+
+        if (stop.StopHintEnabled || !string.IsNullOrWhiteSpace(stop.StopHintText))
+        {
+            obj["stopHintEnabled"] = stop.StopHintEnabled;
+            obj["stopHintText"] = stop.StopHintText ?? string.Empty;
+            obj["stopHintTriggerMode"] = RouteStopHintTrigger.Normalize(stop.StopHintTriggerMode);
+            obj["stopHintGpsCoordinates"] = stop.StopHintGpsCoordinates ?? string.Empty;
+            obj["stopHintRadius"] = stop.StopHintRadius > 0 ? stop.StopHintRadius : 40;
+        }
+
+        if (stop.ZielwechselEnabled ||
+            !string.IsNullOrWhiteSpace(stop.ZielwechselGpsCoordinates))
+        {
+            obj["zielwechselEnabled"] = stop.ZielwechselEnabled;
+            obj["zielwechselGpsCoordinates"] = stop.ZielwechselGpsCoordinates ?? string.Empty;
+            obj["zielwechselRadius"] = stop.ZielwechselRadius > 0 ? stop.ZielwechselRadius : 40;
+        }
+
+        return obj;
+    }
+
+    private static void PutNonEmpty(JsonObject obj, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            obj[key] = value;
+        }
+    }
+
+    private static bool StringEq(string? a, string? b) =>
+        string.Equals((a ?? string.Empty).Trim(), (b ?? string.Empty).Trim(), StringComparison.Ordinal);
+
+    /// <summary>
     /// EN-Flag; fehlende neuen Felder → bisherige Endansage zählt als Englisch
     /// (alle bestehenden Endhaltestellen-Ansagen sind EN).
     /// </summary>
