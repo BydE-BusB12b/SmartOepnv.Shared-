@@ -11,13 +11,17 @@ public partial class DropboxSetupWindow : Window
         DataContext = new SettingsViewModel();
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e)
+    private async void Close_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)
         {
-            vm.PersistFolderPath();
+            await vm.CommitFolderPathAsync().ConfigureAwait(true);
         }
 
-        Close();
+        // Bei Betrieb-Wechsel startet der Prozess neu – Fenster ggf. schon weg.
+        if (IsLoaded)
+        {
+            Close();
+        }
     }
 }

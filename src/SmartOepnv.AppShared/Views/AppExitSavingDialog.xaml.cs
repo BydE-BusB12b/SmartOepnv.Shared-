@@ -29,6 +29,17 @@ public partial class AppExitSavingDialog : Window
 
     public void StartBusAnimation() => BusAnimation.StartAnimation();
 
+    public void SetMessage(string message)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => SetMessage(message));
+            return;
+        }
+
+        MessageText.Text = message;
+    }
+
     public void UpdateTransferProgress(DropboxTransferProgress progress)
     {
         if (!Dispatcher.CheckAccess())

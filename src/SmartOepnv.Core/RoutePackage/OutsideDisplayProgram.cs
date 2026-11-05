@@ -11,17 +11,229 @@ namespace SmartOepnv.Core.RoutePackage;
 public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 {
     private bool _isListEnabled = true;
+    private string _id = string.Empty;
+    private string _name = string.Empty;
+    private string _frontLine1 = string.Empty;
+    private string _frontLine2 = string.Empty;
+    private string _sideLine1 = string.Empty;
+    private string _sideLine2 = string.Empty;
+    private bool _isStartTarget;
+
+    public OutsideDisplayProgram()
+    {
+        _id = OutsideDisplayId.NewId();
+        for (var i = 0; i < OutsideDisplayCycleParser.MaxCycles; i++)
+        {
+            var front = new OutsideDisplayTextCycle();
+            var side = new OutsideDisplayTextCycle();
+            front.PropertyChanged += (_, _) => OnCycleChanged();
+            side.PropertyChanged += (_, _) => OnCycleChanged();
+            FrontCycles.Add(front);
+            SideCycles.Add(side);
+        }
+    }
+
+    /// <summary>Stabile Ziel-ID (überlebt Umbenennungen).</summary>
+    public string Id
+    {
+        get => _id;
+        set => SetProperty(ref _id, OutsideDisplayId.Ensure(value), nameof(DisplayNumber), nameof(IdEditText), nameof(ListNumberLabel));
+    }
+
+    /// <summary>Vierstellige Anzeige-Nummer für Listen (direkt oder aus langer Legacy-ID abgeleitet).</summary>
+    public string DisplayNumber => OutsideDisplayId.ToDisplayNumber(Id);
+
+    /// <summary>
+    /// Listen-Kurzzeile: App-ID, bei Mobitec zusätzlich ICU-Zielnummer (unabhängig von der ID).
+    /// </summary>
+    public string ListNumberLabel =>
+        IsMobitec && DestinationNumber is int destNo
+            ? $"{DisplayNumber} · Z{destNo:D4}"
+            : DisplayNumber;
+
+    /// <summary>Editierbare App-ID im Formular (0001–9999).</summary>
+    public string IdEditText
+    {
+        get => OutsideDisplayId.IsFourDigit(_id)
+            ? _id
+            : OutsideDisplayId.ToDisplayNumber(_id);
+        set
+        {
+            var next = OutsideDisplayId.TryNormalizeEditableId(value);
+            if (next is null)
+            {
+                OnPropertyChanged(nameof(IdEditText));
+                return;
+            }
+
+            Id = next;
+        }
+    }
+
+    private int? _destinationNumber;
+
+    /// <summary>
+    /// Mobitec-/ICU-/ZEdit-Zielnummer (0–9999), unabhängig von der App-<see cref="Id"/>.
+    /// Leer/<c>null</c> = nicht gesetzt.
+    /// </summary>
+    public int? DestinationNumber
+    {
+        get => _destinationNumber;
+        set
+        {
+            int? next = value is >= 0 and <= 9999 ? value : null;
+            if (_destinationNumber == next)
+            {
+                return;
+            }
+
+            _destinationNumber = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DestinationNumberEditText));
+            OnPropertyChanged(nameof(ListNumberLabel));
+        }
+    }
+
+    /// <summary>Editierbare ICU-Zielnummer (leer = keine).</summary>
+    public string DestinationNumberEditText
+    {
+        get => DestinationNumber is int n ? n.ToString("D4") : string.Empty;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                DestinationNumber = null;
+                return;
+            }
+
+            var digits = new string(value.Where(char.IsDigit).ToArray());
+            if (digits.Length == 0 || !int.TryParse(digits, out var n) || n is < 0 or > 9999)
+            {
+                OnPropertyChanged(nameof(DestinationNumberEditText));
+                return;
+            }
+
+            DestinationNumber = n;
+        }
+    }
+
+    /// <summary>Wechseltext 1–4 (Front), wie Slider im Handy-Dialog.</summary>
+    public IList<OutsideDisplayTextCycle> FrontCycles { get; } = [];
+
+    /// <summary>Wechseltext 1–4 (Seite); leer = Front übernehmen.</summary>
+    public IList<OutsideDisplayTextCycle> SideCycles { get; } = [];
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public string Name { get; set; } = string.Empty;
-    public string FrontLine1 { get; set; } = string.Empty;
-    public string FrontLine2 { get; set; } = string.Empty;
-    public string SideLine1 { get; set; } = string.Empty;
-    public string SideLine2 { get; set; } = string.Empty;
+    private void OnCycleChanged()
+    {
+        SyncLegacyLinesFromCycles();
+        OnPropertyChanged(nameof(FrontPreview));
+        OnPropertyChanged(nameof(SidePreview));
+        OnPropertyChanged(nameof(WechseltextPreview));
+        OnPropertyChanged(nameof(WechseltextCount));
+    }
+
+    internal void SyncLegacyLinesFromCycles()
+    {
+        var firstFront = FrontCycles.FirstOrDefault();
+        var firstSide = SideCycles.FirstOrDefault();
+        _frontLine1 = firstFront?.Line1 ?? string.Empty;
+        _frontLine2 = firstFront?.Line2 ?? string.Empty;
+        _sideLine1 = firstSide?.Line1 ?? string.Empty;
+        _sideLine2 = firstSide?.Line2 ?? string.Empty;
+    }
+
+    private void SyncCyclesFromLegacyLines()
+    {
+        if (FrontCycles.Count == 0)
+        {
+            return;
+        }
+
+        FrontCycles[0].SetFromPair(_frontLine1, _frontLine2);
+        SideCycles[0].SetFromPair(_sideLine1, _sideLine2);
+    }
+
+    public string Name
+    {
+        get => _name;
+        set => SetProperty(ref _name, value, nameof(DisplayLabel), nameof(Ds003ListLabel));
+    }
+
+    public string FrontLine1
+    {
+        get => _frontLine1;
+        set => SetProperty(ref _frontLine1, value, nameof(FrontPreview), nameof(Ds003ListLabel));
+    }
+
+    public string FrontLine2
+    {
+        get => _frontLine2;
+        set => SetProperty(ref _frontLine2, value, nameof(FrontPreview));
+    }
+
+    public string SideLine1
+    {
+        get => _sideLine1;
+        set => SetProperty(ref _sideLine1, value, nameof(SidePreview), nameof(Ds003ListLabel));
+    }
+
+    public string SideLine2
+    {
+        get => _sideLine2;
+        set => SetProperty(ref _sideLine2, value, nameof(SidePreview), nameof(Ds003ListLabel));
+    }
+
     public int IntervalSeconds { get; set; } = 3;
     public string Ds001Type { get; set; } = "line";
-    public string Ds001Value { get; set; } = "001";
+
+    private string _ds001Value = "001";
+
+    /// <summary>Liniennummer bzw. Mobitec-Linienkürzel (z. B. RE13); bei DS003: Front z999 (Dokumentation).</summary>
+    public string Ds001Value
+    {
+        get => _ds001Value;
+        set
+        {
+            if (_ds001Value == value)
+            {
+                return;
+            }
+
+            _ds001Value = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Ds003ListLabel));
+            if (Protocol == OutsideDisplayProtocolKind.Mobitec)
+            {
+                OnPropertyChanged(nameof(FrontPreview));
+                OnPropertyChanged(nameof(WechseltextPreview));
+                OnPropertyChanged(nameof(MobitecLineListLabel));
+            }
+        }
+    }
+
+    /// <summary>Listenzeile: Linien-Bitmap aus OUT → „Grafik“, sonst Linienkürzel.</summary>
+    public string MobitecLineListLabel
+    {
+        get
+        {
+            if (Protocol != OutsideDisplayProtocolKind.Mobitec)
+            {
+                return string.Empty;
+            }
+
+            if (FrameContainsBitmap(MobitecLineFrame))
+            {
+                return "Linie: Grafik";
+            }
+
+            return string.IsNullOrWhiteSpace(Ds001Value)
+                ? string.Empty
+                : $"Linie: {Ds001Value.Trim()}";
+        }
+    }
+
     public string Ds001Spec { get; set; } = "E00";
     public string ControlCodes { get; set; } = string.Empty;
     public bool UseZa4 { get; set; } = true;
@@ -40,47 +252,740 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
-    public bool IsStartTarget { get; set; }
-    public bool IsKrefeld { get; set; }
 
-    public string DisplayLabel =>
-        IsKrefeld ? $"{Name} (DS003a Krefeld)" : $"{Name} (DS021T)";
+    private bool _autoFitFonts;
 
-    public string ProtocolLabel => IsKrefeld ? "DS003a Krefeld" : "DS021T";
+    /// <summary>
+    /// Mobitec: Font-Leiter nach Displaybreite (darf von ZEdit-Profilen abweichen).
+    /// Speicherung: Pipe-Index 15.
+    /// </summary>
+    public bool AutoFitFonts
+    {
+        get => _autoFitFonts;
+        set
+        {
+            if (_autoFitFonts == value)
+            {
+                return;
+            }
 
-    public string FrontPreview =>
-        string.IsNullOrWhiteSpace(FrontLine2)
-            ? FrontLine1
-            : $"{FrontLine1} · {FrontLine2}";
+            _autoFitFonts = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Mobitec: Roh-Frame Front aus ZEdit-OUT (inkl. 0x77-Bitmaps), sonst null → Tablet erzeugt neu.</summary>
+    public byte[]? MobitecFrontFrame { get; set; }
+
+    /// <summary>Mobitec: Roh-Frame Seite aus ZEdit-OUT.</summary>
+    public byte[]? MobitecSideFrame { get; set; }
+
+    /// <summary>Mobitec: Roh-Frame Linie aus ZEdit-OUT (Tasse, Schraubenschlüssel, Logo, Smile, …).</summary>
+    public byte[]? MobitecLineFrame { get; set; }
+
+    public bool HasMobitecRawFrames =>
+        MobitecFrontFrame is { Length: > 0 } ||
+        MobitecSideFrame is { Length: > 0 } ||
+        MobitecLineFrame is { Length: > 0 };
+
+    public bool HasMobitecBitmapGraphic =>
+        FrameContainsBitmap(MobitecFrontFrame) ||
+        FrameContainsBitmap(MobitecSideFrame) ||
+        FrameContainsBitmap(MobitecLineFrame);
+
+    /// <summary>Kurztext für Liste/Detail: ob OUT-Grafiken mitgespeichert sind.</summary>
+    public string MobitecGraphicsLabel
+    {
+        get
+        {
+            if (Protocol != OutsideDisplayProtocolKind.Mobitec || !HasMobitecRawFrames)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+            if (FrameContainsBitmap(MobitecFrontFrame)) parts.Add("Front");
+            if (FrameContainsBitmap(MobitecSideFrame)) parts.Add("Seite");
+            if (FrameContainsBitmap(MobitecLineFrame)) parts.Add("Linie");
+            if (parts.Count == 0)
+            {
+                return "OUT-Rohframe (nur Text)";
+            }
+
+            var gfx = $"OUT-Grafik: {string.Join("+", parts)}";
+            // Häufige Verwechslung: Logo auf Front, Linie bleibt Text (z. B. Mc Donalds + RE47)
+            if (FrameContainsBitmap(MobitecFrontFrame) &&
+                !FrameContainsBitmap(MobitecLineFrame) &&
+                !string.IsNullOrWhiteSpace(Ds001Value))
+            {
+                return $"{gfx} · Linie-Text „{Ds001Value.Trim()}“ (kein Linien-Logo)";
+            }
+
+            if (FrameContainsBitmap(MobitecLineFrame))
+            {
+                return string.IsNullOrWhiteSpace(Ds001Value)
+                    ? $"{gfx} · Linienanzeige = Bitmap (kein Linien-Text)"
+                    : $"{gfx} · Linienanzeige = Bitmap; Feld „{Ds001Value.Trim()}“ nur Fallback";
+            }
+
+            return gfx;
+        }
+    }
+
+    private static bool FrameContainsBitmap(byte[]? frame)
+    {
+        if (frame is null || frame.Length < 6)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < frame.Length - 1; i++)
+        {
+            if ((frame[i] & 0xFF) == 0xD4 && (frame[i + 1] & 0xFF) == 0x77)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool IsStartTarget
+    {
+        get => _isStartTarget;
+        set => SetProperty(ref _isStartTarget, value);
+    }
+
+    private OutsideDisplayProtocolKind _protocol = OutsideDisplayProtocolKind.Ds021T;
+
+    public OutsideDisplayProtocolKind Protocol
+    {
+        get => _protocol;
+        set => SetProtocol(value);
+    }
+
+    public bool IsKrefeld
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Ds003aKrefeld;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Ds003aKrefeld : OutsideDisplayProtocolKind.Ds021T);
+    }
+
+    public bool IsDs021Neu
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Ds021Neu;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Ds021Neu : OutsideDisplayProtocolKind.Ds021T);
+    }
+
+    public bool IsFmaS1
+    {
+        get => Protocol == OutsideDisplayProtocolKind.FmaS1;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.FmaS1 : OutsideDisplayProtocolKind.Ds021T);
+    }
+
+    public bool IsZielnummer
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Ds003;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Ds003 : OutsideDisplayProtocolKind.Ds021T);
+    }
+
+    /// <summary>DS003: nur Zielnummer <c>zNNN</c> (wie IBISUtility).</summary>
+    public bool IsDs003
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Ds003;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Ds003 : OutsideDisplayProtocolKind.Ds021T);
+    }
+
+    public bool IsMobitec
+    {
+        get => Protocol == OutsideDisplayProtocolKind.Mobitec;
+        set => SetProtocol(value ? OutsideDisplayProtocolKind.Mobitec : OutsideDisplayProtocolKind.Ds021T);
+    }
+
+    public bool IsDs021T => Protocol == OutsideDisplayProtocolKind.Ds021T;
+
+    /// <summary>DS021T, FMA-S1 und Mobitec: bis zu 4 Wechseltexte; DS021neu/Krefeld: ein Ziel.</summary>
+    public bool UsesCycleEditor =>
+        Protocol is OutsideDisplayProtocolKind.Ds021T
+            or OutsideDisplayProtocolKind.FmaS1
+            or OutsideDisplayProtocolKind.Mobitec;
+
+    /// <summary>Wechsel-Takt in Sekunden (DS021T-Intervall bzw. Mobitec B0 xx).</summary>
+    public bool UsesIntervalSeconds =>
+        Protocol is OutsideDisplayProtocolKind.Ds021T or OutsideDisplayProtocolKind.Mobitec;
+
+    private void SetProtocol(OutsideDisplayProtocolKind value)
+    {
+        if (_protocol == value)
+        {
+            return;
+        }
+
+        _protocol = value;
+        OnPropertyChanged(nameof(Protocol));
+        OnPropertyChanged(nameof(IsKrefeld));
+        OnPropertyChanged(nameof(IsDs021Neu));
+        OnPropertyChanged(nameof(IsFmaS1));
+        OnPropertyChanged(nameof(IsZielnummer));
+        OnPropertyChanged(nameof(IsDs003));
+        OnPropertyChanged(nameof(IsMobitec));
+        OnPropertyChanged(nameof(IsDs021T));
+        OnPropertyChanged(nameof(UsesCycleEditor));
+        OnPropertyChanged(nameof(UsesIntervalSeconds));
+        OnPropertyChanged(nameof(ProtocolLabel));
+        OnPropertyChanged(nameof(DisplayLabel));
+        OnPropertyChanged(nameof(FrontPreview));
+        OnPropertyChanged(nameof(WechseltextPreview));
+        OnPropertyChanged(nameof(ListNumberLabel));
+        OnPropertyChanged(nameof(DestinationNumberEditText));
+        OnPropertyChanged(nameof(Ds003ListLabel));
+    }
+
+    public Ds021NeuFontControl FontControl { get; set; } = Ds021NeuFontControl.Default;
+
+    public string FontLine1Weight
+    {
+        get => FontControl.Line1Weight == Ds021NeuFontControl.Weight.Bold ? "Fett" : "Normal";
+        set
+        {
+            FontControl.Line1Weight = string.Equals(value, "Fett", StringComparison.OrdinalIgnoreCase)
+                ? Ds021NeuFontControl.Weight.Bold
+                : Ds021NeuFontControl.Weight.Normal;
+            OnPropertyChanged();
+        }
+    }
+
+    public int FontLine1Height
+    {
+        get => FontControl.Line1Height;
+        set
+        {
+            FontControl.Line1Height = Math.Clamp(value, 0, 9);
+            OnPropertyChanged();
+        }
+    }
+
+    public string FontLine2Weight
+    {
+        get => FontControl.Line2Weight == Ds021NeuFontControl.Weight.Bold ? "Fett" : "Normal";
+        set
+        {
+            FontControl.Line2Weight = string.Equals(value, "Fett", StringComparison.OrdinalIgnoreCase)
+                ? Ds021NeuFontControl.Weight.Bold
+                : Ds021NeuFontControl.Weight.Normal;
+            OnPropertyChanged();
+        }
+    }
+
+    public int FontLine2Height
+    {
+        get => FontControl.Line2Height;
+        set
+        {
+            FontControl.Line2Height = Math.Clamp(value, 0, 9);
+            OnPropertyChanged();
+        }
+    }
+
+    public string DisplayLabel => Protocol switch
+    {
+        OutsideDisplayProtocolKind.Ds003aKrefeld => $"{Name} (DS003a Krefeld)",
+        OutsideDisplayProtocolKind.Ds021Neu => $"{Name} (DS021neu)",
+        OutsideDisplayProtocolKind.FmaS1 => $"{Name} (FMA-S1)",
+        OutsideDisplayProtocolKind.Ds003 => $"{Name} (DS003)",
+        OutsideDisplayProtocolKind.Mobitec => $"{Name} (Mobitec)",
+        _ => $"{Name} (DS021T)"
+    };
+
+    public string ProtocolLabel => Protocol switch
+    {
+        OutsideDisplayProtocolKind.Ds003aKrefeld => "DS003a Krefeld",
+        OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
+        OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
+        OutsideDisplayProtocolKind.Ds003 => "DS003",
+        OutsideDisplayProtocolKind.Mobitec => "Mobitec",
+        _ => "DS021T"
+    };
+
+    /// <summary>
+    /// DS021T → DS021neu → DS003a → …, innerhalb der Gruppe Startziel zuerst,
+    /// dann Name (RE/RB/S + Nummer numerisch: RE4 &lt; RE7 &lt; RE47).
+    /// </summary>
+    public static int CompareForZielliste(OutsideDisplayProgram? left, OutsideDisplayProgram? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left is null)
+        {
+            return 1;
+        }
+
+        if (right is null)
+        {
+            return -1;
+        }
+
+        var protocolOrder = left.Protocol.CompareTo(right.Protocol);
+        if (protocolOrder != 0)
+        {
+            return protocolOrder;
+        }
+
+        var leftStart = IsStartzielEntry(left);
+        var rightStart = IsStartzielEntry(right);
+        if (leftStart != rightStart)
+        {
+            return leftStart ? -1 : 1;
+        }
+
+        return CompareZiellisteNames(left.Name, right.Name);
+    }
+
+    /// <summary>
+    /// Namenssortierung: 1) A–Z, 2) führende Zahlen ab 0, 3) RB/RE/S mit numerischer Liniennummer.
+    /// </summary>
+    public static int CompareZiellisteNames(string? left, string? right)
+    {
+        if (string.Equals(left, right, StringComparison.CurrentCultureIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (left is null)
+        {
+            return 1;
+        }
+
+        if (right is null)
+        {
+            return -1;
+        }
+
+        var leftName = left.Trim();
+        var rightName = right.Trim();
+        if (leftName.Length == 0)
+        {
+            return 1;
+        }
+
+        if (rightName.Length == 0)
+        {
+            return -1;
+        }
+
+        var leftGroup = ClassifyNameGroup(leftName);
+        var rightGroup = ClassifyNameGroup(rightName);
+        var groupOrder = leftGroup.CompareTo(rightGroup);
+        if (groupOrder != 0)
+        {
+            return groupOrder;
+        }
+
+        return leftGroup switch
+        {
+            ZiellisteNameGroup.Rail => CompareRailNames(leftName, rightName),
+            ZiellisteNameGroup.Numbers => CompareLeadingNumberNames(leftName, rightName),
+            _ => string.Compare(leftName, rightName, StringComparison.CurrentCultureIgnoreCase)
+        };
+    }
+
+    private enum ZiellisteNameGroup
+    {
+        Letters = 0,
+        Numbers = 1,
+        Rail = 2
+    }
+
+    private static ZiellisteNameGroup ClassifyNameGroup(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return ZiellisteNameGroup.Letters;
+        }
+
+        if (TryParseRailLinePrefix(name, out _, out _, out _))
+        {
+            return ZiellisteNameGroup.Rail;
+        }
+
+        return char.IsDigit(name[0]) ? ZiellisteNameGroup.Numbers : ZiellisteNameGroup.Letters;
+    }
+
+    private static int CompareRailNames(string left, string right)
+    {
+        if (!TryParseRailLinePrefix(left, out var leftCat, out var leftNum, out var leftRest) ||
+            !TryParseRailLinePrefix(right, out var rightCat, out var rightNum, out var rightRest))
+        {
+            return string.Compare(left, right, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        var categoryOrder = string.Compare(leftCat, rightCat, StringComparison.OrdinalIgnoreCase);
+        if (categoryOrder != 0)
+        {
+            return categoryOrder;
+        }
+
+        var numberOrder = leftNum.CompareTo(rightNum);
+        if (numberOrder != 0)
+        {
+            return numberOrder;
+        }
+
+        return string.Compare(leftRest, rightRest, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private static int CompareLeadingNumberNames(string left, string right)
+    {
+        ParseLeadingNumber(left, out var leftNum, out var leftRest);
+        ParseLeadingNumber(right, out var rightNum, out var rightRest);
+        var numberOrder = leftNum.CompareTo(rightNum);
+        if (numberOrder != 0)
+        {
+            return numberOrder;
+        }
+
+        return string.Compare(leftRest, rightRest, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private static void ParseLeadingNumber(string name, out int number, out string rest)
+    {
+        var i = 0;
+        var value = 0;
+        while (i < name.Length && char.IsDigit(name[i]))
+        {
+            value = (value * 10) + (name[i] - '0');
+            i++;
+        }
+
+        number = value;
+        rest = name[i..];
+    }
+
+    /// <summary>Erkennt führendes RB/RE/S inkl. Nummer (1–99), z. B. „RE47 Express &gt; …“.</summary>
+    private static bool TryParseRailLinePrefix(
+        string name,
+        out string category,
+        out int number,
+        out string rest)
+    {
+        category = string.Empty;
+        number = 0;
+        rest = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        var trimmed = name.TrimStart();
+        ReadOnlySpan<char> span = trimmed.AsSpan();
+
+        // Längere Gattungen zuerst (RE/RB vor S)
+        if (span.Length >= 3 &&
+            (span.StartsWith("RE", StringComparison.OrdinalIgnoreCase) ||
+             span.StartsWith("RB", StringComparison.OrdinalIgnoreCase)))
+        {
+            category = trimmed[..2];
+            span = span[2..];
+        }
+        else if (span.Length >= 2 && span.StartsWith("S", StringComparison.OrdinalIgnoreCase))
+        {
+            // Nur reine S-Bahn: „S28“, nicht „Startziel“ / „Schienenersatz…“
+            category = trimmed[..1];
+            span = span[1..];
+            if (span.IsEmpty || !char.IsDigit(span[0]))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+
+        if (span.IsEmpty || !char.IsDigit(span[0]))
+        {
+            return false;
+        }
+
+        var digits = 0;
+        var value = 0;
+        while (digits < span.Length && digits < 2 && char.IsDigit(span[digits]))
+        {
+            value = (value * 10) + (span[digits] - '0');
+            digits++;
+        }
+
+        // Keine 3+ Ziffern ohne Trennzeichen als Liniennummer (1–99)
+        if (digits == 2 && span.Length > 2 && char.IsDigit(span[2]))
+        {
+            return false;
+        }
+
+        if (value is < 1 or > 99)
+        {
+            return false;
+        }
+
+        number = value;
+        rest = trimmed[(category.Length + digits)..];
+        return true;
+    }
+
+    private static bool IsStartzielEntry(OutsideDisplayProgram program) =>
+        program.IsStartTarget ||
+        string.Equals(program.Name, "Startziel", StringComparison.Ordinal);
+
+    public string FrontPreview
+    {
+        get
+        {
+            var dest = BuildCyclesPreview(FrontCycles, fallbackSingle: string.IsNullOrWhiteSpace(FrontLine2)
+                ? FrontLine1
+                : $"{FrontLine1} · {FrontLine2}");
+            if (Protocol != OutsideDisplayProtocolKind.Mobitec)
+            {
+                return dest;
+            }
+
+            // OUT-Rohframes: Linie/Front sind bereits fertig im Hex – nicht nochmal „RE47 …“ davorsetzen.
+            if (HasMobitecRawFrames)
+            {
+                return dest;
+            }
+
+            var line = Ds001Value?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return dest;
+            }
+
+            if (string.IsNullOrWhiteSpace(dest) || dest == "—")
+            {
+                return line;
+            }
+
+            // Linie nicht doppelt, falls Zieltext sie schon enthält
+            if (dest.StartsWith(line + " ", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(dest, line, StringComparison.OrdinalIgnoreCase))
+            {
+                return dest;
+            }
+
+            return $"{line} {dest}";
+        }
+    }
 
     public string SidePreview =>
-        string.IsNullOrWhiteSpace(SideLine1) && string.IsNullOrWhiteSpace(SideLine2)
-            ? "—"
-            : string.IsNullOrWhiteSpace(SideLine2)
-                ? SideLine1
-                : $"{SideLine1} · {SideLine2}";
+        FormatWechseltextListPreview(SideCycles, fallbackSingle:
+            string.IsNullOrWhiteSpace(SideLine1) && string.IsNullOrWhiteSpace(SideLine2)
+                ? "—"
+                : string.IsNullOrWhiteSpace(SideLine2)
+                    ? SideLine1
+                    : $"{SideLine1} · {SideLine2}");
+
+    public int WechseltextCount =>
+        FrontCycles.Count(c => c.HasContent);
+
+    public string WechseltextPreview =>
+        FormatWechseltextListPreview(FrontCycles, fallbackSingle: FrontPreview);
+
+    /// <summary>
+    /// Ziellisten-Zeile für DS003: Zielnummer · Linie · Anzeigename · Beschreibung.
+    /// </summary>
+    public string Ds003ListLabel
+    {
+        get
+        {
+            if (!IsDs003)
+            {
+                return string.Empty;
+            }
+
+            var number = OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1);
+            var line = Ds001Value?.Trim() ?? string.Empty;
+            var displayName = Name?.Trim() ?? string.Empty;
+            var description = FormatDs003Beschreibung(SideLine1, SideLine2);
+
+            var parts = new List<string>
+            {
+                string.IsNullOrWhiteSpace(number) || number == "000" ? "—" : number
+            };
+            parts.Add(line.Length > 0 ? line : "—");
+            parts.Add(displayName.Length > 0 ? displayName : "—");
+            if (description.Length > 0)
+            {
+                parts.Add(description);
+            }
+
+            return string.Join(" · ", parts);
+        }
+    }
+
+    /// <summary>
+    /// Beschreibung/Seite für DS003: zwei Seitenzeilen mit „/“ (kein Zeilenumbruch in der UI).
+    /// </summary>
+    public static string FormatDs003Beschreibung(string? side1, string? side2)
+    {
+        var a = side1?.Trim() ?? string.Empty;
+        var b = side2?.Trim() ?? string.Empty;
+        if (a.Length == 0)
+        {
+            return b;
+        }
+
+        if (b.Length == 0 || a.Contains('/'))
+        {
+            return a;
+        }
+
+        return $"{a}/{b}";
+    }
+
+    /// <summary>
+    /// Übernimmt SideLine2 in SideLine1 mit „/“ und leert SideLine2 (ein Beschreibungsfeld).
+    /// </summary>
+    private static void MergeDs003SideDescriptionWithSlash(OutsideDisplayProgram program)
+    {
+        var merged = FormatDs003Beschreibung(program.SideLine1, program.SideLine2);
+        if (merged == (program.SideLine1?.Trim() ?? string.Empty) &&
+            string.IsNullOrWhiteSpace(program.SideLine2))
+        {
+            return;
+        }
+
+        program.SideLine1 = merged;
+        program.SideLine2 = string.Empty;
+    }
+
+    private static string FormatWechseltextListPreview(
+        IEnumerable<OutsideDisplayTextCycle> cycles,
+        string fallbackSingle)
+    {
+        var active = cycles.Where(c => c.HasContent).Select(c => c.Preview).ToList();
+        return active.Count switch
+        {
+            0 => fallbackSingle,
+            1 => active[0],
+            _ => $"{active.Count} Wechseltexte: {string.Join(" → ", active)}"
+        };
+    }
+
+    private static string BuildCyclesPreview(IEnumerable<OutsideDisplayTextCycle> cycles, string fallbackSingle)
+    {
+        var active = cycles.Where(c => c.HasContent).Select(c => c.Preview).ToList();
+        return active.Count switch
+        {
+            0 => "—",
+            1 => active[0],
+            _ => string.Join(" → ", active)
+        };
+    }
 
     public static OutsideDisplayProgram CreateDs021t(string? name = null) =>
         new()
         {
+            Id = OutsideDisplayId.NewId(),
             Name = name ?? "Neues Ziel",
             FrontLine1 = string.Empty,
             Ds001Type = "line",
             Ds001Value = "001",
+            Ds001Spec = "E00",
             IntervalSeconds = 3,
-            IsKrefeld = false
+            Protocol = OutsideDisplayProtocolKind.Ds021T
         };
+
+    public static OutsideDisplayProgram CreateDs021Neu(string? name = null) =>
+        new()
+        {
+            Id = OutsideDisplayId.NewId(),
+            Name = name ?? "Neues Ziel",
+            FrontLine1 = string.Empty,
+            Ds001Type = "line",
+            Ds001Value = "001",
+            Ds001Spec = "E00",
+            Protocol = OutsideDisplayProtocolKind.Ds021Neu
+        };
+
+    public static OutsideDisplayProgram CreateFmaS1(string? name = null) =>
+        new()
+        {
+            Id = OutsideDisplayId.NewId(),
+            Name = name ?? "Neues Ziel",
+            FrontLine1 = string.Empty,
+            Ds001Type = "line",
+            Ds001Value = "001",
+            Ds001Spec = "E00",
+            Protocol = OutsideDisplayProtocolKind.FmaS1
+        };
+
+    /// <summary>DS003: Telegramm <c>zNNN\\r</c>+Parität; Nummer in <see cref="FrontLine1"/>.</summary>
+    public static OutsideDisplayProgram CreateDs003(string? name = null) =>
+        new()
+        {
+            Id = OutsideDisplayId.NewId(),
+            Name = name ?? "Neues Ziel",
+            FrontLine1 = "001",
+            Ds001Type = "line",
+            Ds001Value = "000",
+            Ds001Spec = "E00",
+            Protocol = OutsideDisplayProtocolKind.Ds003
+        };
+
+    /// <summary>Alias für <see cref="CreateDs003"/>.</summary>
+    public static OutsideDisplayProgram CreateZielnummer(string? name = null) =>
+        CreateDs003(name);
 
     public static OutsideDisplayProgram CreateKrefeld(string? name = null) =>
         new()
         {
+            Id = OutsideDisplayId.NewId(),
             Name = name ?? "Neues Ziel",
             Ds001Type = "line",
             Ds001Value = "001",
             Ds001Spec = "E00",
             UseZa4 = true,
-            IsKrefeld = true
+            Protocol = OutsideDisplayProtocolKind.Ds003aKrefeld
         };
+
+    /// <summary>
+    /// Mobitec: Linie in <see cref="Ds001Value"/> (leer = keine Linie, volle Frontbreite),
+    /// Zieltext in <see cref="FrontLine1"/> / Name.
+    /// </summary>
+    public static OutsideDisplayProgram CreateMobitec(string? name = null) =>
+        new()
+        {
+            Id = OutsideDisplayId.NewId(),
+            Name = name ?? "Neues Ziel",
+            FrontLine1 = string.Empty,
+            SideLine1 = string.Empty,
+            Ds001Type = "line",
+            // Leer: sonst bleibt „S8“ stehen und die Linienzone blockiert den Zieltext.
+            Ds001Value = string.Empty,
+            Ds001Spec = "E00",
+            IntervalSeconds = 3,
+            Protocol = OutsideDisplayProtocolKind.Mobitec
+        };
+
+    /// <summary>Mobitec-Danke/Smile (Tablet sendet Bitmap 0x77, wie DS021T „Danke“).</summary>
+    public static OutsideDisplayProgram CreateMobitecSmile()
+    {
+        var program = new OutsideDisplayProgram
+        {
+            Id = OutsideDisplayId.NewId(),
+            Name = "Danke",
+            Ds001Type = "line",
+            Ds001Value = string.Empty,
+            Ds001Spec = "E00",
+            IntervalSeconds = 3,
+            Protocol = OutsideDisplayProtocolKind.Mobitec
+        };
+        program.FrontCycles[0].SetFromPair("Danke", string.Empty);
+        program.SideCycles[0].SetFromPair("Danke", string.Empty);
+        return program;
+    }
 
     public static OutsideDisplayProgram? TryParse(string entry)
     {
@@ -97,25 +1002,76 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
         var program = new OutsideDisplayProgram
         {
-            Name = parts[0],
-            IsKrefeld = parts.Length >= 9
+            Name = parts[0]
         };
 
         var frontLog = DecodeUtf8(parts.ElementAtOrDefault(3));
         var sideLog = DecodeUtf8(parts.ElementAtOrDefault(4));
-        ApplyLogLines(program, frontLog, isFront: true);
-        ApplyLogLines(program, sideLog, isFront: false);
+        byte[]? frontBytes = null;
+        byte[]? sideBytes = null;
+        try
+        {
+            var frontB64 = parts.ElementAtOrDefault(1);
+            if (!string.IsNullOrWhiteSpace(frontB64))
+            {
+                frontBytes = Convert.FromBase64String(frontB64);
+            }
+
+            var sideB64 = parts.ElementAtOrDefault(2);
+            if (!string.IsNullOrWhiteSpace(sideB64))
+            {
+                sideBytes = Convert.FromBase64String(sideB64);
+            }
+        }
+        catch
+        {
+            // Telegramm-Bytes optional für Zyklus-Parsing
+        }
+
+        var looksMobitecWire = IsMobitecWireFrame(frontBytes) || IsMobitecWireFrame(sideBytes);
+        if (looksMobitecWire)
+        {
+            // Mobitec-Rohframes nicht als DS021-Zyklen interpretieren
+            ApplyLogLines(program, frontLog, isFront: true);
+            ApplyLogLines(program, sideLog, isFront: false);
+            program.SyncCyclesFromLegacyLines();
+            program.MobitecFrontFrame = IsMobitecWireFrame(frontBytes) ? frontBytes : null;
+            program.MobitecSideFrame = IsMobitecWireFrame(sideBytes) ? sideBytes : null;
+        }
+        else
+        {
+            OutsideDisplayCycleParser.ApplyToCycles(program.FrontCycles, frontLog, frontBytes);
+            OutsideDisplayCycleParser.ApplyToCycles(program.SideCycles, sideLog, sideBytes);
+            program.SyncLegacyLinesFromCycles();
+
+            if (program.FrontCycles.All(c => !c.HasContent))
+            {
+                ApplyLogLines(program, frontLog, isFront: true);
+                ApplyLogLines(program, sideLog, isFront: false);
+                program.SyncCyclesFromLegacyLines();
+            }
+        }
 
         var ds001Type = DecodeUtf8(parts.ElementAtOrDefault(5));
         var ds001Value = DecodeUtf8(parts.ElementAtOrDefault(6));
-        if (!string.IsNullOrWhiteSpace(ds001Type))
+        if (string.Equals(ds001Type, "special", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(ds001Value))
         {
-            program.Ds001Type = ds001Type;
+            program.Ds001Spec = ds001Value.Trim().ToUpperInvariant();
+            program.Ds001Type = "line";
+            program.Ds001Value = "001";
         }
-
-        if (!string.IsNullOrWhiteSpace(ds001Value))
+        else
         {
-            program.Ds001Value = ds001Value;
+            if (!string.IsNullOrWhiteSpace(ds001Type))
+            {
+                program.Ds001Type = ds001Type;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ds001Value))
+            {
+                program.Ds001Value = ds001Value;
+            }
         }
 
         if (parts.Length >= 8 && bool.TryParse(parts[7], out var listEnabled))
@@ -134,6 +1090,93 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             {
                 program.Ds001Spec = "E00";
             }
+        }
+
+        program.Protocol = InferProtocol(frontBytes, sideBytes, parts);
+        var storedId = OutsideDisplayId.FromStorageEntry(entry);
+        program.Id = OutsideDisplayId.IsValid(storedId)
+            ? storedId
+            : OutsideDisplayId.LegacyStable(program.Name, program.Protocol);
+        if (program.Protocol == OutsideDisplayProtocolKind.FmaS1)
+        {
+            FmaS1CycleLog.ApplyToCycles(program.FrontCycles, frontLog);
+            FmaS1CycleLog.ApplyToCycles(program.SideCycles, sideLog);
+            program.SyncLegacyLinesFromCycles();
+        }
+
+        // DS003: Front-Log = Zielnummer, Side-Log = Beschreibung/Seite (nicht Zyklus-Parsing).
+        if (program.Protocol == OutsideDisplayProtocolKind.Ds003)
+        {
+            ApplyLogLines(program, frontLog, isFront: true);
+            ApplyLogLines(program, sideLog, isFront: false);
+            program.FrontLine1 = OutsideDisplayTelegramFactory.NormalizeZielnummer(program.FrontLine1);
+            // Zwei Seitenzeilen → ein Feld mit „/“; fehlende Linie → 000 (nicht Default 001).
+            MergeDs003SideDescriptionWithSlash(program);
+            program.Ds001Value = string.IsNullOrWhiteSpace(ds001Value) ? "000" : ds001Value.Trim();
+        }
+
+        if (parts.Length >= 12)
+        {
+            program.FontControl = Ds021NeuFontControl.ParseStored(DecodeUtf8(parts[11]));
+        }
+
+        // Index: 12=Protokoll, 13=Id, 14=Intervall (Sekunden, optional), 15=AutoFitFonts
+        var intervalRaw = DecodeUtf8(parts.ElementAtOrDefault(14));
+        if (int.TryParse(intervalRaw, out var intervalSec) && intervalSec is >= 1 and <= 99)
+        {
+            program.IntervalSeconds = intervalSec;
+        }
+
+        var autoFitRaw = DecodeUtf8(parts.ElementAtOrDefault(15));
+        if (bool.TryParse(autoFitRaw, out var autoFit))
+        {
+            program.AutoFitFonts = autoFit;
+        }
+        else if (string.Equals(autoFitRaw, "1", StringComparison.OrdinalIgnoreCase))
+        {
+            program.AutoFitFonts = true;
+        }
+
+        if (program.Protocol == OutsideDisplayProtocolKind.Mobitec || looksMobitecWire)
+        {
+            if (looksMobitecWire)
+            {
+                program.Protocol = OutsideDisplayProtocolKind.Mobitec;
+            }
+
+            try
+            {
+                var lineB64 = parts.ElementAtOrDefault(16);
+                if (!string.IsNullOrWhiteSpace(lineB64))
+                {
+                    var lineBytes = Convert.FromBase64String(lineB64);
+                    if (IsMobitecWireFrame(lineBytes))
+                    {
+                        program.MobitecLineFrame = lineBytes;
+                    }
+                }
+            }
+            catch
+            {
+                // optional
+            }
+
+            program.NotifyMobitecGraphicsChanged();
+        }
+
+        // Index 17: Mobitec-ICU-Zielnummer (unabhängig von App-ID Index 13)
+        var destRaw = DecodeUtf8(parts.ElementAtOrDefault(17));
+        if (int.TryParse(destRaw, out var destNo) && destNo is >= 0 and <= 9999)
+        {
+            program.DestinationNumber = destNo;
+        }
+        else if (program.Protocol == OutsideDisplayProtocolKind.Mobitec &&
+                 OutsideDisplayId.IsFourDigit(program.Id) &&
+                 int.TryParse(program.Id, out var legacyDest) &&
+                 legacyDest is >= 0 and <= 9999)
+        {
+            // Legacy: früher war die App-ID zugleich die ICU-Zielnummer
+            program.DestinationNumber = legacyDest;
         }
 
         if (string.Equals(program.Name, "Startziel", StringComparison.Ordinal))
@@ -160,48 +1203,224 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     {
         ApplyStartTargetName();
 
-        var (frontBytes, sideBytes) = IsKrefeld
-            ? OutsideDisplayTelegramFactory.BuildKrefeldTelegrams(this)
-            : OutsideDisplayTelegramFactory.BuildDs021tTelegrams(this);
+        var (frontBytes, sideBytes) = Protocol switch
+        {
+            OutsideDisplayProtocolKind.Ds003aKrefeld => OutsideDisplayTelegramFactory.BuildKrefeldTelegrams(this),
+            OutsideDisplayProtocolKind.Ds021Neu => OutsideDisplayTelegramFactory.BuildDs021NeuTelegrams(this),
+            OutsideDisplayProtocolKind.FmaS1 => OutsideDisplayTelegramFactory.BuildFmaS1Telegrams(this),
+            OutsideDisplayProtocolKind.Ds003 => OutsideDisplayTelegramFactory.BuildZielnummerTelegrams(this),
+            // Mobitec: OUT-Rohframes (Grafiken) mitspeichern; sonst leere Bytes → Tablet generiert.
+            OutsideDisplayProtocolKind.Mobitec => (
+                MobitecFrontFrame ?? Array.Empty<byte>(),
+                MobitecSideFrame ?? Array.Empty<byte>()),
+            _ => OutsideDisplayTelegramFactory.BuildDs021tTelegrams(this)
+        };
 
         return BuildEntry(frontBytes, sideBytes);
     }
 
     private string BuildEntry(byte[] frontBytes, byte[] sideBytes)
     {
-        var frontLog = BuildLogString(FrontLine1, FrontLine2);
-        var sideLog = BuildLogString(SideLine1, SideLine2);
-        var ds001Type = EncodeUtf8(IsKrefeld ? "line" : Ds001Type);
-        var ds001Value = EncodeUtf8(
-            IsKrefeld ? NormalizeKrefeldLine(Ds001Value) : Ds001Value.Trim());
-
-        if (IsKrefeld)
+        IReadOnlyList<(string Line1, string Line2)> frontGoals;
+        IReadOnlyList<(string Line1, string Line2)> sideGoals;
+        if (Protocol == OutsideDisplayProtocolKind.Ds021Neu)
         {
-            return string.Join('|',
-                Name,
-                EncodeBytes(frontBytes),
-                EncodeBytes(sideBytes),
-                EncodeUtf8(frontLog),
-                EncodeUtf8(sideLog),
-                ds001Type,
-                ds001Value,
-                IsListEnabled.ToString().ToLowerInvariant(),
-                EncodeUtf8(NormalizeKrefeldSpec(Ds001Spec)));
+            frontGoals = [(FrontLine1, FrontLine2)];
+            sideGoals = string.IsNullOrWhiteSpace(SideLine1) && string.IsNullOrWhiteSpace(SideLine2)
+                ? frontGoals
+                : [(SideLine1, SideLine2)];
+        }
+        else if (Protocol == OutsideDisplayProtocolKind.FmaS1)
+        {
+            frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(FrontCycles);
+            if (frontGoals.Count == 0)
+            {
+                frontGoals = [(FrontLine1, FrontLine2)];
+            }
+
+            sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
+        }
+        else if (Protocol == OutsideDisplayProtocolKind.Ds003)
+        {
+            frontGoals = [(FrontLine1, string.Empty)];
+            // Beschreibung/Seite getrennt von der Zielnummer speichern
+            sideGoals = string.IsNullOrWhiteSpace(SideLine1) && string.IsNullOrWhiteSpace(SideLine2)
+                ? [(string.Empty, string.Empty)]
+                : [(SideLine1, SideLine2)];
+        }
+        else
+        {
+            frontGoals = OutsideDisplayCycleParser.CollectFrontGoals(FrontCycles);
+            if (frontGoals.Count == 0)
+            {
+                frontGoals = [(FrontLine1, FrontLine2)];
+            }
+
+            sideGoals = OutsideDisplayCycleParser.CollectSideGoals(SideCycles, frontGoals);
         }
 
-        var ds001Val = Ds001Type == "line"
-            ? NormalizeKrefeldLine(Ds001Value)
-            : Ds001Value.Trim().ToUpperInvariant();
+        var frontLog = Protocol switch
+        {
+            OutsideDisplayProtocolKind.FmaS1 => FmaS1CycleLog.Encode(frontGoals),
+            OutsideDisplayProtocolKind.Ds003 => OutsideDisplayTelegramFactory.NormalizeZielnummer(FrontLine1),
+            _ => OutsideDisplayCycleParser.BuildLogString(frontGoals)
+        };
+        var sideLog = Protocol switch
+        {
+            OutsideDisplayProtocolKind.FmaS1 => FmaS1CycleLog.Encode(sideGoals),
+            OutsideDisplayProtocolKind.Ds003 => BuildLogString(SideLine1, SideLine2),
+            _ => OutsideDisplayCycleParser.BuildLogString(sideGoals)
+        };
 
-        return string.Join('|',
+        var parts = new List<string>
+        {
             Name,
             EncodeBytes(frontBytes),
             EncodeBytes(sideBytes),
             EncodeUtf8(frontLog),
             EncodeUtf8(sideLog),
-            EncodeUtf8(Ds001Type),
-            EncodeUtf8(ds001Val),
-            IsListEnabled.ToString().ToLowerInvariant());
+            EncodeUtf8("line"),
+            EncodeUtf8(EncodeLineForStorage()),
+            IsListEnabled.ToString().ToLowerInvariant(),
+            EncodeUtf8(NormalizeKrefeldSpec(Ds001Spec))
+        };
+
+        while (parts.Count < 12)
+        {
+            parts.Add(string.Empty);
+        }
+
+        var fontStored = Ds021NeuFontControl.EncodeStored(FontControl);
+        if (!string.IsNullOrEmpty(fontStored))
+        {
+            parts[11] = EncodeUtf8(fontStored);
+        }
+
+        parts.Add(EncodeUtf8(ProtocolStorageTag(Protocol)));
+        parts.Add(EncodeUtf8(OutsideDisplayId.Ensure(Id)));
+        parts.Add(EncodeUtf8(Math.Clamp(IntervalSeconds, 1, 99).ToString()));
+        parts.Add(EncodeUtf8(AutoFitFonts ? "true" : "false"));
+        // Index 16: Mobitec-Linien-Rohframe (Tasse/Schraubenschlüssel/Logo/…)
+        parts.Add(Protocol == OutsideDisplayProtocolKind.Mobitec
+            ? EncodeBytes(MobitecLineFrame ?? Array.Empty<byte>())
+            : string.Empty);
+        // Index 17: Mobitec-ICU-Zielnummer (leer wenn nicht gesetzt)
+        parts.Add(DestinationNumber is int dn
+            ? EncodeUtf8(dn.ToString("D4"))
+            : string.Empty);
+        return string.Join('|', parts);
+    }
+
+    public static string ProtocolStorageTag(OutsideDisplayProtocolKind protocol) => protocol switch
+    {
+        OutsideDisplayProtocolKind.Ds003aKrefeld => "DS003a_Krefeld",
+        OutsideDisplayProtocolKind.Ds021Neu => "DS021neu",
+        OutsideDisplayProtocolKind.FmaS1 => "FMA-S1",
+        OutsideDisplayProtocolKind.Ds003 => "DS003",
+        OutsideDisplayProtocolKind.Mobitec => "Mobitec",
+        _ => "DS021T"
+    };
+
+    private static OutsideDisplayProtocolKind InferProtocol(byte[]? frontBytes, byte[]? sideBytes, string[] parts)
+    {
+        var tag = DecodeUtf8(parts.ElementAtOrDefault(12));
+        if (string.Equals(tag, "DS003a_Krefeld", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.Ds003aKrefeld;
+        }
+
+        if (string.Equals(tag, "DS021neu", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.Ds021Neu;
+        }
+
+        if (string.Equals(tag, "FMA-S1", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.FmaS1;
+        }
+
+        // Neu: „DS003“; ältere Pakete: „Zielnummer“
+        if (string.Equals(tag, "DS003", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(tag, "Zielnummer", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.Ds003;
+        }
+
+        if (string.Equals(tag, "Mobitec", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.Mobitec;
+        }
+
+        if (IsMobitecWireFrame(frontBytes) || IsMobitecWireFrame(sideBytes))
+        {
+            return OutsideDisplayProtocolKind.Mobitec;
+        }
+
+        if (string.Equals(tag, "DS021T", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(tag, "DS021", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(tag, "DS003a_UESTRA", StringComparison.OrdinalIgnoreCase))
+        {
+            return OutsideDisplayProtocolKind.Ds021T;
+        }
+
+        foreach (var bytes in new[] { frontBytes, sideBytes })
+        {
+            if (bytes is null or { Length: 0 })
+            {
+                continue;
+            }
+
+            var ascii = Encoding.ASCII.GetString(bytes);
+            if (ascii.Contains("zA4", StringComparison.Ordinal) ||
+                ascii.Contains("zA5", StringComparison.Ordinal))
+            {
+                return OutsideDisplayProtocolKind.Ds003aKrefeld;
+            }
+
+            if (Ds021NeuProgramBuilder.IsDs021NeuPayloadAscii(ascii))
+            {
+                return OutsideDisplayProtocolKind.Ds021Neu;
+            }
+
+            if (FmaS1ProgramBuilder.IsFmaS1PayloadAscii(ascii))
+            {
+                return OutsideDisplayProtocolKind.FmaS1;
+            }
+
+            if (Regex.IsMatch(ascii, @"^z[0-9]") &&
+                !ascii.StartsWith("zA4", StringComparison.Ordinal) &&
+                !ascii.StartsWith("zA5", StringComparison.Ordinal))
+            {
+                return OutsideDisplayProtocolKind.Ds003;
+            }
+
+            if (ascii.Contains("aA", StringComparison.Ordinal))
+            {
+                return OutsideDisplayProtocolKind.Ds021T;
+            }
+        }
+
+        return OutsideDisplayProtocolKind.Ds021T;
+    }
+
+    /// <summary>
+    /// Speichert die Linie: Mobitec/DS021T frei (RE13, S8, …);
+    /// DS003: Front z999, leer → „000“; nur DS003a Krefeld bleibt auf 3 Ziffern.
+    /// </summary>
+    private string EncodeLineForStorage()
+    {
+        var raw = (Ds001Value ?? string.Empty).Trim();
+        if (Protocol == OutsideDisplayProtocolKind.Ds003aKrefeld)
+        {
+            return NormalizeKrefeldLine(raw);
+        }
+
+        if (Protocol == OutsideDisplayProtocolKind.Ds003)
+        {
+            return string.IsNullOrEmpty(raw) ? "000" : raw;
+        }
+
+        return raw;
     }
 
     private static string NormalizeKrefeldLine(string value)
@@ -261,6 +1480,12 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     private static string EncodeBytes(byte[] bytes) =>
         Convert.ToBase64String(bytes);
 
+    private static bool IsMobitecWireFrame(byte[]? bytes) =>
+        bytes is { Length: >= 5 } &&
+        (bytes[0] & 0xFF) == 0xFF &&
+        (bytes[1] & 0xFF) is 0x06 or 0x07 or 0x0B &&
+        (bytes[2] & 0xFF) == 0xA2;
+
     private static string EncodeUtf8(string text) =>
         string.IsNullOrEmpty(text)
             ? string.Empty
@@ -268,4 +1493,58 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    private void SetProperty<T>(ref T field, T value, params string[] additionalPropertyNames)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+
+        field = value;
+        OnPropertyChanged();
+        foreach (var name in additionalPropertyNames)
+        {
+            OnPropertyChanged(name);
+        }
+    }
+
+    public void NotifyMobitecGraphicsChanged()
+    {
+        OnPropertyChanged(nameof(HasMobitecRawFrames));
+        OnPropertyChanged(nameof(HasMobitecBitmapGraphic));
+        OnPropertyChanged(nameof(MobitecGraphicsLabel));
+        OnPropertyChanged(nameof(MobitecLineListLabel));
+        OnPropertyChanged(nameof(FrontPreview));
+        OnPropertyChanged(nameof(WechseltextPreview));
+    }
+
+    public void RefreshListDisplayProperties()
+    {
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(DisplayLabel));
+        OnPropertyChanged(nameof(FrontPreview));
+        OnPropertyChanged(nameof(SidePreview));
+        OnPropertyChanged(nameof(WechseltextPreview));
+        OnPropertyChanged(nameof(WechseltextCount));
+        OnPropertyChanged(nameof(ProtocolLabel));
+        OnPropertyChanged(nameof(Protocol));
+        OnPropertyChanged(nameof(IsDs021Neu));
+        OnPropertyChanged(nameof(IsFmaS1));
+        OnPropertyChanged(nameof(IsZielnummer));
+        OnPropertyChanged(nameof(IsDs003));
+        OnPropertyChanged(nameof(IsMobitec));
+        OnPropertyChanged(nameof(IsDs021T));
+        OnPropertyChanged(nameof(UsesCycleEditor));
+        OnPropertyChanged(nameof(UsesIntervalSeconds));
+        OnPropertyChanged(nameof(IsKrefeld));
+        OnPropertyChanged(nameof(IsListEnabled));
+        OnPropertyChanged(nameof(DisplayNumber));
+        OnPropertyChanged(nameof(IdEditText));
+        OnPropertyChanged(nameof(ListNumberLabel));
+        OnPropertyChanged(nameof(DestinationNumber));
+        OnPropertyChanged(nameof(DestinationNumberEditText));
+        OnPropertyChanged(nameof(Ds003ListLabel));
+        NotifyMobitecGraphicsChanged();
+    }
 }

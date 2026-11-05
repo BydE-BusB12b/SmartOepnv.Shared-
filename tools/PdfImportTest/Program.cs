@@ -13,6 +13,11 @@ if (args.Contains("--debug"))
     return 0;
 }
 
+if (args.Contains("--umlauf"))
+{
+    return PdfImportTest.UmlaufDump.Run(path);
+}
+
 Console.WriteLine($"PDF: {path}");
 Console.WriteLine();
 

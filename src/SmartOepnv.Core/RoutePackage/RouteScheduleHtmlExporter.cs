@@ -57,12 +57,66 @@ public static class RouteScheduleHtmlExporter
 
     public static string BuildFileName(string routeName)
     {
-        var safe = routeName
-            .Replace(" ", "_", StringComparison.Ordinal)
-            .Replace("(", string.Empty, StringComparison.Ordinal)
-            .Replace(")", string.Empty, StringComparison.Ordinal)
-            .Replace(",", string.Empty, StringComparison.Ordinal);
+        var safe = SanitizeFileName(routeName);
+        if (string.IsNullOrWhiteSpace(safe))
+        {
+            safe = "Route";
+        }
+
+        // Windows MAX_PATH-freundlich halten
+        if (safe.Length > 120)
+        {
+            safe = safe[..120].TrimEnd('_', '-', '.');
+        }
+
         return $"Fahrplan_{safe}.html";
+    }
+
+    /// <summary>Entfernt/ersetzt Zeichen, die unter Windows in Dateinamen ungültig sind.</summary>
+    public static string SanitizeFileName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var invalid = Path.GetInvalidFileNameChars();
+        var builder = new StringBuilder(value.Length);
+        foreach (var ch in value.Trim())
+        {
+            if (ch is ' ' or ',' or ';' or ':')
+            {
+                builder.Append('_');
+                continue;
+            }
+
+            if (ch is '/' or '\\' or '>' or '<' or '|' or '?' or '*' or '"' or '\0')
+            {
+                builder.Append('-');
+                continue;
+            }
+
+            if (Array.IndexOf(invalid, ch) >= 0)
+            {
+                builder.Append('_');
+                continue;
+            }
+
+            builder.Append(ch);
+        }
+
+        var result = builder.ToString();
+        while (result.Contains("__", StringComparison.Ordinal))
+        {
+            result = result.Replace("__", "_", StringComparison.Ordinal);
+        }
+
+        while (result.Contains("--", StringComparison.Ordinal))
+        {
+            result = result.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        return result.Trim('_', '-', '.');
     }
 
     private static string Escape(string value) =>

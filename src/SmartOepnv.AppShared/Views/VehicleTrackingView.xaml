@@ -19,6 +19,11 @@
                             Command="{Binding RefreshCommand}"
                             Style="{StaticResource MaterialDesignRaisedButton}"
                             Margin="0,0,12,0" />
+                    <Button Content="VDV 454 Dry-Run"
+                            Command="{Binding DryRunVdv454Command}"
+                            ToolTip="SIRI-VM/ET-Vorbereitungs-XML aus aktuellen Live-Fahrzeugen schreiben (kein Verbund-Versand)"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Margin="0,0,12,0" />
                     <TextBlock Text="Auto-Update: 15 s" VerticalAlignment="Center" Opacity="0.75" />
                 </StackPanel>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding StatusMessage}" TextWrapping="Wrap"
@@ -50,9 +55,9 @@
                 <materialDesign:Card Padding="12"
                                      UniformCornerRadius="12"
                                      VerticalAlignment="Stretch"
-                                     Background="{StaticResource SmartPrimaryDarkBrush}">
+                                     Background="{DynamicResource SmartPanelBrush}">
                     <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="Fahrzeugliste" Foreground="White"
+                        <TextBlock DockPanel.Dock="Top" Text="Fahrzeugliste" Foreground="{DynamicResource SmartForegroundBrush}"
                                    FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
                         <TextBlock DockPanel.Dock="Top"
                                    Text="Einfachklick: Karte · Doppelklick: Info · Rechtsklick: Fernsteuerung"
@@ -60,23 +65,65 @@
                         <ListBox x:Name="VehicleListBox"
                                  ItemsSource="{Binding Vehicles}"
                                  SelectedItem="{Binding SelectedVehicle}"
+                                 SelectionChanged="VehicleListBox_SelectionChanged"
                                  MouseDoubleClick="VehicleList_MouseDoubleClick"
                                  PreviewMouseRightButtonDown="VehicleList_PreviewMouseRightButtonDown"
                                  Background="Transparent" BorderThickness="0">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Border Padding="8" Margin="0,0,0,6" CornerRadius="8"
-                                            Background="#22000000" BorderBrush="#44FFFFFF" BorderThickness="1">
+                                            Background="#22000000" BorderThickness="2">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="BorderBrush" Value="#43A047" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding StatusLabel}" Value="Online">
+                                                        <Setter Property="BorderBrush" Value="#43A047" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding StatusLabel}" Value="Veraltet">
+                                                        <Setter Property="BorderBrush" Value="#E53935" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding StatusLabel}" Value="Offline">
+                                                        <Setter Property="BorderBrush" Value="#8E24AA" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
                                         <StackPanel>
-                                            <TextBlock Text="{Binding DisplayName}" Foreground="White" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding DisplayName, Mode=OneWay}" Foreground="{DynamicResource SmartForegroundBrush}" FontWeight="Bold" />
                                             <TextBlock Foreground="#BBDEFB">
-                                                <Run Text="Linie/Kurs: " />
-                                                <Run Text="{Binding LineCourse}" FontWeight="SemiBold" />
+                                                <Run Text="Linie/Kurs, Fahrt: " />
+                                                <Run Text="{Binding LineCourse, Mode=OneWay}" FontWeight="SemiBold" />
                                             </TextBlock>
-                                            <TextBlock Text="{Binding DetailLine}" Foreground="#E3F2FD" TextWrapping="Wrap" FontSize="12" />
+                                            <TextBlock Text="{Binding DetailLine, Mode=OneWay}" Foreground="#E3F2FD" TextWrapping="Wrap" FontSize="12" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                <TextBlock Text="{Binding PasInfoDisplay, Mode=OneWay}"
+                                                           Foreground="{Binding PasInfoForeground, Mode=OneWay}"
+                                                           FontSize="11" FontWeight="SemiBold" Margin="0,0,10,0" />
+                                                <TextBlock Text="{Binding BluetoothDisplay, Mode=OneWay}"
+                                                           Foreground="{Binding BluetoothForeground, Mode=OneWay}"
+                                                           FontSize="11" FontWeight="SemiBold" />
+                                            </StackPanel>
                                             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                                <TextBlock Text="{Binding StatusLabel}" Foreground="#C8E6C9" FontSize="11" Margin="0,0,8,0" />
-                                                <TextBlock Text="{Binding LastUpdateLabel}" Foreground="#B0BEC5" FontSize="11" />
+                                                <TextBlock Text="{Binding StatusLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Margin="0,0,8,0">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="#C8E6C9" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding StatusLabel}" Value="Online">
+                                                                    <Setter Property="Foreground" Value="#81C784" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding StatusLabel}" Value="Veraltet">
+                                                                    <Setter Property="Foreground" Value="#EF9A9A" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding StatusLabel}" Value="Offline">
+                                                                    <Setter Property="Foreground" Value="#CE93D8" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding LastUpdateLabel, Mode=OneWay}" Foreground="#B0BEC5" FontSize="11" />
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
@@ -92,12 +139,12 @@
                                      Padding="12"
                                      UniformCornerRadius="12"
                                      VerticalAlignment="Stretch"
-                                     Background="{StaticResource SmartPrimaryDarkBrush}">
+                                     Background="{DynamicResource SmartPanelBrush}">
                     <DockPanel>
                         <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
                             <TextBlock x:Name="VehicleDetailTitle"
                                        Text="KOM-Info"
-                                       Foreground="White"
+                                       Foreground="{DynamicResource SmartForegroundBrush}"
                                        FontSize="16"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center" />
@@ -109,7 +156,7 @@
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Top"
                                     Background="#1E5A9E"
-                                    Foreground="White"
+                                    Foreground="{DynamicResource SmartOnPrimaryBrush}"
                                     BorderBrush="#42A5F5"
                                     BorderThickness="1"
                                     Click="VehicleDetailClose_Click"
@@ -120,7 +167,7 @@
                                 Margin="0,12,0,0"
                                 MinHeight="36"
                                 Background="#0D47A1"
-                                Foreground="White"
+                                Foreground="{DynamicResource SmartOnPrimaryBrush}"
                                 BorderBrush="#42A5F5"
                                 BorderThickness="1"
                                 IsCancel="True"

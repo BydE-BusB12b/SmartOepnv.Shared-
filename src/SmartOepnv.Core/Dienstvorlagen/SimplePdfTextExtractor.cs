@@ -3,8 +3,8 @@ using UglyToad.PdfPig;
 
 namespace SmartOepnv.Core.Dienstvorlagen;
 
-/// <summary>Textextraktion aus PDF-Dateien (Excel-Ersatzfahrpläne) über PdfPig.</summary>
-internal static class SimplePdfTextExtractor
+/// <summary>Textextraktion aus PDF-Dateien (Excel-Ersatzfahrpläne / Umlaufkarten) über PdfPig.</summary>
+public static class SimplePdfTextExtractor
 {
     private static readonly Regex TimeTokenRegex = new(@"\b\d{1,2}[.:]\d{2}\b", RegexOptions.Compiled);
     private static readonly Regex TimesOnlyRowRegex = new(

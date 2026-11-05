@@ -11,4 +11,7 @@ public sealed class PlanerWorkspaceCaptureRequest
 
     /// <summary>Unveränderte Versions-Snapshots aus der letzten planer_workspace.json wiederverwenden.</summary>
     public IReadOnlyList<PlannerPackageVersionSnapshotData>? ReuseSnapshotPackageJsonFrom { get; init; }
+
+    /// <summary>Unveränderte Ansagen-Manifest-Einträge (Größe/Hash) aus der letzten planer_workspace.json wiederverwenden.</summary>
+    public IReadOnlyDictionary<string, PlanerWorkspaceBinaryPayload>? ReuseAnnouncementRawSoundsFrom { get; init; }
 }

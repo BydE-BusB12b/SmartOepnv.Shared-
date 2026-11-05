@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>SmartOepnv.IbisWagenbusUtility</RootNamespace>
+    <AssemblyName>IbisWagenbusUtility</AssemblyName>
+    <ApplicationTitle>IBIS Wagenbus Utility</ApplicationTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <ProjectReference Include="..\..\src\SmartOepnv.Core\SmartOepnv.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -30,10 +30,13 @@ public sealed class PlannerLocalOverlayService
     public void ApplyAfterPackageLoad(EditableRoutePackage editor)
     {
         var overlay = _store.LoadOrEmpty();
-        if (!overlay.HasContent && !_store.Exists)
+        if (!_store.Exists)
         {
-            overlay = CaptureFromEditor(editor);
-            _store.Save(overlay);
+            if (editor.Employees.Count > 0 || editor.RegisteredVehicles.Count > 0)
+            {
+                _store.Save(CaptureFromEditor(editor));
+            }
+
             return;
         }
 
@@ -42,7 +45,12 @@ public sealed class PlannerLocalOverlayService
         {
             var packageEmployees = editor.Employees.Select(CloneEmployee).ToList();
             overlay.Employees = EmployeePlannerCredentialMerge.MergeLists(overlay.Employees, packageEmployees);
+            overlay.Vehicles = MergeVehiclesPreferLocal(overlay.Vehicles, editor.RegisteredVehicles);
+            overlay.PhoneRedirects = MergePhoneRedirectsPreferLocal(
+                overlay.PhoneRedirects,
+                editor.RegisteredVehiclePhoneRedirects);
             ApplyToEditor(editor, overlay);
+            _store.Save(overlay);
         }
     }
 
@@ -102,7 +110,39 @@ public sealed class PlannerLocalOverlayService
             }
         }
 
+        var driverKey = EmployeeDispoKeys.FromEmployee(employee);
+        RemoveDriverDispositionAssignments(driverKey, overlay);
+
         _store.Save(overlay);
+
+        if (driverKey.Length > 0)
+        {
+            AppServices.NotifyEmployeeRemovedFromRoster(driverKey);
+        }
+    }
+
+    private void RemoveDriverDispositionAssignments(string driverKey, PlannerLocalOverlayData overlay)
+    {
+        if (driverKey.Length == 0)
+        {
+            return;
+        }
+
+        overlay.DriverDispositionAssignments.RemoveAll(a =>
+            string.Equals(a.DriverKey, driverKey, StringComparison.Ordinal));
+
+        if (!_driverDispositionStore.Exists)
+        {
+            return;
+        }
+
+        var assignments = _driverDispositionStore.Load().ToList();
+        var removed = assignments.RemoveAll(a =>
+            string.Equals(a.DriverKey, driverKey, StringComparison.Ordinal));
+        if (removed > 0)
+        {
+            _driverDispositionStore.Save(assignments);
+        }
     }
 
     public void RecordVehicleDeleted(RegisteredVehicleItem vehicle)
@@ -429,6 +469,9 @@ public sealed class PlannerLocalOverlayService
         PersonnelNumber = e.PersonnelNumber,
         Password = e.Password,
         LicenseExpiry = e.LicenseExpiry,
+        BirthDate = e.BirthDate,
+        EntryDate = e.EntryDate,
+        MaternityProtection = e.MaternityProtection,
         FqnExpiry = e.FqnExpiry,
         DriverCardExpiry = e.DriverCardExpiry,
         LoginAsMainDevice = e.LoginAsMainDevice,
@@ -436,7 +479,8 @@ public sealed class PlannerLocalOverlayService
         PlannerPassword = e.PlannerPassword,
         LicenseCheckConfirmedAtUtcMs = e.LicenseCheckConfirmedAtUtcMs,
         FqnCheckConfirmedAtUtcMs = e.FqnCheckConfirmedAtUtcMs,
-        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs
+        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs,
+        LastEditedAtUtcMs = e.LastEditedAtUtcMs
     };
 
     private static RegisteredVehicleItem CloneVehicle(RegisteredVehicleItem v) => new()

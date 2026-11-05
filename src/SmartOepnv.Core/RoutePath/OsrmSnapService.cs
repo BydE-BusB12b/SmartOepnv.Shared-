@@ -13,11 +13,20 @@ public sealed class OsrmSnapService
         Timeout = TimeSpan.FromSeconds(25)
     };
 
-    public async Task<OsrmSnapResult> SnapSegmentAsync(RoutePathLatLng from, RoutePathLatLng to, CancellationToken ct = default)
-        => await SnapPathAsync([from, to], ct);
+    public async Task<OsrmSnapResult> SnapSegmentAsync(
+        RoutePathLatLng from,
+        RoutePathLatLng to,
+        int? travelBearingHint = null,
+        CancellationToken ct = default)
+        => await SnapPathAsync([from, to], travelBearingHint, ct);
 
-    public async Task<OsrmSnapResult> SnapPathAsync(IReadOnlyList<RoutePathLatLng> path, CancellationToken ct = default)
+    public async Task<OsrmSnapResult> SnapPathAsync(
+        IReadOnlyList<RoutePathLatLng> path,
+        int? travelBearingHint = null,
+        CancellationToken ct = default)
     {
+        _ = travelBearingHint;
+
         var clean = DedupeConsecutive(path
             .Where(p => double.IsFinite(p.Lat) && double.IsFinite(p.Lon))
             .ToList());
@@ -26,10 +35,24 @@ public sealed class OsrmSnapService
             return OsrmSnapResult.Failed(clean, "Mindestens zwei gültige Koordinaten nötig.");
         }
 
-        var direct = await TryRouteAsync(clean, ct);
-        if (direct is not null)
+        // Zuerst eng an den Wegpunkten und in Fahrtrichtung. unlimited + continue_straight
+        // hat die Linie auf die Parallelstraße (z. B. neben der Bahn) gelegt.
+        var fit = await TryFittingRouteAsync(clean, radiusMeters: 40, useBearings: true, maxWaypointDistMeters: 55, ct);
+        if (fit is not null)
         {
-            return direct;
+            return fit;
+        }
+
+        fit = await TryFittingRouteAsync(clean, radiusMeters: 40, useBearings: false, maxWaypointDistMeters: 55, ct);
+        if (fit is not null)
+        {
+            return fit;
+        }
+
+        fit = await TryFittingRouteAsync(clean, radiusMeters: 80, useBearings: false, maxWaypointDistMeters: 90, ct);
+        if (fit is not null)
+        {
+            return fit;
         }
 
         var anchored = new List<RoutePathLatLng>();
@@ -40,14 +63,49 @@ public sealed class OsrmSnapService
 
         if (!PointsEqual(clean, anchored))
         {
-            var anchoredResult = await TryRouteAsync(anchored, ct);
-            if (anchoredResult is not null)
+            fit = await TryFittingRouteAsync(anchored, radiusMeters: 25, useBearings: true, maxWaypointDistMeters: 45, ct);
+            if (fit is not null)
             {
-                return anchoredResult;
+                return fit;
+            }
+
+            fit = await TryFittingRouteAsync(anchored, radiusMeters: 25, useBearings: false, maxWaypointDistMeters: 45, ct);
+            if (fit is not null)
+            {
+                return fit;
             }
         }
 
-        return OsrmSnapResult.Failed(clean, "OSRM: keine Straßenroute für dieses Teilstück (Wegpunkte prüfen).");
+        return OsrmSnapResult.Failed(clean, "OSRM: keine Straßenroute nahe den Wegpunkten (Linie würde sonst auf eine andere Straße springen).");
+    }
+
+    /// <summary>Route nur übernehmen, wenn sie an den Wegpunkten bleibt und kein großer Umweg ist.</summary>
+    private async Task<OsrmSnapResult?> TryFittingRouteAsync(
+        IReadOnlyList<RoutePathLatLng> waypoints,
+        double radiusMeters,
+        bool useBearings,
+        double maxWaypointDistMeters,
+        CancellationToken ct)
+    {
+        var snap = await TryRouteAsync(waypoints, radiusMeters, useBearings, ct);
+        if (snap is null)
+        {
+            return null;
+        }
+
+        if (RoutePathGeo.MaxDistanceWaypointsToRoute(waypoints, snap.Points) > maxWaypointDistMeters)
+        {
+            return null;
+        }
+
+        var chain = RoutePathGeo.PathLengthMeters(waypoints);
+        var routed = RoutePathGeo.PathLengthMeters(snap.Points);
+        if (chain >= 50 && routed > chain * 1.85 + 160)
+        {
+            return null;
+        }
+
+        return snap;
     }
 
     private static List<RoutePathLatLng> DedupeConsecutive(List<RoutePathLatLng> path)
@@ -84,14 +142,22 @@ public sealed class OsrmSnapService
         return true;
     }
 
-    private async Task<OsrmSnapResult?> TryRouteAsync(IReadOnlyList<RoutePathLatLng> waypoints, CancellationToken ct)
+    private async Task<OsrmSnapResult?> TryRouteAsync(
+        IReadOnlyList<RoutePathLatLng> waypoints,
+        double radiusMeters,
+        bool useBearings,
+        CancellationToken ct)
     {
         var coord = string.Join(";", waypoints.Select(FormatCoord));
-        var radiuses = string.Join(";", Enumerable.Repeat("unlimited", waypoints.Count));
+        var radius = Math.Clamp(radiusMeters, 8, 120).ToString("0", CultureInfo.InvariantCulture);
+        var radiuses = string.Join(";", Enumerable.Repeat(radius, waypoints.Count));
+        var bearings = useBearings
+            ? "&bearings=" + Uri.EscapeDataString(BuildBearings(waypoints, rangeDeg: 80))
+            : string.Empty;
         var url =
             $"https://{OsrmHost}/route/v1/driving/{coord.Replace(";", "%3B", StringComparison.Ordinal)}" +
-            $"?overview=full&geometries=geojson&steps=true&continue_straight=true&alternatives=false" +
-            $"&radiuses={Uri.EscapeDataString(radiuses)}";
+            $"?overview=full&geometries=geojson&steps=true&continue_straight=false&alternatives=false" +
+            $"&radiuses={Uri.EscapeDataString(radiuses)}{bearings}";
 
         try
         {
@@ -118,10 +184,32 @@ public sealed class OsrmSnapService
         }
     }
 
-    private async Task<RoutePathLatLng> NearestOnRoadOrSameAsync(RoutePathLatLng point, CancellationToken ct)
+    private static string BuildBearings(IReadOnlyList<RoutePathLatLng> waypoints, int rangeDeg)
+    {
+        var parts = new string[waypoints.Count];
+        for (var i = 0; i < waypoints.Count; i++)
+        {
+            var origin = i < waypoints.Count - 1 ? waypoints[i] : waypoints[i - 1];
+            var target = i < waypoints.Count - 1 ? waypoints[i + 1] : waypoints[i];
+            if (RoutePathGeo.HaversineMeters(origin, target) < 8)
+            {
+                parts[i] = string.Empty;
+                continue;
+            }
+
+            parts[i] = $"{RoutePathGeo.BearingDegrees(origin, target)},{rangeDeg}";
+        }
+
+        return string.Join(';', parts);
+    }
+
+    private async Task<List<RoutePathLatLng>> FetchNearestCandidatesAsync(
+        RoutePathLatLng point,
+        CancellationToken ct,
+        int number = 5)
     {
         var url =
-            $"https://{OsrmHost}/nearest/v1/driving/{FormatCoord(point)}?number=1";
+            $"https://{OsrmHost}/nearest/v1/driving/{FormatCoord(point)}?number={Math.Clamp(number, 1, 10)}";
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -131,44 +219,63 @@ public sealed class OsrmSnapService
             var body = await response.Content.ReadAsStringAsync(ct);
             if (!response.IsSuccessStatusCode)
             {
-                return point;
+                return [];
             }
 
             var root = JsonNode.Parse(body)?.AsObject();
             if (!string.Equals(root?["code"]?.GetValue<string>(), "Ok", StringComparison.OrdinalIgnoreCase))
             {
-                return point;
+                return [];
             }
 
-            var loc = root?["waypoints"]?.AsArray()?.FirstOrDefault()?.AsObject()?["location"]?.AsArray();
-            if (loc is null || loc.Count < 2)
+            var list = new List<RoutePathLatLng>();
+            if (root?["waypoints"] is not JsonArray waypoints)
             {
-                return point;
+                return list;
             }
 
-            var lon = loc[0]?.GetValue<double>() ?? double.NaN;
-            var lat = loc[1]?.GetValue<double>() ?? double.NaN;
-            if (!double.IsFinite(lat) || !double.IsFinite(lon))
+            foreach (var wp in waypoints.OfType<JsonObject>())
             {
-                return point;
+                var loc = wp["location"]?.AsArray();
+                if (loc is null || loc.Count < 2)
+                {
+                    continue;
+                }
+
+                var lon = loc[0]?.GetValue<double>() ?? double.NaN;
+                var lat = loc[1]?.GetValue<double>() ?? double.NaN;
+                if (!double.IsFinite(lat) || !double.IsFinite(lon))
+                {
+                    continue;
+                }
+
+                list.Add(new RoutePathLatLng { Lat = lat, Lon = lon });
             }
 
-            return new RoutePathLatLng { Lat = lat, Lon = lon };
+            return list;
         }
         catch
         {
-            return point;
+            return [];
         }
+    }
+
+    private async Task<RoutePathLatLng> NearestOnRoadOrSameAsync(RoutePathLatLng point, CancellationToken ct)
+    {
+        var candidates = await FetchNearestCandidatesAsync(point, ct, number: 3);
+        foreach (var candidate in candidates)
+        {
+            if (RoutePathGeo.HaversineMeters(point, candidate) <= 40)
+            {
+                return candidate;
+            }
+        }
+
+        return point;
     }
 
     private static string FormatCoord(RoutePathLatLng p) =>
         $"{p.Lon.ToString("F7", CultureInfo.InvariantCulture)},{p.Lat.ToString("F7", CultureInfo.InvariantCulture)}";
-
-    private static string TrimOsrmError(string body)
-    {
-        var t = body.Replace('\n', ' ').Trim();
-        return t.Length > 180 ? t[..180] + "…" : t;
-    }
 
     private static OsrmSnapResult ParseOsrm(string json, IReadOnlyList<RoutePathLatLng> endpoints)
     {
@@ -265,7 +372,7 @@ public sealed class OsrmSnapService
                         Instruction = instruction,
                         CurrentStreet = previousStreet,
                         NextStreet = string.IsNullOrWhiteSpace(stepStreet) ? null : stepStreet,
-                        NavSymbolType = MapNavSymbol(type, modifier)
+                        NavSymbolType = MapNavSymbol(type, modifier, maneuver?["exit"]?.GetValue<int>() ?? -1)
                     });
                 }
                 cumulative += Math.Max(0, step["distance"]?.GetValue<double>() ?? 0);
@@ -301,12 +408,15 @@ public sealed class OsrmSnapService
         };
     }
 
-    private static string MapNavSymbol(string type, string modifier)
+    private static string MapNavSymbol(string type, string modifier, int exit = -1)
     {
         var m = modifier.ToLowerInvariant();
         if (type.Equals("roundabout", StringComparison.OrdinalIgnoreCase))
         {
-            return m.Contains('5') ? "roundabout_2_5" : "roundabout_2_4";
+            var isFiveArm = m.Contains('5');
+            var suffix = isFiveArm ? "_5" : "_4";
+            var exitNum = exit > 0 ? Math.Min(exit, isFiveArm ? 5 : 4) : 2;
+            return $"roundabout_{exitNum}{suffix}";
         }
         return m switch
         {

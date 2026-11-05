@@ -71,10 +71,7 @@ public sealed class LeitstelleDurchsageRecorder : IDisposable
         var m4aPath = Path.ChangeExtension(wavPath, ".m4a");
         try
         {
-            using var reader = new AudioFileReader(wavPath);
-            MediaFoundationEncoder.EncodeToAac(reader, m4aPath, 128_000);
-            var bytes = File.ReadAllBytes(m4aPath);
-            return bytes.Length > 0 ? bytes : null;
+            return LeitstelleDurchsageAudioEncoder.WavFileToM4aBytes(wavPath);
         }
         finally
         {

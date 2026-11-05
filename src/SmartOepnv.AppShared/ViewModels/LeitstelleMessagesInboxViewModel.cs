@@ -21,6 +21,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
     private readonly LeitstelleInboxHistoryStore _history = new();
     private readonly Dictionary<string, RegisteredVehicleInfo> _vehicleByPhone = new(StringComparer.Ordinal);
     private bool _hasInitialSync;
+    private bool _seedDropboxBaselineOnNextRefresh;
 
     public ObservableCollection<LeitstelleInboxItemViewModel> Items { get; } = [];
 
@@ -30,8 +31,20 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
 
     public bool HasUnreadMail => UnreadMailCount > 0;
 
+    public bool HasHeaderAlerts => HeaderAlertLine1 is not null || HeaderAlertLine2 is not null;
+
+    public LeitstelleInboxItemViewModel? HeaderAlertLine1 { get; private set; }
+
+    public LeitstelleInboxItemViewModel? HeaderAlertLine2 { get; private set; }
+
     /// <summary>SOS eingegangen: normalisierte Telefonnummer des Fahrzeugs.</summary>
     public event Action<string>? SosAlertRaised;
+
+    /// <summary>Meldung angeklickt: Live-Karte mit Fahrzeug-Detail öffnen.</summary>
+    public event Action<string>? OpenVehicleOnMapRequested;
+
+    /// <summary>Sprechwunsch angeklickt: zusätzlich Funk-Anruf starten.</summary>
+    public event Action<string, string>? SprechwunschAnswerRequested;
 
     public void RefreshFromEditor()
     {
@@ -53,6 +66,14 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
     public void StartMonitoring()
     {
         RefreshFromEditor();
+        _history.ClearRecordsForSessionRestart();
+        Items.Clear();
+        UnreadMailCount = 0;
+        OnPropertyChanged(nameof(HasUnreadMail));
+        UpdateHeaderAlerts();
+        StatusMessage = "Warte auf MailChat/SOS aus Dropbox…";
+        _hasInitialSync = false;
+        _seedDropboxBaselineOnNextRefresh = true;
         _ = RefreshAsync();
         StopMonitoring();
         _pollCts = new CancellationTokenSource();
@@ -116,6 +137,12 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
                         continue;
                     }
 
+                    if (_seedDropboxBaselineOnNextRefresh)
+                    {
+                        _history.Dismiss(item.DedupeKey);
+                        continue;
+                    }
+
                     if (!_history.Contains(item.DedupeKey))
                     {
                         item.IsUnread = _hasInitialSync && !item.IsSos;
@@ -148,6 +175,13 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
 
             await RunOnUiAsync(() => RebindItemsFromHistory()).ConfigureAwait(false);
 
+            if (_seedDropboxBaselineOnNextRefresh)
+            {
+                _seedDropboxBaselineOnNextRefresh = false;
+                _hasInitialSync = true;
+                return;
+            }
+
             _hasInitialSync = true;
 
             foreach (var phone in sosToRaise.Distinct(StringComparer.Ordinal))
@@ -179,6 +213,27 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
     }
 
     [RelayCommand]
+    public void OpenOnMap(LeitstelleInboxItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.PhoneNormalized))
+        {
+            StatusMessage = "Keine Telefonnummer – Live-Karte kann nicht geöffnet werden.";
+            return;
+        }
+
+        OpenVehicleOnMapRequested?.Invoke(item.PhoneNormalized);
+        if (item.IsSprechwunsch)
+        {
+            SprechwunschAnswerRequested?.Invoke(item.PhoneNormalized, item.VehicleName);
+        }
+    }
+
+    [RelayCommand]
     private void DeleteItem(LeitstelleInboxItemViewModel? item)
     {
         if (item is null || string.IsNullOrWhiteSpace(item.DedupeKey))
@@ -190,6 +245,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         Items.Remove(item);
         UnreadMailCount = Items.Count(i => !i.IsSos && i.IsUnread);
         OnPropertyChanged(nameof(HasUnreadMail));
+        UpdateHeaderAlerts();
         StatusMessage = Items.Count == 0
             ? "Keine Nachrichten in der Liste."
             : $"{Items.Count} Nachricht(en) · {Items.Count(i => i.IsSos)} SOS · {UnreadMailCount} neu.";
@@ -205,6 +261,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
 
         UnreadMailCount = Items.Count(i => !i.IsSos && i.IsUnread);
         OnPropertyChanged(nameof(HasUnreadMail));
+        UpdateHeaderAlerts();
 
         StatusMessage = Items.Count == 0
             ? "Keine MailChat/SOS-Nachrichten – bei neuer Meldung erscheint jede Sendung als eigene Zeile."
@@ -236,6 +293,11 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
             return null;
         }
 
+        var mailchatKind = ReadString(root, "mailchatKind");
+        var isSprechwunsch = !isSos && (
+            string.Equals(mailchatKind, "sprechwunsch", StringComparison.OrdinalIgnoreCase) ||
+            message.Trim().Equals("Sprechwunsch", StringComparison.OrdinalIgnoreCase));
+
         var senderName = ReadString(root, "senderName");
         var time = root.TryGetProperty("timestamp", out var t) && t.TryGetInt64(out var ts)
             ? ts
@@ -253,8 +315,9 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         {
             DedupeKey = dedupeKey,
             FileName = fileName,
-            Type = fallbackType,
+            Type = isSprechwunsch ? "sprechwunsch" : fallbackType,
             IsSos = isSos,
+            IsSprechwunsch = isSprechwunsch,
             IsUnread = !isSos,
             TimestampEpochMs = time,
             TimestampLabel = DateTimeOffset.FromUnixTimeMilliseconds(time).ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss"),
@@ -270,6 +333,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         FileName = item.FileName,
         Type = item.Type,
         IsSos = item.IsSos,
+        IsSprechwunsch = item.IsSprechwunsch,
         IsUnread = item.IsUnread,
         TimestampEpochMs = item.TimestampEpochMs,
         PhoneNormalized = item.PhoneNormalized,
@@ -283,6 +347,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         FileName = rec.FileName,
         Type = rec.Type,
         IsSos = rec.IsSos,
+        IsSprechwunsch = rec.IsSprechwunsch,
         IsUnread = rec.IsUnread,
         TimestampEpochMs = rec.TimestampEpochMs,
         TimestampLabel = DateTimeOffset.FromUnixTimeMilliseconds(rec.TimestampEpochMs)
@@ -336,6 +401,20 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
         return dispatcher.InvokeAsync(action, DispatcherPriority.Normal).Task;
     }
 
+    private void UpdateHeaderAlerts()
+    {
+        var recent = Items
+            .OrderByDescending(i => i.TimestampEpochMs)
+            .Take(2)
+            .ToList();
+
+        HeaderAlertLine1 = recent.ElementAtOrDefault(0);
+        HeaderAlertLine2 = recent.ElementAtOrDefault(1);
+        OnPropertyChanged(nameof(HeaderAlertLine1));
+        OnPropertyChanged(nameof(HeaderAlertLine2));
+        OnPropertyChanged(nameof(HasHeaderAlerts));
+    }
+
     public void Dispose() => StopMonitoring();
 }
 
@@ -359,5 +438,17 @@ public sealed partial class LeitstelleInboxItemViewModel : ObservableObject
 
     public required bool IsSos { get; init; }
 
+    public required bool IsSprechwunsch { get; init; }
+
     [ObservableProperty] private bool isUnread;
+
+    public string HeaderDisplayText
+    {
+        get
+        {
+            var kind = IsSos ? "Unfallruf" : (IsSprechwunsch ? "Sprechwunsch" : "MailChat");
+            var text = $"{kind} · {VehicleName}: {Message.Trim()}";
+            return text.Length <= 120 ? text : text[..117] + "…";
+        }
+    }
 }

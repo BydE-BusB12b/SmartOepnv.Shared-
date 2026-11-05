@@ -25,14 +25,14 @@ public static class NavSymbolCatalog
         ("cross_5_right", "5-armig halb rechts"),
         ("fork_left", "Gabelung links"),
         ("fork_right", "Gabelung rechts"),
-        ("kink_t_left", "Gekippte T-Kreuzung (links)"),
-        ("kink_t_right", "Gekippte T-Kreuzung (rechts)"),
-        ("kink_t_left_straight", "Links gekippte T-Kreuzung geradeaus"),
-        ("kink_t_right_straight", "Rechts gekippte T-Kreuzung geradeaus"),
+        ("kink_t_left", "Nach links abbiegen"),
+        ("kink_t_right", "Nach rechts abbiegen"),
+        ("kink_t_left_straight", "Geradeaus"),
+        ("kink_t_right_straight", "Geradeaus"),
         ("priority_follow_left", "Vorfahrtsstraße nach links folgen"),
         ("priority_follow_right", "Vorfahrtsstraße nach rechts folgen"),
-        ("priority_leave_left_straight", "Vorfahrtsstraße nach links geradeaus verlassen"),
-        ("priority_leave_right_straight", "Vorfahrtsstraße nach rechts geradeaus verlassen"),
+        ("priority_leave_left_straight", "Vorfahrtsstraße verlassen"),
+        ("priority_leave_right_straight", "Vorfahrtsstraße verlassen"),
         ("double_t_left_right", "Doppel-T links–rechts"),
         ("double_t_right_left", "Doppel-T rechts–links"),
         ("shifted_double_t_left_right", "Verschobene Doppel-T links+rechts"),
@@ -101,8 +101,33 @@ public static class RoutePathDraftSerializer
 
     public static RoutePathDraft FromJson(string json)
     {
-        var node = JsonNode.Parse(json) ?? throw new InvalidOperationException("Ungültiges JSON.");
-        return FromJsonNode(node.AsObject());
+        var obj = CoerceToObject(JsonNode.Parse(json))
+                  ?? throw new InvalidOperationException("Ungültiges JSON.");
+        return FromJsonNode(obj);
+    }
+
+    /// <summary>Entwurf aus Karten-JSON – auch doppelt kodierte String-Knoten (kopierte Routen).</summary>
+    public static JsonObject? CoerceToObject(JsonNode? node)
+    {
+        for (var depth = 0; depth < 4 && node is not null; depth++)
+        {
+            if (node is JsonObject obj)
+            {
+                return obj;
+            }
+
+            if (node is JsonValue value &&
+                value.TryGetValue<string>(out var text) &&
+                !string.IsNullOrWhiteSpace(text))
+            {
+                node = JsonNode.Parse(text.Trim());
+                continue;
+            }
+
+            break;
+        }
+
+        return null;
     }
 
     public static RoutePathDraft FromJsonNode(JsonObject obj)
@@ -278,45 +303,47 @@ public static class RoutePathDraftSerializer
         }
         obj["roadBusStraightEdgeKeys"] = busKeys;
 
-        foreach (var key in draft.RoadSegmentPolylines.Keys)
-        {
-            if (draft.RoadSegmentPolylines[key].Count >= 2)
-            {
-                draft.RoadSnappedEdgeKeys.Add(key);
-            }
-        }
+        RoutePathDraftMutator.PruneOrphanEdgeSnaps(draft);
 
-        var snapKeys = new HashSet<string>(draft.RoadSegmentPolylines.Keys, StringComparer.Ordinal);
-        foreach (var key in draft.RoadSegmentManeuvers.Keys)
-        {
-            snapKeys.Add(key);
-        }
-
+        var validSegmentKeys = draft.Segments
+            .Select(s => RoutePathDraft.SegmentEdgeKey(s.FromNodeId, s.ToNodeId))
+            .ToHashSet(StringComparer.Ordinal);
         var nodeById = draft.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        var snapKeys = draft.RoadSegmentPolylines.Keys
+            .Concat(draft.RoadSegmentManeuvers.Keys)
+            .Where(validSegmentKeys.Contains)
+            .ToHashSet(StringComparer.Ordinal);
+
         var snaps = new JsonArray();
         foreach (var key in snapKeys.OrderBy(k => k, StringComparer.Ordinal))
         {
             var parts = key.Split('\u0001', 2);
             if (parts.Length != 2) continue;
+            if (!nodeById.TryGetValue(parts[0], out var fromNode) ||
+                !nodeById.TryGetValue(parts[1], out var toNode))
+            {
+                continue;
+            }
 
             List<RoutePathLatLng> pts;
             if (draft.RoadSegmentPolylines.TryGetValue(key, out var poly) && poly.Count >= 2)
             {
                 pts = poly;
-                draft.RoadSnappedEdgeKeys.Add(key);
+                var fromPt = new RoutePathLatLng { Lat = fromNode.Lat, Lon = fromNode.Lon };
+                var toPt = new RoutePathLatLng { Lat = toNode.Lat, Lon = toNode.Lon };
+                if (draft.RoadBusStraightEdgeKeys.Contains(key) ||
+                    RoutePathGeo.IsRealRoadPolyline(pts, fromPt, toPt))
+                {
+                    draft.RoadSnappedEdgeKeys.Add(key);
+                }
             }
-            else if (nodeById.TryGetValue(parts[0], out var fromNode) &&
-                     nodeById.TryGetValue(parts[1], out var toNode))
+            else
             {
                 pts =
                 [
                     new RoutePathLatLng { Lat = fromNode.Lat, Lon = fromNode.Lon },
                     new RoutePathLatLng { Lat = toNode.Lat, Lon = toNode.Lon }
                 ];
-            }
-            else
-            {
-                continue;
             }
 
             var snapObj = new JsonObject
@@ -333,6 +360,15 @@ public static class RoutePathDraftSerializer
             snaps.Add(snapObj);
         }
         obj["segmentSnaps"] = snaps;
+
+        // Anzeigenummern kanonisch aus Planer-Logik – Karte muss dieselben Badges verwenden.
+        var displayNumbers = new JsonObject();
+        foreach (var entry in NavManeuverDisplayHelper.EnumerateVisibleMapManeuvers(draft))
+        {
+            displayNumbers[entry.MapMarkerKey] = entry.DisplayNumber;
+        }
+
+        obj["navDisplayNumbers"] = displayNumbers;
 
         return obj;
     }

@@ -40,6 +40,11 @@ internal static class EmployeePlannerCredentialMerge
             target.PlannerLoginEnabled = true;
         }
 
+        if (string.IsNullOrWhiteSpace(target.EntryDate) && !string.IsNullOrWhiteSpace(source.EntryDate))
+        {
+            target.EntryDate = source.EntryDate.Trim();
+        }
+
         if (!string.IsNullOrWhiteSpace(target.PlannerPassword))
         {
             target.PlannerLoginEnabled = true;
@@ -60,6 +65,11 @@ internal static class EmployeePlannerCredentialMerge
             source.DriverCardCheckConfirmedAtUtcMs,
             e => e.DriverCardCheckConfirmedAtUtcMs,
             (e, v) => e.DriverCardCheckConfirmedAtUtcMs = v);
+        MergeCheckTimestamp(
+            target,
+            source.LastEditedAtUtcMs,
+            e => e.LastEditedAtUtcMs,
+            (e, v) => e.LastEditedAtUtcMs = v);
 
         MergeExpiryIfNewerCheck(target, source,
             e => e.LicenseCheckConfirmedAtUtcMs,
@@ -137,6 +147,9 @@ internal static class EmployeePlannerCredentialMerge
         PersonnelNumber = e.PersonnelNumber,
         Password = e.Password,
         LicenseExpiry = e.LicenseExpiry,
+        BirthDate = e.BirthDate,
+        EntryDate = e.EntryDate,
+        MaternityProtection = e.MaternityProtection,
         FqnExpiry = e.FqnExpiry,
         DriverCardExpiry = e.DriverCardExpiry,
         LoginAsMainDevice = e.LoginAsMainDevice,
@@ -144,6 +157,7 @@ internal static class EmployeePlannerCredentialMerge
         PlannerPassword = e.PlannerPassword,
         LicenseCheckConfirmedAtUtcMs = e.LicenseCheckConfirmedAtUtcMs,
         FqnCheckConfirmedAtUtcMs = e.FqnCheckConfirmedAtUtcMs,
-        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs
+        DriverCardCheckConfirmedAtUtcMs = e.DriverCardCheckConfirmedAtUtcMs,
+        LastEditedAtUtcMs = e.LastEditedAtUtcMs
     };
 }

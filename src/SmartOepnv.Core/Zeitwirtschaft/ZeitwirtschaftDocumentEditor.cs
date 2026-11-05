@@ -90,6 +90,26 @@ public static class ZeitwirtschaftDocumentEditor
         return true;
     }
 
+    public static bool TryApplySixthDuty(
+        JsonObject root,
+        string personnelNumber,
+        string entryId,
+        bool sixthDuty,
+        out string? error)
+    {
+        error = null;
+        var entry = FindEntry(root, personnelNumber, entryId);
+        if (entry is null)
+        {
+            error = "Eintrag nicht gefunden.";
+            return false;
+        }
+
+        entry["sixthDuty"] = sixthDuty;
+        root["updatedAtMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        return true;
+    }
+
     public static JsonObject? FindEntry(JsonObject root, string personnelNumber, string entryId)
     {
         var drivers = root["drivers"] as JsonObject;

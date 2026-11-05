@@ -62,6 +62,28 @@
 
     .vehicle-marker.selected .vehicle-flag { border-color: #ffeb3b; box-shadow: 0 0 0 2px #ffeb3b; }
 
+    .route-stop-icon { background: transparent !important; border: none !important; }
+
+    .route-stop-marker {
+
+      width: 22px; height: 22px; border-radius: 50%;
+
+      background: #c6d300; color: #1b5e20; border: 2px solid #33691e;
+
+      font: 800 13px/18px Segoe UI, sans-serif; text-align: center;
+
+      box-shadow: 0 1px 5px rgba(0,0,0,.4);
+
+    }
+
+    .route-stop-marker.highlighted {
+
+      width: 26px; height: 26px; font-size: 15px; line-height: 22px;
+
+      border-width: 2.5px; box-shadow: 0 0 0 2px rgba(255,235,59,.55), 0 2px 6px rgba(0,0,0,.45);
+
+    }
+
   </style>
 
 </head>
@@ -72,7 +94,9 @@
 
   <script>
 
-    let map, markerLayer, markers = {}, selectedId = null, lastVehicles = [];
+    let map, markerLayer, routePathLayer, markers = {}, selectedId = null, lastVehicles = [];
+
+    let lastRoutePaths = [], lastHighlightRouteKey = null;
 
     let userAdjustedMapView = false;
 
@@ -244,10 +268,12 @@
 
       markerLayer = L.layerGroup().addTo(map);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      routePathLayer = L.layerGroup().addTo(map);
 
-        maxZoom: 19, attribution: '&copy; OpenStreetMap'
-
+      // OSM.de: Carto-Stil mit ÖPNV-Haltestellen; nicht tile.openstreetmap.org (403 in WebView2).
+      L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
 
       map.on('zoomend dragend', function() {
@@ -269,6 +295,186 @@
         pendingSavedView = null;
 
       }
+
+    }
+
+
+
+    function pointToLatLng(p) {
+
+      return [Number(p.lat), Number(p.lon)];
+
+    }
+
+
+
+    function isValidPoint(p) {
+
+      if (!p) return false;
+
+      const lat = Number(p.lat);
+
+      const lon = Number(p.lon);
+
+      return isValidCoord(lat, lon);
+
+    }
+
+
+
+    function overviewRouteKey(overview) {
+
+      return overview.routeName || overview.routeKey || '';
+
+    }
+
+
+
+    function createRouteStopIcon(highlighted) {
+
+      const size = highlighted ? 26 : 22;
+
+      const cls = 'route-stop-marker' + (highlighted ? ' highlighted' : '');
+
+      return L.divIcon({
+
+        className: 'route-stop-icon',
+
+        html: '<div class="' + cls + '">H</div>',
+
+        iconSize: [size, size],
+
+        iconAnchor: [size / 2, size / 2]
+
+      });
+
+    }
+
+
+
+    function drawRouteStopMarkers(overview, highlighted) {
+
+      (overview.nodes || []).forEach(function(node) {
+
+        if (!node || String(node.type || '').toUpperCase() !== 'STOP') return;
+
+        if (!isValidPoint(node)) return;
+
+        const title = String(node.title || 'Haltestelle').trim() || 'Haltestelle';
+
+        const marker = L.marker(pointToLatLng(node), {
+
+          icon: createRouteStopIcon(highlighted),
+
+          interactive: true,
+
+          zIndexOffset: highlighted ? 450 : 250
+
+        });
+
+        marker.bindTooltip(esc(title), { direction: 'top', offset: [0, -12], sticky: true });
+
+        marker.addTo(routePathLayer);
+
+      });
+
+    }
+
+
+
+    function drawRoutePaths(routePaths, highlightRouteKey) {
+
+      if (!map || !routePathLayer) return;
+
+      routePathLayer.clearLayers();
+
+      if (!routePaths || !routePaths.length) return;
+
+
+
+      routePaths.forEach(function(overview) {
+
+        const color = overview.routeLineColor || overview.color || '#2196f3';
+
+        const key = overviewRouteKey(overview);
+
+        const highlighted = highlightRouteKey &&
+
+          (key === highlightRouteKey ||
+
+           String(key).toLowerCase() === String(highlightRouteKey).toLowerCase());
+
+        const weight = highlighted ? 6 : 4;
+
+        const opacity = highlighted ? 0.92 : 0.5;
+
+        let drew = false;
+
+
+
+        (overview.segmentSnaps || []).forEach(function(snap) {
+
+          const pts = (snap.points || []).filter(isValidPoint);
+
+          if (pts.length < 2) return;
+
+          L.polyline(pts.map(pointToLatLng), {
+
+            color: color,
+
+            weight: weight,
+
+            opacity: opacity,
+
+            interactive: false
+
+          }).addTo(routePathLayer);
+
+          drew = true;
+
+        });
+
+
+
+        if (!drew) {
+
+          const shape = (overview.snappedShape || []).filter(isValidPoint);
+
+          if (shape.length >= 2) {
+
+            L.polyline(shape.map(pointToLatLng), {
+
+              color: color,
+
+              weight: weight,
+
+              opacity: opacity,
+
+              interactive: false
+
+            }).addTo(routePathLayer);
+
+            drew = true;
+
+          }
+
+        }
+
+        if (drew) {
+
+          drawRouteStopMarkers(overview, highlighted);
+
+        } else if ((overview.nodes || []).some(function(n) {
+
+          return n && String(n.type || '').toUpperCase() === 'STOP' && isValidPoint(n);
+
+        })) {
+
+          drawRouteStopMarkers(overview, highlighted);
+
+        }
+
+      });
 
     }
 
@@ -310,15 +516,23 @@
 
       }
 
+      lastRoutePaths = data.routePaths || [];
+
+      lastHighlightRouteKey = data.highlightRouteKey || null;
+
       if (options.mapView && applySavedMapView(options.mapView)) {
 
         render(lastVehicles, { skipFit: true });
+
+        drawRoutePaths(lastRoutePaths, lastHighlightRouteKey);
 
         return;
 
       }
 
       render(lastVehicles, { fitIfNeeded: options.fitIfNeeded !== false });
+
+      drawRoutePaths(lastRoutePaths, lastHighlightRouteKey);
 
     };
 
@@ -332,6 +546,8 @@
 
       if (lastVehicles.length) render(lastVehicles, { skipFit: userAdjustedMapView || initialFitDone });
 
+      drawRoutePaths(lastRoutePaths, lastHighlightRouteKey);
+
     };
 
 
@@ -341,6 +557,8 @@
       selectedId = id;
 
       render(lastVehicles, { skipFit: true });
+
+      drawRoutePaths(lastRoutePaths, lastHighlightRouteKey);
 
       const m = markers[id];
 
@@ -503,6 +721,18 @@
       if (msg.type === 'focusVehicle' && msg.id) {
 
         window.focusVehicle(msg.id);
+
+        return;
+
+      }
+
+      if (msg.type === 'highlightRoute') {
+
+        lastHighlightRouteKey = msg.routeKey || null;
+
+        drawRoutePaths(lastRoutePaths, lastHighlightRouteKey);
+
+        return;
 
       }
 

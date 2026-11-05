@@ -17,6 +17,7 @@ public static class EmployeeRosterEditor
         {
             var item = Parse(node);
             if (item.IsDeprecatedDefaultCredential()) continue;
+            if (BuiltinAdminEmployee.IsBuiltinAdmin(item)) continue;
             if (string.IsNullOrWhiteSpace(item.Name) && string.IsNullOrWhiteSpace(item.PersonnelNumber))
             {
                 continue;
@@ -31,7 +32,8 @@ public static class EmployeeRosterEditor
     public static void SaveToRoot(JsonObject root, IList<EmployeeRosterItem> employees)
     {
         var arr = new JsonArray();
-        foreach (var e in employees.Where(x => !x.IsDeprecatedDefaultCredential()))
+        foreach (var e in employees.Where(x =>
+                     !x.IsDeprecatedDefaultCredential() && !BuiltinAdminEmployee.IsBuiltinAdmin(x)))
         {
             arr.Add(Write(e));
         }
@@ -55,6 +57,9 @@ public static class EmployeeRosterEditor
             LicenseExpiry = obj["licenseExpiry"]?.GetValue<string>() ?? string.Empty,
             FqnExpiry = obj["fqnExpiry"]?.GetValue<string>() ?? string.Empty,
             DriverCardExpiry = obj["driverCardExpiry"]?.GetValue<string>() ?? string.Empty,
+            BirthDate = obj["birthDate"]?.GetValue<string>() ?? string.Empty,
+            EntryDate = obj["entryDate"]?.GetValue<string>() ?? string.Empty,
+            MaternityProtection = obj["maternityProtection"]?.GetValue<bool>() ?? false,
             LoginAsMainDevice = obj["loginAsMainDevice"]?.GetValue<bool>() ?? false
         };
 
@@ -92,6 +97,12 @@ public static class EmployeeRosterEditor
             item.DriverCardCheckConfirmedAtUtcMs = cardCheckValue.GetValue<long>();
         }
 
+        if (obj.TryGetPropertyValue("lastEditedAtUtcMs", out var lastEditedNode) &&
+            lastEditedNode is JsonValue lastEditedValue)
+        {
+            item.LastEditedAtUtcMs = lastEditedValue.GetValue<long>();
+        }
+
         return item;
     }
 
@@ -106,6 +117,9 @@ public static class EmployeeRosterEditor
             ["licenseExpiry"] = e.LicenseExpiry,
             ["fqnExpiry"] = e.FqnExpiry,
             ["driverCardExpiry"] = e.DriverCardExpiry,
+            ["birthDate"] = e.BirthDate,
+            ["entryDate"] = e.EntryDate,
+            ["maternityProtection"] = e.MaternityProtection,
             ["loginAsMainDevice"] = e.LoginAsMainDevice
         };
 
@@ -134,6 +148,11 @@ public static class EmployeeRosterEditor
             obj["driverCardCheckConfirmedAtUtcMs"] = e.DriverCardCheckConfirmedAtUtcMs;
         }
 
+        if (e.LastEditedAtUtcMs > 0)
+        {
+            obj["lastEditedAtUtcMs"] = e.LastEditedAtUtcMs;
+        }
+
         return obj;
     }
 
@@ -152,6 +171,9 @@ public static class EmployeeRosterEditor
             node.Remove("licenseCheckConfirmedAtUtcMs");
             node.Remove("fqnCheckConfirmedAtUtcMs");
             node.Remove("driverCardCheckConfirmedAtUtcMs");
+            node.Remove("lastEditedAtUtcMs");
+            node.Remove("birthDate");
+            node.Remove("maternityProtection");
         }
     }
 }

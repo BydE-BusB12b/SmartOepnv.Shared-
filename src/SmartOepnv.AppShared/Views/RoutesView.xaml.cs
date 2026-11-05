@@ -40,7 +40,6 @@ public partial class RoutesView : UserControl
             return;
         }
 
-        vm.SelectedStop = stop;
         OpenStopEditDialog(vm, stop);
     }
 
@@ -57,7 +56,12 @@ public partial class RoutesView : UserControl
         {
             owner = Window.GetWindow(this);
             var dialog = new RouteStopEditDialog(vm, stop) { Owner = owner };
-            dialog.ShowDialog();
+            var saved = dialog.ShowDialog() == true;
+            if (saved)
+            {
+                vm.RefreshStopAfterEdit(stop);
+            }
+
             CollectionViewSource.GetDefaultView(vm.Stops)?.Refresh();
         }
         catch (Exception ex)

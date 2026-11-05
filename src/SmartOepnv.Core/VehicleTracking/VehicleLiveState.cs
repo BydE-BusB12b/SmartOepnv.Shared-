@@ -20,11 +20,27 @@ public sealed class VehicleLiveState
     public string? LineCourse { get; init; }
     public string? RouteName { get; init; }
     public string? StopName { get; init; }
+    /// <summary>Planer-Haltcode (5-stellig), Live-JSON <c>plannerStopCode</c> – für VDV 454 StopPointRef.</summary>
+    public string? PlannerStopCode { get; init; }
+    /// <summary>Externe Halt-ID (z. B. VRR/EFA), Live-JSON <c>vrrStopId</c>.</summary>
+    public string? VrrStopId { get; init; }
+    /// <summary>Fahrt-/Kursnummer aus dem Paket, Live-JSON <c>tripNumber</c> – für DatedVehicleJourneyRef.</summary>
+    public string? TripNumber { get; init; }
     public string? Destination { get; init; }
     public string? DriverName { get; init; }
     public string? DriverPersonnelNumber { get; init; }
+    /// <summary>Pas.Info aktiv (Live-JSON <c>pasInfoActive</c>); null = ältere Meldung ohne Feld.</summary>
+    public bool? PasInfoActive { get; init; }
+    /// <summary>Bluetooth-Audio (A2DP) aktiv (Live-JSON <c>bluetoothActive</c>); null = ältere Meldung.</summary>
+    public bool? BluetoothActive { get; init; }
     public int? BatteryLevel { get; init; }
     public int? DelaySeconds { get; init; }
+    /// <summary>App-Versionslabel, z. B. V8.2 #371.</summary>
+    public string? AppVersion { get; init; }
+    /// <summary>Zuletzt installierte packageVersion von routes_export.json.</summary>
+    public long? RoutesExportPackageVersion { get; init; }
+    /// <summary>Zuletzt installierte packageVersion von routes_update.json.</summary>
+    public long? RoutesUpdatePackageVersion { get; init; }
     public long TimestampEpochMs { get; init; }
     public long FileTimestampEpochMs { get; init; }
     public VehicleOnlineStatus Status { get; init; }

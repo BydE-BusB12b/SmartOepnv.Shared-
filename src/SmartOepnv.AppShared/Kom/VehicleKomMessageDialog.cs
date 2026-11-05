@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using SmartOepnv.AppShared.ViewModels;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 
@@ -8,8 +9,11 @@ namespace SmartOepnv.AppShared.Kom;
 
 public sealed class VehicleKomMessageDialog : Window
 {
+    private readonly KomSendDialogGuard _sendGuard;
+
     public VehicleKomMessageDialog(VehicleListItemViewModel vehicle, Window owner)
     {
+        _sendGuard = new KomSendDialogGuard(this);
         Owner = owner;
         Title = "Meldung senden";
         Width = 520;
@@ -99,32 +103,38 @@ public sealed class VehicleKomMessageDialog : Window
             var text = messageBox.Text.Trim();
             if (string.IsNullOrEmpty(text))
             {
-                MessageBox.Show(this, "Bitte Nachrichtentext eingeben.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                SmartConfirmDialog.ShowInfo(this, Title, "Bitte Nachrichtentext eingeben.");
                 return;
             }
 
             send.IsEnabled = false;
-            cancel.IsEnabled = false;
-            status.Text = "Sende Meldung …";
+            _sendGuard.BeginSend();
             try
             {
-                await AppServices.Dropbox.UploadZblMessageAsync(phone, text);
-                MessageBox.Show(this,
-                    $"Meldung an {vehicle.DisplayName} gesendet.",
-                    Title,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                DialogResult = true;
-                Close();
+                if (await KomCommandSendFlow.SendAndReleaseDialogAsync(
+                    this,
+                    status,
+                    vehicle.DisplayName,
+                    phone,
+                    ZblMessageService.CommandType,
+                    ct => AppServices.Dropbox.UploadZblMessageAsync(phone, text, ct),
+                    releaseCloseGuard: () => _sendGuard.EndSend()))
+                {
+                    return;
+                }
             }
             catch (Exception ex)
             {
-                status.Text = $"Fehler: {ex.Message}";
+                SmartConfirmDialog.ShowInfo(this, Title, $"Senden fehlgeschlagen: {ex.Message}");
             }
             finally
             {
-                send.IsEnabled = true;
-                cancel.IsEnabled = true;
+                if (IsLoaded)
+                {
+                    _sendGuard.EndSend();
+                    send.IsEnabled = true;
+                    cancel.IsEnabled = true;
+                }
             }
         };
 

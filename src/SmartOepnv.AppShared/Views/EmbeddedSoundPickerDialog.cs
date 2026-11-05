@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -10,14 +11,20 @@ public sealed class EmbeddedSoundPickerDialog : Window
     private readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly ObservableCollection<string> _filtered = [];
     private readonly List<string> _allNames;
+    private readonly IReadOnlyDictionary<string, string> _searchHintsByFileName;
     private readonly TextBlock _status;
     private string _pendingQuery = string.Empty;
 
     public string? SelectedFileName { get; private set; }
 
-    public EmbeddedSoundPickerDialog(IReadOnlyList<string> soundFileNames, string? initialSearch = null)
+    public EmbeddedSoundPickerDialog(
+        IReadOnlyList<string> soundFileNames,
+        string? initialSearch = null,
+        IReadOnlyDictionary<string, string>? searchHintsByFileName = null)
     {
         _allNames = soundFileNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        _searchHintsByFileName = searchHintsByFileName
+                                 ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         Title = "Ansage wählen";
         Width = 560;
@@ -67,6 +74,7 @@ public sealed class EmbeddedSoundPickerDialog : Window
             BorderThickness = new Thickness(1),
             Margin = new Thickness(0, 0, 0, 12)
         };
+        MergedAnnouncementUiHighlight.ApplyToListBox(list);
         list.MouseDoubleClick += (_, _) => ConfirmSelection(list);
         Grid.SetRow(list, 3);
         root.Children.Add(list);
@@ -134,7 +142,17 @@ public sealed class EmbeddedSoundPickerDialog : Window
         IEnumerable<string> source = _allNames;
         if (!string.IsNullOrWhiteSpace(query))
         {
-            source = _allNames.Where(n => n.Contains(query, StringComparison.OrdinalIgnoreCase));
+            source = _allNames
+                .Select(n => (
+                    Name: n,
+                    Score: EmbeddedSoundSearch.Score(
+                        n,
+                        query,
+                        _searchHintsByFileName.GetValueOrDefault(n))))
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Name);
         }
 
         foreach (var name in source)
@@ -147,6 +165,8 @@ public sealed class EmbeddedSoundPickerDialog : Window
             ? "Dateiname antippen oder doppelklicken."
             : count == 0
                 ? $"Keine Treffer für „{query}“"
-                : $"{count} von {_allNames.Count} Treffern";
+                : count == 1
+                    ? "1 Treffer"
+                    : $"{count} Treffer";
     }
 }

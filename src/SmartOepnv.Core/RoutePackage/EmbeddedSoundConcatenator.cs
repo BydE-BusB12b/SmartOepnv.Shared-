@@ -196,6 +196,12 @@ public static class EmbeddedSoundConcatenator
 
     private static WaveStream OpenReader(string path)
     {
+        // Inhalt vor Extension: WAV als „.mp3“ (Fehlzuweisung) sonst nicht lesbar.
+        if (LooksLikePcmWav(path))
+        {
+            return new WaveFileReader(path);
+        }
+
         var ext = Path.GetExtension(path);
         return ext.ToLowerInvariant() switch
         {
@@ -205,6 +211,31 @@ public static class EmbeddedSoundConcatenator
             _ => throw new NotSupportedException(
                 $"Audioformat „{ext}“ wird nicht unterstützt (MP3, WAV, OGG).")
         };
+    }
+
+    private static bool LooksLikePcmWav(string path)
+    {
+        try
+        {
+            using var fs = File.OpenRead(path);
+            if (fs.Length < 12)
+            {
+                return false;
+            }
+
+            Span<byte> hdr = stackalloc byte[12];
+            if (fs.Read(hdr) < 12)
+            {
+                return false;
+            }
+
+            return hdr[0] == (byte)'R' && hdr[1] == (byte)'I' && hdr[2] == (byte)'F' && hdr[3] == (byte)'F' &&
+                   hdr[8] == (byte)'W' && hdr[9] == (byte)'A' && hdr[10] == (byte)'V' && hdr[11] == (byte)'E';
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private sealed class TimedSilenceProvider : ISampleProvider

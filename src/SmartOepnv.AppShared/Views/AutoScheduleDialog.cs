@@ -11,7 +11,7 @@ namespace SmartOepnv.AppShared.Views;
 
 public sealed class AutoScheduleDialog : Window
 {
-    private static readonly Brush PanelBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+    private static Brush PanelBackground => UiTheme.BackgroundBrush;
     private static readonly Brush InputBackground = Brushes.White;
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
 
@@ -53,30 +53,47 @@ public sealed class AutoScheduleDialog : Window
         Title = "Automatische Fahrplanerstellung";
         Width = 560;
         MinWidth = 520;
-        SizeToContent = SizeToContent.Height;
+        MinHeight = 480;
+        Height = 680;
         MaxHeight = 760;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = PanelBackground;
 
+        var outer = new Grid();
+        outer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        outer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
         var scroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(0, 0, 4, 0)
         };
-        var root = new StackPanel { Margin = new Thickness(24) };
+        var root = new StackPanel { Margin = new Thickness(24, 24, 20, 12) };
         scroll.Content = root;
+        Grid.SetRow(scroll, 0);
+        outer.Children.Add(scroll);
 
         root.Children.Add(new TextBlock
         {
             Text = "Automatische Fahrplanerstellung",
             FontSize = 20,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             HorizontalAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(0, 0, 0, 20)
         });
 
         root.Children.Add(MakeLabel("Vorlagen-Route:"));
+        root.Children.Add(new TextBlock
+        {
+            Text = "Die Vorlagen-Fahrtnummer wird nicht erneut angelegt – es werden nur neue Fahrten erstellt.",
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8),
+            Opacity = 0.9
+        });
         var routePicker = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         routePicker.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         routePicker.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -95,7 +112,7 @@ public sealed class AutoScheduleDialog : Window
         _routeButtonText = new TextBlock
         {
             Text = FormatRouteButtonText(_selectedRoute),
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -104,7 +121,7 @@ public sealed class AutoScheduleDialog : Window
         routeButtonGrid.Children.Add(new TextBlock
         {
             Text = "▼",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         });
@@ -118,7 +135,7 @@ public sealed class AutoScheduleDialog : Window
             MaxHeight = 220,
             Visibility = Visibility.Collapsed,
             Background = new SolidColorBrush(Color.FromRgb(0x00, 0x21, 0x71)),
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5)),
             BorderThickness = new Thickness(1),
             Margin = new Thickness(0, 4, 0, 0)
@@ -257,7 +274,7 @@ public sealed class AutoScheduleDialog : Window
         root.Children.Add(new TextBlock
         {
             Text = "Fahrplan-Vorschau:",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(0, 0, 0, 8)
         });
@@ -289,7 +306,7 @@ public sealed class AutoScheduleDialog : Window
         _tripCounterText = new TextBlock
         {
             Text = "Fahrt 1 von 3",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(12, 0, 12, 0)
         };
@@ -329,20 +346,23 @@ public sealed class AutoScheduleDialog : Window
         };
         root.Children.Add(_previewText);
 
+        var footer = new StackPanel
+        {
+            Margin = new Thickness(24, 0, 24, 24)
+        };
         _errorText = new TextBlock
         {
             Foreground = Brushes.IndianRed,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 12, 0, 0),
+            Margin = new Thickness(0, 0, 0, 12),
             Visibility = Visibility.Collapsed
         };
-        root.Children.Add(_errorText);
+        footer.Children.Add(_errorText);
 
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 16, 0, 0)
+            HorizontalAlignment = HorizontalAlignment.Right
         };
         var cancel = new Button { Content = "Abbrechen", MinWidth = 110, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
         var create = new Button
@@ -357,9 +377,11 @@ public sealed class AutoScheduleDialog : Window
         create.Click += (_, _) => CreateSchedule();
         buttons.Children.Add(cancel);
         buttons.Children.Add(create);
-        root.Children.Add(buttons);
+        footer.Children.Add(buttons);
+        Grid.SetRow(footer, 1);
+        outer.Children.Add(footer);
 
-        Content = scroll;
+        Content = outer;
         Loaded += (_, _) =>
         {
             WindowTitleBarHelper.ApplyDarkWindowBackground(this);
@@ -476,23 +498,32 @@ public sealed class AutoScheduleDialog : Window
     private void UpdatePreview()
     {
         _errorText.Visibility = Visibility.Collapsed;
-        SaveCurrentTripNumber();
-        if (!TryBuildRequest(out var request, out _))
+        try
         {
-            _previewText.Text = "Vorschau wird angezeigt, wenn alle Felder ausgefüllt sind...";
-            _tripCounterText.Text = TryReadTripCount(out var count)
-                ? $"Fahrt {Math.Min(_currentTripIndex + 1, count)} von {count}"
-                : "Fahrt 1 von ?";
-            _prevTripButton.IsEnabled = _currentTripIndex > 0;
-            _nextTripButton.IsEnabled = TryReadTripCount(out count) && _currentTripIndex < count - 1;
-            return;
-        }
+            SaveCurrentTripNumber();
+            if (!TryBuildRequest(out var request, out _))
+            {
+                _previewText.Text = "Vorschau wird angezeigt, wenn alle Felder ausgefüllt sind...";
+                _tripCounterText.Text = TryReadTripCount(out var count)
+                    ? $"Fahrt {Math.Min(_currentTripIndex + 1, count)} von {count}"
+                    : "Fahrt 1 von ?";
+                _prevTripButton.IsEnabled = _currentTripIndex > 0;
+                _nextTripButton.IsEnabled = TryReadTripCount(out count) && _currentTripIndex < count - 1;
+                return;
+            }
 
-        _tripCounterText.Text = $"Fahrt {_currentTripIndex + 1} von {request.TripCount}";
-        _prevTripButton.IsEnabled = _currentTripIndex > 0;
-        _nextTripButton.IsEnabled = _currentTripIndex < request.TripCount - 1;
-        _previewText.Text = AutoSchedulePlanner.TryBuildPreview(_editor, request, _currentTripIndex)
-                            ?? "Vorschau nicht verfügbar.";
+            _tripCounterText.Text = $"Fahrt {_currentTripIndex + 1} von {request.TripCount}";
+            _prevTripButton.IsEnabled = _currentTripIndex > 0;
+            _nextTripButton.IsEnabled = _currentTripIndex < request.TripCount - 1;
+            _previewText.Text = AutoSchedulePlanner.TryBuildPreview(_editor, request, _currentTripIndex)
+                                ?? "Vorschau nicht verfügbar.";
+        }
+        catch (Exception ex)
+        {
+            _previewText.Text = "Vorschau nicht verfügbar.";
+            _errorText.Text = ex.Message;
+            _errorText.Visibility = Visibility.Visible;
+        }
     }
 
     private void CreateSchedule()
@@ -593,7 +624,7 @@ public sealed class AutoScheduleDialog : Window
     private static TextBlock MakeLabel(string text) => new()
     {
         Text = text,
-        Foreground = Brushes.White,
+        Foreground = UiTheme.ForegroundBrush,
         Margin = new Thickness(0, 0, 0, 4)
     };
 
@@ -627,7 +658,7 @@ internal sealed class ScheduleTimePickerDialog : Window
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
-        Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+        Background = UiTheme.BackgroundBrush;
 
         var initialHour = 6;
         var initialMinute = 0;
@@ -641,7 +672,7 @@ internal sealed class ScheduleTimePickerDialog : Window
         root.Children.Add(new TextBlock
         {
             Text = "Startzeit",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(0, 0, 0, 12)
         });
@@ -672,7 +703,7 @@ internal sealed class ScheduleTimePickerDialog : Window
         row.Children.Add(new TextBlock
         {
             Text = ":",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontSize = 20,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,

@@ -3,11 +3,13 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Geo;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.Views;
@@ -16,6 +18,7 @@ public sealed class GpsMapPickerDialog : Window
 {
     private static readonly SolidColorBrush WindowBackground = CreateBrush(0x0A, 0x10, 0x20);
     private static readonly SolidColorBrush PanelBackground = CreateBrush(0x12, 0x1A, 0x2E);
+    private static readonly SolidColorBrush InputBackground = CreateBrush(0x1A, 0x24, 0x3A);
     private static readonly SolidColorBrush TextBrush = Brushes.White;
     private static readonly SolidColorBrush MutedTextBrush = CreateBrush(0xCC, 0xD6, 0xE8);
     private static readonly SolidColorBrush AccentBrush = CreateBrush(0x1E, 0x5A, 0x9E);
@@ -25,13 +28,20 @@ public sealed class GpsMapPickerDialog : Window
 
     private readonly WebView2 _mapView;
     private readonly TextBlock _hint;
+    private readonly TextBox _addressBox;
+    private readonly Button _searchButton;
     private readonly Button _okButton;
     private readonly double? _otherLat;
     private readonly double? _otherLon;
     private readonly string? _otherLabel;
+    private readonly int _radiusMeters;
     private bool _mapReady;
     private double? _pickedLat;
     private double? _pickedLon;
+    private double? _viewLat;
+    private double? _viewLon;
+    private double _viewZoom = 13;
+    private CancellationTokenSource? _searchCts;
 
     public bool HasSelection => _pickedLat is not null && _pickedLon is not null;
 
@@ -44,16 +54,18 @@ public sealed class GpsMapPickerDialog : Window
         string fieldTitle,
         string? initialCoordinates = null,
         string? otherCoordinates = null,
-        string? otherLabel = null)
+        string? otherLabel = null,
+        int radiusMeters = 0)
     {
         Title = fieldTitle;
         Width = 720;
-        Height = 560;
+        Height = 600;
         MinWidth = 480;
-        MinHeight = 400;
+        MinHeight = 420;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = WindowBackground;
         Foreground = TextBrush;
+        _radiusMeters = radiusMeters > 0 ? radiusMeters : 0;
 
         WindowTitleBarHelper.ApplySmartOepnvTitleBar(this);
 
@@ -73,6 +85,7 @@ public sealed class GpsMapPickerDialog : Window
         };
 
         var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -99,12 +112,49 @@ public sealed class GpsMapPickerDialog : Window
         Grid.SetRow(_hint, 1);
         root.Children.Add(_hint);
 
+        var addressRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+        addressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        addressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        _addressBox = new TextBox
+        {
+            Background = InputBackground,
+            Foreground = TextBrush,
+            BorderBrush = CreateBrush(0x33, 0x44, 0x66),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(10, 8, 10, 8),
+            FontSize = 13,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            CaretBrush = TextBrush
+        };
+        MaterialDesignThemes.Wpf.HintAssist.SetHint(_addressBox, "Adresse suchen (Straße, Ort …)");
+        _addressBox.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                _ = SearchAddressAsync();
+            }
+        };
+        Grid.SetColumn(_addressBox, 0);
+        addressRow.Children.Add(_addressBox);
+
+        _searchButton = CreateButton("Suchen", isPrimary: true);
+        _searchButton.Margin = new Thickness(8, 0, 0, 0);
+        _searchButton.MinWidth = 96;
+        _searchButton.Click += async (_, _) => await SearchAddressAsync().ConfigureAwait(true);
+        Grid.SetColumn(_searchButton, 1);
+        addressRow.Children.Add(_searchButton);
+
+        Grid.SetRow(addressRow, 2);
+        root.Children.Add(addressRow);
+
         _mapView = new WebView2
         {
             MinHeight = 280,
             DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 18, 26, 46)
         };
-        Grid.SetRow(_mapView, 2);
+        Grid.SetRow(_mapView, 3);
         root.Children.Add(_mapView);
 
         var buttons = new StackPanel
@@ -134,7 +184,7 @@ public sealed class GpsMapPickerDialog : Window
         };
         buttons.Children.Add(cancel);
         buttons.Children.Add(_okButton);
-        Grid.SetRow(buttons, 3);
+        Grid.SetRow(buttons, 4);
         root.Children.Add(buttons);
 
         panel.Child = root;
@@ -144,7 +194,20 @@ public sealed class GpsMapPickerDialog : Window
         {
             _pickedLat = lat;
             _pickedLon = lon;
+            _viewLat = lat;
+            _viewLon = lon;
+            _viewZoom = 16;
             _okButton.IsEnabled = true;
+        }
+        else
+        {
+            var remembered = TryLoadLastView();
+            if (remembered is not null)
+            {
+                _viewLat = remembered.Lat;
+                _viewLon = remembered.Lon;
+                _viewZoom = remembered.Zoom;
+            }
         }
 
         Loaded += async (_, _) =>
@@ -158,16 +221,115 @@ public sealed class GpsMapPickerDialog : Window
                 _hint.Text = $"Karte konnte nicht geladen werden: {ex.Message}";
             }
         };
+
+        Closed += (_, _) =>
+        {
+            PersistLastView();
+            _searchCts?.Cancel();
+            _searchCts?.Dispose();
+            _searchCts = null;
+        };
     }
 
     private string BuildHintText()
     {
+        var radiusHint = _radiusMeters > 0
+            ? $" Blauer Kreis = GPS-Radius {_radiusMeters} m (Auslösung in der App)."
+            : string.Empty;
         if (_otherLat is not null && _otherLon is not null)
         {
-            return $"Auf der Karte klicken, um den Standort zu setzen. Orange Pin: {_otherLabel}.";
+            return $"Adresse suchen oder auf der Karte klicken. Orange Pin: {_otherLabel}.{radiusHint}";
         }
 
-        return "Auf der Karte klicken, um den Standort zu setzen.";
+        return $"Adresse suchen oder auf der Karte klicken, um den Standort zu setzen.{radiusHint}";
+    }
+
+    private async Task SearchAddressAsync()
+    {
+        var query = _addressBox.Text.Trim();
+        if (query.Length < 3)
+        {
+            _hint.Text = "Bitte mindestens 3 Zeichen für die Adresssuche eingeben.";
+            return;
+        }
+
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var ct = _searchCts.Token;
+
+        _searchButton.IsEnabled = false;
+        _hint.Text = "Adresse wird gesucht …";
+        try
+        {
+            var result = await NominatimForwardGeocoder.TrySearchAsync(query, ct).ConfigureAwait(true);
+            if (ct.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (result is null)
+            {
+                _hint.Text = "Keine Treffer für diese Adresse.";
+                return;
+            }
+
+            ApplyPickedLocation(result.Latitude, result.Longitude, result.DisplayName);
+            SendSetPinMessage(result.Latitude, result.Longitude);
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
+        }
+        catch (Exception ex)
+        {
+            _hint.Text = $"Adresssuche fehlgeschlagen: {ex.Message}";
+        }
+        finally
+        {
+            _searchButton.IsEnabled = true;
+        }
+    }
+
+    private void ApplyPickedLocation(double lat, double lon, string? addressLabel = null)
+    {
+        _pickedLat = lat;
+        _pickedLon = lon;
+        _viewLat = lat;
+        _viewLon = lon;
+        if (_viewZoom < 15)
+        {
+            _viewZoom = 16;
+        }
+
+        _okButton.IsEnabled = true;
+        if (!string.IsNullOrWhiteSpace(addressLabel))
+        {
+            _hint.Text =
+                $"{addressLabel.Trim()}\n{CoordinateFormatting.Format(lat, lon)}";
+        }
+        else
+        {
+            UpdateHint();
+        }
+    }
+
+    private void SendSetPinMessage(double lat, double lon)
+    {
+        if (!_mapReady || _mapView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            type = "setPin",
+            lat,
+            lon,
+            zoom = 17,
+            radiusMeters = _radiusMeters > 0 ? _radiusMeters : (int?)null
+        });
+        _mapView.CoreWebView2.PostWebMessageAsJson(payload);
     }
 
     private static Button CreateButton(string text, bool isPrimary)
@@ -239,9 +401,13 @@ public sealed class GpsMapPickerDialog : Window
         }
 
         var hasSelection = HasSelection;
-        var lat = hasSelection ? _pickedLat!.Value : DefaultLat;
-        var lon = hasSelection ? _pickedLon!.Value : DefaultLon;
-        var zoom = hasSelection ? 16 : 13;
+        var lat = hasSelection
+            ? _pickedLat!.Value
+            : _viewLat ?? DefaultLat;
+        var lon = hasSelection
+            ? _pickedLon!.Value
+            : _viewLon ?? DefaultLon;
+        var zoom = hasSelection ? 16 : _viewZoom;
 
         var payload = new Dictionary<string, object?>
         {
@@ -251,6 +417,11 @@ public sealed class GpsMapPickerDialog : Window
             ["zoom"] = zoom,
             ["hasSelection"] = hasSelection
         };
+
+        if (_radiusMeters > 0)
+        {
+            payload["radiusMeters"] = _radiusMeters;
+        }
 
         if (_otherLat is double otherLat && _otherLon is double otherLon)
         {
@@ -292,6 +463,29 @@ public sealed class GpsMapPickerDialog : Window
                 return;
             }
 
+            if (type == "viewChanged" &&
+                root.TryGetProperty("lat", out var viewLatEl) &&
+                root.TryGetProperty("lon", out var viewLonEl))
+            {
+                var viewLat = viewLatEl.GetDouble();
+                var viewLon = viewLonEl.GetDouble();
+                if (!double.IsFinite(viewLat) || !double.IsFinite(viewLon))
+                {
+                    return;
+                }
+
+                _viewLat = viewLat;
+                _viewLon = viewLon;
+                if (root.TryGetProperty("zoom", out var zoomEl) &&
+                    zoomEl.TryGetDouble(out var zoom) &&
+                    zoom is > 0 and <= 22)
+                {
+                    _viewZoom = zoom;
+                }
+
+                return;
+            }
+
             if (type != "picked" ||
                 !root.TryGetProperty("lat", out var latEl) ||
                 !root.TryGetProperty("lon", out var lonEl))
@@ -306,14 +500,45 @@ public sealed class GpsMapPickerDialog : Window
                 return;
             }
 
-            _pickedLat = lat;
-            _pickedLon = lon;
-            _okButton.IsEnabled = true;
-            UpdateHint();
+            ApplyPickedLocation(lat, lon);
         }
         catch
         {
             // ignore malformed messages from the map page
+        }
+    }
+
+    private static GpsMapPickerView? TryLoadLastView()
+    {
+        try
+        {
+            return new GpsMapPickerViewStore(AppServices.SettingsSubfolder).Load();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void PersistLastView()
+    {
+        if (_viewLat is not double lat || _viewLon is not double lon)
+        {
+            return;
+        }
+
+        try
+        {
+            new GpsMapPickerViewStore(AppServices.SettingsSubfolder).Save(new GpsMapPickerView
+            {
+                Lat = lat,
+                Lon = lon,
+                Zoom = _viewZoom
+            });
+        }
+        catch
+        {
+            // ignore persistence errors
         }
     }
 
@@ -325,7 +550,8 @@ public sealed class GpsMapPickerDialog : Window
             return;
         }
 
-        _hint.Text = $"Gewählt: {CoordinateFormatting.Format(_pickedLat!.Value, _pickedLon!.Value)}";
+        _hint.Text = $"Gewählt: {CoordinateFormatting.Format(_pickedLat!.Value, _pickedLon!.Value)}" +
+                     (_radiusMeters > 0 ? $" · Radius {_radiusMeters} m" : string.Empty);
     }
 
     private static bool TryParseCoordinates(string? raw, out double lat, out double lon)

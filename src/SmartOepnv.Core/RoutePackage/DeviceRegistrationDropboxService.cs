@@ -1,12 +1,14 @@
 using System.IO;
 using System.Text.Json;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Voip;
 
 namespace SmartOepnv.Core.RoutePackage;
 
 /// <summary>
 /// Liest <c>DEVICE_REGISTER:name|phone</c> aus Dropbox-ZBL-Dateien (an Hauptgerät-Nummern gesendet)
-/// und trägt Fahrzeuge im Planer-Editor ein.
+/// und trägt Fahrzeuge im Planer ein – wie „Neues Fahrzeug“ in der Fahrzeugverwaltung.
+/// Gleiche Telefonnummer + neuer Name: alter Eintrag wird durch ein neues Fahrzeug ersetzt.
 /// </summary>
 public sealed class DeviceRegistrationDropboxService
 {
@@ -56,10 +58,6 @@ public sealed class DeviceRegistrationDropboxService
                     ? t
                     : 0L;
                 var key = $"{file}|{timestamp}";
-                if (_processed.Contains(key))
-                {
-                    continue;
-                }
 
                 if (!TryParseRegistration(message, out var name, out var phone))
                 {
@@ -68,22 +66,43 @@ public sealed class DeviceRegistrationDropboxService
                 }
 
                 var phoneKey = RegisteredVehiclesEditor.NormalizePhoneKey(phone);
-                var exists = editor.RegisteredVehicles.Any(v =>
+                var existing = editor.RegisteredVehicles.FirstOrDefault(v =>
                     RegisteredVehiclesEditor.NormalizePhoneKey(v.PhoneNumber) == phoneKey);
-                if (exists)
+
+                if (_processed.Contains(key))
                 {
+                    // Nachziehen: früher wurde bei gleicher Nummer nur übersprungen.
+                    if (existing is not null &&
+                        !NamesEqual(existing.Name, name) &&
+                        TryReplaceAsNewVehicle(editor, existing, name, phone, added))
+                    {
+                        await TryPublishVoipConfigAsync(name, phone, ct).ConfigureAwait(false);
+                    }
+
+                    continue;
+                }
+
+                if (existing is not null)
+                {
+                    if (NamesEqual(existing.Name, name))
+                    {
+                        _processed.Add(key);
+                        continue;
+                    }
+
+                    if (TryReplaceAsNewVehicle(editor, existing, name, phone, added))
+                    {
+                        await TryPublishVoipConfigAsync(name, phone, ct).ConfigureAwait(false);
+                    }
+
                     _processed.Add(key);
                     continue;
                 }
 
-                editor.RegisteredVehicles.Add(new RegisteredVehicleItem
-                {
-                    Name = name,
-                    PhoneNumber = phone,
-                    LoadedPhoneNumber = phone
-                });
+                editor.RegisteredVehicles.Add(CreateNewVehicle(name, phone));
                 _processed.Add(key);
-                added.Add($"{name} ({phone})");
+                added.Add($"Neues Fahrzeug: {name} ({phone})");
+                await TryPublishVoipConfigAsync(name, phone, ct).ConfigureAwait(false);
             }
             catch
             {
@@ -94,7 +113,7 @@ public sealed class DeviceRegistrationDropboxService
         if (added.Count > 0)
         {
             AppServices.PlannerLocal?.PersistFromEditor(editor);
-            AppServices.Routes.ApplyEditorChanges("device-register-dropbox");
+            AppServices.Routes.ApplyEditorChanges("device-register-dropbox", rebuildEmbeddedMedia: false);
         }
 
         SaveProcessed();
@@ -102,6 +121,59 @@ public sealed class DeviceRegistrationDropboxService
             ? DeviceRegistrationResult.None
             : new DeviceRegistrationResult(added);
     }
+
+    /// <summary>
+    /// Wie „Neues Fahrzeug“: alten Eintrag (gleiche Nummer) entfernen, neuen anlegen.
+    /// Planer-Zusatzdaten bleiben erhalten.
+    /// </summary>
+    private static bool TryReplaceAsNewVehicle(
+        EditableRoutePackage editor,
+        RegisteredVehicleItem existing,
+        string name,
+        string phone,
+        List<string> added)
+    {
+        var oldName = existing.Name?.Trim() ?? string.Empty;
+        var replacement = CreateNewVehicle(name, phone, existing);
+        editor.RegisteredVehicles.Remove(existing);
+        editor.RegisteredVehicles.Add(replacement);
+        added.Add($"Neues Fahrzeug: {name} ({phone})" +
+                  (oldName.Length > 0 ? $" – ersetzt {oldName}" : string.Empty));
+        return true;
+    }
+
+    private static RegisteredVehicleItem CreateNewVehicle(
+        string name,
+        string phone,
+        RegisteredVehicleItem? copyMetaFrom = null)
+    {
+        var item = new RegisteredVehicleItem
+        {
+            Name = name,
+            PhoneNumber = phone,
+            LoadedPhoneNumber = phone
+        };
+
+        if (copyMetaFrom is not null)
+        {
+            item.PersonnelNumber = copyMetaFrom.PersonnelNumber;
+            item.Password = copyMetaFrom.Password;
+            item.LicenseExpiry = copyMetaFrom.LicenseExpiry;
+            item.FqnExpiry = copyMetaFrom.FqnExpiry;
+            item.DriverCardExpiry = copyMetaFrom.DriverCardExpiry;
+            item.LoginAsMainDevice = copyMetaFrom.LoginAsMainDevice;
+            item.PlannerDetails = copyMetaFrom.PlannerDetails.Clone();
+            if (!string.IsNullOrWhiteSpace(copyMetaFrom.LoadedPhoneNumber))
+            {
+                item.LoadedPhoneNumber = copyMetaFrom.LoadedPhoneNumber;
+            }
+        }
+
+        return item;
+    }
+
+    private static bool NamesEqual(string? a, string? b) =>
+        string.Equals(a?.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static string ReadMessage(JsonElement root)
     {
@@ -136,6 +208,23 @@ public sealed class DeviceRegistrationDropboxService
         name = parts[0].Trim();
         phone = parts[1].Trim();
         return name.Length > 0 && phone.Length > 0;
+    }
+
+    private static async Task TryPublishVoipConfigAsync(string name, string phone, CancellationToken ct)
+    {
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            return;
+        }
+
+        var publisher = new VoipConfigPublisher();
+        var dispatch = await publisher.TryDownloadDispatchAsync(AppServices.Dropbox, ct).ConfigureAwait(false);
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.SignalingUrl))
+        {
+            return;
+        }
+
+        await publisher.PublishVehicleAsync(AppServices.Dropbox, dispatch, name, phone, ct).ConfigureAwait(false);
     }
 
     private void LoadProcessed()
@@ -185,4 +274,6 @@ public sealed class DeviceRegistrationResult
     public IReadOnlyList<string> AddedVehicles { get; }
 
     public bool AnyAdded => AddedVehicles.Count > 0;
+
+    public bool AnyChanged => AnyAdded;
 }

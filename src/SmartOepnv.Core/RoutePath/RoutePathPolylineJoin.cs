@@ -6,7 +6,11 @@ namespace SmartOepnv.Core.RoutePath;
 public static class RoutePathPolylineJoin
 {
     private const double SamePointMeters = 18.0;
-    private const double StitchSearchMeters = 85.0;
+    /// <summary>
+    /// Nur den gemeinsamen Knoten auf derselben Straße treffen.
+    /// 85 m hat die Gegenfahrbahn bzw. die Straße jenseits der Bahn mitgezogen.
+    /// </summary>
+    private const double StitchSearchMeters = 28.0;
 
     public static void AlignSegmentEndpointsAtSharedNodes(RoutePathDraft draft, string edgeKey)
     {
@@ -26,10 +30,16 @@ public static class RoutePathPolylineJoin
         draft.RoadSegmentPolylines[edgeKey] = poly;
     }
 
+    /// <summary>
+    /// Netzpunkt an einem Knoten – nur in Fahrtrichtung (abgehend am Start, ankommend am Ziel).
+    /// Verhindert OSRM-U-Turns durch Stitch-Punkte der Gegenrichtung.
+    /// </summary>
     public static RoutePathLatLng? FindNetworkPointAtNode(
         RoutePathDraft draft,
         string nodeId,
-        string excludeEdgeKey)
+        string excludeEdgeKey,
+        bool outgoingOnly = false,
+        bool incomingOnly = false)
     {
         if (!TryNodeCoordinate(draft, nodeId, out var nodePt))
         {
@@ -47,6 +57,22 @@ public static class RoutePathPolylineJoin
             }
 
             if (!EdgeTouchesNode(key, nodeId))
+            {
+                continue;
+            }
+
+            var parts = key.Split('\u0001', 2);
+            if (parts.Length != 2)
+            {
+                continue;
+            }
+
+            if (outgoingOnly && parts[0] != nodeId)
+            {
+                continue;
+            }
+
+            if (incomingOnly && parts[1] != nodeId)
             {
                 continue;
             }
@@ -70,7 +96,12 @@ public static class RoutePathPolylineJoin
         string excludeEdgeKey,
         bool atStart)
     {
-        var network = FindNetworkPointAtNode(draft, nodeId, excludeEdgeKey);
+        var network = FindNetworkPointAtNode(
+            draft,
+            nodeId,
+            excludeEdgeKey,
+            outgoingOnly: atStart,
+            incomingOnly: !atStart);
         if (network is null)
         {
             return;

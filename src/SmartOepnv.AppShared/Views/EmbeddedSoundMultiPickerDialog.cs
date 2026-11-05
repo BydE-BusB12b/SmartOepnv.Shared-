@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -11,6 +12,7 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
     private readonly ObservableCollection<string> _filtered = [];
     private readonly ObservableCollection<string> _selected = [];
     private readonly List<string> _allNames;
+    private readonly IReadOnlyDictionary<string, string> _searchHintsByFileName;
     private readonly int _minimumSelectedCount;
     private readonly TextBlock _status;
     private string _pendingQuery = string.Empty;
@@ -23,10 +25,13 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
         int minimumSelectedCount = 2,
         string? dialogTitle = null,
         string? instructionHint = null,
-        IReadOnlyList<string>? initialSelected = null)
+        IReadOnlyList<string>? initialSelected = null,
+        IReadOnlyDictionary<string, string>? searchHintsByFileName = null)
     {
         _minimumSelectedCount = Math.Max(1, minimumSelectedCount);
         _allNames = soundFileNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        _searchHintsByFileName = searchHintsByFileName
+                                 ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         Title = dialogTitle ?? "Mehrere Ansagen zusammenfügen";
         Width = 760;
@@ -93,6 +98,7 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
             ItemsSource = _filtered,
             BorderThickness = new Thickness(1)
         };
+        MergedAnnouncementUiHighlight.ApplyToListBox(availableList);
         availableList.MouseDoubleClick += (_, _) => AddSelectedFromAvailable(availableList);
         DockPanel.SetDock(availableList, Dock.Bottom);
         availablePanel.Children.Add(availableList);
@@ -104,6 +110,7 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
             ItemsSource = _selected,
             BorderThickness = new Thickness(1)
         };
+        MergedAnnouncementUiHighlight.ApplyToListBox(selectedList);
         selectedList.MouseDoubleClick += (_, _) => RemoveFromSelected(selectedList);
 
         var moveButtons = new StackPanel
@@ -275,7 +282,17 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
         IEnumerable<string> source = _allNames;
         if (!string.IsNullOrWhiteSpace(query))
         {
-            source = _allNames.Where(n => n.Contains(query, StringComparison.OrdinalIgnoreCase));
+            source = _allNames
+                .Select(n => (
+                    Name: n,
+                    Score: EmbeddedSoundSearch.Score(
+                        n,
+                        query,
+                        _searchHintsByFileName.GetValueOrDefault(n))))
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Name);
         }
 
         foreach (var name in source)
@@ -300,6 +317,8 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
         var count = filteredCount ?? _filtered.Count;
         _status.Text = count == 0
             ? $"Keine Treffer für „{query}“"
-            : $"{_selected.Count} gewählt{suffix} · {count} von {_allNames.Count} Treffern";
+            : count == 1
+                ? $"{_selected.Count} gewählt{suffix} · 1 Treffer"
+                : $"{_selected.Count} gewählt{suffix} · {count} Treffer";
     }
 }
