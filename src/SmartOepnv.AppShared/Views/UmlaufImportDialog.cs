@@ -21,12 +21,13 @@ namespace SmartOepnv.AppShared.Views;
 /// </summary>
 public sealed class UmlaufImportDialog : Window
 {
-    private static readonly Brush PanelBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush CardBackground = new SolidColorBrush(Color.FromRgb(0x12, 0x24, 0x3A));
+    private static Brush PanelBackground => UiTheme.BackgroundBrush;
+    private static Brush CardBackground => UiTheme.SurfaceBrush;
     private static readonly Brush AccentBrush = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5));
+    private static readonly Brush SuggestionForeground = new SolidColorBrush(Color.FromRgb(0x90, 0xA4, 0xAE));
     private static readonly Brush InputBackground = Brushes.White;
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush LabelForeground = Brushes.White;
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
 
     private readonly EditableRoutePackage _editor;
     private readonly RoutesViewModel _routesViewModel;
@@ -41,6 +42,8 @@ public sealed class UmlaufImportDialog : Window
     private readonly TextBox _defaultLineCourseBox;
     private readonly CheckBox _linkRouteChangesBox;
     private readonly List<CheckBox> _operatingDayChecks = [];
+    private readonly Dictionary<TripCardModel, List<CheckBox>> _tripDayChecks = new();
+    private readonly Dictionary<string, string> _templateGuessCache = new(StringComparer.Ordinal);
     private readonly string? _initialRouteKey;
     private readonly Border _loadingOverlay;
     private readonly RotateTransform _loadingRotate;
@@ -95,7 +98,7 @@ public sealed class UmlaufImportDialog : Window
             Text = "Umlauf importieren",
             FontSize = 20,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 6)
         });
         header.Children.Add(new TextBlock
@@ -111,10 +114,11 @@ public sealed class UmlaufImportDialog : Window
         var pdfRow = new Grid { Margin = new Thickness(0, 0, 0, 8) };
         pdfRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         pdfRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        pdfRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _pdfPathText = new TextBlock
         {
             Text = "Keine PDF gewählt",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
@@ -125,6 +129,17 @@ public sealed class UmlaufImportDialog : Window
         _pickPdfButton.Click += (_, _) => PickAndLoadPdf();
         Grid.SetColumn(_pickPdfButton, 1);
         pdfRow.Children.Add(_pickPdfButton);
+        var addTrip = MakeAccentButton("+ Fahrt");
+        addTrip.Margin = new Thickness(8, 0, 0, 0);
+        addTrip.Click += (_, _) =>
+        {
+            _trips.Add(CreateEmptyTrip(_trips.Count % 2 == 0
+                ? UmlaufImportPlanner.Direction.Hin
+                : UmlaufImportPlanner.Direction.Rueck));
+            RefreshTripNumbers();
+        };
+        Grid.SetColumn(addTrip, 2);
+        pdfRow.Children.Add(addTrip);
         header.Children.Add(pdfRow);
 
         _statusText = new TextBlock
@@ -181,7 +196,37 @@ public sealed class UmlaufImportDialog : Window
         header.Children.Add(globalGrid);
 
         header.Children.Add(MakeLabel("Standard-Verkehrstage (für neue Fahrten / PDF)"));
-        var dayWrap = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+        var daysRow = new DockPanel { Margin = new Thickness(0, 0, 0, 4), LastChildFill = true };
+        var applyDays = MakeAccentButton("Auf alle");
+        applyDays.Margin = new Thickness(12, 0, 0, 0);
+        applyDays.VerticalAlignment = VerticalAlignment.Center;
+        applyDays.ToolTip = "Verkehrstage auf alle Fahrten übernehmen";
+        DockPanel.SetDock(applyDays, Dock.Right);
+        applyDays.Click += (_, _) =>
+        {
+            var days = GetDefaultOperatingDays();
+            var daySet = days.ToHashSet();
+            foreach (var trip in _trips)
+            {
+                trip.SetOperatingDays(days);
+                if (!_tripDayChecks.TryGetValue(trip, out var checks))
+                {
+                    continue;
+                }
+
+                foreach (var check in checks)
+                {
+                    if (check.Tag is not DutyOperatingDay day || check.IsChecked == daySet.Contains(day))
+                    {
+                        continue;
+                    }
+
+                    check.IsChecked = daySet.Contains(day);
+                }
+            }
+        };
+        daysRow.Children.Add(applyDays);
+        var dayWrap = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
         foreach (var (day, name) in DutyOperatingDayHelper.AllDays)
         {
             var isWeekday = day is DutyOperatingDay.Monday or DutyOperatingDay.Tuesday
@@ -192,58 +237,36 @@ public sealed class UmlaufImportDialog : Window
                 IsChecked = isWeekday,
                 Tag = day,
                 Foreground = LabelForeground,
-                Margin = new Thickness(0, 0, 12, 4)
+                Margin = new Thickness(0, 0, 12, 0),
+                VerticalAlignment = VerticalAlignment.Center
             };
             _operatingDayChecks.Add(check);
             dayWrap.Children.Add(check);
         }
-        header.Children.Add(dayWrap);
-        var applyDays = MakeAccentButton("Verkehrstage auf alle Fahrten übernehmen");
-        applyDays.Margin = new Thickness(0, 0, 0, 4);
-        applyDays.HorizontalAlignment = HorizontalAlignment.Left;
-        applyDays.Click += (_, _) =>
-        {
-            var days = GetDefaultOperatingDays();
-            foreach (var trip in _trips)
-            {
-                trip.SetOperatingDays(days);
-            }
 
-            RebuildTripCards();
-        };
-        header.Children.Add(applyDays);
+        daysRow.Children.Add(dayWrap);
+        header.Children.Add(daysRow);
 
         _linkRouteChangesBox = new CheckBox
         {
-            Content = "Routenwechsel automatisch verknüpfen (Reihenfolge der Fahrten)",
+            Content = "Routenwechsel verknüpfen",
             IsChecked = true,
             Foreground = LabelForeground,
-            Margin = new Thickness(0, 4, 0, 0)
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0),
+            ToolTip = "Routenwechsel automatisch verknüpfen (Reihenfolge der Fahrten)"
         };
         _linkRouteChangesBox.Checked += (_, _) => RebuildTripCards();
         _linkRouteChangesBox.Unchecked += (_, _) => RebuildTripCards();
-        header.Children.Add(_linkRouteChangesBox);
 
-        var tripToolbar = new DockPanel { Margin = new Thickness(0, 12, 0, 0) };
-        tripToolbar.Children.Add(new TextBlock
+        header.Children.Add(new TextBlock
         {
             Text = "Fahrten / Umlaufablauf",
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
+            Margin = new Thickness(0, 12, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         });
-        var addTrip = MakeAccentButton("+ Fahrt");
-        addTrip.HorizontalAlignment = HorizontalAlignment.Right;
-        DockPanel.SetDock(addTrip, Dock.Right);
-        addTrip.Click += (_, _) =>
-        {
-            _trips.Add(CreateEmptyTrip(_trips.Count % 2 == 0
-                ? UmlaufImportPlanner.Direction.Hin
-                : UmlaufImportPlanner.Direction.Rueck));
-            RefreshTripNumbers();
-        };
-        tripToolbar.Children.Add(addTrip);
-        header.Children.Add(tripToolbar);
 
         Grid.SetRow(header, 0);
         outer.Children.Add(header);
@@ -285,6 +308,7 @@ public sealed class UmlaufImportDialog : Window
             HorizontalAlignment = HorizontalAlignment.Right
         };
         DockPanel.SetDock(buttons, Dock.Right);
+        buttons.Children.Add(_linkRouteChangesBox);
         var cancel = new Button
         {
             Content = "Abbrechen",
@@ -338,7 +362,7 @@ public sealed class UmlaufImportDialog : Window
         _loadingStatusText = new TextBlock
         {
             Text = "PDF wird geladen…",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontSize = 14,
             FontWeight = FontWeights.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -404,6 +428,7 @@ public sealed class UmlaufImportDialog : Window
         }
 
         _isRebuildingCards = true;
+        _tripDayChecks.Clear();
         try
         {
             if (resyncTemplateStops)
@@ -434,6 +459,36 @@ public sealed class UmlaufImportDialog : Window
 
             _tripHost.Items.Clear();
             _tripHost.Items.Add(panel);
+        }
+        finally
+        {
+            _isRebuildingCards = false;
+        }
+    }
+
+    /// <summary>Nur diese Fahrt neu zeichnen. Verkehrstage und Ziele brauchen keinen Neuaufbau aller Karten.</summary>
+    private void ReplaceTripCard(TripCardModel trip)
+    {
+        if (_isRebuildingCards)
+        {
+            return;
+        }
+
+        var index = _trips.IndexOf(trip);
+        if (index < 0 ||
+            _tripHost.Items.Count == 0 ||
+            _tripHost.Items[0] is not StackPanel panel ||
+            index >= panel.Children.Count)
+        {
+            RebuildTripCards(resyncTemplateStops: false);
+            return;
+        }
+
+        _isRebuildingCards = true;
+        try
+        {
+            panel.Children.RemoveAt(index);
+            panel.Children.Insert(index, BuildTripCard(trip, index));
         }
         finally
         {
@@ -478,7 +533,7 @@ public sealed class UmlaufImportDialog : Window
                     routeKey: string.Empty,
                     einRaw,
                     ausfahrt: false));
-            UmlaufImportPlanner.EnsureDienstfahrtEndBeforeEinfahrt(_trips[^1].Stops);
+            UmlaufImportPlanner.EnsureDienstfahrtEndBeforeEinfahrt(_trips[^1].Stops, _editor);
         }
     }
 
@@ -527,7 +582,7 @@ public sealed class UmlaufImportDialog : Window
                 : $"Fahrt {index + 1} · {trip.LineCourse.Trim()}",
             FontWeight = FontWeights.Bold,
             FontSize = 15,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             VerticalAlignment = VerticalAlignment.Center
         });
         titleRow.Children.Add(titleLeft);
@@ -560,6 +615,7 @@ public sealed class UmlaufImportDialog : Window
             Margin = new Thickness(0, 0, 0, 4)
         });
         var dayWrap = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
+        var dayChecks = new List<CheckBox>();
         foreach (var (day, name) in DutyOperatingDayHelper.AllDays)
         {
             var check = new CheckBox
@@ -572,8 +628,11 @@ public sealed class UmlaufImportDialog : Window
             };
             check.Checked += (_, _) => trip.OperatingDays.Add(day);
             check.Unchecked += (_, _) => trip.OperatingDays.Remove(day);
+            dayChecks.Add(check);
             dayWrap.Children.Add(check);
         }
+
+        _tripDayChecks[trip] = dayChecks;
         root.Children.Add(dayWrap);
 
         // Richtung + Vorlage
@@ -590,10 +649,11 @@ public sealed class UmlaufImportDialog : Window
         AddField(row1, 0, "Richtung", dirBox);
 
         var templateBox = MakeDarkComboBox();
-        templateBox.ItemsSource = _routes.ToList();
-        templateBox.SelectedItem = _routes.Contains(trip.TemplateRouteKey)
+        var templateChoices = TemplateChoicesFor(trip);
+        templateBox.ItemsSource = templateChoices;
+        templateBox.SelectedItem = templateChoices.Contains(trip.TemplateRouteKey)
             ? trip.TemplateRouteKey
-            : _routes[0];
+            : templateChoices[0];
         templateBox.SelectionChanged += (_, _) =>
         {
             if (_isRebuildingCards || templateBox.SelectedItem is not string key)
@@ -608,14 +668,15 @@ public sealed class UmlaufImportDialog : Window
 
             trip.TemplateRouteKey = key;
             trip.StopsLocked = false;
-            EnsureStops(trip, forceRebuild: true);
+            // Keine alten Ziele übernehmen (sonst bleibt z. B. Burger Bahnhof auf Schleife-Vorlage)
+            EnsureStops(trip, forceRebuild: true, keepStopEdits: false);
             trip.RouteName = FormatUmlaufRouteName(
                 trip.LineCourse,
                 trip.StartStopHint,
                 trip.EndStopHint,
                 trip.Stops,
                 RouteDisplayHelper.Parse(key).Name);
-            RebuildTripCards();
+            ReplaceTripCard(trip);
         };
         trip.TemplateRouteKey = templateBox.SelectedItem as string ?? _routes[0];
         AddField(row1, 2, "Vorlage (Haltestellenkette)", templateBox);
@@ -660,8 +721,7 @@ public sealed class UmlaufImportDialog : Window
 
             trip.StopsLocked = false;
             EnsureStops(trip, forceRebuild: true);
-            // Nur UI neuzeichnen – nicht alle Fahrten erneut aus Vorlage berechnen
-            RebuildTripCards(resyncTemplateStops: false);
+            ReplaceTripCard(trip);
         };
         AddField(row2, 6, "Startzeit", startBox);
         root.Children.Add(row2);
@@ -677,7 +737,7 @@ public sealed class UmlaufImportDialog : Window
 
             trip.StopsLocked = false;
             EnsureStops(trip, forceRebuild: true);
-            RebuildTripCards(resyncTemplateStops: false);
+            ReplaceTripCard(trip);
         };
         AddField(row3, 0, "Endzeit (Info / Anker optional)", endBox);
         var note = new TextBlock
@@ -712,7 +772,7 @@ public sealed class UmlaufImportDialog : Window
             parts.Add($"Abschnitt PDF: {trip.SectionHint}");
         }
 
-        parts.Add("Klick = Ziele · ✕ = Haltestelle entfernen");
+        parts.Add("Klick = Ziele · + = Haltestelle einfügen · ✕ = entfernen");
         return string.Join(" · ", parts);
     }
 
@@ -730,6 +790,84 @@ public sealed class UmlaufImportDialog : Window
 
         var next = _trips[tripIndex + 1];
         return $"Routenwechsel → Fahrt {tripIndex + 2}: {FormatTripLinkLabel(next)}";
+    }
+
+    private static bool IsPendingRouteChangeStop(TripCardModel trip, RouteStopItem stop)
+    {
+        for (var s = trip.Stops.Count - 1; s >= 0; s--)
+        {
+            if (UmlaufImportPlanner.IsSwsDepotStopName(trip.Stops[s].Name))
+            {
+                continue;
+            }
+
+            return ReferenceEquals(trip.Stops[s], stop);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Die grüne Zeile ist die geplante Folgefahrt. Dieselbe Angabe kommt an den Endhalt,
+    /// damit der Halt-Dialog Haken und Fahrt zeigt.
+    /// </summary>
+    private void StampPendingRouteChange(RouteStopItem stop, TripCardModel next)
+    {
+        stop.IsEndStop = true;
+        stop.RouteChangeEnabled = true;
+        stop.SelectedLineCourseTrip = ResolvePendingFollowRoute(next);
+    }
+
+    private string ResolvePendingFollowRoute(TripCardModel next)
+    {
+        var name = (next.RouteName ?? string.Empty).Trim();
+        if (name.Length == 0)
+        {
+            name = RouteDisplayHelper.Parse(next.TemplateRouteKey ?? string.Empty).Name.Trim();
+        }
+
+        var lineCourse = RouteDisplayHelper.NormalizeLineCourse(next.LineCourse ?? string.Empty);
+        var tripNumber = RouteDisplayHelper.NormalizeTripNumber(next.TripNumber ?? string.Empty);
+        var built = name;
+        if (!string.IsNullOrEmpty(lineCourse) || !string.IsNullOrEmpty(tripNumber))
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(lineCourse))
+            {
+                parts.Add($"Linie: {lineCourse}");
+            }
+
+            if (!string.IsNullOrEmpty(tripNumber))
+            {
+                parts.Add($"Fahrt: {tripNumber}");
+            }
+
+            built = $"{name} ({string.Join(", ", parts)})";
+        }
+
+        foreach (var route in RouteStopEditorCatalog.LoadLineCourseTripRoutes(_editor))
+        {
+            if (string.Equals(route, built, StringComparison.OrdinalIgnoreCase))
+            {
+                return route;
+            }
+
+            var parsed = RouteDisplayHelper.Parse(route);
+            if (string.Equals(
+                    RouteDisplayHelper.NormalizeTripNumber(parsed.TripNumber),
+                    tripNumber,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    RouteDisplayHelper.NormalizeLineCourse(parsed.LineCourse),
+                    lineCourse,
+                    StringComparison.Ordinal) &&
+                route.Contains(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return route;
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(built) ? next.TemplateRouteKey ?? string.Empty : built;
     }
 
     private static string FormatTripLinkLabel(TripCardModel trip)
@@ -759,10 +897,10 @@ public sealed class UmlaufImportDialog : Window
         panel.Children.Add(new TextBlock
         {
             Text = trip.Stops.Count > 0
-                ? $"Haltestellen ({trip.Stops.Count}) – Zeit direkt änderbar, Halt/Ziel öffnet Bearbeitung, ✕ zum Löschen"
+                ? $"Haltestellen ({trip.Stops.Count}) – Enter übernimmt die Zeit, springt weiter und zeigt den grauen Vorschlag. Ziffer verwirft ihn."
                 : "Haltestellen (Vorlage/Startzeit prüfen)",
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontSize = 12,
             Margin = new Thickness(0, 0, 0, 6)
         });
@@ -771,10 +909,12 @@ public sealed class UmlaufImportDialog : Window
         {
             panel.Children.Add(new TextBlock
             {
-                Text = "Keine Haltestellen – gültige Vorlage und Startzeit wählen.",
+                Text = "Keine Haltestellen – gültige Vorlage und Startzeit wählen oder eine Haltestelle einfügen.",
                 Foreground = new SolidColorBrush(Color.FromRgb(0xEF, 0x9A, 0x9A)),
-                FontSize = 11
+                FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 8)
             });
+            panel.Children.Add(MakeInsertStopButton(trip, null));
             return panel;
         }
 
@@ -789,7 +929,13 @@ public sealed class UmlaufImportDialog : Window
             }
         }
 
+        if (lastPassengerIdx >= 0 && routeChangeHint is not null && tripIndex + 1 < _trips.Count)
+        {
+            StampPendingRouteChange(trip.Stops[lastPassengerIdx], _trips[tripIndex + 1]);
+        }
+
         var list = new StackPanel();
+        var timeBoxes = new List<TextBox>();
         for (var i = 0; i < trip.Stops.Count; i++)
         {
             var stop = trip.Stops[i];
@@ -833,18 +979,14 @@ public sealed class UmlaufImportDialog : Window
                 AccentBrush,
                 FontWeights.SemiBold,
                 maxLength: 5);
-            timeBox.ToolTip = "Abfahrtszeit (HH:MM)";
-            timeBox.LostFocus += (_, _) => CommitStopTime(tripRef, stopRef, timeBox);
-            timeBox.KeyDown += (_, e) =>
-            {
-                if (e.Key != Key.Enter)
-                {
-                    return;
-                }
-
-                CommitStopTime(tripRef, stopRef, timeBox);
-                e.Handled = true;
-            };
+            timeBox.ToolTip = "Abfahrtszeit. Enter übernimmt und springt zur nächsten Zeit (grauer Vorschlag).";
+            var timeState = new StopTimeBoxState(tripRef, stopRef, timeBoxes);
+            timeBox.Tag = timeState;
+            timeBoxes.Add(timeBox);
+            timeBox.PreviewTextInput += StopTimeBox_PreviewTextInput;
+            timeBox.PreviewKeyDown += StopTimeBox_PreviewKeyDown;
+            timeBox.GotFocus += (_, _) => OnStopTimeBoxGotFocus(timeBox, timeState);
+            timeBox.LostFocus += (_, _) => OnStopTimeBoxLostFocus(timeBox, timeState);
             Grid.SetColumn(timeBox, 0);
             grid.Children.Add(timeBox);
 
@@ -852,7 +994,7 @@ public sealed class UmlaufImportDialog : Window
             var nameText = new TextBlock
             {
                 Text = string.IsNullOrWhiteSpace(stop.Name) ? "(ohne Name)" : stop.Name,
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 FontSize = 12,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Cursor = Cursors.Hand,
@@ -895,6 +1037,30 @@ public sealed class UmlaufImportDialog : Window
             Grid.SetColumn(nameCol, 1);
             grid.Children.Add(nameCol);
 
+            var destCol = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var stopHint = FormatStopHintDisplay(stop);
+            if (!string.IsNullOrWhiteSpace(stopHint))
+            {
+                destCol.Children.Add(new TextBlock
+                {
+                    Text = stopHint,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xEB, 0x3B)),
+                    FontSize = 11,
+                    FontWeight = FontWeights.SemiBold,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 8, 0),
+                    MaxWidth = 160,
+                    ToolTip = stopHint
+                });
+            }
+
             var dest = FormatStopDestinationHint(stop);
             var destText = new TextBlock
             {
@@ -903,8 +1069,6 @@ public sealed class UmlaufImportDialog : Window
                 FontSize = 11,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(0, 0, 8, 0),
                 Cursor = Cursors.Hand,
                 ToolTip = "Klicken → Ziele / Anzeigen bearbeiten"
             };
@@ -913,9 +1077,36 @@ public sealed class UmlaufImportDialog : Window
                 e.Handled = true;
                 OpenStopEditor(tripRef, stopRef);
             };
-            Grid.SetColumn(destText, 2);
-            grid.Children.Add(destText);
+            destCol.Children.Add(destText);
+            Grid.SetColumn(destCol, 2);
+            grid.Children.Add(destCol);
 
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var addBtn = new Button
+            {
+                Content = "+",
+                Width = 28,
+                Height = 26,
+                Margin = new Thickness(0, 0, 4, 0),
+                Padding = new Thickness(0),
+                Foreground = Brushes.White,
+                Background = new SolidColorBrush(Color.FromRgb(0x15, 0x65, 0xC0)),
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                ToolTip = "Haltestelle danach aus der Kartei einfügen",
+                VerticalAlignment = VerticalAlignment.Center,
+                FontWeight = FontWeights.Bold
+            };
+            addBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                InsertStopAfter(tripRef, stopRef);
+            };
+            actions.Children.Add(addBtn);
             var deleteBtn = new Button
             {
                 Content = "✕",
@@ -934,8 +1125,9 @@ public sealed class UmlaufImportDialog : Window
                 e.Handled = true;
                 RemoveStop(tripRef, stopRef);
             };
-            Grid.SetColumn(deleteBtn, 3);
-            grid.Children.Add(deleteBtn);
+            actions.Children.Add(deleteBtn);
+            Grid.SetColumn(actions, 3);
+            grid.Children.Add(actions);
 
             row.Child = grid;
             row.MouseEnter += (_, _) =>
@@ -1009,6 +1201,217 @@ public sealed class UmlaufImportDialog : Window
         }
     }
 
+    private void StopTimeBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (sender is not TextBox box || box.Tag is not StopTimeBoxState state)
+        {
+            return;
+        }
+
+        if (e.Text.Any(ch => !char.IsDigit(ch)))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (!state.ShowingSuggestion)
+        {
+            return;
+        }
+
+        state.ShowingSuggestion = false;
+        state.SuggestedTime = null;
+        box.Foreground = AccentBrush;
+        box.CaretBrush = AccentBrush;
+        box.Text = string.Empty;
+        box.CaretIndex = 0;
+    }
+
+    private void StopTimeBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox box || box.Tag is not StopTimeBoxState state)
+        {
+            return;
+        }
+
+        if (e.Key is Key.Space or Key.OemPeriod or Key.Decimal or Key.OemSemicolon or Key.Oem2)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (state.ShowingSuggestion && e.Key is Key.Back or Key.Delete)
+        {
+            state.ShowingSuggestion = false;
+            state.SuggestedTime = null;
+            box.Foreground = AccentBrush;
+            box.CaretBrush = AccentBrush;
+            box.Text = string.Empty;
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key != Key.Enter)
+        {
+            return;
+        }
+
+        if (state.ShowingSuggestion && !string.IsNullOrEmpty(state.SuggestedTime))
+        {
+            state.ShowingSuggestion = false;
+            box.Foreground = AccentBrush;
+            box.CaretBrush = AccentBrush;
+            box.Text = state.SuggestedTime;
+            state.SuggestedTime = null;
+        }
+
+        CommitStopTime(state.Trip, state.Stop, box);
+        MoveStopTimeFocusWithSuggestion(box, state);
+        e.Handled = true;
+    }
+
+    private void OnStopTimeBoxGotFocus(TextBox box, StopTimeBoxState state)
+    {
+        if (state.ShowingSuggestion && !string.IsNullOrEmpty(state.SuggestedTime))
+        {
+            ShowStopTimeSuggestion(box, state, state.SuggestedTime);
+            return;
+        }
+
+        box.SelectAll();
+    }
+
+    private void OnStopTimeBoxLostFocus(TextBox box, StopTimeBoxState state)
+    {
+        if (state.ShowingSuggestion)
+        {
+            state.ShowingSuggestion = false;
+            state.SuggestedTime = null;
+            box.Foreground = AccentBrush;
+            box.CaretBrush = AccentBrush;
+            box.Text = string.IsNullOrWhiteSpace(state.Stop.Time) ? string.Empty : state.Stop.Time!;
+            return;
+        }
+
+        CommitStopTime(state.Trip, state.Stop, box);
+    }
+
+    private void MoveStopTimeFocusWithSuggestion(TextBox current, StopTimeBoxState state)
+    {
+        var index = state.Boxes.IndexOf(current);
+        if (index < 0 || index >= state.Boxes.Count - 1)
+        {
+            return;
+        }
+
+        var next = state.Boxes[index + 1];
+        if (next.Tag is StopTimeBoxState nextState &&
+            RouteTravelTimeLearner.TrySuggestArrival(
+                GetTypicalTravelMinutes(),
+                state.Stop.PlannerStopCode,
+                state.Stop.Time,
+                nextState.Stop.PlannerStopCode,
+                out var suggested))
+        {
+            ShowStopTimeSuggestion(next, nextState, suggested);
+        }
+
+        next.Focus();
+        next.BringIntoView();
+        next.SelectAll();
+    }
+
+    private static void ShowStopTimeSuggestion(TextBox box, StopTimeBoxState state, string suggestedHhMm)
+    {
+        if (string.IsNullOrEmpty(suggestedHhMm))
+        {
+            return;
+        }
+
+        state.SuggestedTime = suggestedHhMm;
+        state.ShowingSuggestion = true;
+        box.Foreground = SuggestionForeground;
+        box.CaretBrush = SuggestionForeground;
+        box.MaxLength = Math.Max(5, suggestedHhMm.Length);
+        box.Text = suggestedHhMm;
+        box.MaxLength = 5;
+        box.SelectAll();
+    }
+
+    private sealed class StopTimeBoxState
+    {
+        public StopTimeBoxState(TripCardModel trip, RouteStopItem stop, List<TextBox> boxes)
+        {
+            Trip = trip;
+            Stop = stop;
+            Boxes = boxes;
+        }
+
+        public TripCardModel Trip { get; }
+        public RouteStopItem Stop { get; }
+        public List<TextBox> Boxes { get; }
+        public bool ShowingSuggestion { get; set; }
+        public string? SuggestedTime { get; set; }
+    }
+
+    private Button MakeInsertStopButton(TripCardModel trip, RouteStopItem? after)
+    {
+        var button = new Button
+        {
+            Content = "Haltestelle einfügen",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(12, 4, 12, 4),
+            Foreground = Brushes.White,
+            Background = new SolidColorBrush(Color.FromRgb(0x15, 0x65, 0xC0)),
+            BorderThickness = new Thickness(0),
+            Cursor = Cursors.Hand
+        };
+        button.Click += (_, _) => InsertStopAfter(trip, after);
+        return button;
+    }
+
+    /// <summary>Halt aus der Kartei hinter dieser Zeile einfügen. Nur diese Fahrt wird neu gezeichnet.</summary>
+    private void InsertStopAfter(TripCardModel trip, RouteStopItem? after)
+    {
+        var templates = _editor.StopTemplates
+            .Where(t => t.HasPersistableContent())
+            .ToList();
+        if (templates.Count == 0)
+        {
+            _errorText.Text = "Keine Haltestellen in der Kartei.";
+            return;
+        }
+
+        var dialog = new PickStopFromLibraryDialog(templates) { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.SelectedTemplate is null)
+        {
+            return;
+        }
+
+        var stop = dialog.SelectedTemplate.ToRouteStop(trip.TemplateRouteKey);
+        stop.Time = string.Empty;
+        stop.IsEndStop = false;
+
+        var index = trip.Stops.Count;
+        if (after is not null)
+        {
+            var at = trip.Stops.IndexOf(after);
+            index = at < 0 ? trip.Stops.Count : at + 1;
+        }
+
+        var einIdx = trip.Stops.FindIndex(s =>
+            string.Equals(s.Name, UmlaufImportPlanner.SwsEinfahrtStopName, StringComparison.OrdinalIgnoreCase));
+        if (einIdx >= 0 && index > einIdx)
+        {
+            index = einIdx;
+        }
+
+        trip.Stops.Insert(index, stop);
+        trip.StopsLocked = true;
+        _errorText.Text = string.Empty;
+        ReplaceTripCard(trip);
+    }
+
     private void RemoveStop(TripCardModel trip, RouteStopItem stop)
     {
         if (!trip.Stops.Remove(stop))
@@ -1034,7 +1437,7 @@ public sealed class UmlaufImportDialog : Window
                     UmlaufImportPlanner.SwsEinfahrtStopName,
                     StringComparison.OrdinalIgnoreCase))
             {
-                UmlaufImportPlanner.EnsureDienstfahrtEndBeforeEinfahrt(trip.Stops);
+                UmlaufImportPlanner.EnsureDienstfahrtEndBeforeEinfahrt(trip.Stops, _editor);
             }
             else
             {
@@ -1042,7 +1445,7 @@ public sealed class UmlaufImportDialog : Window
             }
         }
 
-        RebuildTripCards();
+        ReplaceTripCard(trip);
     }
 
     private void OpenStopEditor(TripCardModel trip, RouteStopItem stop)
@@ -1055,6 +1458,15 @@ public sealed class UmlaufImportDialog : Window
         _openingStopDialog = true;
         try
         {
+            var tripIndex = _trips.IndexOf(trip);
+            if (tripIndex >= 0 &&
+                tripIndex + 1 < _trips.Count &&
+                FormatRouteChangeHint(tripIndex) is not null &&
+                IsPendingRouteChangeStop(trip, stop))
+            {
+                StampPendingRouteChange(stop, _trips[tripIndex + 1]);
+            }
+
             var dialog = new RouteStopEditDialog(_routesViewModel, stop, commitPackageOnSave: false)
             {
                 Owner = this
@@ -1063,7 +1475,7 @@ public sealed class UmlaufImportDialog : Window
             {
                 // Änderungen liegen auf dem RouteStopItem – Kette nicht aus Vorlage neu bauen.
                 trip.StopsLocked = true;
-                RebuildTripCards(resyncTemplateStops: false);
+                ReplaceTripCard(trip);
             }
         }
         finally
@@ -1072,7 +1484,11 @@ public sealed class UmlaufImportDialog : Window
         }
     }
 
-    private void EnsureStops(TripCardModel trip, bool forceRebuild = false)
+    /// <param name="keepStopEdits">
+    /// true = Ziele/Felder gleicher Stop-Codes aus der bisherigen Kette behalten (Zeitänderung).
+    /// false = alles frisch aus der Vorlage (Vorlagenwechsel / Import).
+    /// </param>
+    private void EnsureStops(TripCardModel trip, bool forceRebuild = false, bool keepStopEdits = true)
     {
         if (string.IsNullOrWhiteSpace(trip.TemplateRouteKey))
         {
@@ -1086,17 +1502,31 @@ public sealed class UmlaufImportDialog : Window
             return;
         }
 
+        IReadOnlyList<RouteStopItem>? preserveFrom =
+            keepStopEdits && trip.Stops.Count > 0 ? trip.Stops : null;
+
         trip.Stops = UmlaufImportPlanner.BuildStopsFromTemplate(
             _editor,
             trip.TemplateRouteKey,
             trip.StartTime,
             string.IsNullOrWhiteSpace(trip.EndTime) ? null : trip.EndTime,
-            trip.Stops,
+            preserveFrom,
             trip.StartStopHint,
             trip.EndStopHint,
             trip.TimingPoints,
             GetTypicalTravelMinutes());
         trip.StopsLocked = false;
+    }
+
+    /// <summary>Haltestellenhinweis nur anzeigen, wenn aktiv und Text hinterlegt.</summary>
+    private static string FormatStopHintDisplay(RouteStopItem stop)
+    {
+        if (!stop.StopHintEnabled || string.IsNullOrWhiteSpace(stop.StopHintText))
+        {
+            return string.Empty;
+        }
+
+        return stop.StopHintText.Trim();
     }
 
     private static string FormatStopDestinationHint(RouteStopItem stop)
@@ -1291,6 +1721,7 @@ public sealed class UmlaufImportDialog : Window
         IReadOnlyDictionary<(string FromCode, string ToCode), int> typicalMinutes)
     {
         var result = new List<TripCardModel>();
+        _templateGuessCache.Clear();
         if (parsed.Trips.Count == 0)
         {
             return result;
@@ -1298,9 +1729,21 @@ public sealed class UmlaufImportDialog : Window
 
         foreach (var t in parsed.Trips)
         {
-            // Linie/Richtung aus bester Planer-Vorlage (Haltestellenkette), nicht aus PDF-Farbband
+            // 681/682 im selben Umlauf: Hästen↔Hbf bleibt 681, Brockenberg↔Hbf bleibt 682.
+            // Andere Datei-Linie (z. B. „Mo 683-01“) gewinnt gegen einen Geographie-Hint.
             var headerLine = parsed.LineCourse ?? defaultLine;
             var hintLine = t.LineCourseHint ?? headerLine;
+            var pairHint = IsHbfPairCourse(headerLine) && IsHbfPairCourse(hintLine);
+            var stacked696 = Is693StackedBranchHint(headerLine, hintLine);
+            if (!pairHint &&
+                !stacked696 &&
+                !string.IsNullOrWhiteSpace(headerLine) &&
+                !string.IsNullOrWhiteSpace(hintLine) &&
+                !LinePrefixesEqual(headerLine, hintLine))
+            {
+                hintLine = headerLine;
+            }
+
             var template = GuessTemplate(
                                hintLine,
                                t.Direction,
@@ -1321,13 +1764,15 @@ public sealed class UmlaufImportDialog : Window
                                t.TimingPoints)
                            ?? _routes[0];
             var parsedKey = RouteDisplayHelper.Parse(template);
-            // Kursnummer immer aus PDF (Farbband/Kopf), nicht aus Planer-Vorlage
+            // Kurs aus der Datei (/02). Bei 681/682 die Fahrt-Linie behalten, sonst den Dateikopf.
             var lineCourse = RouteDisplayHelper.NormalizeLineCourse(
-                !string.IsNullOrWhiteSpace(hintLine)
-                    ? hintLine
+                (pairHint || stacked696) && !string.IsNullOrWhiteSpace(hintLine)
+                    ? WithHeaderCourseSuffix(hintLine, headerLine)
                     : !string.IsNullOrWhiteSpace(headerLine)
                         ? headerLine
-                        : defaultLine);
+                        : !string.IsNullOrWhiteSpace(hintLine)
+                            ? hintLine
+                            : defaultLine);
             if (string.IsNullOrWhiteSpace(lineCourse))
             {
                 lineCourse = RouteDisplayHelper.NormalizeLineCourse(parsedKey.LineCourse);
@@ -1382,6 +1827,7 @@ public sealed class UmlaufImportDialog : Window
         }
 
         _isRebuildingCards = true;
+        _tripDayChecks.Clear();
         try
         {
             if (resyncTemplateStops)
@@ -1427,6 +1873,103 @@ public sealed class UmlaufImportDialog : Window
         }
     }
 
+    private static bool IsHbfPairCourse(string? lineCourse)
+    {
+        var prefix = LinePrefix(lineCourse);
+        return prefix is "681" or "682";
+    }
+
+    /// <summary>
+    /// Gestapelte Linien und Spaltenfahrpläne (L.685 neben L.691).
+    /// Der Dateikopf bleibt, die Fahrt behält ihre eigene Linie und damit die passende Haltestellenkette.
+    /// </summary>
+    private static bool Is693StackedBranchHint(string? headerLine, string? hintLine)
+    {
+        var header = LinePrefix(headerLine);
+        var hint = LinePrefix(hintLine);
+        if (string.IsNullOrEmpty(header) ||
+            string.IsNullOrEmpty(hint) ||
+            string.Equals(header, hint, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return IsStackedComboLine(header) && IsStackedComboLine(hint);
+    }
+
+    private static bool IsStackedComboLine(string? prefix) =>
+        prefix is "685" or "686" or "687" or "689" or "691" or "692" or "693" or "694" or "696" or "697" or "698" or "699";
+
+    /// <summary>
+    /// Nur Vorlagen dieser Linie. Die volle Routenliste (über tausend Einträge)
+    /// hängt das Dropdown auf, weil jeder Eintrag sofort gezeichnet wird.
+    /// </summary>
+    private List<string> TemplateChoicesFor(TripCardModel trip)
+    {
+        var prefix = LinePrefix(trip.LineCourse);
+        var matches = string.IsNullOrEmpty(prefix)
+            ? []
+            : _routes.Where(r =>
+                {
+                    var lc = RouteDisplayHelper.NormalizeLineCourse(RouteDisplayHelper.Parse(r).LineCourse);
+                    return string.Equals(LinePrefix(lc), prefix, StringComparison.OrdinalIgnoreCase);
+                }).ToList();
+
+        if (!string.IsNullOrWhiteSpace(trip.TemplateRouteKey) &&
+            !matches.Contains(trip.TemplateRouteKey, StringComparer.Ordinal))
+        {
+            matches.Insert(0, trip.TemplateRouteKey);
+        }
+
+        if (matches.Count == 0 && _routes.Count > 0)
+        {
+            matches.Add(_routes[0]);
+        }
+
+        return matches;
+    }
+
+    /// <summary>Kurs aus dem Dateikopf an die Fahrt-Linie hängen, wenn der Hint keinen Kurs trägt.</summary>
+    private static string WithHeaderCourseSuffix(string lineCourse, string? headerLine)
+    {
+        var line = RouteDisplayHelper.NormalizeLineCourse(lineCourse);
+        if (string.IsNullOrWhiteSpace(line) || line.Contains('/'))
+        {
+            return line;
+        }
+
+        var header = RouteDisplayHelper.NormalizeLineCourse(headerLine);
+        if (string.IsNullOrWhiteSpace(header))
+        {
+            return line;
+        }
+
+        var slash = header.IndexOf('/');
+        return slash > 0 && slash < header.Length - 1
+            ? line + header[slash..]
+            : line;
+    }
+
+    private static string? LinePrefix(string? lineCourse)
+    {
+        if (string.IsNullOrWhiteSpace(lineCourse))
+        {
+            return null;
+        }
+
+        var n = RouteDisplayHelper.NormalizeLineCourse(lineCourse);
+        var slash = n.IndexOf('/');
+        return slash > 0 ? n[..slash] : n;
+    }
+
+    private static bool LinePrefixesEqual(string? a, string? b)
+    {
+        var pa = LinePrefix(a);
+        var pb = LinePrefix(b);
+        return !string.IsNullOrWhiteSpace(pa) &&
+               string.Equals(pa, pb, StringComparison.OrdinalIgnoreCase);
+    }
+
     private string? GuessTemplate(
         string lineCourse,
         UmlaufImportPlanner.Direction direction,
@@ -1435,6 +1978,21 @@ public sealed class UmlaufImportDialog : Window
         IReadOnlyList<UmlaufPdfReader.TimingPoint>? timingPoints = null)
     {
         var needle = RouteDisplayHelper.NormalizeLineCourse(lineCourse);
+        var guessKey = string.Concat(
+            needle,
+            "\u001e",
+            startStopHint,
+            "\u001e",
+            endStopHint,
+            "\u001e",
+            timingPoints is null
+                ? string.Empty
+                : string.Join('\u001f', timingPoints.Select(p => p.StopHint)));
+        if (_templateGuessCache.TryGetValue(guessKey, out var cachedTemplate))
+        {
+            return cachedTemplate;
+        }
+
         IEnumerable<string> pool = _routes;
         if (!string.IsNullOrWhiteSpace(needle))
         {
@@ -1495,12 +2053,24 @@ public sealed class UmlaufImportDialog : Window
                 score += 50;
                 if (startIdx >= 0)
                 {
-                    // PDF listet oft nur Taktpunkte – längere Vorlagenkette zwischen Start/Ende bevorzugen
-                    var span = Math.Abs(endIdx - startIdx) + 1;
-                    score += Math.Min(span * 4, 120);
+                    // Richtung Start→Ende belohnen; Span nicht mehr pauschal länger = besser
+                    // (sonst gewinnt z. B. Vohwinkel→Burg über Hbf gegen die direkte 683)
                     score += endIdx >= startIdx ? 60 : 20;
+                    var span = Math.Abs(endIdx - startIdx) + 1;
+                    score += Math.Min(span, 40);
+                }
+
+                // PDF-Ende = Vorlagen-Endhalt (Schleife/Burger Bf.) → Ziel der Starthaltestelle passt
+                if (endIdx == stops.Count - 1 ||
+                    (endIdx >= 0 && stops[endIdx].IsEndStop))
+                {
+                    score += 100;
                 }
             }
+
+            // PDF-Planfolge vs. Vorlage derselben Linie (Dichte + Malus ungeplanter Hbf/Termini)
+            score += UmlaufImportPlanner.ScorePlanSequenceFit(
+                stops, startStopHint, endStopHint, timingPoints);
 
             // Planzeiten-Abdeckung entscheidet die Vorlage (stärker als PDF-Kopf/Farbband)
             if (timingPoints is { Count: > 0 })
@@ -1509,7 +2079,7 @@ public sealed class UmlaufImportDialog : Window
             }
 
             // Detaillierte Vorlage leicht bevorzugen (bei gleicher Taktpunkt-Abdeckung)
-            score += Math.Min(stops.Count, 40);
+            score += Math.Min(stops.Count, 20);
 
             // PDF-Kurs nur leichter Bonus bei gleicher Abdeckung
             var keyLc = RouteDisplayHelper.NormalizeLineCourse(RouteDisplayHelper.Parse(key).LineCourse);
@@ -1543,18 +2113,23 @@ public sealed class UmlaufImportDialog : Window
             }
         }
 
+        string chosen;
         if (bestKey is not null && bestScore > 0)
         {
-            return bestKey;
+            chosen = bestKey;
         }
-
-        if (!string.IsNullOrWhiteSpace(_initialRouteKey) &&
-            list.Contains(_initialRouteKey, StringComparer.Ordinal))
+        else if (!string.IsNullOrWhiteSpace(_initialRouteKey) &&
+                 list.Contains(_initialRouteKey, StringComparer.Ordinal))
         {
-            return _initialRouteKey;
+            chosen = _initialRouteKey;
+        }
+        else
+        {
+            chosen = list[direction == UmlaufImportPlanner.Direction.Hin ? 0 : Math.Min(1, list.Count - 1)];
         }
 
-        return list[direction == UmlaufImportPlanner.Direction.Hin ? 0 : Math.Min(1, list.Count - 1)];
+        _templateGuessCache[guessKey] = chosen;
+        return chosen;
     }
 
     /// <summary>
@@ -1943,7 +2518,12 @@ public sealed class UmlaufImportDialog : Window
                 // Endzeit als Anker auf letzte Vorlage-Hst legen (Name erst beim Import unbekannt → nur Info)
             }
 
-            EnsureStops(t, forceRebuild: !t.StopsLocked);
+            // Vor Import: Ziele aus gewählter Vorlage, nicht aus früher falsch geratenen Ketten
+            if (!t.StopsLocked)
+            {
+                EnsureStops(t, forceRebuild: true, keepStopEdits: false);
+            }
+
             var planAnchors = t.TimingPoints.Count > 0
                 ? t.TimingPoints
                     .GroupBy(p => p.StopHint, StringComparer.OrdinalIgnoreCase)

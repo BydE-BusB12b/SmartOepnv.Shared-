@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.ViewModels;
 using SmartOepnv.Core.RoutePackage;
 
@@ -15,7 +16,11 @@ public sealed class RouteStopTimeOrderWarningConverter : IMultiValueConverter
     public static readonly RouteStopTimeOrderWarningConverter Instance = new();
 
     private static readonly SolidColorBrush WarningBrush = CreateFrozenBrush(0xFF, 0xFF, 0x52, 0x52);
-    private static readonly SolidColorBrush NormalBrush = CreateFrozenBrush(0xFF, 0xFF, 0xFF, 0xFF);
+    private static readonly SolidColorBrush NormalDarkBrush = CreateFrozenBrush(0xFF, 0xFF, 0xFF, 0xFF);
+    private static readonly SolidColorBrush NormalLightBrush = CreateFrozenBrush(0xFF, 0x00, 0x21, 0x71);
+
+    private static SolidColorBrush NormalBrush =>
+        UiTheme.IsLight ? NormalLightBrush : NormalDarkBrush;
 
     public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture)
     {

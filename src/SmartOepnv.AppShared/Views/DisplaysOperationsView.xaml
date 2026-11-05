@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels"
+             xmlns:helpers="clr-namespace:SmartOepnv.AppShared.Helpers"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch">
     <UserControl.Resources>
@@ -22,8 +23,8 @@
         <!-- Aktiver Tab oben grün, inaktiver Tab dunkelblau -->
         <Style x:Key="DisplaysOpsZiellisteTabButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="Background" Value="{StaticResource SmartPrimaryDarkBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SmartPanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SmartPanelBrush}" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding SelectedTabIndex}" Value="0">
                     <Setter Property="Background" Value="{StaticResource SmartSuccessForegroundBrush}" />
@@ -33,8 +34,8 @@
         </Style>
         <Style x:Key="DisplaysOpsHintsTabButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="Background" Value="{StaticResource SmartPrimaryDarkBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SmartPanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SmartPanelBrush}" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding SelectedTabIndex}" Value="1">
                     <Setter Property="Background" Value="{StaticResource SmartSuccessForegroundBrush}" />
@@ -61,16 +62,16 @@
                        FontWeight="SemiBold"
                        FontSize="18"
                        VerticalAlignment="Center" />
-            <TextBox Grid.Column="1"
-                     Margin="16,0,16,0"
-                     VerticalAlignment="Center"
-                     MaxWidth="360"
-                     HorizontalAlignment="Stretch"
-                     materialDesign:HintAssist.Hint="Anzeigen suchen…"
-                     materialDesign:HintAssist.IsFloating="False"
-                     materialDesign:TextFieldAssist.HasClearButton="True"
-                     Text="{Binding OutsideProgramSearchText, UpdateSourceTrigger=PropertyChanged}"
-                     ToolTip="Suche nach Name, ID, Zielnummer, Linie oder Text" />
+            <Grid Grid.Column="1" Margin="16,0,16,0">
+                <TextBox VerticalAlignment="Center"
+                         MaxWidth="360"
+                         HorizontalAlignment="Stretch"
+                         materialDesign:HintAssist.Hint="Anzeigen suchen…"
+                         materialDesign:HintAssist.IsFloating="False"
+                         materialDesign:TextFieldAssist.HasClearButton="True"
+                         helpers:LiveText.Source="{Binding OutsideProgramSearchText, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Suche nach Name, ID, Zielnummer, Linie oder Text" />
+            </Grid>
             <StackPanel Grid.Column="2"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"
@@ -167,7 +168,7 @@
                                      Background="Transparent"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     ScrollViewer.CanContentScroll="False"
+                                     ScrollViewer.CanContentScroll="True"
                                      VirtualizingPanel.IsVirtualizing="True"
                                      VirtualizingPanel.VirtualizationMode="Recycling">
                                 <ListBox.ItemContainerStyle>
@@ -963,11 +964,13 @@
                                      Background="Transparent"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     ScrollViewer.CanContentScroll="False">
+                                     ScrollViewer.CanContentScroll="True">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Margin="0,2">
-                                            <TextBlock Text="{Binding HintText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding ListTitle}"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
                                             <TextBlock Opacity="0.7" FontSize="11">
                                                 <Run Text="{Binding StartDate, Mode=OneWay}" />
                                                 <Run Text=" – " />
@@ -986,69 +989,154 @@
                                          Background="{StaticResource SmartSurfaceBrush}">
                         <Grid VerticalAlignment="Stretch">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="160" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <ScrollViewer Grid.Row="0"
-                                          VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled"
-                                          Margin="0,0,0,10">
-                                <StackPanel DataContext="{Binding SelectedHint}">
-                                    <TextBlock Text="Hinweis bearbeiten" FontWeight="SemiBold" Margin="0,0,0,10" />
-                                    <Grid>
-                                        <Grid.Style>
-                                            <Style TargetType="Grid">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding}" Value="{x:Null}">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Grid.Style>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="100" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Text" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding HintText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Start" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
-                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Ende" Margin="0,0,8,8" />
-                                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
-                                        <CheckBox Grid.Row="3" Grid.ColumnSpan="2" Content="Bereits angezeigt (isShown)" IsChecked="{Binding IsShown}" />
-                                    </Grid>
-                                </StackPanel>
-                            </ScrollViewer>
+                            <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                                <TextBox Margin="0,0,0,8"
+                                         materialDesign:HintAssist.Hint="Name"
+                                         ToolTip="Kurzname für die Liste links. Erscheint nicht auf dem Tablet."
+                                         Text="{Binding NewHintName, UpdateSourceTrigger=PropertyChanged}">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedHint}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+                                <TextBox Margin="0,0,0,8"
+                                         DataContext="{Binding SelectedHint}"
+                                         materialDesign:HintAssist.Hint="Name"
+                                         ToolTip="Kurzname für die Liste links. Erscheint nicht auf dem Tablet."
+                                         Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+                                <TextBlock Text="Hinweistext" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <TextBlock TextWrapping="Wrap" Opacity="0.8" FontSize="12"
+                                           Text="Der Name steht nur in der Liste links. Dieser Text erscheint auf dem Tablet genau so, Zeilenumbrüche bleiben erhalten. Unter dem Text steht nur der Zeitraum als „Gültig: TT.MM.JJJJ – TT.MM.JJJJ“." />
+                            </StackPanel>
 
-                            <StackPanel Grid.Row="1">
-                                <TextBox materialDesign:HintAssist.Hint="Neuer Hinweistext"
-                                         Text="{Binding NewHintText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6" />
-                                <Grid Margin="0,0,0,6">
+                            <TextBox Grid.Row="1"
+                                     Margin="0,0,0,8"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalAlignment="Stretch"
+                                     VerticalContentAlignment="Top"
+                                     VerticalScrollBarVisibility="Auto"
+                                     materialDesign:HintAssist.Hint="Hinweistext"
+                                     Text="{Binding NewHintText, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedHint}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                            <TextBox Grid.Row="1"
+                                     Margin="0,0,0,8"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalAlignment="Stretch"
+                                     VerticalContentAlignment="Top"
+                                     VerticalScrollBarVisibility="Auto"
+                                     DataContext="{Binding SelectedHint}"
+                                     materialDesign:HintAssist.Hint="Hinweistext"
+                                     Text="{Binding HintText, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+
+                            <Grid Grid.Row="2" Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.Style>
+                                        <Style TargetType="Grid">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedHint}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Grid.Style>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBox Grid.Column="0" Margin="0,0,6,0"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                              materialDesign:HintAssist.Hint="Start TT.MM.JJJJ"
                                              Text="{Binding NewHintStartDate, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBox Grid.Column="1"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                              materialDesign:HintAssist.Hint="Ende TT.MM.JJJJ"
                                              Text="{Binding NewHintEndDate, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
-                                <WrapPanel>
-                                    <Button Content="Hinweis hinzufügen" Command="{Binding AddDateBasedHintCommand}"
-                                            Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0" />
-                                    <Button Content="Auswahl löschen" Command="{Binding RemoveDateBasedHintCommand}"
-                                            Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" />
-                                </WrapPanel>
-                            </StackPanel>
+                                <StackPanel>
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedHint}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <Grid DataContext="{Binding SelectedHint}" Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" Margin="0,0,6,0"
+                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                 materialDesign:HintAssist.Hint="Start TT.MM.JJJJ"
+                                                 Text="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Grid.Column="1"
+                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                 materialDesign:HintAssist.Hint="Ende TT.MM.JJJJ"
+                                                 Text="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Grid>
+                                    <CheckBox Content="Bereits angezeigt"
+                                              DataContext="{Binding SelectedHint}"
+                                              IsChecked="{Binding IsShown}"
+                                              ToolTip="Ist der Haken gesetzt, zeigt das Tablet den Hinweis in dieser Sitzung nicht noch einmal." />
+                                </StackPanel>
+                            </Grid>
+
+                            <WrapPanel Grid.Row="3">
+                                <Button Content="Hinweis hinzufügen" Command="{Binding AddDateBasedHintCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0" />
+                                <Button Content="Auswahl löschen" Command="{Binding RemoveDateBasedHintCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" />
+                            </WrapPanel>
                         </Grid>
                     </materialDesign:Card>
                 </Grid>
@@ -1079,7 +1167,7 @@
                     </Style>
                 </Button.Style>
             </Button>
-            <TextBlock Text="{Binding StatusMessage}"
+            <TextBlock Text="{Binding FooterStatusMessage}"
                        VerticalAlignment="Center"
                        TextWrapping="Wrap"
                        Opacity="0.85"

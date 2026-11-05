@@ -4,7 +4,7 @@
              xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              HorizontalAlignment="Stretch"
-             Foreground="White">
+             Foreground="{DynamicResource SmartForegroundBrush}">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <Style TargetType="TextBox">
@@ -58,7 +58,7 @@
                                 <TextBox x:Name="DestinationSearchBox"
                                          Padding="6,4"
                                          Background="#FF0D47A1"
-                                         Foreground="White"
+                                         Foreground="{DynamicResource SmartOnPrimaryBrush}"
                                          CaretBrush="White"
                                          BorderBrush="{StaticResource SmartAccentBrush}"
                                          BorderThickness="1"
@@ -90,7 +90,7 @@
                             <ScrollViewer SnapsToDevicePixels="True"
                                           HorizontalScrollBarVisibility="Disabled"
                                           VerticalScrollBarVisibility="Visible"
-                                          CanContentScroll="False"
+                                          CanContentScroll="True"
                                           Focusable="False">
                                 <ScrollViewer.Resources>
                                     <Style TargetType="ScrollBar" BasedOn="{StaticResource SmartDarkComboBoxScrollBar}" />
@@ -118,6 +118,7 @@
             <Setter Property="MaxDropDownHeight" Value="360" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="IsTextSearchEnabled" Value="False" />
             <Setter Property="Template" Value="{StaticResource RouteStopDestinationPickerComboTemplate}" />
             <Setter Property="SelectedValuePath" Value="." />
             <Setter Property="ToolTip" Value="Ziel aus Liste wählen" />
@@ -125,6 +126,8 @@
                 <Setter.Value>
                     <Style TargetType="ComboBoxItem" BasedOn="{StaticResource SmartDarkComboBoxItem}">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Focusable" Value="False" />
+                        <Setter Property="IsTabStop" Value="False" />
                     </Style>
                 </Setter.Value>
             </Setter>
@@ -141,7 +144,7 @@
             <EventSetter Event="SelectionChanged" Handler="DestinationCombo_SelectionChanged" />
         </Style>
         <Style x:Key="RouteStopDestinationValueText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="10,0,0,0" />
@@ -149,7 +152,10 @@
         </Style>
         <Style TargetType="ComboBox" BasedOn="{StaticResource RouteStopDestinationPickerCombo}" />
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
+        </Style>
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
         </Style>
     </UserControl.Resources>
     <Grid HorizontalAlignment="Stretch">
@@ -158,65 +164,67 @@
         </Grid.ColumnDefinitions>
         <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
         <TextBlock Text="Stammdaten" FontWeight="SemiBold" Margin="0,0,0,8" />
-        <Grid Margin="0,0,0,12" HorizontalAlignment="Stretch">
+        <!-- Zeile 1: ID + Name + Anzeige -->
+        <Grid Margin="0,0,0,6" HorizontalAlignment="Stretch">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="70" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="70" />
-                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="60" />
+                <ColumnDefinition Width="72" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="100" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="100" />
             </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="ID:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="5" Margin="0,0,0,6"
+            <TextBlock Grid.Column="0" Text="ID:" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBox Grid.Column="1" Margin="0,0,10,0"
                      Text="{Binding SelectedStop.PlannerStopCode, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Name:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,8,6"
+            <TextBlock Grid.Column="2" Text="Name:" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBox Grid.Column="3" Margin="0,0,10,0"
                      Text="{Binding SelectedStop.Name, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-            <TextBlock Grid.Row="1" Grid.Column="2" Text="Anzeige:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="3" Margin="0,0,0,6"
+            <TextBlock Grid.Column="4" Text="Anzeige:" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBox Grid.Column="5"
                      MaxLength="{Binding Ds009TextMaxLength}"
                      Text="{Binding SelectedStop.StopDisplay, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="GPS:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,0,8,6"
+        </Grid>
+        <!-- Zeile 2: GPS + Hst.-GPS + VRR-ID + Radius + Zeit -->
+        <Grid Margin="0,0,0,12" HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="80" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="80" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="72" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="44" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="56" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="GPS:" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBox Grid.Column="1" Margin="0,0,8,0"
                      Text="{Binding SelectedStop.GpsCoordinates, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-            <TextBlock Grid.Row="2" Grid.Column="2" Text="Hst.-GPS:" Margin="0,0,8,6" VerticalAlignment="Center" />
-            <TextBox Grid.Row="2" Grid.Column="3" Grid.ColumnSpan="3" Margin="0,0,0,6"
+            <TextBlock Grid.Column="2" Text="Hst.-GPS:" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBox Grid.Column="3" Margin="0,0,8,0"
                      Text="{Binding SelectedStop.StopCoordinates, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-
-            <TextBlock Grid.Row="3" Grid.Column="0" Text="VRR-ID:" Margin="0,0,8,0" VerticalAlignment="Center" />
-            <Grid Grid.Row="3" Grid.Column="1" Margin="0,0,8,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBox Text="{Binding SelectedStopVrrStopId, UpdateSourceTrigger=PropertyChanged}"
-                         LostFocus="Field_LostFocus" />
-                <Button Grid.Column="1" Content="VRR…" Command="{Binding PickVrrStopCommand}"
-                        Margin="6,0,0,0" Padding="8,4" MinHeight="32"
-                        Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5"
-                        ToolTip="Haltestelle im VRR-Katalog suchen (wie Android)" />
-            </Grid>
-            <TextBlock Grid.Row="3" Grid.Column="2" Text="Radius:" Margin="0,0,8,0" VerticalAlignment="Center" />
-            <TextBox Grid.Row="3" Grid.Column="3" Margin="0,0,8,0"
+            <TextBlock Grid.Column="4" Text="VRR-ID:" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBox Grid.Column="5" Margin="0,0,4,0"
+                     Text="{Binding SelectedStopVrrStopId, UpdateSourceTrigger=PropertyChanged}"
+                     LostFocus="Field_LostFocus" />
+            <Button Grid.Column="6" Content="VRR…" Command="{Binding PickVrrStopCommand}"
+                    Margin="0,0,8,0" Padding="8,4" MinHeight="32"
+                    Background="#1E5A9E" Foreground="{DynamicResource SmartOnPrimaryBrush}" BorderBrush="#42A5F5"
+                    ToolTip="Haltestelle im VRR-Katalog suchen (wie Android)" />
+            <TextBlock Grid.Column="7" Text="Radius:" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBox Grid.Column="8" Margin="0,0,8,0"
                      Text="{Binding SelectedStop.Radius, UpdateSourceTrigger=LostFocus}"
                      LostFocus="Field_LostFocus" />
-            <TextBlock Grid.Row="3" Grid.Column="4" Text="Zeit:" Margin="0,0,8,0" VerticalAlignment="Center" />
-            <TextBox x:Name="StopTimeTextBox" Grid.Row="3" Grid.Column="5"
+            <TextBlock Grid.Column="9" Text="Zeit:" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBox x:Name="StopTimeTextBox" Grid.Column="10"
                      Text="{Binding SelectedStop.Time, UpdateSourceTrigger=LostFocus}"
                      ToolTip="z. B. 1424 oder 14:24"
                      LostFocus="StopTime_LostFocus" />
@@ -224,146 +232,176 @@
 
         <Separator Margin="0,0,0,12" Opacity="0.35" />
 
+        <!-- Entwerter | Begrüßung | Endziel-GPS | Zielwechsel – Eingaben immer sichtbar -->
         <Grid Margin="0,0,0,12"
               Visibility="{Binding HasSelectedStop, Converter={StaticResource BoolToVis}}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="280" />
-                <ColumnDefinition Width="20" />
-                <ColumnDefinition Width="*" MinWidth="280" />
+                <ColumnDefinition Width="*" MinWidth="120" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" MinWidth="160" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" MinWidth="160" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" MinWidth="180" />
             </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0">
-                <CheckBox Content="Entwerter"
-                          IsChecked="{Binding EntwerterEnabled, Mode=TwoWay}"
-                          Margin="0,0,0,6"
-                          VerticalAlignment="Center"
-                          ToolTip="Beim Verlassen der Haltestelle (120 m) IBIS Entwerter senden (e…). Datum/Uhrzeit separat (d/u)." />
-                <StackPanel Visibility="{Binding ShowEntwerterFields, Converter={StaticResource BoolToVis}}"
-                            Margin="16,0,0,0">
-                    <UniformGrid Columns="2" HorizontalAlignment="Stretch" Margin="0,0,0,4">
-                        <TextBox materialDesign:HintAssist.Hint="Wabe (3 Ziffern)"
-                                 Text="{Binding EntwerterWabe, UpdateSourceTrigger=LostFocus}"
-                                 ToolTip="DS004 Ziffer 4–6. Linie (1–3) kommt automatisch von der Route."
-                                 Margin="0,0,6,0"
-                                 MaxLength="3"
-                                 LostFocus="Field_LostFocus" />
-                        <TextBox materialDesign:HintAssist.Hint="Kurzstrecke DS004a (Standard 3 → 0031)"
-                                 Text="{Binding EntwerterKurzstrecke, UpdateSourceTrigger=LostFocus}"
-                                 ToolTip="7. Stempelstelle über DS004a Ziffer 3. Voreinstellung 3 → DS004a 0031."
-                                 Margin="6,0,0,0"
-                                 MaxLength="1"
-                                 LostFocus="Field_LostFocus" />
-                    </UniformGrid>
-                    <TextBlock Text="{Binding EntwerterLinieAuto, StringFormat=Linie (auto): {0}}"
-                               Margin="0,0,0,2"
-                               Opacity="0.85"
-                               FontSize="11" />
-                    <TextBlock Text="{Binding EntwerterTelegramPreview}"
-                               FontSize="11"
-                               Opacity="0.75"
-                               TextWrapping="Wrap" />
+            <!-- 1: Entwerter -->
+            <StackPanel Grid.Column="0" VerticalAlignment="Top">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <CheckBox Content="Entwerter"
+                              IsChecked="{Binding EntwerterEnabled, Mode=TwoWay}"
+                              Margin="0,0,12,0"
+                              VerticalAlignment="Center"
+                              ToolTip="Beim Verlassen der Haltestelle (120 m) IBIS Entwerter senden (e…). Datum/Uhrzeit separat (d/u)." />
+                    <TextBlock Text="Ansage-ID:"
+                               VerticalAlignment="Center"
+                               Margin="0,0,6,0" />
+                    <TextBox Width="64"
+                             MaxLength="4"
+                             Text="{Binding IbisAnnouncementId, UpdateSourceTrigger=LostFocus}"
+                             LostFocus="Field_LostFocus"
+                             ToolTip="Nummer am IBIS-Ansagegerät (DS036 hP). Kommt aus der Haltestellen-Vorlage, wenn die Ansage eine ID hat." />
+                </StackPanel>
+                <StackPanel Margin="0,0,0,0"
+                            Orientation="Horizontal"
+                            IsEnabled="{Binding EntwerterEnabled}">
+                    <TextBox materialDesign:HintAssist.Hint="Wabe"
+                             Text="{Binding EntwerterWabe, UpdateSourceTrigger=LostFocus}"
+                             ToolTip="DS004 Ziffer 4–6. Linie (1–3) kommt automatisch von der Route."
+                             Width="56"
+                             MaxLength="3"
+                             Margin="0,0,8,0"
+                             LostFocus="Field_LostFocus" />
+                    <TextBox materialDesign:HintAssist.Hint="KS"
+                             Text="{Binding EntwerterKurzstrecke, UpdateSourceTrigger=LostFocus}"
+                             ToolTip="Kurzstrecke DS004a Ziffer 3. Voreinstellung 3 → DS004a 0031."
+                             Width="40"
+                             MaxLength="1"
+                             LostFocus="Field_LostFocus" />
                 </StackPanel>
             </StackPanel>
-            <WrapPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
-                <CheckBox Content="Starthaltestelle" IsChecked="{Binding IsStartStop, Mode=TwoWay}"
-                          Margin="0,0,16,4" VerticalAlignment="Center" />
-                <CheckBox Content="Ansage ausblenden"
-                          IsChecked="{Binding IsAnnouncementHidden, Mode=TwoWay}"
-                          Visibility="{Binding ShowAnnouncementHiddenOption, Converter={StaticResource BoolToVis}}"
-                          ToolTip="Haltestelle ohne GPS-Ansage – in der App durchgestrichen (wie im Handy)"
-                          Margin="0,0,16,4" VerticalAlignment="Center" />
-                <CheckBox Content="Endhaltestelle" IsChecked="{Binding IsEndStop, Mode=TwoWay}"
-                          Margin="0,0,16,4" VerticalAlignment="Center" />
-                <StackPanel Orientation="Horizontal"
-                            Visibility="{Binding ShowEndStopAnnouncementFields, Converter={StaticResource BoolToVis}}"
-                            Margin="0,0,0,4" VerticalAlignment="Center">
-                    <TextBlock Text="Endhaltestellen-Ansage"
-                               VerticalAlignment="Center"
-                               Margin="0,0,8,0"
-                               Opacity="0.9"
-                               ToolTip="Hängt die Endansage aus der Ansagen-Kartei nach der Haltestellenansage an (unabhängig von Endhaltestelle)" />
-                    <CheckBox Content="EN"
-                              IsChecked="{Binding PlayEndStopAnnouncementEn, Mode=TwoWay}"
-                              Margin="0,0,8,0"
-                              VerticalAlignment="Center"
-                              ToolTip="Englische Endansage (Kartei „Endhaltestelle“)" />
-                    <CheckBox Content="NL"
-                              IsChecked="{Binding PlayEndStopAnnouncementNl, Mode=TwoWay}"
-                              VerticalAlignment="Center"
-                              ToolTip="Niederländische Endansage (Kartei „Eindhalteplaats“ / Endhaltestelle NL – Datei wie EN zuordenbar)" />
+            <!-- 2: Starthaltestellen-Begrüßung -->
+            <StackPanel Grid.Column="2" VerticalAlignment="Top">
+                <CheckBox Content="Starthaltestellen-Begrüßung"
+                          IsChecked="{Binding PlayStartStopGreeting, Mode=TwoWay}"
+                          ToolTip="Unabhängig von Starthaltestelle – typisch am Einstiegshalt. Aufzählung „fährt über“ beginnt danach. App: Dreifach-Tipp = Begrüßung; Doppel = Zielversand, Begrüßung nur am GPS-Punkt."
+                          Margin="0,0,0,6" VerticalAlignment="Center" />
+                <StackPanel IsEnabled="{Binding PlayStartStopGreeting}">
+                    <TextBlock Text="Begrüßungs-GPS (optional)"
+                               Opacity="0.85"
+                               FontSize="12"
+                               Margin="0,0,0,4" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding SelectedStop.StartStopGreetingCoordinates, UpdateSourceTrigger=LostFocus}"
+                                 LostFocus="Field_LostFocus" />
+                        <Button Grid.Column="2" Content="Karte…" Command="{Binding PickStartStopGreetingCoordinatesOnMapCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                    </Grid>
                 </StackPanel>
-            </WrapPanel>
-        </Grid>
-        <CheckBox Content="Starthaltestellen-Begrüßung"
-                  IsChecked="{Binding PlayStartStopGreeting, Mode=TwoWay}"
-                  Visibility="{Binding ShowStartStopGreetingFields, Converter={StaticResource BoolToVis}}"
-                  ToolTip="Unabhängig von Starthaltestelle – typisch am Einstiegshalt. Aufzählung „fährt über“ beginnt danach. App: Dreifach-Tipp = Begrüßung; Doppel = Zielversand, Begrüßung nur am GPS-Punkt."
-                  Margin="0,0,0,8" VerticalAlignment="Center" />
-        <StackPanel Margin="16,0,0,8"
-                    Visibility="{Binding ShowStartStopGreetingCoordinatesFields, Converter={StaticResource BoolToVis}}">
-            <TextBlock Text="Begrüßungs-GPS (optional)"
-                       Opacity="0.85"
-                       FontSize="12"
-                       Margin="0,0,0,4" />
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBox Text="{Binding SelectedStop.StartStopGreetingCoordinates, UpdateSourceTrigger=LostFocus}"
-                         LostFocus="Field_LostFocus" />
-                <Button Grid.Column="2" Content="Karte…" Command="{Binding PickStartStopGreetingCoordinatesOnMapCommand}"
-                        Style="{StaticResource MaterialDesignOutlinedButton}" />
-            </Grid>
-            <TextBlock Text="Mit GPS: Doppel-Tipp schaltet scharf, Auslösung am Punkt (wie Endziel). Ohne GPS: Begrüßung nur per Dreifach-Tipp."
-                       FontSize="11"
-                       Opacity="0.75"
-                       TextWrapping="Wrap"
-                       Margin="0,4,0,0" />
-        </StackPanel>
-        <TextBlock Text="Ohne Ziel/Linie wird die Haltestelle trotzdem als Starthaltestelle geführt (keine GPS-Ansage, nicht durchgestrichen)."
-                   FontSize="11"
-                   Opacity="0.75"
-                   TextWrapping="Wrap"
-                   Margin="0,0,0,8"
-                   Visibility="{Binding IsStartStop, Converter={StaticResource BoolToVis}}" />
-
-        <StackPanel Margin="0,0,0,12"
-                    Visibility="{Binding HasSelectedStop, Converter={StaticResource BoolToVis}}">
-            <CheckBox Content="Zielwechsel"
-                      IsChecked="{Binding ZielwechselEnabled, Mode=TwoWay}"
-                      Margin="0,0,0,6"
-                      VerticalAlignment="Center"
-                      ToolTip="Ziel erneut senden – Haltestelle wird weiterhin angesagt (kein Starthalt)." />
-            <StackPanel Visibility="{Binding ShowZielwechselFields, Converter={StaticResource BoolToVis}}"
-                        Margin="16,0,0,0">
-                <TextBlock Text="Zielwechsel-GPS (optional)"
+            </StackPanel>
+            <!-- 3: Endziel-GPS -->
+            <StackPanel Grid.Column="4" VerticalAlignment="Top">
+                <TextBlock Text="Endziel-GPS"
+                           Margin="0,0,0,6"
+                           Padding="0,3,0,0"
+                           VerticalAlignment="Center"
+                           ToolTip="GPS-Punkt für Endziel (wie in der App)" />
+                <TextBlock Text="lat, lon (optional)"
                            Opacity="0.85"
                            FontSize="12"
                            Margin="0,0,0,4" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="8" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0"
-                             materialDesign:HintAssist.Hint="lat,lon"
-                             Text="{Binding SelectedStop.ZielwechselGpsCoordinates, UpdateSourceTrigger=LostFocus}"
+                    <TextBox Text="{Binding SelectedStop.EndDestinationCoordinates, UpdateSourceTrigger=LostFocus}"
                              LostFocus="Field_LostFocus" />
-                    <TextBox Grid.Column="2"
-                             materialDesign:HintAssist.Hint="Radius m"
-                             Text="{Binding SelectedStop.ZielwechselRadius, UpdateSourceTrigger=LostFocus}"
-                             LostFocus="Field_LostFocus" />
-                    <Button Grid.Column="4"
+                    <Button Grid.Column="2"
                             Content="Karte…"
-                            Command="{Binding PickZielwechselCoordinatesOnMapCommand}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}" />
+                            Command="{Binding PickEndDestinationCoordinatesOnMapCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            ToolTip="Endziel-GPS auf der Karte wählen (wie in der App)" />
                 </Grid>
             </StackPanel>
-        </StackPanel>
+            <!-- 4: Zielwechsel -->
+            <StackPanel Grid.Column="6" VerticalAlignment="Top">
+                <CheckBox Content="Zielwechsel"
+                          IsChecked="{Binding ZielwechselEnabled, Mode=TwoWay}"
+                          Margin="0,0,0,6"
+                          VerticalAlignment="Center"
+                          ToolTip="Ziel erneut senden – Haltestelle wird weiterhin angesagt (kein Starthalt)." />
+                <StackPanel IsEnabled="{Binding ZielwechselEnabled}">
+                    <TextBlock Text="Zielwechsel-GPS (optional)"
+                               Opacity="0.85"
+                               FontSize="12"
+                               Margin="0,0,0,4" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="48" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 materialDesign:HintAssist.Hint="lat,lon"
+                                 Text="{Binding SelectedStop.ZielwechselGpsCoordinates, UpdateSourceTrigger=LostFocus}"
+                                 LostFocus="Field_LostFocus" />
+                        <TextBox Grid.Column="2"
+                                 materialDesign:HintAssist.Hint="m"
+                                 Text="{Binding SelectedStop.ZielwechselRadius, UpdateSourceTrigger=LostFocus}"
+                                 LostFocus="Field_LostFocus" />
+                        <Button Grid.Column="4"
+                                Content="Karte…"
+                                Command="{Binding PickZielwechselCoordinatesOnMapCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+        <!-- Darunter: Starthaltestelle … Endansage EN/NL -->
+        <WrapPanel Orientation="Horizontal" VerticalAlignment="Top" Margin="0,0,0,8"
+                   Visibility="{Binding HasSelectedStop, Converter={StaticResource BoolToVis}}">
+            <CheckBox Content="Starthaltestelle" IsChecked="{Binding IsStartStop, Mode=TwoWay}"
+                      Margin="0,0,16,4" VerticalAlignment="Center" />
+            <CheckBox Content="Ansage ausblenden"
+                      IsChecked="{Binding IsAnnouncementHidden, Mode=TwoWay}"
+                      Visibility="{Binding ShowAnnouncementHiddenOption, Converter={StaticResource BoolToVis}}"
+                      ToolTip="Haltestelle ohne GPS-Ansage – in der App durchgestrichen (wie im Handy)"
+                      Margin="0,0,16,4" VerticalAlignment="Center" />
+            <CheckBox Content="Endhaltestelle" IsChecked="{Binding IsEndStop, Mode=TwoWay}"
+                      Margin="0,0,16,4" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal"
+                        Visibility="{Binding ShowEndStopAnnouncementFields, Converter={StaticResource BoolToVis}}"
+                        Margin="0,0,0,4" VerticalAlignment="Center">
+                <TextBlock Text="Endhaltestellen-Ansage"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"
+                           Opacity="0.9"
+                           ToolTip="Hängt die Endansage aus der Ansagen-Kartei nach der Haltestellenansage an (unabhängig von Endhaltestelle)" />
+                <CheckBox Content="EN"
+                          IsChecked="{Binding PlayEndStopAnnouncementEn, Mode=TwoWay}"
+                          Margin="0,0,8,0"
+                          VerticalAlignment="Center"
+                          ToolTip="Englische Endansage (Kartei „Endhaltestelle“)" />
+                <CheckBox Content="NL"
+                          IsChecked="{Binding PlayEndStopAnnouncementNl, Mode=TwoWay}"
+                          VerticalAlignment="Center"
+                          ToolTip="Niederländische Endansage (Kartei „Eindhalteplaats“ / Endhaltestelle NL – Datei wie EN zuordenbar)" />
+            </StackPanel>
+        </WrapPanel>
+        <TextBlock Text="Ohne Ziel/Linie wird die Haltestelle trotzdem als Starthaltestelle geführt (keine GPS-Ansage, nicht durchgestrichen)."
+                   FontSize="11"
+                   Opacity="0.75"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,8"
+                   Visibility="{Binding IsStartStop, Converter={StaticResource BoolToVis}}" />
 
         <StackPanel Margin="0,0,0,12"
                     Visibility="{Binding HasSelectedStop, Converter={StaticResource BoolToVis}}">
@@ -636,21 +674,6 @@
                                    ToolTip="{Binding SelectedEndDestinationMobitec}" />
                     </Grid>
                 </StackPanel>
-                <StackPanel Margin="0,0,8,8">
-                    <TextBlock Text="Endziel-GPS (lat, lon):" Margin="0,0,0,4" Opacity="0.9" />
-                    <Grid HorizontalAlignment="Stretch">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Text="{Binding SelectedStop.EndDestinationCoordinates, UpdateSourceTrigger=LostFocus}"
-                                 LostFocus="Field_LostFocus" />
-                        <Button Grid.Column="1" Content="Karte…" Command="{Binding PickEndDestinationCoordinatesOnMapCommand}"
-                                Margin="6,0,0,0" Padding="10,4" MinHeight="32"
-                                Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5"
-                                ToolTip="Endziel-GPS auf der Karte wählen (wie in der App)" />
-                    </Grid>
-                </StackPanel>
             </UniformGrid>
         </StackPanel>
 
@@ -678,7 +701,7 @@
                             Padding="12,4"
                             MinHeight="32"
                             Background="#1E5A9E"
-                            Foreground="White"
+                            Foreground="{DynamicResource SmartOnPrimaryBrush}"
                             BorderBrush="#42A5F5"
                             ToolTip="Fahrt per Nummer wählen (gleiche Linie/Kurs wie aktuelle Route)" />
                 </Grid>
@@ -706,7 +729,8 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border BorderBrush="#42A5F5" BorderThickness="1" CornerRadius="4"
-                                    Padding="10,8" Margin="0,0,0,8" Background="#14233A">
+                                    Padding="10,8" Margin="0,0,0,8"
+                                    Background="{DynamicResource SmartBackgroundBrush}">
                                 <StackPanel>
                                     <Grid Margin="0,0,0,8">
                                         <Grid.ColumnDefinitions>
@@ -726,7 +750,7 @@
                                                 Command="{Binding DataContext.RemoveRouteChangeDatedTargetCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="Diese Abweichung entfernen"
-                                                Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5" />
+                                                Background="#1E5A9E" Foreground="{DynamicResource SmartOnPrimaryBrush}" BorderBrush="#42A5F5" />
                                     </Grid>
 
                                     <TextBlock Text="Verkehrstage:" Margin="0,0,0,4" Opacity="0.9" />
@@ -782,7 +806,7 @@
                             FontSize="18" FontWeight="Bold"
                             Command="{Binding AddRouteChangeDatedTargetCommand}"
                             ToolTip="Weitere Abweichung (andere Tage / andere Folgefahrt) hinzufügen"
-                            Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5" />
+                            Background="#1E5A9E" Foreground="{DynamicResource SmartOnPrimaryBrush}" BorderBrush="#42A5F5" />
                     <TextBlock Text="Weitere Abweichung hinzufügen"
                                VerticalAlignment="Center" Margin="10,0,0,0"
                                Opacity="0.85" />

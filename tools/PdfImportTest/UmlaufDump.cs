@@ -15,7 +15,7 @@ internal static class UmlaufDump
         foreach (var t in r.Trips)
         {
             i++;
-            if (i > 8)
+            if (i > 80)
             {
                 break;
             }
@@ -34,12 +34,80 @@ internal static class UmlaufDump
             DumpTripTokens(path);
         }
 
+        if (Environment.GetCommandLineArgs().Any(a =>
+                string.Equals(a, "--gap", StringComparison.OrdinalIgnoreCase)))
+        {
+            DumpMorningGap(path);
+        }
+
+        if (Environment.GetCommandLineArgs().Any(a =>
+                string.Equals(a, "--rows", StringComparison.OrdinalIgnoreCase)))
+        {
+            DumpRows(path);
+        }
+
         return 0;
     }
 
     private static bool argsHasNums(string _) =>
         Environment.GetCommandLineArgs().Any(a =>
             string.Equals(a, "--nums", StringComparison.OrdinalIgnoreCase));
+
+    private static void DumpMorningGap(string path)
+    {
+        using var doc = PdfDocument.Open(path);
+        var words = doc.GetPages()
+            .SelectMany(p => p.GetWords())
+            .Select(w => (
+                Text: (w.Text ?? string.Empty).Trim(),
+                Y: (w.BoundingBox.Bottom + w.BoundingBox.Top) / 2,
+                X: (w.BoundingBox.Left + w.BoundingBox.Right) / 2))
+            .Where(w => w.Text.Length > 0)
+            .ToList();
+        Console.WriteLine("--- rows y 400-545 ---");
+        foreach (var grp in words
+                     .Where(w => w.Y >= 400 && w.Y <= 545)
+                     .GroupBy(w => (int)Math.Round(w.Y / 4.0))
+                     .OrderBy(g => g.Key))
+        {
+            var line = string.Join(" | ", grp.OrderBy(w => w.X).Select(w => $"{w.Text}@{w.X:0}"));
+            Console.WriteLine($"  y~{grp.Average(w => w.Y):0}  {line}");
+        }
+
+        Console.WriteLine("--- times 7:00-7:59 ---");
+        foreach (var w in words
+                     .Where(w => System.Text.RegularExpressions.Regex.IsMatch(w.Text, @"^7[:.]\d{2}$"))
+                     .OrderBy(w => w.Y)
+                     .ThenBy(w => w.X))
+        {
+            Console.WriteLine($"  {w.Text,-6} x={w.X:0.0} y={w.Y:0.0}");
+        }
+    }
+
+    private static void DumpRows(string path)
+    {
+        using var doc = PdfDocument.Open(path);
+        var pageNo = 0;
+        foreach (var page in doc.GetPages())
+        {
+            pageNo++;
+            Console.WriteLine($"--- page {pageNo} ---");
+            var words = page.GetWords()
+                .Select(w => (
+                    Text: (w.Text ?? string.Empty).Trim(),
+                    Y: w.BoundingBox.Bottom,
+                    X: (w.BoundingBox.Left + w.BoundingBox.Right) / 2))
+                .Where(w => w.Text.Length > 0)
+                .ToList();
+            foreach (var grp in words
+                         .GroupBy(w => (int)Math.Round(w.Y / 2.5))
+                         .OrderByDescending(g => g.Key))
+            {
+                var line = string.Join("  ", grp.OrderBy(w => w.X).Select(w => $"{w.Text}@{w.X:0}"));
+                Console.WriteLine($"p{pageNo} y~{grp.Average(w => w.Y):0}  {line}");
+            }
+        }
+    }
 
     private static void DumpTripTokens(string path)
     {

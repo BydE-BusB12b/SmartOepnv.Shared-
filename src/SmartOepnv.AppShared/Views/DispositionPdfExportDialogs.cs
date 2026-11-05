@@ -9,8 +9,8 @@ namespace SmartOepnv.AppShared.Views;
 /// <summary>PDF-Export Personaldisposition: Zeitraum + ein Fahrer oder alle.</summary>
 public sealed class FahrerdispoPdfExportDialog : Window
 {
-    private static readonly Brush DialogBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush LabelForeground = Brushes.White;
+    private static Brush DialogBackground => UiTheme.BackgroundBrush;
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
     private static readonly Brush InputBackground = new SolidColorBrush(Color.FromRgb(0x1E, 0x5A, 0x9E));
 
     private readonly DatePicker _fromPicker;
@@ -116,7 +116,7 @@ public sealed class FahrerdispoPdfExportDialog : Window
             IsEnabled = false,
             Margin = new Thickness(0, 0, 0, 12),
             Background = InputBackground,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             DisplayMemberPath = "DisplayName",
             SelectedValuePath = "Key"
         };
@@ -243,8 +243,8 @@ public sealed class FahrerdispoPdfExportDialog : Window
 /// <summary>PDF-Export Fahrzeugdisposition: Zeitraum, immer alle Fahrzeuge.</summary>
 public sealed class FahrzeugdispoPdfExportDialog : Window
 {
-    private static readonly Brush DialogBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush LabelForeground = Brushes.White;
+    private static Brush DialogBackground => UiTheme.BackgroundBrush;
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
     private static readonly Brush InputBackground = new SolidColorBrush(Color.FromRgb(0x1E, 0x5A, 0x9E));
 
     private readonly DatePicker _fromPicker;

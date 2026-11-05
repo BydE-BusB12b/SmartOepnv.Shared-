@@ -20,6 +20,44 @@
 
     <Window.Resources>
         <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+        <Style x:Key="NavItemButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#220D47A1" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#440D47A1" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="Background" Value="#330D47A1" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <materialDesign:DialogHost Identifier="RootDialog">
@@ -139,7 +177,7 @@
             <!-- Hauptbereich mit Navigation -->
             <Grid Grid.Row="1" ClipToBounds="True">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="300" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
@@ -155,6 +193,29 @@
                                    Margin="20,20,20,8"
                                    FontWeight="SemiBold"
                                    Opacity="0.7" />
+                        <Button x:Name="MascotButton"
+                                DockPanel.Dock="Bottom"
+                                Click="MascotButton_OnClick"
+                                ToolTip="Glücksbringer"
+                                HorizontalAlignment="Center"
+                                Margin="0,4,0,14"
+                                Padding="0"
+                                Cursor="Hand"
+                                BorderThickness="0"
+                                Background="Transparent"
+                                FocusVisualStyle="{x:Null}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <ContentPresenter />
+                                </ControlTemplate>
+                            </Button.Template>
+                            <Image Source="pack://application:,,,/SmartOepnv.AppShared;component/Assets/kiara.png"
+                                   Width="40"
+                                   Height="40"
+                                   Stretch="Uniform"
+                                   Opacity="0.55"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                        </Button>
                         <ScrollViewer VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled"
                                       Margin="8,0,8,12">
@@ -166,28 +227,8 @@
                                     <DataTemplate DataType="{x:Type models:NavigationItem}">
                                         <Button Command="{Binding DataContext.SelectNavigationCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
-                                                HorizontalContentAlignment="Left"
-                                                HorizontalAlignment="Stretch"
-                                                Margin="0,3"
-                                                Padding="12,12"
-                                                Cursor="Hand"
-                                                BorderThickness="0"
-                                                Background="Transparent"
-                                                Foreground="White">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
-                                                    <Setter Property="Background" Value="Transparent" />
-                                                    <Setter Property="MinHeight" Value="44" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                            <Setter Property="Background" Value="#28FFFFFF" />
-                                                        </DataTrigger>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Background" Value="#18FFFFFF" />
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
+                                                Style="{StaticResource NavItemButton}"
+                                                Margin="0,2">
                                             <StackPanel Orientation="Horizontal">
                                                 <Border Width="22" Height="22"
                                                         CornerRadius="11"
@@ -221,7 +262,8 @@
                                                            FontSize="15"
                                                            FontFamily="Segoe UI"
                                                            LineHeight="22"
-                                                           TextWrapping="NoWrap" />
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                         </Button>
                                     </DataTemplate>
@@ -233,7 +275,17 @@
                                                 MouseLeave="NavigationGroup_MouseLeave"
                                                 Margin="0,3">
                                             <StackPanel>
-                                                <Border Padding="12,12" Background="Transparent">
+                                                <Border Padding="12,10" CornerRadius="8">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="Transparent" />
+                                                            <Style.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#220D47A1" />
+                                                                </Trigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
                                                     <StackPanel Orientation="Horizontal">
                                                         <Border Width="22" Height="22"
                                                                 CornerRadius="11"
@@ -268,13 +320,14 @@
                                                                    FontWeight="SemiBold"
                                                                    FontFamily="Segoe UI"
                                                                    LineHeight="22"
-                                                                   TextWrapping="NoWrap" />
+                                                                   TextWrapping="NoWrap"
+                                                                   TextTrimming="CharacterEllipsis" />
                                                         <materialDesign:PackIcon Kind="ChevronDown"
                                                                                  Width="16" Height="16"
                                                                                  Margin="8,0,0,0"
                                                                                  VerticalAlignment="Center"
                                                                                  Opacity="0.55"
-                                                                                 Foreground="White" />
+                                                                                 Foreground="{DynamicResource SmartForegroundBrush}" />
                                                     </StackPanel>
                                                 </Border>
                                                 <ItemsControl ItemsSource="{Binding Children}"
@@ -284,28 +337,8 @@
                                                         <DataTemplate DataType="{x:Type models:NavigationItem}">
                                                             <Button Command="{Binding DataContext.SelectNavigationCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                     CommandParameter="{Binding}"
-                                                                    HorizontalContentAlignment="Left"
-                                                                    HorizontalAlignment="Stretch"
-                                                                    Margin="0,2"
-                                                                    Padding="12,10"
-                                                                    Cursor="Hand"
-                                                                    BorderThickness="0"
-                                                                    Background="Transparent"
-                                                                    Foreground="White">
-                                                                <Button.Style>
-                                                                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
-                                                                        <Setter Property="Background" Value="Transparent" />
-                                                                        <Setter Property="MinHeight" Value="40" />
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                                <Setter Property="Background" Value="#28FFFFFF" />
-                                                                            </DataTrigger>
-                                                                            <Trigger Property="IsMouseOver" Value="True">
-                                                                                <Setter Property="Background" Value="#18FFFFFF" />
-                                                                            </Trigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </Button.Style>
+                                                                    Style="{StaticResource NavItemButton}"
+                                                                    Margin="0,1">
                                                                 <StackPanel Orientation="Horizontal">
                                                                     <materialDesign:PackIcon Kind="{Binding Icon}"
                                                                                              Width="20" Height="20"
@@ -317,7 +350,8 @@
                                                                                FontSize="14"
                                                                                FontFamily="Segoe UI"
                                                                                LineHeight="20"
-                                                                               TextWrapping="NoWrap" />
+                                                                               TextWrapping="NoWrap"
+                                                                               TextTrimming="CharacterEllipsis" />
                                                                 </StackPanel>
                                                             </Button>
                                                         </DataTemplate>
@@ -347,6 +381,26 @@
                     </Grid>
                 </materialDesign:Card>
             </Grid>
+
+            <Popup x:Name="MascotPopup"
+                   PlacementTarget="{Binding ElementName=MascotButton}"
+                   Placement="Right"
+                   HorizontalOffset="6"
+                   StaysOpen="False"
+                   AllowsTransparency="True"
+                   PopupAnimation="Fade">
+                <Border Background="#F0121A2E"
+                        BorderBrush="{StaticResource SmartAccentBrush}"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        Padding="12,8"
+                        MaxWidth="280">
+                    <TextBlock x:Name="MascotLine"
+                               TextWrapping="Wrap"
+                               FontSize="13"
+                               Foreground="White" />
+                </Border>
+            </Popup>
 
             <!-- Schmaler Abschlussstreifen -->
             <Border Grid.Row="2"

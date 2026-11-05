@@ -8,8 +8,11 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Diagnostics;
+using System.IO;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Geo;
+using SmartOepnv.Core.Realtime.Vdv454;
 using SmartOepnv.Core.RoutePath;
 using SmartOepnv.Core.VehicleTracking;
 using SmartOepnv.Core.Voip;
@@ -110,6 +113,86 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private Task RefreshAsync() => RefreshCoreAsync(showBusy: true);
+
+    /// <summary>
+    /// Schreibt vorbereitende SIRI-VM/ET-XML aus dem aktuellen Live-Cache (kein Netzwerkversand).
+    /// </summary>
+    [RelayCommand]
+    private async Task DryRunVdv454Async()
+    {
+        try
+        {
+            IsBusy = true;
+            var vehicles = _vehicles;
+            if (vehicles.Count == 0)
+            {
+                var json = AppServices.Routes.CurrentJson;
+                vehicles = await Task.Run(async () => await _tracking.SyncAsync(json));
+                await RunOnUiAsync(() =>
+                {
+                    _vehicles = vehicles;
+                    RebuildList();
+                    PushVehiclesToMap();
+                });
+            }
+
+            if (vehicles.Count == 0)
+            {
+                StatusMessage = "VDV 454 Dry-Run: keine Live-Fahrzeuge – zuerst aktualisieren.";
+                return;
+            }
+
+            var snapshot = vehicles;
+            var schedule = AppServices.Routes.Editor;
+            var dir = Path.Combine(
+                AppPaths.GetRoamingDataDirectory(AppServices.SettingsSubfolder),
+                "vdv454_prep");
+            var (path, aimedCount, exported) = await Task.Run(() =>
+            {
+                var cfg = Vdv454ParticipantConfig.FromPlanerSettings(
+                    AppServices.PlanerAppSettings?.Load());
+                var built = Vdv454PreparationExporter.BuildSnapshot(
+                    snapshot,
+                    cfg,
+                    schedule);
+                Directory.CreateDirectory(dir);
+                var xml = Vdv454SiriXmlBuilder.BuildPreparationBundle(built);
+                var file = Path.Combine(dir, $"vdv454_prep_{built.ProducedAt:yyyyMMdd_HHmmss}.xml");
+                File.WriteAllText(file, xml);
+                return (
+                    file,
+                    Vdv454PreparationExporter.CountWithAimedTimes(built),
+                    snapshot.Count(v =>
+                        v.Status is VehicleOnlineStatus.Online or VehicleOnlineStatus.Stale));
+            });
+
+            StatusMessage = schedule is null
+                ? $"VDV 454 Dry-Run: {exported} Fahrzeuge, kein Fahrplan geladen (ohne Aimed) → {path}"
+                : $"VDV 454 Dry-Run: {exported} Fahrzeuge, {aimedCount} mit Aimed-Zeiten → {path}";
+
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{path}\"",
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+                // Ordner-Öffnen ist optional
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"VDV 454 Dry-Run fehlgeschlagen: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     private async Task RefreshCoreAsync(bool showBusy)
     {

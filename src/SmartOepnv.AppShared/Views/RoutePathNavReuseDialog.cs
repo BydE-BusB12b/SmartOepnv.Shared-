@@ -6,6 +6,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using SmartOepnv.Core.RoutePath;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -26,7 +27,7 @@ public sealed class RoutePathNavReuseDialog : Window
         MinWidth = 520;
         MinHeight = 360;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+        Background = UiTheme.BackgroundBrush;
 
         foreach (var c in candidates)
         {
@@ -50,7 +51,7 @@ public sealed class RoutePathNavReuseDialog : Window
             Text = "Passende Navidaten gefunden",
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 8)
         };
         Grid.SetRow(title, 0);
@@ -80,7 +81,7 @@ public sealed class RoutePathNavReuseDialog : Window
         var filterBox = new TextBox
         {
             Background = new SolidColorBrush(Color.FromRgb(0x12, 0x22, 0x36)),
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x2A, 0x3A, 0x4A)),
             Padding = new Thickness(8, 5, 8, 5),
             FontSize = 13
@@ -98,7 +99,7 @@ public sealed class RoutePathNavReuseDialog : Window
             ItemsSource = _view,
             Background = new SolidColorBrush(Color.FromRgb(0x12, 0x22, 0x36)),
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x2A, 0x3A, 0x4A)),
-            Foreground = Brushes.White
+            Foreground = UiTheme.ForegroundBrush
         };
         list.ItemTemplate = BuildItemTemplate();
         Grid.SetRow(list, 3);

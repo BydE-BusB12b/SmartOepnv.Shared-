@@ -52,6 +52,15 @@ public sealed class EmployeeRosterItem : INotifyPropertyChanged
     public string FqnExpiry { get; set; } = string.Empty;
     public string DriverCardExpiry { get; set; } = string.Empty;
 
+    /// <summary>Geburtsdatum TT.MM.JJJJ. Daraus rechnet die Zeitwirtschaft das Alter.</summary>
+    public string BirthDate { get; set; } = string.Empty;
+
+    /// <summary>Eintrittsdatum TT.MM.JJJJ. Tage davor sind kein Ersatzruhetag.</summary>
+    public string EntryDate { get; set; } = string.Empty;
+
+    /// <summary>Mutterschutz: engere Grenzen in der Zeitwirtschaft.</summary>
+    public bool MaternityProtection { get; set; }
+
     /// <summary>Planer: letzte Führerscheinkontrolle bestätigt (UTC ms).</summary>
     public long LicenseCheckConfirmedAtUtcMs { get; set; }
 

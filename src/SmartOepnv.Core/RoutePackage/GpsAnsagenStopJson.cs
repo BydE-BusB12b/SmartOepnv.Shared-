@@ -67,6 +67,7 @@ public static class GpsAnsagenStopJson
             StopHintRadius = JsonNodeReading.GetInt32(obj["stopHintRadius"], 40),
             EntwerterEnabled = JsonNodeReading.GetBoolean(obj["entwerterEnabled"]),
             EntwerterCode = JsonNodeReading.GetString(obj["entwerterCode"]),
+            IbisAnnouncementId = IbisAnnouncementIds.Normalize(JsonNodeReading.GetString(obj["ibisAnnouncementId"])),
             ZielwechselEnabled = JsonNodeReading.GetBoolean(obj["zielwechselEnabled"]),
             ZielwechselGpsCoordinates = JsonNodeReading.GetString(obj["zielwechselGpsCoordinates"]),
             ZielwechselRadius = JsonNodeReading.GetInt32(obj["zielwechselRadius"], 40),
@@ -159,6 +160,12 @@ public static class GpsAnsagenStopJson
             obj["entwerterCode"] = (stop.EntwerterCode ?? string.Empty).Trim();
         }
 
+        var ibisAnnouncementId = IbisAnnouncementIds.Normalize(stop.IbisAnnouncementId);
+        if (!string.IsNullOrEmpty(ibisAnnouncementId))
+        {
+            obj["ibisAnnouncementId"] = ibisAnnouncementId;
+        }
+
         obj["zielwechselEnabled"] = stop.ZielwechselEnabled;
         obj["zielwechselGpsCoordinates"] = stop.ZielwechselGpsCoordinates ?? string.Empty;
         obj["zielwechselRadius"] = stop.ZielwechselRadius > 0 ? stop.ZielwechselRadius : 40;
@@ -249,14 +256,16 @@ public static class GpsAnsagenStopJson
             PutNonEmpty(obj, "embeddedSoundFileName", stop.EmbeddedSoundFileName);
         }
 
-        if (stop.EntwerterEnabled != catalogBase.EntwerterEnabled ||
-            !StringEq(stop.EntwerterCode, catalogBase.EntwerterCode))
+        // Entwerter immer mitschreiben wenn aktiv – alte Apps hydrieren ihn nicht aus der Kartei.
+        if (stop.EntwerterEnabled || !string.IsNullOrWhiteSpace(stop.EntwerterCode))
         {
-            if (stop.EntwerterEnabled || !string.IsNullOrWhiteSpace(stop.EntwerterCode))
-            {
-                obj["entwerterEnabled"] = stop.EntwerterEnabled;
-                obj["entwerterCode"] = (stop.EntwerterCode ?? string.Empty).Trim();
-            }
+            obj["entwerterEnabled"] = stop.EntwerterEnabled;
+            obj["entwerterCode"] = (stop.EntwerterCode ?? string.Empty).Trim();
+        }
+
+        if (!StringEq(stop.IbisAnnouncementId, catalogBase.IbisAnnouncementId))
+        {
+            PutNonEmpty(obj, "ibisAnnouncementId", IbisAnnouncementIds.Normalize(stop.IbisAnnouncementId));
         }
 
         // Trip-/Overlay-Felder
@@ -317,7 +326,12 @@ public static class GpsAnsagenStopJson
             obj["isEndStop"] = true;
         }
 
-        if (stop.PlayEndStopAnnouncement || stop.PlayEndStopAnnouncementEn || stop.PlayEndStopAnnouncementNl)
+        // Endhalt immer mit explizitem false speichern. Fehlende Felder dürfen nicht
+        // wieder als gesetzte Endansage gelesen werden.
+        if (stop.IsEndStop ||
+            stop.PlayEndStopAnnouncement ||
+            stop.PlayEndStopAnnouncementEn ||
+            stop.PlayEndStopAnnouncementNl)
         {
             obj["playEndStopAnnouncement"] = stop.PlayEndStopAnnouncement;
             obj["playEndStopAnnouncementEn"] = stop.PlayEndStopAnnouncementEn;
@@ -371,8 +385,8 @@ public static class GpsAnsagenStopJson
         string.Equals((a ?? string.Empty).Trim(), (b ?? string.Empty).Trim(), StringComparison.Ordinal);
 
     /// <summary>
-    /// EN-Flag; fehlende neuen Felder → bisherige Endansage zählt als Englisch
-    /// (alle bestehenden Endhaltestellen-Ansagen sind EN).
+    /// EN nur aus dem eigenen Feld oder dem alten playEndStopAnnouncement.
+    /// isEndStop allein setzt die Ansage nicht.
     /// </summary>
     private static bool ReadPlayEndStopAnnouncementEn(JsonObject obj)
     {
@@ -381,9 +395,12 @@ public static class GpsAnsagenStopJson
             return JsonNodeReading.GetBoolean(obj["playEndStopAnnouncementEn"]);
         }
 
-        var legacy = obj["playEndStopAnnouncement"] is not null
-            ? JsonNodeReading.GetBoolean(obj["playEndStopAnnouncement"])
-            : JsonNodeReading.GetBoolean(obj["isEndStop"]);
+        if (obj["playEndStopAnnouncement"] is null)
+        {
+            return false;
+        }
+
+        var legacy = JsonNodeReading.GetBoolean(obj["playEndStopAnnouncement"]);
         // Nur migrieren, wenn kein NL-Feld gesetzt ist (sonst reine NL-Ansage).
         if (obj["playEndStopAnnouncementNl"] is not null &&
             JsonNodeReading.GetBoolean(obj["playEndStopAnnouncementNl"]) &&

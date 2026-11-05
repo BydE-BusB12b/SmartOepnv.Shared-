@@ -55,6 +55,19 @@ public static class DropboxSyncFolderLocator
             : Array.Empty<string>();
     }
 
+    public static IReadOnlyList<string> FindVerkaufJsonFiles(string? configuredApiFolderPath = null)
+    {
+        var folder = TryResolveSmartOepnvFolder(configuredApiFolderPath);
+        if (folder is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        return Directory.Exists(folder)
+            ? Directory.GetFiles(folder, "verkauf_*.json")
+            : Array.Empty<string>();
+    }
+
     public static string? FindMaengelkarteJsonFile(string? configuredApiFolderPath = null)
     {
         var folder = TryResolveSmartOepnvFolder(configuredApiFolderPath);

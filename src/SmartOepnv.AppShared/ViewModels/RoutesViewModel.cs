@@ -2,10 +2,12 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.RoutePath;
+using SmartOepnv.AppShared.Sev;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Dienstvorlagen;
@@ -21,6 +23,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     private readonly EditorAreaSyncState _sync = new();
     private CancellationTokenSource? _saveButtonFeedbackCts;
     private readonly SearchQueryDebouncer _searchDebouncer;
+    /// <summary>Verschieben/Löschen: UI sofort, Package-Save gebündelt (sonst Full-Sync pro Klick).</summary>
+    private readonly SearchQueryDebouncer _persistDebouncer;
 
     [ObservableProperty] private string? selectedRoute;
     [ObservableProperty] private RouteStopItem? selectedStop;
@@ -67,7 +71,9 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     private List<string> _sortedAllRoutes = [];
     /// <summary>Suchtext pro Routenschlüssel (einmal geparst beim Laden).</summary>
     private readonly Dictionary<string, string> _routeSearchHaystack = new(StringComparer.Ordinal);
-    public ObservableCollection<string> FilteredRoutes { get; } = [];
+    private readonly BulkObservableCollection<string> _filteredRoutes = new();
+
+    public ObservableCollection<string> FilteredRoutes => _filteredRoutes;
     public ObservableCollection<RouteStopItem> Stops { get; } = new();
     public ObservableCollection<OperatingDayOptionItem> RouteOperatingDaySelections { get; } = [];
 
@@ -78,7 +84,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     public RoutesViewModel()
     {
         // 200 ms: Tippen (z. B. RE13) darf nicht nach jedem Zeichen die Liste + ggf. Halte neu laden.
-        _searchDebouncer = new SearchQueryDebouncer(ApplyRouteFilter, delayMilliseconds: 200);
+        _searchDebouncer = new SearchQueryDebouncer(ApplyRouteFilter, delayMilliseconds: 40);
+        _persistDebouncer = new SearchQueryDebouncer(CommitChangesIfDirty, delayMilliseconds: 450);
         Ds009TextMaxLength = PlanerDs009TextLength.Read();
         PlanerDs009TextLength.Changed += OnPlanerDs009TextLengthChanged;
 
@@ -91,8 +98,42 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
         if (AppServices.IsInitialized)
         {
-            AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
+            // Pending Move/Delete vor Export/Dropbox flushen
+            AppServices.RegisterFlushBeforeExport(FlushPendingPersist);
         }
+
+        SevTftCoordinator.StatusChanged += OnSevTftStatus;
+    }
+
+    private void OnSevTftStatus(string message)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            StatusMessage = message;
+            return;
+        }
+
+        dispatcher.BeginInvoke(() => StatusMessage = message);
+    }
+
+    private void SchedulePersist() => _persistDebouncer.Schedule();
+
+    private void FlushPendingPersist() => _persistDebouncer.ApplyNow();
+
+    /// <summary>
+    /// Nach Haltestellen-Dialog: Paket verzögert speichern, UI sofort freigeben.
+    /// </summary>
+    public void SchedulePersistAfterStopEdit()
+    {
+        CancelSaveButtonSuccessFeedback();
+        if (!_sync.HasPendingChanges)
+        {
+            _sync.MarkDirty();
+        }
+
+        StatusMessage = "Haltestellen-Änderungen – speichern…";
+        SchedulePersist();
     }
 
     public bool IsDs009Length16 => Ds009TextMaxLength == PlanerDs009TextLength.Length16;
@@ -205,6 +246,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     private void RefreshFromEditorCore()
     {
+        using var suppressSevAutoSend = SevTftCoordinator.SuppressAutoSend();
         _allRoutes.Clear();
         FilteredRoutes.Clear();
         Stops.Clear();
@@ -288,11 +330,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             }
         }
 
-        FilteredRoutes.Clear();
-        foreach (var route in next)
-        {
-            FilteredRoutes.Add(route);
-        }
+        _filteredRoutes.ReplaceAll(next);
     }
 
     private bool RouteMatchesSearchCached(string routeKey, string[] tokens)
@@ -309,12 +347,14 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     private static string BuildRouteSearchHaystack(string routeKey)
     {
         var definition = RouteDisplayHelper.Parse(routeKey);
+        var days = AppServices.Routes.Editor?.GetRouteOperatingDays(routeKey);
         return string.Join(' ',
             routeKey,
             definition.Name,
             definition.LineCourse,
             definition.TripNumber,
-            definition.PassengerDisplayLine);
+            definition.PassengerDisplayLine,
+            RouteDisplayHelper.ToCompactRouteListLabel(routeKey, days));
     }
 
     private void RebuildRouteSearchIndex()
@@ -345,6 +385,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     private void ReloadRoutesList(string? selectRouteKey)
     {
+        using var suppressSevAutoSend = SevTftCoordinator.SuppressAutoSend();
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
@@ -519,6 +560,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     partial void OnSelectedRouteChanged(string? value)
     {
+        SevTftCoordinator.NotifyRouteOpened(value, autoSend: !SevTftCoordinator.IsAutoSendSuppressed);
+
         if (!_keepRouteSettingsExpandedOnRouteChange)
         {
             IsRouteSettingsExpanded = false;
@@ -592,7 +635,30 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
-        CommitChanges();
+        // Debounce-Tick nicht blockieren (Haltestellen-Dialog soll sofort schließen)
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            CommitChanges();
+            return;
+        }
+
+        dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(CommitChanges));
+    }
+
+    /// <summary>
+    /// Änderung ist schon in der Oberfläche. Speichern läuft danach, damit der Klick nicht stehen bleibt.
+    /// </summary>
+    private void QueueCommit()
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            CommitChanges();
+            return;
+        }
+
+        dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(CommitChanges));
     }
 
     public void CommitChanges()
@@ -726,7 +792,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         StatusMessage = dialog.CopyStopsFromRouteKey is null
             ? $"Route „{displayKey}“ hinzugefügt."
             : $"Route „{displayKey}“ angelegt (Haltestellen kopiert).";
-        CommitChanges();
+        QueueCommit();
     }
 
     [RelayCommand(CanExecute = nameof(CanEditSelectedRoute))]
@@ -770,7 +836,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         RefreshFromEditor();
         SelectedRoute = displayKey;
         StatusMessage = $"Route „{displayKey}“ gespeichert.";
-        CommitChanges();
+        QueueCommit();
     }
 
     private bool CanEditSelectedRoute() => !string.IsNullOrWhiteSpace(SelectedRoute);
@@ -783,10 +849,41 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
-        AppServices.Routes.Editor?.RemoveRoute(SelectedRoute);
+        var removed = SelectedRoute;
+        var editor = AppServices.Routes.Editor;
+        editor?.RemoveRoute(removed);
         _sync.MarkDirty();
-        ReloadRoutesList(null);
-        CommitChanges();
+
+        var stillThere = editor?.RouteNames.ToHashSet(StringComparer.Ordinal) ?? [];
+        _allRoutes.RemoveAll(route => !stillThere.Contains(route));
+        var removedIndex = FilteredRoutes.IndexOf(removed);
+        for (var i = FilteredRoutes.Count - 1; i >= 0; i--)
+        {
+            if (stillThere.Contains(FilteredRoutes[i]))
+            {
+                continue;
+            }
+
+            _routeSearchHaystack.Remove(FilteredRoutes[i]);
+            FilteredRoutes.RemoveAt(i);
+        }
+
+        _sortedAllRoutes = RouteDisplayHelper.SortRoutesByLineCourseAndTrip(_allRoutes);
+        if (FilteredRoutes.Count == 0)
+        {
+            SelectedRoute = null;
+        }
+        else if (!stillThere.Contains(removed))
+        {
+            var nextIndex = removedIndex < 0
+                ? 0
+                : Math.Min(removedIndex, FilteredRoutes.Count - 1);
+            SelectedRoute = FilteredRoutes[nextIndex];
+        }
+
+        CancelSaveButtonSuccessFeedback();
+        StatusMessage = $"Route entfernt. {_allRoutes.Count} Route(n) – speichern…";
+        SchedulePersist();
     }
 
     [RelayCommand]
@@ -801,7 +898,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         OnSelectedRouteChanged(SelectedRoute);
         _sync.MarkDirty();
         _needsStopTemplateEnrich = true;
-        CommitChanges();
+        QueueCommit();
     }
 
     [RelayCommand]
@@ -840,7 +937,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         OnSelectedRouteChanged(SelectedRoute);
         _sync.MarkDirty();
         _needsStopTemplateEnrich = true;
-        CommitChanges();
+        QueueCommit();
         StatusMessage = $"„{dialog.SelectedTemplate.StopNameItcs}“ aus Kartei eingefügt.";
         TryPromptNavReuse();
     }
@@ -865,7 +962,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         if (RoutePathNavReusePrompt.TryOffer(owner, editor, SelectedRoute, out var edges))
         {
             _sync.MarkDirty();
-            CommitChanges();
+            QueueCommit();
             var warning = RoutePathDraftIntegrity.FormatWarning(
                 RoutePathDraftIntegrity.EvaluatePackageRoute(editor.PackageRoot, SelectedRoute));
             StatusMessage = warning is null
@@ -903,7 +1000,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         if (RoutePathNavReusePrompt.TryOffer(owner, editor, SelectedRoute, out var edges))
         {
             _sync.MarkDirty();
-            CommitChanges();
+            QueueCommit();
             var warning = RoutePathDraftIntegrity.FormatWarning(
                 RoutePathDraftIntegrity.EvaluatePackageRoute(editor.PackageRoot, SelectedRoute));
             StatusMessage = warning is null
@@ -974,12 +1071,13 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         }
 
         Stops.Move(index, index + direction);
+        CancelSaveButtonSuccessFeedback();
         _sync.MarkDirty();
-        CommitChanges();
+        SchedulePersist();
         var movedMessage = direction < 0
             ? $"„{SelectedStop.Name}“ nach oben verschoben."
             : $"„{SelectedStop.Name}“ nach unten verschoben.";
-        if (!RefreshStopTimeOrderWarnings(showDialog: true))
+        if (!RefreshStopTimeOrderWarnings(showDialog: false))
         {
             StatusMessage = movedMessage;
         }
@@ -1003,15 +1101,17 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             SelectedStop = null;
         }
 
+        CancelSaveButtonSuccessFeedback();
         _sync.MarkDirty();
-        _needsStopTemplateEnrich = true;
-        CommitChanges();
+        // Kein Kartei-Enrich beim Löschen – nur verzögert speichern (kein Full-Sync pro ✕)
+        SchedulePersist();
         if (!RefreshStopTimeOrderWarnings(showDialog: false))
         {
             StatusMessage = $"„{name}“ aus Route entfernt.";
         }
 
         RemoveSelectedStopCommand.NotifyCanExecuteChanged();
+        NotifyMoveStopCommandsCanExecute();
     }
 
     [RelayCommand]
@@ -1023,7 +1123,10 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
-        CommitChanges();
+        // Offenen Debounce verwerfen – einmalig speichern (kein Doppel-Sync)
+        _persistDebouncer.Cancel();
+        StatusMessage = "Speichern…";
+        QueueCommit();
         // CommitChanges setzt StatusMessage auf „gespeichert“ – Warnung danach erneut setzen.
         RefreshStopTimeOrderWarnings(showDialog: true);
     }
@@ -1184,7 +1287,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
             _sync.MarkDirty();
             ReloadRoutesList(dialog.CreatedFirstRouteKey);
-            CommitChanges();
+            QueueCommit();
             StatusMessage = "Fahrplan erfolgreich erstellt.";
         }
         catch (Exception ex)
@@ -1221,7 +1324,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             _sync.MarkDirty();
             _needsStopTemplateEnrich = true;
             ReloadRoutesList(dialog.CreatedFirstRouteKey);
-            CommitChanges();
+            QueueCommit();
             var linkPart = dialog.LinkedRouteChangeCount > 0
                 ? $", {dialog.LinkedRouteChangeCount} Routenwechsel verknüpft"
                 : string.Empty;
@@ -1314,7 +1417,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         RefreshFromEditor();
         SelectedRoute = displayKey;
         StatusMessage = $"Route „{displayKey}“ angelegt ({clonedStops.Count} Haltestelle(n) aus Fahrbereich).";
-        CommitChanges();
+        QueueCommit();
     }
 
     [RelayCommand(CanExecute = nameof(CanCopyNavigationDataForSelectedRoute))]
@@ -1340,7 +1443,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
         var source = editor.GetAutoScheduleSourceRoute(SelectedRoute);
         _sync.MarkDirty();
-        CommitChanges();
+        QueueCommit();
         var warning = RoutePathDraftIntegrity.FormatWarning(
             RoutePathDraftIntegrity.EvaluatePackageRoute(editor.PackageRoot, SelectedRoute));
         StatusMessage = warning is null

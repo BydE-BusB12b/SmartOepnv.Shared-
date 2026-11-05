@@ -28,6 +28,8 @@ public sealed class EditableRoutePackage
     public IList<string> MailTemplates { get; } = [];
     public IList<ManagedStopTemplateItem> StopTemplates { get; } = [];
     public IList<ManagedAnnouncementTemplateItem> AnnouncementTemplates { get; } = [];
+    public IList<TicketProductItem> TicketProducts { get; } = [];
+    public TicketTemplateDocument TicketTemplate { get; private set; } = TicketTemplateDocument.CreateDefault();
     public IList<string> AdditionalAllowedRoutes { get; } = [];
     public IList<DateBasedHintItem> DateBasedHints { get; } = [];
     public IList<string> OutsideDisplays { get; } = [];
@@ -323,6 +325,8 @@ public sealed class EditableRoutePackage
         MailTemplates.Clear();
         StopTemplates.Clear();
         AnnouncementTemplates.Clear();
+        TicketProducts.Clear();
+        TicketTemplate = TicketTemplateDocument.CreateDefault();
         AdditionalAllowedRoutes.Clear();
         DateBasedHints.Clear();
         OutsideDisplays.Clear();
@@ -427,10 +431,19 @@ public sealed class EditableRoutePackage
             StopTemplates.Add(template);
         }
 
+        // routeStops als Katalog-Overlay (nur plannerStopCode + Trip-Felder): Stammdaten aus Kartei füllen
+        if (StopTemplates.Count > 0 && StopsByRoute.Count > 0)
+        {
+            StopTemplateRouteMerger.ApplyTemplatesToRouteStops(this, StopTemplates);
+        }
+
         foreach (var announcement in ManagedAnnouncementTemplateEditor.LoadFromRoot(_root))
         {
             AnnouncementTemplates.Add(announcement);
         }
+
+        TicketProductEditor.LoadFromRoot(_root, TicketProducts);
+        TicketTemplate = TicketTemplateEditor.LoadFromRoot(_root);
 
         ManagedAnnouncementTemplateEditor.ApplySpecialFlagsFromRoot(_root, AnnouncementTemplates);
 
@@ -491,6 +504,7 @@ public sealed class EditableRoutePackage
         OutsideDisplayDestinationResolver.EnsureOutsideDisplayIds(this);
         OutsideDisplayDestinationResolver.SyncStopLinks(this);
         EnsureZielwechselAnnouncementsEnabled();
+        EnsureEndStopsAreNotStartStops();
         EnsureRouteNamesForStopBuckets();
         RecoverOrphanedStopsAfterTripNumberChange();
         PruneOrphanStopBuckets();
@@ -504,6 +518,26 @@ public sealed class EditableRoutePackage
         foreach (var stop in StopsByRoute.Values.SelectMany(stops => stops))
         {
             if (stop.ZielwechselEnabled && !stop.IsAnnouncementEnabled)
+            {
+                stop.IsAnnouncementEnabled = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Endhaltestelle + Starthaltestelle gleichzeitig (z. B. Destination=Dienstfahrt am Endhalt) – Startfelder entfernen.
+    /// </summary>
+    private void EnsureEndStopsAreNotStartStops()
+    {
+        foreach (var stop in StopsByRoute.Values.SelectMany(stops => stops))
+        {
+            if (!stop.IsEndStop || !RouteStopEditorCatalog.IsStartStop(stop))
+            {
+                continue;
+            }
+
+            RouteStopEditorCatalog.ClearStartStopFields(stop);
+            if (!stop.ZielwechselEnabled)
             {
                 stop.IsAnnouncementEnabled = true;
             }
@@ -1610,6 +1644,21 @@ public sealed class EditableRoutePackage
         }
     }
 
+    public void ReplaceTicketProducts(IList<TicketProductItem> products)
+    {
+        TicketProducts.Clear();
+        foreach (var p in products)
+        {
+            TicketProducts.Add(p);
+        }
+        TicketProductEditor.EnsureSingleDefault(TicketProducts);
+    }
+
+    public void ReplaceTicketTemplate(TicketTemplateDocument template)
+    {
+        TicketTemplate = TicketTemplateEditor.Clone(template);
+    }
+
     public void SyncEmbeddedSoundsFromTemplates(
         IEnumerable<ManagedAnnouncementTemplateItem> templates,
         LocalWorkspaceStore? workspace = null)
@@ -1847,6 +1896,8 @@ public sealed class EditableRoutePackage
 
     private void NormalizeStopsStorageBeforeSave()
     {
+        EnsureEndStopsAreNotStartStops();
+
         // Nur echte Aliase derselben Verkehrstags-Variante zusammenführen – nie Mo mit Di.
         foreach (var mergeGroup in BuildRouteKeyMergeGroups(
                      StopsByRoute.Keys.Concat(RouteNames)))

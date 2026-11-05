@@ -2,7 +2,7 @@ namespace SmartOepnv.Core.RoutePackage;
 
 public sealed class PlanerAppSettings
 {
-    public const int FileVersion = 10;
+    public const int FileVersion = 13;
 
     /// <summary>Legacy: einzelnes Logo vor Mehrfach-Verwaltung.</summary>
     public string CompanyLogoFileName { get; set; } = string.Empty;
@@ -44,12 +44,45 @@ public sealed class PlanerAppSettings
     /// <summary>Zuletzt vergebene packageVersion für routes_update.json.</summary>
     public long LastRoutesUpdatePackageVersion { get; set; }
 
+    /// <summary>UTC-Zeitpunkt des letzten erfolgreichen Versands ans Fahrzeug (0 = noch nie).</summary>
+    public long LastVehicleSendUtcMs { get; set; }
+
     /// <summary>Smart-ÖPNV-Logo in PDF-Kopfzeilen anzeigen (Planer-PDFs).</summary>
     public bool ShowSmartOepnvLogoInPdfs { get; set; } = true;
+
+    /// <summary>
+    /// Heller UI-Modus (Planer/Leitstelle): helle Flächen, dunkelblaue Schrift.
+    /// Standard bleibt Dark Mode.
+    /// </summary>
+    public bool UseLightTheme { get; set; }
 
     /// <summary>
     /// Max. Zeichen für DS009-Eingaben im Planer (Haltestellenanzeige / Zieltext): 16 oder 20.
     /// Entspricht der Fahrzeug-Einstellung; steuert nur die Planer-Eingabelänge.
     /// </summary>
     public int Ds009TextLength { get; set; } = 20;
+
+    /// <summary>SIRI ParticipantRef / RequestorRef für VDV-454-Vorbereitung.</summary>
+    public string Vdv454ParticipantRef { get; set; } = "SMOEPNV";
+
+    /// <summary>OperatorRef laut Verbund (IFOPT-/VDV-Code).</summary>
+    public string Vdv454OperatorRef { get; set; } = "SMOEPNV:Operator:1";
+
+    /// <summary>Lokaler Codespace für Line/Vehicle/Stop/Journey-Refs.</summary>
+    public string Vdv454LocalCodespace { get; set; } = "SMOEPNV";
+
+    /// <summary>Verbund-Codespace für StopPointRef bei VrrStopId (z. B. de:vrr).</summary>
+    public string Vdv454ExternalStopCodespace { get; set; } = "de:vrr";
+
+    /// <summary>Raspberry-Pi-Adresse der SEV-TFT-Webanzeige. Leer = noch nicht eingerichtet.</summary>
+    public string SevTftHost { get; set; } = string.Empty;
+
+    /// <summary>HTTP-Port der SEV-TFT-API. Der eingerichtete Dienst hört auf 8080.</summary>
+    public int SevTftPort { get; set; } = 8080;
+
+    /// <summary>Übertragung an die SEV-TFT ist eingeschaltet.</summary>
+    public bool SevTftEnabled { get; set; }
+
+    /// <summary>Beim Öffnen einer Route Linie, Ziel und Haltestellen senden.</summary>
+    public bool SevTftAutoSend { get; set; } = true;
 }

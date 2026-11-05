@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
 
@@ -187,7 +188,11 @@ public partial class MessagesViewModel : ObservableObject, IEditorAreaViewModel
     }
 
     [RelayCommand]
-    private void SaveChanges() => CommitChanges();
+    private void SaveChanges()
+    {
+        StatusMessage = "Speichern…";
+        UiDispatch.RunAfterPaint(CommitChanges);
+    }
 
     private string ComputeFingerprint() =>
         JsonSerializer.Serialize(new

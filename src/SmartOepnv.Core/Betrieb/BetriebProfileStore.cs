@@ -142,6 +142,28 @@ public static class BetriebProfileStore
         return profile;
     }
 
+    /// <summary>Admin-Planerpasswort des Betriebs. Leer lässt den Aufrufer den Standard nutzen.</summary>
+    public static string GetAdminPlannerPassword(string? betriebId)
+    {
+        if (string.IsNullOrWhiteSpace(betriebId))
+        {
+            return string.Empty;
+        }
+
+        var registry = LoadOrEmpty();
+        return registry.Profiles.FirstOrDefault(p => p.Id == betriebId)?.AdminPlannerPassword?.Trim()
+            ?? string.Empty;
+    }
+
+    public static void SetAdminPlannerPassword(string betriebId, string password)
+    {
+        var registry = LoadOrEmpty();
+        var profile = registry.Profiles.FirstOrDefault(p => p.Id == betriebId)
+            ?? throw new InvalidOperationException("Betrieb nicht gefunden.");
+        profile.AdminPlannerPassword = password.Trim();
+        SaveRegistry(registry);
+    }
+
     public static void UpdateProfileMeta(string betriebId, string displayName, string dropboxFolderPath)
     {
         var registry = LoadOrEmpty();

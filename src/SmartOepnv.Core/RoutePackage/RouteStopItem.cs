@@ -104,6 +104,9 @@ public sealed class RouteStopItem
     /// <summary>DS004: gespeichert nur Wabe (3, Telegramm-Ziffer 4–6); Linie (Ziffer 1–3) setzt die App zur Fahrt. Optional 4. Ziffer = Kurzstrecke.</summary>
     public string EntwerterCode { get; set; } = string.Empty;
 
+    /// <summary>Nummer am IBIS-Ansagegerät (DS036 <c>hP</c>, vierstellig).</summary>
+    public string IbisAnnouncementId { get; set; } = string.Empty;
+
     /// <summary>
     /// Zielwechsel: an dieser Haltestelle (bzw. am optionalen GPS-Punkt) das hier gesetzte Ziel erneut senden.
     /// </summary>
@@ -179,6 +182,7 @@ public sealed class RouteStopItem
             StopHintRadius = StopHintRadius,
             EntwerterEnabled = EntwerterEnabled,
             EntwerterCode = EntwerterCode,
+            IbisAnnouncementId = IbisAnnouncementId,
             ZielwechselEnabled = ZielwechselEnabled,
             ZielwechselGpsCoordinates = ZielwechselGpsCoordinates,
             ZielwechselRadius = ZielwechselRadius,
@@ -249,6 +253,7 @@ public sealed class RouteStopItem
         StopHintRadius = other.StopHintRadius;
         EntwerterEnabled = other.EntwerterEnabled;
         EntwerterCode = other.EntwerterCode;
+        IbisAnnouncementId = other.IbisAnnouncementId;
         ZielwechselEnabled = other.ZielwechselEnabled;
         ZielwechselGpsCoordinates = other.ZielwechselGpsCoordinates;
         ZielwechselRadius = other.ZielwechselRadius;

@@ -45,6 +45,12 @@ public sealed class DutyTemplate
 
     public string Notes { get; set; } = string.Empty;
 
+    /// <summary>Sechstel-Dienst: Wendezeiten zählen tariflich als Pause, nicht als gesetzliche Ruhepause.</summary>
+    public bool IsSixthDuty { get; set; }
+
+    /// <summary>Ab dieser Wendezeit in Minuten gilt sie im Sechstel-Dienst als Tarifpause.</summary>
+    public int WendePauseFromMinutes { get; set; } = 8;
+
     /// <summary>30 Minuten unbezahlte Pause von den Lohnstunden abziehen (Teil 1 / Einzeldienst).</summary>
     public bool SubtractUnpaidBreak30Minutes { get; set; }
 
@@ -120,6 +126,8 @@ public sealed class DutyTemplate
         ImportedLine = ImportedLine,
         UpdatedAtUtcMs = UpdatedAtUtcMs,
         Notes = Notes,
+        IsSixthDuty = IsSixthDuty,
+        WendePauseFromMinutes = WendePauseFromMinutes,
         SubtractUnpaidBreak30Minutes = SubtractUnpaidBreak30Minutes,
         SubtractUnpaidBreak30MinutesPart2 = SubtractUnpaidBreak30MinutesPart2,
         SubtractUnpaidBreak30MinutesPart3 = SubtractUnpaidBreak30MinutesPart3,

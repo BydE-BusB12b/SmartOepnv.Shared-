@@ -28,6 +28,10 @@ public static class KomCommandAckService
     private static readonly int[] DurchsageFollowUpPollDelaysMs =
         Enumerable.Repeat(3_000, 80).ToArray();
 
+    /** Spur-Upload am Fahrzeug kann bis ~45 s blockieren. */
+    private static readonly int[] GpsTraceFlushPollDelaysMs =
+        [0, 1_000, 2_000, 5_000, 8_000, 15_000, 25_000, 40_000, 60_000, 90_000];
+
     public sealed record AckResult(
         long CommandId,
         string OriginalType,
@@ -51,6 +55,7 @@ public static class KomCommandAckService
         KomRemoteLockService.CommandType => $"Sperre/Entsperren an {vehicleName} gesendet",
         KomRemoteAppExitService.CommandType => $"App-Beenden an {vehicleName} gesendet",
         KomRemoteDriverLoginService.CommandType => $"Fahreranmeldung an {vehicleName} gesendet",
+        KomRemoteGpsTraceFlushService.CommandType => $"Prüfdaten-Abruf an {vehicleName} gesendet",
         RemoteManualUpdateService.CommandType => $"Fernupdate an {vehicleName} gesendet",
         ZblMessageService.CommandType => $"Meldung an {vehicleName} gesendet",
         _ => $"Befehl an {vehicleName} gesendet"
@@ -64,6 +69,7 @@ public static class KomCommandAckService
         KomRemoteLockService.CommandType => "Sperrstatus übernommen",
         KomRemoteAppExitService.CommandType => "App beendet",
         KomRemoteDriverLoginService.CommandType => "Fahreranmeldung übernommen",
+        KomRemoteGpsTraceFlushService.CommandType => "Prüfdaten hochgeladen",
         RemoteManualUpdateService.CommandType => "Update erfolgreich installiert",
         ZblMessageService.CommandType => "Meldung empfangen",
         _ => "Erfolgreich"
@@ -149,6 +155,11 @@ public static class KomCommandAckService
         if (string.Equals(commandType, KomLeitstelleDurchsageService.CommandType, StringComparison.Ordinal))
         {
             return DurchsagePollDelaysMs;
+        }
+
+        if (string.Equals(commandType, KomRemoteGpsTraceFlushService.CommandType, StringComparison.Ordinal))
+        {
+            return GpsTraceFlushPollDelaysMs;
         }
 
         return DefaultPollDelaysMs;

@@ -105,11 +105,24 @@ public static class RoutePackagePhoneMetadata
             return;
         }
 
+        HashSet<string>? allowedCanonical = null;
+        if (onlyRoutes is not null)
+        {
+            allowedCanonical = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var route in onlyRoutes)
+            {
+                if (!string.IsNullOrWhiteSpace(route))
+                {
+                    allowedCanonical.Add(RouteDisplayHelper.ToCanonicalRouteKey(route));
+                }
+            }
+        }
+
         var filtered = new JsonObject();
         foreach (var entry in existing)
         {
-            if (onlyRoutes is not null &&
-                !RoutePackageRouteKeyHelper.IsRouteKeyAllowed(entry.Key, onlyRoutes))
+            if (allowedCanonical is not null &&
+                !allowedCanonical.Contains(RouteDisplayHelper.ToCanonicalRouteKey(entry.Key)))
             {
                 continue;
             }

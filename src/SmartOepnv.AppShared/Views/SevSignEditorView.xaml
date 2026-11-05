@@ -328,13 +328,13 @@
                         <Border Height="36" Background="#001F5B" CornerRadius="2" Margin="0,0,0,8">
                             <Grid Margin="8,4">
                                 <TextBlock Text="{Binding Line}"
-                                           Foreground="White"
+                                           Foreground="{DynamicResource SmartForegroundBrush}"
                                            FontWeight="Bold"
                                            FontSize="14"
                                            HorizontalAlignment="Left"
                                            VerticalAlignment="Center" />
                                 <TextBlock Text="Ersatzverkehr mit Bussen (SEV)"
-                                           Foreground="White"
+                                           Foreground="{DynamicResource SmartForegroundBrush}"
                                            FontSize="9"
                                            HorizontalAlignment="Right"
                                            VerticalAlignment="Center"

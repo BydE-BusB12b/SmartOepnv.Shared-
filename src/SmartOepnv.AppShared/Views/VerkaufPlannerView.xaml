@@ -1,0 +1,124 @@
+<UserControl x:Class="SmartOepnv.AppShared.Views.VerkaufPlannerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <Style x:Key="VerkaufVoidCellStyle" TargetType="TextBlock">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsVoided}" Value="True">
+                    <Setter Property="TextDecorations" Value="Strikethrough" />
+                    <Setter Property="Opacity" Value="0.55" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+    <Grid Margin="8,4,8,8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="280" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Verkauf" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4" />
+
+        <StackPanel Grid.Row="1" Margin="0,0,0,10">
+            <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,8" FontSize="12"
+                       Text="Alle Mitarbeiter aus dem Register. Eine Datei verkauf_&lt;Personalnummer&gt;.json pro Fahrer (wird überschrieben); ohne Datei steht 0/5. 5 Betriebstage zu je 24 Stunden ab der Minute des ersten Verkaufs (Verkauf 21:20 → nächster Tag ab 21:21). Abrechnung ist jederzeit möglich. Storno innerhalb 3 Min zählt als Verkaufstag." />
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Aus Dropbox laden" Command="{Binding LoadFromDropboxCommand}"
+                        Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0" Padding="14,4" />
+                <Button Content="Aus Ordner laden" Command="{Binding LoadFromLocalFolderCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" Padding="14,4" />
+                <Button Content="Freischalten (Abrechnung)" Command="{Binding UnlockDriverCommand}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Background="{StaticResource SmartAccentBrush}"
+                        Margin="0,0,8,0" Padding="14,4" />
+            </StackPanel>
+            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Margin="0,8,0,0" FontSize="12" Opacity="0.9" />
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.1*" MinWidth="240" />
+                <ColumnDefinition Width="2*" MinWidth="360" />
+            </Grid.ColumnDefinitions>
+
+            <materialDesign:Card Grid.Column="0" Margin="0,0,10,0" Padding="10"
+                                 UniformCornerRadius="10" Background="{StaticResource SmartSurfaceBrush}">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top" Text="Fahrer" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <ListBox ItemsSource="{Binding Drivers}" SelectedItem="{Binding SelectedDriver}"
+                             BorderBrush="#334B7A" BorderThickness="1" Background="{DynamicResource SmartBackgroundBrush}" Foreground="{DynamicResource SmartForegroundBrush}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="4,2">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding PersonnelNumber}" Opacity="0.7" FontSize="11" />
+                                    <TextBlock Text="{Binding StatusLabel}" FontSize="11"
+                                               Foreground="{StaticResource SmartAccentBrush}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Grid.Column="1" Padding="10"
+                                 UniformCornerRadius="10" Background="{StaticResource SmartSurfaceBrush}">
+                <DockPanel LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock Text="{Binding SelectedDriver.Name, FallbackValue='Fahrer wählen'}"
+                                   FontWeight="SemiBold" FontSize="16" />
+                        <TextBlock Text="{Binding SelectedDriver.StatusLabel}" Opacity="0.8" FontSize="12" />
+                        <TextBlock Text="{Binding DepositTotalDisplay}"
+                                   FontWeight="Bold" FontSize="20" Margin="0,8,0,0"
+                                   Foreground="{StaticResource SmartAccentBrush}" />
+                        <TextBlock Text="Aktuelle Periode, ohne stornierte Tickets."
+                                   Opacity="0.7" FontSize="11" Margin="0,2,0,0" />
+                    </StackPanel>
+                    <DataGrid ItemsSource="{Binding SaleRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              HeadersVisibility="Column"
+                              Background="{DynamicResource SmartBackgroundBrush}"
+                              Foreground="{DynamicResource SmartForegroundBrush}"
+                              BorderBrush="#334B7A"
+                              RowBackground="Transparent"
+                              AlternatingRowBackground="{DynamicResource SmartSurfaceBrush}"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#2A3F6B">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Zeit" Binding="{Binding SoldAtDisplay}" Width="168" MinWidth="168">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource VerkaufVoidCellStyle}">
+                                        <Setter Property="TextTrimming" Value="None" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Nr." Binding="{Binding SaleNumberDisplay}" Width="96" MinWidth="96">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource VerkaufVoidCellStyle}">
+                                        <Setter Property="TextTrimming" Value="None" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Summe" Binding="{Binding TotalDisplay}" Width="96" MinWidth="88">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource VerkaufVoidCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Positionen" Binding="{Binding LinesDisplay}" Width="*" MinWidth="140">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource VerkaufVoidCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Periode" Binding="{Binding PeriodHint}" Width="100" MinWidth="90" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </materialDesign:Card>
+        </Grid>
+    </Grid>
+</UserControl>

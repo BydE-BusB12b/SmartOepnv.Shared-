@@ -392,6 +392,31 @@ public sealed class DropboxApiClient
             .ToList();
     }
 
+    public async Task<IReadOnlyList<string>> ListVerkaufFilesAsync(CancellationToken ct = default)
+    {
+        var folder = ActiveFolderPath;
+        var token = await GetValidAccessTokenAsync(ct);
+        var names = await ListFileNamesAsync(folder, token, ct);
+        var filtered = names
+            .Where(n =>
+                n.StartsWith("verkauf_", StringComparison.OrdinalIgnoreCase) &&
+                n.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (filtered.Count > 0)
+        {
+            return filtered;
+        }
+
+        var searched = await SearchVerkaufFileNamesAsync(folder, token, ct);
+        return searched
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public async Task<long> UploadZblMessageAsync(string phoneRaw, string message, CancellationToken ct = default) =>
         await ZblMessageService.UploadAsync(this, phoneRaw, message, ct).ConfigureAwait(false);
 
@@ -1580,6 +1605,59 @@ public sealed class DropboxApiClient
                 ? cursorEl.GetString()
                 : null;
         } while (!string.IsNullOrEmpty(cursor));
+
+        return names;
+    }
+
+    private async Task<IReadOnlyList<string>> SearchVerkaufFileNamesAsync(
+        string folderPath,
+        string token,
+        CancellationToken ct)
+    {
+        using var request = CreateJsonPost(
+            DropboxConstants.SearchUrl,
+            JsonSerializer.Serialize(new
+            {
+                query = "verkauf_",
+                options = new
+                {
+                    path = folderPath,
+                    filename_only = true,
+                    max_results = 200
+                }
+            }),
+            token);
+
+        using var response = await _http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return Array.Empty<string>();
+        }
+
+        var json = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("matches", out var matches))
+        {
+            return Array.Empty<string>();
+        }
+
+        var names = new List<string>();
+        foreach (var match in matches.EnumerateArray())
+        {
+            if (!match.TryGetProperty("metadata", out var metadataWrapper) ||
+                !metadataWrapper.TryGetProperty("metadata", out var metadata) ||
+                !metadata.TryGetProperty("name", out var nameEl))
+            {
+                continue;
+            }
+
+            var name = nameEl.GetString() ?? string.Empty;
+            if (name.StartsWith("verkauf_", StringComparison.OrdinalIgnoreCase) &&
+                name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                names.Add(name);
+            }
+        }
 
         return names;
     }

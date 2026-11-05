@@ -17,6 +17,7 @@ public partial class RouteStopEditPanel : UserControl
 {
     private bool _suppressDestinationComboSync;
     private readonly HashSet<ComboBox> _privateDestinationViews = [];
+    private DispatcherOperation? _destinationFilterOperation;
 
     public RouteStopEditPanel()
     {
@@ -677,24 +678,11 @@ public partial class RouteStopEditPanel : UserControl
             return;
         }
 
-        ApplyDestinationFilter(combo, box.Text);
-
-        // Nach Filter-Refresh Fokus zurück ins Suchfeld (sonst muss man jeden Buchstaben neu anklicken).
-        box.Dispatcher.BeginInvoke(() =>
-        {
-            if (box.IsKeyboardFocusWithin)
-            {
-                return;
-            }
-
-            if (!combo.IsDropDownOpen)
-            {
-                return;
-            }
-
-            Keyboard.Focus(box);
-            box.CaretIndex = box.Text?.Length ?? 0;
-        }, DispatcherPriority.Input);
+        var query = box.Text;
+        _destinationFilterOperation?.Abort();
+        _destinationFilterOperation = box.Dispatcher.BeginInvoke(
+            () => ApplyDestinationFilter(combo, query),
+            DispatcherPriority.Background);
     }
 
     private void ApplyDestinationFilter(ComboBox combo, string? query)
@@ -710,12 +698,14 @@ public partial class RouteStopEditPanel : UserControl
         {
             view.Filter = null;
             view.Refresh();
+            KeepDestinationSearchFocus(combo);
             return;
         }
 
         var selected = ExtractComboItemText(combo.SelectedItem);
         view.Filter = item => MatchesDestinationFilter(item, trimmed, selected);
         view.Refresh();
+        KeepDestinationSearchFocus(combo);
     }
 
     private void ClearDestinationFilter(ComboBox combo)
@@ -777,6 +767,34 @@ public partial class RouteStopEditPanel : UserControl
         }
 
         return text.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void KeepDestinationSearchFocus(ComboBox combo)
+    {
+        var box = FindDestinationSearchBox(combo);
+        if (box is null)
+        {
+            return;
+        }
+
+        box.Dispatcher.BeginInvoke(() =>
+        {
+            if (!combo.IsDropDownOpen || !box.IsVisible)
+            {
+                return;
+            }
+
+            var length = box.Text?.Length ?? 0;
+            if (!box.IsKeyboardFocused)
+            {
+                Keyboard.Focus(box);
+            }
+
+            if (box.IsKeyboardFocused)
+            {
+                box.CaretIndex = length;
+            }
+        }, DispatcherPriority.ContextIdle);
     }
 
     private static TextBox? FindDestinationSearchBox(ComboBox combo)

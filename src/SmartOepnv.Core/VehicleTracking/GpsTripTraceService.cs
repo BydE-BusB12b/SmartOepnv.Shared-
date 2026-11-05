@@ -21,51 +21,78 @@ public sealed class GpsTripTraceService
             ? Array.Empty<RegisteredVehicleInfo>()
             : RegisteredVehicleInfo.ParseFromJson(routePackageJson);
 
+        var archiveDir = GpsTripTraceArchive.DirectoryFor(AppServices.SettingsSubfolder);
         var files = await _dropbox.ListGpsTraceFilesAsync(ct);
-        if (files.Count == 0)
+        var byPhone = new Dictionary<string, GpsTripTraceFile>(StringComparer.Ordinal);
+
+        if (files.Count > 0)
         {
-            return [];
+            using var gate = new SemaphoreSlim(MaxParallelDownloads);
+            var tasks = files.Select(async fileName =>
+            {
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    var content = await _dropbox.DownloadNamedFileAsync(fileName, ct).ConfigureAwait(false);
+                    if (string.IsNullOrWhiteSpace(content))
+                    {
+                        return null;
+                    }
+
+                    var incoming = GpsTripTraceParser.TryParse(content, fileName);
+                    if (incoming is null || string.IsNullOrWhiteSpace(incoming.Phone))
+                    {
+                        return null;
+                    }
+
+                    var archived = GpsTripTraceArchive.Absorb(archiveDir, incoming.Phone, content);
+                    var parsed = GpsTripTraceParser.TryParse(archived, fileName) ?? incoming;
+                    return ApplyRosterName(parsed, roster);
+                }
+                catch
+                {
+                    return null;
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
+
+            foreach (var named in await Task.WhenAll(tasks).ConfigureAwait(false))
+            {
+                RememberNewer(byPhone, named);
+            }
         }
 
-        using var gate = new SemaphoreSlim(MaxParallelDownloads);
-        var tasks = files.Select(async fileName =>
+        foreach (var stored in GpsTripTraceArchive.ReadAll(archiveDir))
         {
-            await gate.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                var content = await _dropbox.DownloadNamedFileAsync(fileName, ct).ConfigureAwait(false);
-                var parsed = GpsTripTraceParser.TryParse(content, fileName);
-                return parsed is null ? null : ApplyRosterName(parsed, roster);
-            }
-            catch
-            {
-                return null;
-            }
-            finally
-            {
-                gate.Release();
-            }
-        });
-
-        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-        var byPhone = new Dictionary<string, GpsTripTraceFile>(StringComparer.Ordinal);
-        foreach (var named in results)
-        {
-            if (named is null)
+            if (byPhone.ContainsKey(stored.Phone))
             {
                 continue;
             }
 
-            if (!byPhone.TryGetValue(named.Phone, out var existing) ||
-                named.UpdatedAtEpochMs >= existing.UpdatedAtEpochMs)
-            {
-                byPhone[named.Phone] = named;
-            }
+            var parsed = GpsTripTraceParser.TryParse(stored.Json, stored.FileName);
+            RememberNewer(byPhone, parsed is null ? null : ApplyRosterName(parsed, roster));
         }
 
         return byPhone.Values
             .OrderBy(v => v.VehicleName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static void RememberNewer(Dictionary<string, GpsTripTraceFile> byPhone, GpsTripTraceFile? named)
+    {
+        if (named is null || string.IsNullOrWhiteSpace(named.Phone))
+        {
+            return;
+        }
+
+        if (!byPhone.TryGetValue(named.Phone, out var existing) ||
+            named.UpdatedAtEpochMs >= existing.UpdatedAtEpochMs)
+        {
+            byPhone[named.Phone] = named;
+        }
     }
 
     private static GpsTripTraceFile ApplyRosterName(

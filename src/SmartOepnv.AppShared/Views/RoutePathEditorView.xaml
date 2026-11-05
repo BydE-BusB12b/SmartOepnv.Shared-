@@ -126,7 +126,7 @@
                 <Setter.Value>
                     <DataTemplate>
                         <TextBlock Text="{Binding Converter={StaticResource RouteLineCourseTripFirstConverter}}"
-                                   Foreground="White"
+                                   Foreground="{DynamicResource SmartOnPrimaryBrush}"
                                    TextWrapping="Wrap"
                                    MaxWidth="420"
                                    ToolTip="{Binding Converter={StaticResource RouteLineCourseTripFirstConverter}}" />
@@ -139,7 +139,7 @@
                 <Setter.Value>
                     <DataTemplate DataType="{x:Type vm:RouteLineColorOption}">
                         <TextBlock Text="{Binding Label}"
-                                   Foreground="White"
+                                   Foreground="{DynamicResource SmartOnPrimaryBrush}"
                                    TextTrimming="CharacterEllipsis"
                                    ToolTip="{Binding Label}" />
                     </DataTemplate>
@@ -181,12 +181,12 @@
 
                         <Border Margin="0,0,0,10"
                                 Padding="12"
-                                Background="{StaticResource SmartPrimaryDarkBrush}"
+                                Background="{DynamicResource SmartPanelBrush}"
                                 CornerRadius="8"
                                 Visibility="{Binding IsMapHelpVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <StackPanel>
                                 <TextBlock Text="Bedienung Karte"
-                                           Foreground="White"
+                                           Foreground="{DynamicResource SmartForegroundBrush}"
                                            FontWeight="SemiBold"
                                            Margin="0,0,0,8" />
                                 <TextBlock Foreground="#BBDEFB"
@@ -321,18 +321,20 @@
                 </materialDesign:Card>
 
                 <materialDesign:Card Padding="14" UniformCornerRadius="12"
-                                     Background="{StaticResource SmartPrimaryDarkBrush}">
+                                     Background="{DynamicResource SmartPanelBrush}">
                     <StackPanel>
                         <TextBlock Text="Navi-Symbol bearbeiten"
-                                   Foreground="White"
+                                   Foreground="{DynamicResource SmartForegroundBrush}"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,8" />
                         <TextBlock Text="Hinweis auswählen"
-                                   Foreground="#BBDEFB"
+                                   Foreground="{DynamicResource SmartForegroundBrush}"
+                                   Opacity="0.85"
                                    FontSize="12"
                                    Margin="0,0,0,6" />
                         <TextBlock Text="Noch keine Navi-Hinweise auf der Route (nach Snap oder Doppelklick auf Linie)."
-                                   Foreground="#90CAF9"
+                                   Foreground="{DynamicResource SmartForegroundBrush}"
+                                   Opacity="0.75"
                                    FontSize="11"
                                    TextWrapping="Wrap"
                                    Margin="0,0,0,8">
@@ -365,7 +367,7 @@
                             </ListBox.Style>
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
-                                    <Setter Property="Foreground" Value="White" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
                                     <Setter Property="Padding" Value="4,2" />
                                 </Style>
                             </ListBox.ItemContainerStyle>
@@ -391,7 +393,8 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
                         <TextBlock Text="Symboltyp"
-                                   Foreground="#BBDEFB"
+                                   Foreground="{DynamicResource SmartForegroundBrush}"
+                                   Opacity="0.85"
                                    FontSize="12"
                                    Margin="0,0,0,4" />
                         <ComboBox Style="{StaticResource SmartDarkComboBox}"
@@ -411,7 +414,7 @@
                                                Stretch="Uniform"
                                                RenderOptions.BitmapScalingMode="HighQuality" />
                                         <TextBlock Text="{Binding Label}"
-                                                   Foreground="White"
+                                                   Foreground="{DynamicResource SmartOnPrimaryBrush}"
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
@@ -424,7 +427,7 @@
                         <Button Content="Symbol übernehmen"
                                 Command="{Binding ApplyNavSymbolCommand}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
-                                Foreground="White"
+                                Foreground="{DynamicResource SmartForegroundBrush}"
                                 BorderBrush="#6642A5F5"
                                 Margin="0,0,0,6"
                                 HorizontalAlignment="Stretch" />

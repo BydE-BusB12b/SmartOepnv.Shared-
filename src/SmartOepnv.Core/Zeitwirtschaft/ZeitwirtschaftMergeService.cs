@@ -276,11 +276,14 @@ public static class ZeitwirtschaftMergeService
 
         int? month = null,
 
-        IReadOnlyDictionary<string, string>? vehicleLabels = null)
+        IReadOnlyDictionary<string, string>? vehicleLabels = null,
+
+        ZeitwirtschaftLegalContext? legal = null)
 
     {
 
         var rows = new List<ZeitwirtschaftTimeTableRow>();
+        var assessment = ZeitwirtschaftCompliance.Assess(employee, legal, year, month, vehicleLabels);
 
         foreach (var entry in employee.Entries)
 
@@ -304,17 +307,37 @@ public static class ZeitwirtschaftMergeService
 
 
 
-            var effectiveStart = EffectiveStartMs(entry);
-
-            var effectiveEnd = EffectiveEndMs(entry);
-
             var isVoided = IsVoided(entry);
 
-            var (arbeitszeit, lohnstunden) = isVoided
+            if (!assessment.Figures.TryGetValue(entry.EntryId, out var figures))
+            {
+                figures = ZeitwirtschaftShiftFigures.Empty;
+            }
 
-                ? ("—", "—")
+            var pauseText = FormatPauseRanges(entry.Pauses);
+            var pauseMinutes = SumClosedPauseMinutes(entry.Pauses);
+            var breakHint = string.Join("\n", figures.Hints);
+            if (assessment.PeriodHints.TryGetValue(entry.EntryId, out var extra) && extra.Length > 0)
+            {
+                breakHint = breakHint.Length == 0 ? extra : breakHint + "\n" + extra;
+            }
 
-                : CalcDuration(effectiveStart, effectiveEnd);
+            string arbeitszeit;
+            string lohnstunden;
+            if (figures.Open)
+            {
+                (arbeitszeit, lohnstunden) = ("—", "—");
+            }
+            else if (isVoided)
+            {
+                arbeitszeit = FormatMinutesHhMm(figures.StatutoryMinutes);
+                lohnstunden = "—";
+            }
+            else
+            {
+                arbeitszeit = FormatMinutesHhMm(figures.StatutoryMinutes);
+                lohnstunden = FormatMinutesHhMm(figures.PayMinutes);
+            }
 
             var hasCorrection = HasCorrection(entry);
 
@@ -370,6 +393,12 @@ public static class ZeitwirtschaftMergeService
 
                 Lohnstunden = lohnstunden,
 
+                Pause = pauseText,
+
+                PauseMinutes = isVoided ? 0 : pauseMinutes,
+
+                Hinweis = breakHint,
+
                 EntryId = entry.EntryId,
 
                 HasCorrection = hasCorrection,
@@ -382,8 +411,7 @@ public static class ZeitwirtschaftMergeService
 
         }
 
-
-
+        rows.AddRange(assessment.MissingRows);
         return rows;
 
     }
@@ -557,6 +585,60 @@ public static class ZeitwirtschaftMergeService
     public static string FormatMinutesHhMm(int totalMinutes) =>
         $"{totalMinutes / 60}:{totalMinutes % 60:D2}";
 
+    /// <summary>Gestempelte Pausen als Uhrzeiten, eine Zeile je Pause.</summary>
+    public static string FormatPauseRanges(IReadOnlyList<ZeitwirtschaftPause> pauses)
+    {
+        var lines = new List<string>();
+        foreach (var pause in pauses.OrderBy(p => p.StartEpochMs))
+        {
+            if (pause.StartEpochMs <= 0)
+            {
+                continue;
+            }
+
+            var start = DateTimeOffset.FromUnixTimeMilliseconds(pause.StartEpochMs).ToLocalTime();
+            var startText = start.ToString("HH:mm", CultureInfo.CurrentCulture);
+            if (pause.EndEpochMs is > 0)
+            {
+                var end = DateTimeOffset.FromUnixTimeMilliseconds(pause.EndEpochMs.Value).ToLocalTime();
+                var endText = end.Date == start.Date
+                    ? end.ToString("HH:mm", CultureInfo.CurrentCulture)
+                    : end.ToString("dd.MM. HH:mm", CultureInfo.CurrentCulture);
+                lines.Add($"{startText}–{endText}");
+            }
+            else
+            {
+                lines.Add($"{startText}–offen");
+            }
+        }
+
+        return lines.Count == 0 ? "—" : string.Join("\n", lines);
+    }
+
+    public static int SumClosedPauseMinutes(IReadOnlyList<ZeitwirtschaftPause> pauses)
+    {
+        var total = 0;
+        foreach (var pause in pauses)
+        {
+            if (pause.StartEpochMs > 0 && pause.EndEpochMs is > 0)
+            {
+                total += WholeMinutesBetween(pause.StartEpochMs, pause.EndEpochMs.Value);
+            }
+        }
+
+        return total;
+    }
+
+    public static string SumPauseMinutesHhMm(
+        IEnumerable<ZeitwirtschaftTimeTableRow> rows,
+        bool includeVoided = false)
+    {
+        var totalMinutes = rows
+            .Where(r => includeVoided || !r.IsVoided)
+            .Sum(r => r.PauseMinutes);
+        return totalMinutes > 0 ? FormatMinutesHhMm(totalMinutes) : "—";
+    }
+
     public static int? ParseHhMmToMinutes(string? value)
     {
         if (string.IsNullOrWhiteSpace(value) || value == "—")
@@ -575,14 +657,30 @@ public static class ZeitwirtschaftMergeService
         return hours * 60 + minutes;
     }
 
-    public static string SumDurationHhMm(IEnumerable<ZeitwirtschaftTimeTableRow> rows)
+    public static string SumDurationHhMm(IEnumerable<ZeitwirtschaftTimeTableRow> rows) =>
+        SumFieldHhMm(rows, row => row.Arbeitszeit);
+
+    public static string SumFieldHhMm(
+        IEnumerable<ZeitwirtschaftTimeTableRow> rows,
+        Func<ZeitwirtschaftTimeTableRow, string> field,
+        bool includeVoided = false)
     {
         var totalMinutes = rows
-            .Where(r => !r.IsVoided)
-            .Select(r => ParseHhMmToMinutes(r.Arbeitszeit))
+            .Where(r => includeVoided || !r.IsVoided)
+            .Select(r => ParseHhMmToMinutes(field(r)))
             .Where(v => v.HasValue)
             .Sum(v => v!.Value);
         return totalMinutes > 0 ? FormatMinutesHhMm(totalMinutes) : "—";
+    }
+
+    private static bool? ReadOptionalBool(JsonObject obj, string key)
+    {
+        if (obj[key] is JsonValue value && value.TryGetValue(out bool parsed))
+        {
+            return parsed;
+        }
+
+        return null;
     }
 
     private static ZeitwirtschaftMergedEntry? ParseEntry(JsonObject entryObj, string devicePhone, string personnel)
@@ -665,13 +763,41 @@ public static class ZeitwirtschaftMergeService
 
             VoidedBy = entryObj["voidedBy"]?.GetValue<string>(),
 
-            VoidReason = entryObj["voidReason"]?.GetValue<string>()
+            VoidReason = entryObj["voidReason"]?.GetValue<string>(),
+
+            Pauses = ReadPauses(entryObj),
+
+            SixthDuty = ReadOptionalBool(entryObj, "sixthDuty")
 
         };
 
     }
 
+    private static IReadOnlyList<ZeitwirtschaftPause> ReadPauses(JsonObject entryObj)
+    {
+        if (entryObj["pauses"] is not JsonArray arr)
+        {
+            return [];
+        }
 
+        var list = new List<ZeitwirtschaftPause>();
+        foreach (var node in arr.OfType<JsonObject>())
+        {
+            var start = ReadPositiveLong(node, "startEpochMs");
+            if (start is not > 0)
+            {
+                continue;
+            }
+
+            list.Add(new ZeitwirtschaftPause
+            {
+                StartEpochMs = start.Value,
+                EndEpochMs = ReadPositiveLong(node, "endEpochMs")
+            });
+        }
+
+        return list;
+    }
 
     private static long? ReadPositiveLong(JsonObject obj, string key)
 
@@ -775,6 +901,10 @@ public static class ZeitwirtschaftMergeService
 
         }
 
+        var pauses = MergePauses(existing.Pauses, incoming.Pauses);
+
+        var sixth = incoming.SixthDuty ?? existing.SixthDuty;
+
 
 
         if (endEpochMs == existing.EndEpochMs &&
@@ -791,7 +921,11 @@ public static class ZeitwirtschaftMergeService
 
             voidedAt == existing.VoidedAtMs &&
 
-            voidReason == existing.VoidReason)
+            voidReason == existing.VoidReason &&
+
+            SamePauses(pauses, existing.Pauses) &&
+
+            sixth == existing.SixthDuty)
 
         {
 
@@ -839,10 +973,66 @@ public static class ZeitwirtschaftMergeService
 
             VoidedBy = voidedBy,
 
-            VoidReason = voidReason
+            VoidReason = voidReason,
+
+            Pauses = pauses,
+
+            SixthDuty = sixth
 
         };
 
+    }
+
+    private static IReadOnlyList<ZeitwirtschaftPause> MergePauses(
+        IReadOnlyList<ZeitwirtschaftPause> existing,
+        IReadOnlyList<ZeitwirtschaftPause> incoming)
+    {
+        var byStart = new Dictionary<long, ZeitwirtschaftPause>();
+        AbsorbPauses(byStart, existing);
+        AbsorbPauses(byStart, incoming);
+        return byStart.OrderBy(p => p.Key).Select(p => p.Value).ToList();
+    }
+
+    private static void AbsorbPauses(Dictionary<long, ZeitwirtschaftPause> byStart, IReadOnlyList<ZeitwirtschaftPause> source)
+    {
+        foreach (var pause in source)
+        {
+            if (pause.StartEpochMs <= 0)
+            {
+                continue;
+            }
+
+            if (!byStart.TryGetValue(pause.StartEpochMs, out var previous))
+            {
+                byStart[pause.StartEpochMs] = pause;
+                continue;
+            }
+
+            var previousEnd = previous.EndEpochMs ?? 0;
+            var nextEnd = pause.EndEpochMs ?? 0;
+            if (nextEnd > previousEnd)
+            {
+                byStart[pause.StartEpochMs] = pause;
+            }
+        }
+    }
+
+    private static bool SamePauses(IReadOnlyList<ZeitwirtschaftPause> left, IReadOnlyList<ZeitwirtschaftPause> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            if (left[i].StartEpochMs != right[i].StartEpochMs || left[i].EndEpochMs != right[i].EndEpochMs)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
 

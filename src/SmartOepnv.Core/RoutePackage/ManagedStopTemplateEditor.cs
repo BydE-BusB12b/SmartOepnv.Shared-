@@ -52,7 +52,8 @@ public static class ManagedStopTemplateEditor
             ExternalSoundUri = obj["externalSoundUri"]?.GetValue<string>() ?? string.Empty,
             EmbeddedSoundFileName = obj["embeddedSoundFileName"]?.GetValue<string>() ?? string.Empty,
             EntwerterEnabled = JsonNodeReading.GetBoolean(obj["entwerterEnabled"]),
-            EntwerterCode = JsonNodeReading.GetString(obj["entwerterCode"])
+            EntwerterCode = JsonNodeReading.GetString(obj["entwerterCode"]),
+            IbisAnnouncementId = IbisAnnouncementIds.Normalize(JsonNodeReading.GetString(obj["ibisAnnouncementId"]))
         };
     }
 
@@ -80,6 +81,12 @@ public static class ManagedStopTemplateEditor
         {
             obj["entwerterEnabled"] = t.EntwerterEnabled;
             obj["entwerterCode"] = (t.EntwerterCode ?? string.Empty).Trim();
+        }
+
+        var ibisAnnouncementId = IbisAnnouncementIds.Normalize(t.IbisAnnouncementId);
+        if (!string.IsNullOrEmpty(ibisAnnouncementId))
+        {
+            obj["ibisAnnouncementId"] = ibisAnnouncementId;
         }
 
         return obj;

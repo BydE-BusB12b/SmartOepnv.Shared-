@@ -40,7 +40,7 @@ public static class RoutePathSnapOrchestrator
 
         waypoints = InjectLearnedWaypoints(draft, segment, waypoints);
 
-        var snap = await SnapSegmentPathWithFallbacksAsync(draft, segment, key, waypoints, osrm, ct);
+        var snap = await SnapSegmentPathWithFallbacksAsync(draft, segment, waypoints, osrm, ct);
         if (!snap.IsRoadRoute || snap.Points.Count < 2)
         {
             throw new InvalidOperationException(snap.Error ?? "OSRM-Snap fehlgeschlagen.");
@@ -221,7 +221,7 @@ public static class RoutePathSnapOrchestrator
             ShouldRouteViaPairedStop(fromNode, toNode))
         {
             var paired = ResolvePairedStopNode(fromNode, stopNodes);
-            if (paired is not null)
+            if (paired is not null && PairedStopSitsBetween(fromNode, toNode, paired))
             {
                 var pairedPt = new RoutePathLatLng { Lat = paired.Lat, Lon = paired.Lon };
                 if (!RoutePathPolylineJoin.NearlySamePoint(waypoints[^1], pairedPt))
@@ -236,7 +236,7 @@ public static class RoutePathSnapOrchestrator
             ShouldRouteViaPairedStop(toNode, fromNode))
         {
             var paired = ResolvePairedStopNode(toNode, stopNodes);
-            if (paired is not null)
+            if (paired is not null && PairedStopSitsBetween(fromNode, toNode, paired))
             {
                 var pairedPt = new RoutePathLatLng { Lat = paired.Lat, Lon = paired.Lon };
                 if (!RoutePathPolylineJoin.NearlySamePoint(waypoints[^1], pairedPt))
@@ -313,44 +313,53 @@ public static class RoutePathSnapOrchestrator
     private static async Task<OsrmSnapResult> SnapSegmentPathWithFallbacksAsync(
         RoutePathDraft draft,
         RoutePathSegment segment,
-        string edgeKey,
         IReadOnlyList<RoutePathLatLng> primaryWaypoints,
         OsrmSnapService osrm,
         CancellationToken ct)
     {
-        var attempts = new List<IReadOnlyList<RoutePathLatLng>> { primaryWaypoints };
-
+        // Nur die Wegpunkte dieses Teilstücks. Ein Fallback nur über die Enden
+        // oder über einen Stitch-Punkt der Nachbarkante hat die Linie auf eine
+        // andere Straße gelegt und Zwischenpunkte ausgelassen.
         var endpoints = BuildNodeEndpointWaypoints(draft, segment);
+        var snap = await osrm.SnapPathAsync(primaryWaypoints, ct: ct);
+        if (snap.IsRoadRoute && snap.Points.Count >= 2)
+        {
+            return snap;
+        }
+
         if (endpoints.Count >= 2 && !WaypointListsEquivalent(endpoints, primaryWaypoints))
         {
-            attempts.Add(endpoints);
-        }
-
-        var stitchStart = RoutePathPolylineJoin.FindNetworkPointAtNode(draft, segment.FromNodeId, edgeKey);
-        if (stitchStart is not null && endpoints.Count >= 2)
-        {
-            var viaStitch =
-                new List<RoutePathLatLng> { stitchStart, endpoints[^1] };
-            if (!WaypointListsEquivalent(viaStitch, primaryWaypoints) &&
-                !WaypointListsEquivalent(viaStitch, endpoints))
+            var plain = await osrm.SnapPathAsync(endpoints, ct: ct);
+            if (plain.IsRoadRoute && plain.Points.Count >= 2 &&
+                RoutePathGeo.MaxDistanceWaypointsToRoute(primaryWaypoints, plain.Points) <= 70)
             {
-                attempts.Add(viaStitch);
+                return plain;
             }
         }
 
-        OsrmSnapResult? last = null;
-        foreach (var waypoints in attempts)
+        return snap.IsRoadRoute
+            ? snap
+            : OsrmSnapResult.Failed(
+                endpoints.Count >= 2 ? endpoints : primaryWaypoints,
+                snap.Error ?? "OSRM-Snap fehlgeschlagen.");
+    }
+
+    /// <summary>
+    /// Halt nur als Via, wenn er zwischen den beiden Knoten auf dem Korridor liegt.
+    /// Sonst zieht die Ansage die Linie quer durch die Karte.
+    /// </summary>
+    private static bool PairedStopSitsBetween(RoutePathNode from, RoutePathNode to, RoutePathNode paired)
+    {
+        var span = HaversineMeters(from.Lat, from.Lon, to.Lat, to.Lon);
+        if (span < 40)
         {
-            ct.ThrowIfCancellationRequested();
-            var snap = await osrm.SnapPathAsync(waypoints, ct: ct);
-            last = snap;
-            if (snap.IsRoadRoute && snap.Points.Count >= 2)
-            {
-                return snap;
-            }
+            return false;
         }
 
-        return last ?? OsrmSnapResult.Failed(endpoints, "OSRM-Snap fehlgeschlagen.");
+        var fromDist = HaversineMeters(from.Lat, from.Lon, paired.Lat, paired.Lon);
+        var toDist = HaversineMeters(paired.Lat, paired.Lon, to.Lat, to.Lon);
+        var slack = Math.Max(45, span * 0.3);
+        return fromDist >= 25 && toDist >= 25 && fromDist + toDist <= span + slack;
     }
 
     private static bool WaypointListsEquivalent(

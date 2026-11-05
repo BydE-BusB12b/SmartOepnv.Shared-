@@ -14,6 +14,12 @@ public sealed class BetriebProfile
 
     public long CreatedAtUtcMs { get; set; }
 
+    /// <summary>
+    /// Planer-Anmeldung „Admin“ für diesen Betrieb. Leer = Standard aus
+    /// <c>BuiltinAdminEmployee.PlannerPassword</c>.
+    /// </summary>
+    public string AdminPlannerPassword { get; set; } = string.Empty;
+
     [JsonIgnore]
     public string ListLabel
     {

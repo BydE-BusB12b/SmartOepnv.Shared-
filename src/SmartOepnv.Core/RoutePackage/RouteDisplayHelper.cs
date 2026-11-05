@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using SmartOepnv.Core.Dienstvorlagen;
 
@@ -6,6 +7,10 @@ namespace SmartOepnv.Core.RoutePackage;
 /// <summary>Route-Anzeigenamen wie in GPSAnsagen (<see cref="Route.kt"/> / dialog_add_route).</summary>
 public static class RouteDisplayHelper
 {
+    private static readonly ConcurrentDictionary<string, RouteDefinition> ParsedRoutes = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> CanonicalKeys = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> VerkehrLabels = new(StringComparer.Ordinal);
+
     private static readonly Regex LegacyLineCourseSuffix = new(
         @"\(Linie:\s*([^,]+),\s*Fahrt:\s*([^)]+)\)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -118,9 +123,76 @@ public static class RouteDisplayHelper
         return string.IsNullOrEmpty(name) ? prefix : $"{prefix}  {name}";
     }
 
+    /// <summary>
+    /// Listenanzeige: „681/01 2390 Hbf &gt; GWP Mo-Fr“. Jeden Tag ohne Tageskürzel.
+    /// Der gespeicherte Routenschlüssel bleibt unverändert.
+    /// </summary>
+    public static string ToCompactRouteListLabel(
+        string? routeDisplayKey,
+        IReadOnlyCollection<DutyOperatingDay>? operatingDays = null)
+    {
+        var text = (routeDisplayKey ?? string.Empty).Trim();
+        if (text.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var parsed = Parse(text);
+        var lineCourse = (parsed.LineCourse ?? string.Empty).Trim();
+        var tripNumber = (parsed.TripNumber ?? string.Empty).Trim();
+        var name = StripLeadingLineCourse((parsed.Name ?? string.Empty).Trim(), lineCourse);
+
+        var parts = new List<string>();
+        if (lineCourse.Length > 0)
+        {
+            parts.Add(lineCourse);
+        }
+
+        if (tripNumber.Length > 0)
+        {
+            parts.Add(tripNumber);
+        }
+
+        if (name.Length > 0)
+        {
+            parts.Add(name);
+        }
+
+        var head = parts.Count > 0 ? string.Join(' ', parts) : text;
+        var days = operatingDays;
+        if (days is null || days.Count == 0)
+        {
+            var traffic = GetVerkehrLabel(text);
+            if (!string.IsNullOrEmpty(traffic))
+            {
+                days = DutyOperatingDayHelper.Parse(traffic);
+            }
+        }
+
+        var shortDays = DutyOperatingDayHelper.FormatShort(days);
+        return string.IsNullOrEmpty(shortDays) ? head : $"{head} {shortDays}";
+    }
+
+    private static string StripLeadingLineCourse(string name, string lineCourse)
+    {
+        if (name.Length == 0 || lineCourse.Length == 0)
+        {
+            return name;
+        }
+
+        if (name.StartsWith(lineCourse, StringComparison.OrdinalIgnoreCase) &&
+            name.Length > lineCourse.Length &&
+            char.IsWhiteSpace(name[lineCourse.Length]))
+        {
+            return name[(lineCourse.Length + 1)..].Trim();
+        }
+
+        return name;
+    }
+
     /// <summary>Verkehrstags-Kennung aus dem Anzeigeschlüssel (leer = keine / alle Tage).</summary>
     public static string GetVerkehrLabel(string? displayString) =>
-        ExtractVerkehrLabel(displayString ?? string.Empty);
+        VerkehrLabels.GetOrAdd(displayString ?? string.Empty, static text => ExtractVerkehrLabel(text));
 
     private static string ExtractVerkehrLabel(string displayString)
     {
@@ -181,7 +253,7 @@ public static class RouteDisplayHelper
 
     /// <summary>Einheitlicher Schlüssel für <c>routeStops</c> / Haltestellen-Zuordnung (ohne PassengerLine).</summary>
     public static string ToCanonicalRouteKey(string routeKey) =>
-        ToDistributionDisplayString(routeKey);
+        CanonicalKeys.GetOrAdd(routeKey ?? string.Empty, static key => ToDistributionDisplayString(key));
 
     /// <summary>Gleiche Fahrt (Name/Linie/Kurs/Fahrtnummer), Verkehrstage werden ignoriert.</summary>
     public static bool RouteKeysMatch(string? left, string? right) =>
@@ -203,6 +275,11 @@ public static class RouteDisplayHelper
     public static RouteDefinition Parse(string displayString)
     {
         var text = (displayString ?? string.Empty).Trim();
+        return ParsedRoutes.GetOrAdd(text, static value => ParseCore(value));
+    }
+
+    private static RouteDefinition ParseCore(string text)
+    {
         if (string.IsNullOrEmpty(text) || !text.Contains('('))
         {
             return new RouteDefinition(text);

@@ -37,6 +37,10 @@ public sealed class DutyTemplateEditorSession
 
     public string ImportFileName { get; set; } = string.Empty;
 
+    public bool IsSixthDuty { get; set; }
+
+    public int WendePauseFromMinutes { get; set; } = 8;
+
     public bool SubtractUnpaidBreak30Minutes { get; set; }
 
     public bool SubtractUnpaidBreak30MinutesPart2 { get; set; }
@@ -58,6 +62,7 @@ public sealed class DutyTemplateEditorSession
     public bool IsSplitShift { get; set; }
 
     public bool HasContent() =>
+        IsSixthDuty ||
         SubtractUnpaidBreak30Minutes ||
         SubtractUnpaidBreak30MinutesPart2 ||
         SubtractUnpaidBreak30MinutesPart3 ||

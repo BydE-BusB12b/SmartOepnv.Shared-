@@ -57,8 +57,26 @@ public sealed class BetriebSelectDialog : Window
         {
             Height = 200,
             Margin = new Thickness(0, 0, 0, 12),
-            DisplayMemberPath = nameof(BetriebProfile.ListLabel),
-            ItemsSource = profiles
+            ItemsSource = profiles,
+            Foreground = UiTheme.ForegroundBrush,
+            Background = new SolidColorBrush(Color.FromRgb(0x12, 0x1E, 0x32)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x2A, 0x3A, 0x52)),
+            ItemTemplate = new DataTemplate(typeof(BetriebProfile))
+        };
+        var labelFactory = new FrameworkElementFactory(typeof(TextBlock));
+        labelFactory.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(BetriebProfile.ListLabel)));
+        labelFactory.SetValue(TextBlock.ForegroundProperty, Brushes.White);
+        labelFactory.SetValue(TextBlock.PaddingProperty, new Thickness(4, 2, 4, 2));
+        labelFactory.SetValue(TextBlock.FontSizeProperty, 14.0);
+        ((DataTemplate)_list.ItemTemplate).VisualTree = labelFactory;
+        _list.ItemContainerStyle = new Style(typeof(ListBoxItem))
+        {
+            Setters =
+            {
+                new Setter(Control.ForegroundProperty, Brushes.White),
+                new Setter(Control.BackgroundProperty, Brushes.Transparent),
+                new Setter(Control.PaddingProperty, new Thickness(10, 8, 10, 8))
+            }
         };
         if (profiles.Count > 0)
         {
@@ -150,8 +168,8 @@ public sealed class BetriebSelectDialog : Window
         root.Children.Add(bar);
 
         Content = root;
-        Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-        Foreground = Brushes.White;
+        Background = UiTheme.BackgroundBrush;
+        Foreground = UiTheme.ForegroundBrush;
     }
 
     private void OnSelect()

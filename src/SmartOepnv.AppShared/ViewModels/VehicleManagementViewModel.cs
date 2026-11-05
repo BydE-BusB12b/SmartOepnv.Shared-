@@ -1,8 +1,12 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmartOepnv.AppShared.Helpers;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
@@ -40,6 +44,8 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
     [ObservableProperty] private VehicleManagementButtonState deleteButtonState = VehicleManagementButtonState.Idle;
 
     public IReadOnlyList<DispoRowColorOption> RowColorOptions => DispoRowColorOptions;
+
+    public bool ShowRemoteSettingsSend => AppServices.IsPlannerApp;
 
     public ObservableCollection<RegisteredVehicleItem> Vehicles { get; } = [];
 
@@ -165,6 +171,58 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
     }
 
     [RelayCommand]
+    private async Task SendRemoteSettingsAsync()
+    {
+        if (!ShowRemoteSettingsSend)
+        {
+            return;
+        }
+
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            StatusMessage = "Dropbox nicht verbunden – bitte Einstellungen öffnen.";
+            return;
+        }
+
+        var vehicles = Vehicles
+            .Where(v => !string.IsNullOrWhiteSpace(v.PhoneNumber))
+            .Select(v => new RegisteredVehicleInfo
+            {
+                Name = string.IsNullOrWhiteSpace(v.Name) ? v.PhoneNumber.Trim() : v.Name.Trim(),
+                PhoneNumber = v.PhoneNumber.Trim()
+            })
+            .ToList();
+
+        var picker = new RemoteSettingsSendDialog(vehicles, SelectedVehicle?.PhoneNumber)
+        {
+            Owner = Application.Current?.MainWindow
+        };
+        if (picker.ShowDialog() != true ||
+            string.IsNullOrWhiteSpace(picker.SelectedPhoneNumber) ||
+            picker.Settings is null)
+        {
+            return;
+        }
+
+        var vehicleName = picker.SelectedVehicleName ?? picker.SelectedPhoneNumber;
+        var vehiclePhone = picker.SelectedPhoneNumber;
+        var settings = picker.Settings;
+        StatusMessage = $"Einstellungen werden an {vehicleName} gesendet…";
+        try
+        {
+            await RemoteDeviceSettingsService
+                .UploadAsync(AppServices.Dropbox, vehiclePhone, settings)
+                .ConfigureAwait(true);
+            var fileName = RemoteDeviceSettingsService.BuildFileName(vehiclePhone);
+            StatusMessage = $"Einstellungen an {vehicleName} gesendet ({fileName}).";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Einstellungen senden fehlgeschlagen: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
     private void AddVehicle()
     {
         if (AppServices.Routes.Editor is null)
@@ -211,7 +269,11 @@ public partial class VehicleManagementViewModel : ObservableObject, IEditorAreaV
     }
 
     [RelayCommand]
-    private void SaveChanges() => CommitChanges();
+    private void SaveChanges()
+    {
+        StatusMessage = "Speichern…";
+        UiDispatch.RunAfterPaint(() => CommitChanges());
+    }
 
     private static string? BuildVehicleSelectionKey(RegisteredVehicleItem? vehicle)
     {

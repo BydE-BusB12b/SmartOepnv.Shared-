@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+using SmartOepnv.Core;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.Core.Sev;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -32,10 +34,16 @@ public sealed class RemoteSettingsSendDialog : Window
     private readonly TextBox _clientPort;
     private readonly ComboBox _protocol;
     private readonly ComboBox _displayMode;
+    private readonly CheckBox _sevEnabled;
+    private readonly CheckBox _sevAuto;
+    private readonly TextBox _sevHost;
+    private readonly TextBox _sevPort;
+    private readonly TextBox _sevToken;
+    private readonly TextBlock _sevStatus;
     private readonly TextBlock _templateHint;
     private readonly RemoteDeviceSettingsTemplateStore _templateStore = new();
 
-    public RemoteSettingsSendDialog(IReadOnlyList<RegisteredVehicleInfo> vehicles)
+    public RemoteSettingsSendDialog(IReadOnlyList<RegisteredVehicleInfo> vehicles, string? preferredPhone = null)
     {
         Title = "Einstellungen senden";
         Width = 640;
@@ -69,6 +77,7 @@ public sealed class RemoteSettingsSendDialog : Window
                 SelectedIndex = 0,
                 Margin = new Thickness(0, 0, 0, 10)
             };
+            SelectPreferredVehicle(vehicles, preferredPhone);
             root.Children.Add(_vehicleCombo);
         }
         else
@@ -192,6 +201,67 @@ public sealed class RemoteSettingsSendDialog : Window
         _displayMode.SelectedIndex = 0;
         root.Children.Add(_displayMode);
 
+        root.Children.Add(Section("SEV-TFT"));
+        root.Children.Add(new TextBlock
+        {
+            Text = "Beim Öffnen einer Route werden Linie und Ziel aus dem Routennamen gelesen. „RE4 Düsseldorf Hbf > Neuss Hbf“ ergibt Linie RE4 und Ziel Neuss Hbf. Die Haltestellen kommen in der Reihenfolge des Verlaufs. Der Betrieb wird später mitgesendet, sobald er an der Route hinterlegt ist.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.85,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+        _sevEnabled = Check("SEV-TFT aktiv", false);
+        root.Children.Add(_sevEnabled);
+        _sevAuto = Check("Beim Öffnen einer Route automatisch senden", true);
+        _sevAuto.Margin = new Thickness(0, 0, 0, 12);
+        _sevAuto.ToolTip = "Die beim Start bereits markierte Route wird nicht von allein gesendet.";
+        root.Children.Add(_sevAuto);
+        root.Children.Add(Label("Raspberry-Pi-IP"));
+        _sevHost = new TextBox { Margin = new Thickness(0, 0, 0, 8), ToolTip = "Nur IP oder Hostname, ohne http://" };
+        root.Children.Add(_sevHost);
+        root.Children.Add(Label("Port (eingerichteter Dienst: 8080)"));
+        _sevPort = new TextBox { Text = SevTftEndpoint.DefaultPort.ToString(), Margin = new Thickness(0, 0, 0, 8) };
+        root.Children.Add(_sevPort);
+        root.Children.Add(Label("Verbindungsschlüssel (optional, wird verschlüsselt gespeichert)"));
+        _sevToken = new TextBox
+        {
+            Margin = new Thickness(0, 0, 0, 12),
+            ToolTip = "Verbindungsschlüssel zum Raspberry Pi. Steht nicht in Klartext-Protokollen."
+        };
+        root.Children.Add(_sevToken);
+        var sevButtons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        var saveSev = new Button
+        {
+            Content = "Einstellungen speichern",
+            MinWidth = 160,
+            Margin = new Thickness(0, 0, 8, 0),
+            Padding = new Thickness(10, 4, 10, 4)
+        };
+        saveSev.Click += (_, _) => SaveSevSettings();
+        var testSev = new Button
+        {
+            Content = "Verbindung testen",
+            MinWidth = 140,
+            Padding = new Thickness(10, 4, 10, 4)
+        };
+        testSev.Click += async (_, _) => await TestSevConnectionAsync();
+        sevButtons.Children.Add(saveSev);
+        sevButtons.Children.Add(testSev);
+        root.Children.Add(sevButtons);
+        _sevStatus = new TextBlock
+        {
+            Text = "Automatisches Senden nutzt die gespeicherten Werte. Test nutzt die Felder hier. „Einstellungen senden“ überträgt die Werte an das Tablet.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.7,
+            FontSize = 12,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        root.Children.Add(_sevStatus);
+        LoadSevFromPlanner();
+
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -279,6 +349,7 @@ public sealed class RemoteSettingsSendDialog : Window
             }
         }
 
+        settings.SevTftApiToken = null;
         _templateStore.Upsert(name, settings);
         RefreshTemplateHint();
         MessageBox.Show(this, $"Vorlage „{name.Trim()}“ gespeichert.", Title,
@@ -316,6 +387,32 @@ public sealed class RemoteSettingsSendDialog : Window
         _templateStore.Save(doc);
         RefreshTemplateHint();
     }
+
+    private void SelectPreferredVehicle(IReadOnlyList<RegisteredVehicleInfo> vehicles, string? preferredPhone)
+    {
+        if (_vehicleCombo is null || string.IsNullOrWhiteSpace(preferredPhone))
+        {
+            return;
+        }
+
+        var key = Digits(preferredPhone);
+        if (key.Length == 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < vehicles.Count; i++)
+        {
+            if (Digits(vehicles[i].PhoneNumber) == key)
+            {
+                _vehicleCombo.SelectedIndex = i;
+                return;
+            }
+        }
+    }
+
+    private static string Digits(string? value) =>
+        string.IsNullOrEmpty(value) ? string.Empty : new string(value.Where(char.IsDigit).ToArray());
 
     private void OnOk(IReadOnlyList<RegisteredVehicleInfo> vehicles)
     {
@@ -391,6 +488,34 @@ public sealed class RemoteSettingsSendDialog : Window
                 ? "DIRECT_CLEARTEXT"
                 : "SICMA_ZD_TARGET_NUMBER"
         };
+
+        var sevPortText = string.IsNullOrWhiteSpace(_sevPort.Text)
+            ? SevTftEndpoint.DefaultPort.ToString()
+            : _sevPort.Text.Trim();
+        if (_sevEnabled.IsChecked == true)
+        {
+            if (!SevTftEndpoint.TryCreate(_sevHost.Text, sevPortText, _sevToken.Text, out var endpoint, out var sevError) ||
+                endpoint is null)
+            {
+                error = sevError;
+                return false;
+            }
+
+            settings.SevTftHost = endpoint.Host;
+            settings.SevTftPort = endpoint.Port;
+            settings.SevTftApiToken = endpoint.ApiToken ?? string.Empty;
+        }
+        else
+        {
+            settings.SevTftHost = _sevHost.Text.Trim();
+            settings.SevTftPort = int.TryParse(sevPortText, out var port) && port is >= 1 and <= 65535
+                ? port
+                : SevTftEndpoint.DefaultPort;
+            settings.SevTftApiToken = _sevToken.Text.Trim();
+        }
+
+        settings.SevTftEnabled = _sevEnabled.IsChecked == true;
+        settings.SevTftAutoSend = _sevAuto.IsChecked == true;
         return true;
     }
 
@@ -502,6 +627,98 @@ public sealed class RemoteSettingsSendDialog : Window
                 string.Equals(s.IbisDisplayControlMode, "DIRECT_CLEARTEXT", StringComparison.OrdinalIgnoreCase)
                     ? 1
                     : 0;
+        }
+
+        if (s.SevTftEnabled is bool sevEnabled)
+        {
+            _sevEnabled.IsChecked = sevEnabled;
+        }
+
+        if (s.SevTftAutoSend is bool sevAuto)
+        {
+            _sevAuto.IsChecked = sevAuto;
+        }
+
+        if (s.SevTftHost is not null)
+        {
+            _sevHost.Text = s.SevTftHost;
+        }
+
+        if (s.SevTftPort is int sevPort)
+        {
+            _sevPort.Text = sevPort.ToString();
+        }
+
+        if (s.SevTftApiToken is not null)
+        {
+            _sevToken.Text = s.SevTftApiToken;
+        }
+    }
+
+    private void LoadSevFromPlanner()
+    {
+        if (!AppServices.IsInitialized || AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var stored = AppServices.PlanerAppSettings.Load();
+        _sevEnabled.IsChecked = stored.SevTftEnabled;
+        _sevAuto.IsChecked = stored.SevTftAutoSend;
+        _sevHost.Text = stored.SevTftHost;
+        _sevPort.Text = (stored.SevTftPort is >= 1 and <= 65535
+            ? stored.SevTftPort
+            : SevTftEndpoint.DefaultPort).ToString();
+        _sevToken.Text = new SevTftSecretStore(AppServices.SettingsSubfolder).LoadToken() ?? string.Empty;
+    }
+
+    private void SaveSevSettings()
+    {
+        if (!SevTftEndpoint.TryCreate(_sevHost.Text, _sevPort.Text, _sevToken.Text, out var endpoint, out var error) ||
+            endpoint is null)
+        {
+            _sevStatus.Text = error;
+            return;
+        }
+
+        if (!AppServices.IsInitialized || AppServices.PlanerAppSettings is null)
+        {
+            _sevStatus.Text = "Einstellungen sind noch nicht verfügbar.";
+            return;
+        }
+
+        var settings = AppServices.PlanerAppSettings.Load();
+        settings.SevTftHost = endpoint.Host;
+        settings.SevTftPort = endpoint.Port;
+        settings.SevTftEnabled = _sevEnabled.IsChecked == true;
+        settings.SevTftAutoSend = _sevAuto.IsChecked == true;
+        AppServices.PlanerAppSettings.Save(settings);
+        new SevTftSecretStore(AppServices.SettingsSubfolder).SaveToken(endpoint.ApiToken);
+        _sevHost.Text = endpoint.Host;
+        _sevPort.Text = endpoint.Port.ToString();
+        _sevStatus.Text = endpoint.ApiToken is null
+            ? $"Gespeichert. SEV-TFT {(_sevEnabled.IsChecked == true ? "aktiv" : "aus")} · {endpoint.Host}:{endpoint.Port} · ohne API-Token."
+            : $"Gespeichert. SEV-TFT {(_sevEnabled.IsChecked == true ? "aktiv" : "aus")} · {endpoint.Host}:{endpoint.Port}.";
+    }
+
+    private async Task TestSevConnectionAsync()
+    {
+        if (!SevTftEndpoint.TryCreate(_sevHost.Text, _sevPort.Text, _sevToken.Text, out var endpoint, out var error) ||
+            endpoint is null)
+        {
+            _sevStatus.Text = error;
+            return;
+        }
+
+        _sevStatus.Text = "Verbindung wird geprüft…";
+        try
+        {
+            var result = await new SevTftClient().GetDataAsync(endpoint).ConfigureAwait(true);
+            _sevStatus.Text = result.Message;
+        }
+        catch (Exception ex)
+        {
+            _sevStatus.Text = "Verbindungstest fehlgeschlagen: " + ex.Message;
         }
     }
 

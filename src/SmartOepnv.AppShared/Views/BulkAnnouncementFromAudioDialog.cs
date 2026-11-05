@@ -7,6 +7,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using SmartOepnv.AppShared.Models;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -35,8 +36,8 @@ public sealed class BulkAnnouncementFromAudioDialog : Window
         MinHeight = 360;
         ShowInTaskbar = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x29, 0x3B));
-        Foreground = Brushes.White;
+        Background = UiTheme.BackgroundBrush;
+        Foreground = UiTheme.ForegroundBrush;
 
         var root = new DockPanel { Margin = new Thickness(16) };
 
@@ -307,7 +308,7 @@ public sealed class BulkAnnouncementFromAudioDialog : Window
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = Brushes.White
+            Foreground = UiTheme.ForegroundBrush
         };
         var closeBtn = new Button
         {
@@ -337,7 +338,7 @@ public sealed class BulkAnnouncementFromAudioDialog : Window
             Opacity = 0.75,
             Margin = new Thickness(8, 0, 8, 6),
             TextWrapping = TextWrapping.Wrap,
-            Foreground = Brushes.White
+            Foreground = UiTheme.ForegroundBrush
         };
 
         var cancelBtn = new Button
@@ -358,7 +359,7 @@ public sealed class BulkAnnouncementFromAudioDialog : Window
 
         var panel = new DockPanel
         {
-            Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x29, 0x3B)),
+            Background = UiTheme.SurfaceBrush,
             Width = 340
         };
         DockPanel.SetDock(titleRow, Dock.Top);

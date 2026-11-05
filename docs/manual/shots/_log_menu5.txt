@@ -1,0 +1,21 @@
+﻿
+TAP 'Ansagen' 489,672
+ANSAGEN: Ansagen | 1x Ansage | 2+ Ansagen | Ansagenliste | Zurück
+TAP '2+ Ansagen' 960,586
+2PLUS: Mehrere Ansagen hinzufügen | Wählen Sie mehrere Tondateien aus, um sie als eingebettete Ansagen hinzuzufügen. | Abbrechen | Hinzufügen
+SHOT 61_ansage_mehrere.png
+TAP 'Abbrechen' 824,708
+TAP 'MENÜ' 1590,1142
+TAP 'Ansagen' 489,672
+TAP 'Ansagenliste' 960,702
+LIST: Ansagen verwalten (912) | Schalter an = erscheint unter Sonderansagen (z. B. ITCS) | Ansage suchen... | 0001_TÜR FREI.wav | Sonderansage aktiv | 0002_ERSATZWAGEN.wav | Sonderansage aktiv | 0003_ENDSTATION.wav | Sonderansage aktiv | 0004_DURCHGEHEN.wav | Sonderansage aktiv | ← Zurück
+SHOT 62_ansagenliste.png
+TAP '← Zurück' 960,963
+TAP 'App beenden' 489,987
+EXIT: App beenden | Möchten Sie die App wirklich beenden?
+
+Alle laufenden Dienste werden gestoppt. | Abbrechen | App beenden
+SHOT 63_app_beenden.png
+TAP 'Abbrechen' 716,715
+AFTER: GPS inaktiv | HAUPTMENÜ | 🔌 IBIS-Wandler: Keine USB-Geräte gefunden | Administration | Innen-/Außenanzeigen+Entwerter | Einstellungen | Zeitwirtschaft | Mängelkarte | Ansagen | Pause | Abmelden | Bedienungsanleitung | Impressum | App beenden | ITCS | VERKAUF | MENÜ
+DONE ON MENU

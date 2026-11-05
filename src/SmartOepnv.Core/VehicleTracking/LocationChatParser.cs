@@ -72,6 +72,10 @@ public static class LocationChatParser
                 LineCourse = ReadOptionalString(loc, "lineCourse"),
                 RouteName = ReadOptionalString(loc, "route"),
                 StopName = ReadOptionalString(loc, "stop"),
+                PlannerStopCode = ReadOptionalString(loc, "plannerStopCode")
+                    ?? ReadOptionalString(loc, "stopCode"),
+                VrrStopId = ReadOptionalString(loc, "vrrStopId"),
+                TripNumber = ReadOptionalString(loc, "tripNumber"),
                 Destination = ReadOptionalString(loc, "destination"),
                 DriverName = driverName,
                 DriverPersonnelNumber = ReadOptionalString(loc, "driverPersonnelNumber"),

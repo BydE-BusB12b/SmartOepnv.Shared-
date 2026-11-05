@@ -1,0 +1,25 @@
+﻿SHOT 30_kom
+30_kom :: 📍 KOM-Tracking | 🗺️ Tracking-Karte öffnen | Fernsteuerung Ziel | Fernupdate auslösen | Fernroute senden | Fahrgastraum-Durchsage | 👥 Fahrzeug-Verwaltung | ⬅️ Zurück zum Hauptmenü | ℹ️ Informationen: | • Hauptgerät: Empfängt Standort-Updates von allen Fahrzeugen
+• Fahrzeug: Sen
+SHOT 31_telefon
+31_telefon :: Telefon | Gerät registrieren | Handynummer ZBL | Hauptgerät-Nummer | Zurück
+SHOT 32_unternehmer
+32_unternehmer :: Unternehmername | Testgerät | Reset | Abbrechen | Speichern
+SHOT 33_nachricht
+33_nachricht :: Nachricht senden | Empfänger: | Alle | Smart-ÖPNV Test | 015756102908 | MGVH2604 | 01632937939 | Haupthandy | 015254315620 | KOM2605 | 491773783891 | Leihgerät MGVH2606 | 4915756102908 | Nachricht:
+SHOT 34_mitarbeiter
+34_mitarbeiter :: Mitarbeiterverwaltung | 📋 Registrierte Mitarbeiter: | Timmy Hambloch (+491604228055) | Tim Thielen (+4915256895763) | Levent Erkoc () | Christopher Lambers (+4915254315620) | Thomas Müller (01776994174) | 💡 Long-Click: Bearbeiten oder Löschen | ➕ Mitarbeiter hinzufügen | ⬅️ Zur
+SHOT 35_datentransfer
+35_datentransfer :: Datentransfer | Daten Importieren | Daten Exportieren | Einzelne Route | Mehrere Routen | Route Importieren | Route an alle Fahrzeuge senden | Zurück
+SHOT 36_protokoll
+36_protokoll :: 🔐 Fehlerprotokoll | Passwort eingeben | _ _ _ _ _ _ _ _ | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | C | 0 | OK
+SHOT 37_dropbox
+37_dropbox :: Dropbox-Konfiguration:
+
+⭐ EINFACH (empfohlen):
+1. Klicken Sie auf 'Mit Dropbox verbinden'
+2. Melden Sie sich mit IHREM Dropbox-Account an
+3. Fertig! Tokens werden automatisch gespeichert
+
+🔄 ANDERES KONTO:
+Zuerst 'Dropbox-Verbindung löschen' oder direkt 'Mit Dropbox verbinden' – 

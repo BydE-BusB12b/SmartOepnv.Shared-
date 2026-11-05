@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using SmartOepnv.AppShared.Kom;
 using SmartOepnv.Core.Voip;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Voip;
 
@@ -81,7 +82,7 @@ public sealed class VoipSettingsDialog : Window
         {
             Content = "VoIP/Funk aktiviert",
             IsChecked = Settings.Enabled,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 12)
         };
         root.Children.Add(_enabled);
@@ -90,14 +91,14 @@ public sealed class VoipSettingsDialog : Window
         {
             Content = "Smart ÖPNV Funk (empfohlen) – auch unterwegs / LTE",
             IsChecked = Settings.ConnectivityMode is VoipConnectivityMode.ManagedCloud or VoipConnectivityMode.Cloud,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 4)
         };
         _modeDepot = new RadioButton
         {
             Content = "Nur Betriebshof / WLAN – Tablet im gleichen Netz wie dieser PC",
             IsChecked = Settings.ConnectivityMode == VoipConnectivityMode.DepotWlan,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 8)
         };
         _modeCloud = new RadioButton
@@ -105,28 +106,28 @@ public sealed class VoipSettingsDialog : Window
             Content = "Eigener Cloud/VPS-Server (Experte)",
             IsChecked = Settings.ConnectivityMode == VoipConnectivityMode.Cloud &&
                          !VoipManagedCloud.IsManagedMode(Settings),
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 4)
         };
         _modeFunnel = new RadioButton
         {
             Content = "Tailscale Funnel (Experte)",
             IsChecked = Settings.ConnectivityMode == VoipConnectivityMode.TailscaleFunnel,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 4)
         };
         _modeMobile = new RadioButton
         {
             Content = "Öffentliche IP / Router (Legacy)",
             IsChecked = Settings.ConnectivityMode == VoipConnectivityMode.MobilePublic,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 4)
         };
         _modeDual = new RadioButton
         {
             Content = "Automatisch WLAN + öffentliche IP (Legacy)",
             IsChecked = Settings.ConnectivityMode == VoipConnectivityMode.Dual,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 8)
         };
         _modeManaged.Checked += (_, _) => RefreshUi();
@@ -160,7 +161,7 @@ public sealed class VoipSettingsDialog : Window
         _showExpert = new CheckBox
         {
             Content = "Erweiterte Einstellungen (eigener Server, Tailscale, TURN manuell)",
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 8)
         };
         _showExpert.Checked += (_, _) =>
@@ -195,7 +196,7 @@ public sealed class VoipSettingsDialog : Window
         {
             Content = "TLS verwenden (wss://, Port 443 – empfohlen hinter nginx)",
             IsChecked = Settings.CloudSignalingUseTls,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 8, 0, 0)
         };
         _cloudUseTls.Checked += (_, _) => RefreshUi();
@@ -240,7 +241,7 @@ public sealed class VoipSettingsDialog : Window
         {
             Content = "Funnel automatisch mit VoIP starten/stoppen",
             IsChecked = Settings.AutoManageTailscaleFunnel,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 8, 0, 0)
         };
         _funnelPanel.Children.Add(_autoManageFunnel);

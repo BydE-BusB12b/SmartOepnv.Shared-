@@ -101,7 +101,9 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-    public ObservableCollection<ManagedAnnouncementTemplateItem> FilteredAnnouncements { get; } = [];
+    private readonly BulkObservableCollection<ManagedAnnouncementTemplateItem> _filteredAnnouncements = new();
+
+    public ObservableCollection<ManagedAnnouncementTemplateItem> FilteredAnnouncements => _filteredAnnouncements;
 
     public bool HasSelectedSequencePauseItem =>
         SelectedSequenceItem?.Kind == AnnouncementSequenceEntryKind.Pause;
@@ -120,7 +122,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     {
 
-        _searchDebouncer = new SearchQueryDebouncer(ApplyFilter);
+        _searchDebouncer = new SearchQueryDebouncer(ApplyFilter, delayMilliseconds: 40);
 
         if (AppServices.IsInitialized)
 
@@ -250,8 +252,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         EnsureStopCodesAndLinks();
 
-        EnsureAnnouncementsFromStopTemplates(editor.PackageRoot);
-
         ApplyFilter();
 
         SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault();
@@ -265,6 +265,17 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
         _sync.AfterRefresh();
 
         _loadedFingerprint = ComputeFingerprint();
+
+        var merged = MergeDirectionCopiesIntoExistingAnnouncements();
+        if (merged > 0)
+        {
+            ApplyFilter();
+            SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault(a => a.Id == SelectedAnnouncement?.Id)
+                                   ?? FilteredAnnouncements.FirstOrDefault();
+            MarkDirty();
+            StatusMessage =
+                $"{merged} Ansage(n) zusammengeführt. Dieselbe Bezeichnung gilt für alle Richtungen – bitte speichern.";
+        }
 
     }
 
@@ -481,6 +492,10 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
+        IbisAnnouncementIds.Propagate(
+            _allStops,
+            _allAnnouncements,
+            editor.AnnouncementTemplates);
         var stopClones = _allStops.Where(s => !s.IsEmptyDraft()).Select(CloneStop).ToList();
 
         var announcementClones = _allAnnouncements.Select(CloneAnnouncement).ToList();
@@ -814,7 +829,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
     [RelayCommand]
 
-    private void SaveChanges() => CommitChanges();
+    private void SaveChanges()
+    {
+        StatusMessage = "Speichern…";
+        UiDispatch.RunAfterPaint(() => CommitChanges());
+    }
 
 
 
@@ -1024,9 +1043,11 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
+                var stopName = stop.Name?.Trim() ?? string.Empty;
                 if (_allAnnouncements.Any(a =>
-
-                        string.Equals(a.EmbeddedSoundFileName, routeSoundFile, StringComparison.OrdinalIgnoreCase)))
+                        string.Equals(a.EmbeddedSoundFileName, routeSoundFile, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrEmpty(stopName) &&
+                         string.Equals(a.DisplayName?.Trim(), stopName, StringComparison.OrdinalIgnoreCase))))
 
                 {
 
@@ -1327,59 +1348,187 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
     }
 
     /// <summary>
-    /// Haltestellenansagen liegen oft nur in managedStopTemplates (Tondatei) – fehlende Kartei-Einträge ergänzen.
+    /// Richtung ist keine eigene Ansage. Kopien mit derselben Bezeichnung fallen auf die vorhandene zurück.
+    /// Es wird nichts neu angelegt.
     /// </summary>
-    private void EnsureAnnouncementsFromStopTemplates(JsonObject packageRoot)
+    private int MergeDirectionCopiesIntoExistingAnnouncements()
+    {
+        var cleared = ClearDirectionCopiedIntoDescription();
+        var deleted = CollapseAnnouncementsSharingDisplayName();
+        LinkStopsToExistingAnnouncements();
+        return cleared + deleted;
+    }
+
+    private int ClearDirectionCopiedIntoDescription()
+    {
+        var cleared = 0;
+        foreach (var announcement in _allAnnouncements)
+        {
+            var description = announcement.Description?.Trim();
+            var name = announcement.DisplayName?.Trim();
+            if (string.IsNullOrEmpty(description) || string.IsNullOrEmpty(name))
+            {
+                continue;
+            }
+
+            var copiedFromDirection = _allStops.Any(stop =>
+                string.Equals(stop.StopNameItcs?.Trim(), name, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(stop.DirectionDescription?.Trim(), description, StringComparison.OrdinalIgnoreCase));
+            if (!copiedFromDirection)
+            {
+                continue;
+            }
+
+            announcement.Description = string.Empty;
+            announcement.NotifyDisplayLabelChanged();
+            cleared++;
+        }
+
+        return cleared;
+    }
+
+    private int CollapseAnnouncementsSharingDisplayName()
+    {
+        var groups = _allAnnouncements
+            .Where(announcement =>
+                !string.IsNullOrWhiteSpace(announcement.DisplayName) &&
+                !IsChristmasShuttleAnnouncement(announcement))
+            .GroupBy(CanonicalAnnouncementName, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .ToList();
+
+        var deleted = 0;
+        foreach (var group in groups)
+        {
+            var list = group.ToList();
+            var primary = list
+                .OrderBy(announcement => string.IsNullOrWhiteSpace(announcement.IbisAnnouncementId) ? 1 : 0)
+                .ThenBy(announcement => string.IsNullOrWhiteSpace(announcement.Description) ? 0 : 1)
+                .ThenBy(PreferredDuplicatePrimaryRank)
+                .ThenBy(announcement => announcement.AnnouncementCode, StringComparer.Ordinal)
+                .First();
+            var canonical = CanonicalAnnouncementName(primary);
+            if (!string.Equals(primary.DisplayName.Trim(), canonical, StringComparison.Ordinal))
+            {
+                primary.DisplayName = canonical;
+                primary.NotifyDisplayLabelChanged();
+            }
+            var toDelete = list.Where(announcement => !ReferenceEquals(announcement, primary)).ToList();
+            if (string.IsNullOrWhiteSpace(primary.IbisAnnouncementId))
+            {
+                var donorId = toDelete
+                    .Select(announcement => announcement.IbisAnnouncementId)
+                    .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+                if (!string.IsNullOrWhiteSpace(donorId))
+                {
+                    primary.IbisAnnouncementId = donorId;
+                }
+            }
+
+            EnsurePrimaryHasUsableSound(primary, toDelete);
+            RemapStopsFromDeletedToPrimary(primary, toDelete);
+            if (string.IsNullOrWhiteSpace(primary.StopTemplateId))
+            {
+                var link = toDelete.FirstOrDefault(announcement =>
+                    !string.IsNullOrWhiteSpace(announcement.StopTemplateId));
+                if (link is not null)
+                {
+                    primary.StopTemplateId = link.StopTemplateId;
+                }
+            }
+
+            foreach (var duplicate in toDelete)
+            {
+                SuppressStopAnnouncementSound(duplicate.EmbeddedSoundFileName, duplicate.DisplayName);
+                _allAnnouncements.RemoveAll(announcement => announcement.Id == duplicate.Id);
+                _sequenceByAnnouncementId.Remove(duplicate.Id);
+                _gongByAnnouncementId.Remove(duplicate.Id);
+                _sondergongByAnnouncementId.Remove(duplicate.Id);
+                _nextStopByAnnouncementId.Remove(duplicate.Id);
+                _nextStopMp3ByAnnouncementId.Remove(duplicate.Id);
+                _followingStopsByAnnouncementId.Remove(duplicate.Id);
+                deleted++;
+            }
+        }
+
+        return deleted;
+    }
+
+    /// <summary>Haltestelle an eine vorhandene Ansage hängen. Keine neue Ansage aus der Richtung.</summary>
+    private void LinkStopsToExistingAnnouncements()
     {
         foreach (var stop in _allStops)
         {
-            if (string.IsNullOrWhiteSpace(stop.EmbeddedSoundFileName))
+            if (_allAnnouncements.Any(announcement => announcement.StopTemplateId == stop.Id))
             {
                 continue;
             }
 
-            var fileName = stop.EmbeddedSoundFileName.Trim();
-            if (IsSuppressedStopAnnouncementSound(fileName))
+            var match = FindExistingAnnouncementForStop(stop);
+            if (match is null || !string.IsNullOrEmpty(match.StopTemplateId))
             {
                 continue;
             }
 
-            if (_allAnnouncements.Any(a => a.StopTemplateId == stop.Id))
-            {
-                continue;
-            }
+            match.StopTemplateId = stop.Id;
+        }
+    }
 
-            var byFile = _allAnnouncements.FirstOrDefault(a =>
-                string.Equals(a.EmbeddedSoundFileName, fileName, StringComparison.OrdinalIgnoreCase));
+    private ManagedAnnouncementTemplateItem? FindExistingAnnouncementForStop(ManagedStopTemplateItem stop)
+    {
+        var fileName = stop.EmbeddedSoundFileName?.Trim();
+        if (!string.IsNullOrEmpty(fileName))
+        {
+            var byFile = _allAnnouncements.FirstOrDefault(announcement =>
+                string.Equals(announcement.EmbeddedSoundFileName, fileName, StringComparison.OrdinalIgnoreCase));
             if (byFile is not null)
             {
-                if (string.IsNullOrEmpty(byFile.StopTemplateId))
-                {
-                    byFile.StopTemplateId = stop.Id;
-                }
-
-                continue;
+                return byFile;
             }
-
-            var annCode = ManagedAnnouncementTemplateItem.SuggestNextCode(
-                _allAnnouncements.Select(a => a.AnnouncementCode));
-            var displayName = string.IsNullOrWhiteSpace(stop.StopNameItcs)
-                ? Path.GetFileNameWithoutExtension(fileName)
-                : stop.StopNameItcs.Trim();
-
-            var item = new ManagedAnnouncementTemplateItem
-            {
-                StopTemplateId = stop.Id,
-                AnnouncementCode = annCode,
-                DisplayName = displayName,
-                Description = stop.DirectionDescription.Trim(),
-                Category = "haltestelle",
-                EmbeddedSoundFileName = fileName,
-                IncludeInSpecialAnnouncements = false
-            };
-            AttachWorkspaceAudioPath(item, packageRoot);
-            _allAnnouncements.Add(item);
         }
+
+        var name = stop.StopNameItcs?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            return null;
+        }
+
+        return _allAnnouncements.FirstOrDefault(announcement =>
+            !IsChristmasShuttleAnnouncement(announcement) &&
+            string.Equals(CanonicalAnnouncementName(announcement), name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Weihnachtsshuttle: „B_ …“ ist eine eigene Sonderansage und kein Duplikat.</summary>
+    private static bool IsChristmasShuttleAnnouncement(ManagedAnnouncementTemplateItem announcement)
+    {
+        var name = announcement.DisplayName?.Trim() ?? string.Empty;
+        var file = Path.GetFileName(announcement.EmbeddedSoundFileName ?? string.Empty).Trim();
+        return name.StartsWith("B_", StringComparison.OrdinalIgnoreCase) ||
+               file.StartsWith("B_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>„Gerberstraße – Abteiweg“ ist dieselbe Ansage wie „Gerberstraße“, wenn Abteiweg nur die Richtung ist.</summary>
+    private string CanonicalAnnouncementName(ManagedAnnouncementTemplateItem announcement)
+    {
+        var name = announcement.DisplayName.Trim();
+        const string separator = " – ";
+        var split = name.LastIndexOf(separator, StringComparison.Ordinal);
+        if (split <= 0)
+        {
+            return name;
+        }
+
+        var baseName = name[..split].Trim();
+        var suffix = name[(split + separator.Length)..].Trim();
+        if (string.IsNullOrEmpty(baseName) || string.IsNullOrEmpty(suffix))
+        {
+            return name;
+        }
+
+        var suffixIsDirection = _allStops.Any(stop =>
+            string.Equals(stop.StopNameItcs?.Trim(), baseName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(stop.DirectionDescription?.Trim(), suffix, StringComparison.OrdinalIgnoreCase));
+        return suffixIsDirection ? baseName : name;
     }
 
 
@@ -1870,8 +2019,6 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
     private void ApplyFilter()
     {
         var q = SearchQuery.Trim();
-        FilteredAnnouncements.Clear();
-
         IEnumerable<ManagedAnnouncementTemplateItem> source = _allAnnouncements;
         if (!string.IsNullOrEmpty(q))
         {
@@ -1890,15 +2037,12 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
             a => a.AnnouncementCode,
             a => a.DisplayName);
 
-        foreach (var ann in source)
-        {
-            FilteredAnnouncements.Add(ann);
-        }
+        _filteredAnnouncements.ReplaceAll(source.ToList());
 
         if (SelectedAnnouncement is not null &&
             !FilteredAnnouncements.Any(a => a.Id == SelectedAnnouncement.Id))
         {
-            SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault();
+            SelectedAnnouncement = null;
         }
 
     }
@@ -2153,6 +2297,8 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         EmbeddedSoundFileName = source.EmbeddedSoundFileName,
 
+        IbisAnnouncementId = source.IbisAnnouncementId,
+
         AudioOutput = AnnouncementAudioOutput.Normalize(source.AudioOutput),
 
         IncludeInSpecialAnnouncements = source.IncludeInSpecialAnnouncements,
@@ -2214,7 +2360,9 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
         EntwerterEnabled = source.EntwerterEnabled,
 
-        EntwerterCode = source.EntwerterCode
+        EntwerterCode = source.EntwerterCode,
+
+        IbisAnnouncementId = source.IbisAnnouncementId
 
     };
 

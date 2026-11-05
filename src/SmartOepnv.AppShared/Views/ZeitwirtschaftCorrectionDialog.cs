@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using SmartOepnv.Core.Zeitwirtschaft;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -10,7 +11,7 @@ public sealed class ZeitwirtschaftCorrectionDialog : Window
 {
     private static readonly Brush InputBackground = Brushes.White;
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush LabelForeground = Brushes.White;
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
 
     private readonly TextBox _correctedStartBox;
     private readonly TextBox _correctedEndBox;
@@ -29,7 +30,7 @@ public sealed class ZeitwirtschaftCorrectionDialog : Window
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
-        Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+        Background = UiTheme.BackgroundBrush;
 
         var root = new StackPanel { Margin = new Thickness(24) };
         root.Children.Add(new TextBlock

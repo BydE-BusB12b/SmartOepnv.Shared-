@@ -9,7 +9,7 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         Background="{StaticResource SmartBackgroundBrush}"
-        Foreground="White"
+        Foreground="{DynamicResource SmartForegroundBrush}"
         FontFamily="{materialDesign:MaterialDesignFont}">
     <Grid Margin="12">
         <Grid.RowDefinitions>

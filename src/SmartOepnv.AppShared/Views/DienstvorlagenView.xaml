@@ -27,7 +27,7 @@
         </Style>
 
         <Style x:Key="DutyStatCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource SmartPrimaryDarkBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SmartPanelBrush}" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="10,8" />
             <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
@@ -196,7 +196,7 @@
                                         <CheckBox Content="{Binding Label}"
                                                   IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   Margin="0,0,10,4"
-                                                  Foreground="White"
+                                                  Foreground="{DynamicResource SmartForegroundBrush}"
                                                   FontSize="11" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -440,8 +440,17 @@
                             <CheckBox Content="30 Min. unbezahlte Pause abziehen (Pausen zwischen Fahrten zählen mit)"
                                       IsChecked="{Binding SubtractUnpaidBreak30Minutes}"
                                       Margin="0,0,0,6"
-                                      Foreground="White"
+                                      Foreground="{DynamicResource SmartForegroundBrush}"
                                       FontSize="11" />
+                            <CheckBox Content="Sechstel-Dienst: Wendezeiten ab der Tarifschwelle sind Tarifpause, keine gesetzliche Ruhepause"
+                                      IsChecked="{Binding IsSixthDuty}"
+                                      Margin="0,0,0,6"
+                                      Foreground="{DynamicResource SmartForegroundBrush}"
+                                      FontSize="11" />
+                            <TextBox materialDesign:HintAssist.Hint="Wendezeit gilt ab (Minuten, Tarif)"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     Text="{Binding WendePauseFromMinutes, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,4" />
                             <TextBox materialDesign:HintAssist.Hint="Zusätzlicher Pausenabzug (Min.)"
                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                      Text="{Binding CustomUnpaidBreakDeductionMinutes, UpdateSourceTrigger=PropertyChanged}"
@@ -537,7 +546,7 @@
                                  Background="{StaticResource SmartSurfaceBrush}"
                                  VerticalAlignment="Top">
                 <StackPanel>
-                    <Border Background="{StaticResource SmartPrimaryDarkBrush}"
+                    <Border Background="{DynamicResource SmartPanelBrush}"
                             CornerRadius="8"
                             Padding="12,10"
                             Margin="0,0,0,10">
@@ -591,7 +600,7 @@
                                         Command="{Binding ApplyLineCourseToAllRowsCommand}"
                                         VerticalAlignment="Center"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
                             </Grid>
 
@@ -605,21 +614,21 @@
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
                                 <Button Content="Leerfahrt"
                                         Command="{Binding AddEmptyTripRowCommand}"
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
                                 <Button Content="Intelligente Leerfahrten"
                                         Command="{Binding ApplyIntelligentEmptyRunsCommand}"
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
                                         ToolTip="Leerfahrt-Regeln eingeben und einfügen" />
                                 <Button Content="Leerzeile"
@@ -627,14 +636,14 @@
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
                                 <Button Content="↑"
                                         Command="{Binding MoveSelectedRowUpCommand}"
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
                                         ToolTip="Ausgewählte Zeile nach oben" />
                                 <Button Content="↓"
@@ -642,7 +651,7 @@
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
                                         ToolTip="Ausgewählte Zeile nach unten" />
                                 <Button Content="Zeile entfernen"
@@ -650,14 +659,14 @@
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}" />
                                 <Button Content="Intelligent Aufteilen"
                                         Command="{Binding IntelligentSplitDutyCommand}"
                                         PreviewMouseDown="IntelligentSplitButton_PreviewMouseDown"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
                                         Visibility="{Binding IsSplitDuty, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                 <Button Content="Geteilter Dienst"
@@ -666,7 +675,7 @@
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
                                         ToolTip="Zwei Zeilen in Teil 1 markieren – FPersV, eine Dienstnummer"
                                         Visibility="{Binding IsSplitDuty, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
@@ -676,7 +685,7 @@
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
                                         ToolTip="Dienstaufteilung G1/G2 – zwei Zeilen im gleichen Teil markieren"
                                         Visibility="{Binding IsSplitShift, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
@@ -685,7 +694,7 @@
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
                                         Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <Button Content="← Teil 1"
@@ -693,7 +702,7 @@
                                         Focusable="False"
                                         Margin="0,0,6,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Foreground="White"
+                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                         BorderBrush="{StaticResource SmartAccentBrush}"
                                         Visibility="{Binding IsSplitDuty, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <Button Content="Zusammenführen"
@@ -788,7 +797,7 @@
                             <CheckBox Content="30 Min. unbezahlte Pause abziehen (Teil 1)"
                                       IsChecked="{Binding SubtractUnpaidBreak30Minutes}"
                                       Margin="0,0,0,4"
-                                      Foreground="White"
+                                      Foreground="{DynamicResource SmartForegroundBrush}"
                                       FontSize="11" />
                         </StackPanel>
                     </Border>
@@ -828,7 +837,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                                 <Setter Property="Padding" Value="8,6" />
-                                <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SmartPanelBrush}" />
                                 <Setter Property="BorderThickness" Value="0,0,1,0" />
                             </Style>
                         </DataGrid.ColumnHeaderStyle>
@@ -924,7 +933,7 @@
                                 Margin="0,0,0,10">
                         <Button Command="{Binding ExportPart1PdfCommand}"
                                 Style="{StaticResource MaterialDesignRaisedButton}"
-                                Background="{StaticResource SmartPrimaryDarkBrush}">
+                                Background="{DynamicResource SmartPanelBrush}">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="FilePdfBox" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <TextBlock Text="{Binding ExportPart1ButtonLabel}" VerticalAlignment="Center" />
@@ -1005,7 +1014,7 @@
                             <CheckBox Content="30 Min. unbezahlte Pause abziehen (Teil 2)"
                                       IsChecked="{Binding SubtractUnpaidBreak30MinutesPart2}"
                                       Margin="0,0,0,4"
-                                      Foreground="White"
+                                      Foreground="{DynamicResource SmartForegroundBrush}"
                                       FontSize="11" />
                         </StackPanel>
                     </Border>
@@ -1046,7 +1055,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                                 <Setter Property="Padding" Value="8,6" />
-                                <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SmartPanelBrush}" />
                                 <Setter Property="BorderThickness" Value="0,0,1,0" />
                             </Style>
                         </DataGrid.ColumnHeaderStyle>
@@ -1129,7 +1138,7 @@
                                 Visibility="{Binding IsDutyDivision, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button Command="{Binding ExportPart2PdfCommand}"
                                 Style="{StaticResource MaterialDesignRaisedButton}"
-                                Background="{StaticResource SmartPrimaryDarkBrush}">
+                                Background="{DynamicResource SmartPanelBrush}">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="FilePdfBox" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <TextBlock Text="Dienstvorlage erstellen (Teil 2)" VerticalAlignment="Center" />
@@ -1210,7 +1219,7 @@
                             <CheckBox Content="30 Min. unbezahlte Pause abziehen (Teil 3)"
                                       IsChecked="{Binding SubtractUnpaidBreak30MinutesPart3}"
                                       Margin="0,0,0,4"
-                                      Foreground="White"
+                                      Foreground="{DynamicResource SmartForegroundBrush}"
                                       FontSize="11" />
                         </StackPanel>
                     </Border>
@@ -1251,7 +1260,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                                 <Setter Property="Padding" Value="8,6" />
-                                <Setter Property="BorderBrush" Value="{StaticResource SmartPrimaryDarkBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SmartPanelBrush}" />
                                 <Setter Property="BorderThickness" Value="0,0,1,0" />
                             </Style>
                         </DataGrid.ColumnHeaderStyle>
@@ -1272,7 +1281,7 @@
                                 Visibility="{Binding IsThreePartDuty, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button Command="{Binding ExportPart3PdfCommand}"
                                 Style="{StaticResource MaterialDesignRaisedButton}"
-                                Background="{StaticResource SmartPrimaryDarkBrush}">
+                                Background="{DynamicResource SmartPanelBrush}">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="FilePdfBox" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <TextBlock Text="Dienstvorlage erstellen (Teil 3)" VerticalAlignment="Center" />

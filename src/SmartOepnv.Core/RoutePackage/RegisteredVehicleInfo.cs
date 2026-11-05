@@ -89,21 +89,17 @@ public sealed class RegisteredVehicleInfo
             return;
         }
 
-        if (byPhone.TryGetValue(phoneDigits, out var existing))
+        // Nur einem vorhandenen Fahrzeug zuordnen. Die eigene Nummer eines
+        // Hauptgeräte-Fahrers ist kein Fahrzeug.
+        if (!byPhone.TryGetValue(phoneDigits, out var existing))
         {
-            byPhone[phoneDigits] = new RegisteredVehicleInfo
-            {
-                Name = existing.Name,
-                PhoneNumber = existing.PhoneNumber,
-                MainDeviceEmployeeName = employeeName
-            };
             return;
         }
 
         byPhone[phoneDigits] = new RegisteredVehicleInfo
         {
-            Name = employeeName,
-            PhoneNumber = ReadPhone(item) ?? phoneDigits,
+            Name = existing.Name,
+            PhoneNumber = existing.PhoneNumber,
             MainDeviceEmployeeName = employeeName
         };
     }

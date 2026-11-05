@@ -95,7 +95,13 @@ public static class StopTemplateRouteMerger
 
         var index = TemplateIndex.Build(persistable);
         var updated = 0;
-        foreach (var routeName in editor.RouteNames)
+        // RouteNames + alle Stop-Buckets (Overlay-Keys können vom Anzeigenamen abweichen)
+        var routeKeys = editor.RouteNames
+            .Concat(editor.StopsByRoute.Keys)
+            .Where(static k => !string.IsNullOrWhiteSpace(k))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var routeName in routeKeys)
         {
             foreach (var stop in editor.GetStops(routeName))
             {
@@ -135,7 +141,8 @@ public static class StopTemplateRouteMerger
                     t.RadiusMeters.ToString(),
                     t.EmbeddedSoundFileName.Trim(),
                     t.EntwerterEnabled ? "1" : "0",
-                    (t.EntwerterCode ?? string.Empty).Trim()));
+                    (t.EntwerterCode ?? string.Empty).Trim(),
+                    IbisAnnouncementIds.Normalize(t.IbisAnnouncementId)));
         return string.Join('\n', parts);
     }
 
@@ -229,6 +236,14 @@ public static class StopTemplateRouteMerger
                 stop.EntwerterCode = entwerterCode;
                 changed = true;
             }
+        }
+
+        var ibisAnnouncementId = IbisAnnouncementIds.Normalize(source.IbisAnnouncementId);
+        if (!string.IsNullOrEmpty(ibisAnnouncementId) &&
+            !string.Equals(stop.IbisAnnouncementId, ibisAnnouncementId, StringComparison.Ordinal))
+        {
+            stop.IbisAnnouncementId = ibisAnnouncementId;
+            changed = true;
         }
 
         return changed;

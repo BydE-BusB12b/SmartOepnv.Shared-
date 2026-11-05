@@ -35,8 +35,8 @@ public sealed class MobitecOutImportDialog : Window
         MinWidth = 720;
         MinHeight = 420;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-        Foreground = Brushes.White;
+        Background = UiTheme.BackgroundBrush;
+        Foreground = UiTheme.ForegroundBrush;
 
         _existingMobitecIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (existingMobitecIds is not null)

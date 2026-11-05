@@ -1,9 +1,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
-using System.Windows.Media;
-using MaterialDesignColors;
-using MaterialDesignThemes.Wpf;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Betrieb;
@@ -256,37 +253,7 @@ public static class SmartOepnvAppHost
 
     public static void ApplyApplicationResources(Application application, SmartOepnvAppProfile profile)
     {
-        var primary = (Color)ColorConverter.ConvertFromString(profile.PrimaryColorHex)!;
-        var primaryDark = (Color)ColorConverter.ConvertFromString(profile.PrimaryDarkColorHex)!;
-        var accent = (Color)ColorConverter.ConvertFromString(profile.AccentColorHex)!;
-        var primaryLight = Blend(primary, Colors.White, 0.35);
-
-        var resources = new ResourceDictionary();
-        resources.MergedDictionaries.Add(new BundledTheme
-        {
-            BaseTheme = BaseTheme.Dark,
-            PrimaryColor = PrimaryColor.Blue,
-            SecondaryColor = SecondaryColor.LightBlue
-        });
-        resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign3.Defaults.xaml")
-        });
-        resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/SmartOepnv.AppShared;component/Themes/SmartOepnvTheme.xaml")
-        });
-
-        resources["SmartPrimaryColor"] = primary;
-        resources["SmartPrimaryDarkColor"] = primaryDark;
-        resources["SmartPrimaryLightColor"] = primaryLight;
-        resources["SmartAccentColor"] = accent;
-        resources["MaterialDesign.Brush.Primary"] = new SolidColorBrush(primary);
-        resources["MaterialDesign.Brush.Primary.Dark"] = new SolidColorBrush(primaryDark);
-        resources["MaterialDesign.Brush.Primary.Light"] = new SolidColorBrush(primaryLight);
-        resources["MaterialDesign.Brush.Secondary"] = new SolidColorBrush(accent);
-
-        application.Resources = resources;
+        Helpers.UiTheme.Apply(application, profile, Helpers.UiTheme.LoadPreference());
     }
 
     public static MainShellWindow CreateMainWindow()
@@ -566,12 +533,4 @@ public static class SmartOepnvAppHost
         }
     }
 
-    private static Color Blend(Color a, Color b, double amount)
-    {
-        amount = Math.Clamp(amount, 0, 1);
-        return Color.FromRgb(
-            (byte)(a.R + (b.R - a.R) * amount),
-            (byte)(a.G + (b.G - a.G) * amount),
-            (byte)(a.B + (b.B - a.B) * amount));
-    }
 }

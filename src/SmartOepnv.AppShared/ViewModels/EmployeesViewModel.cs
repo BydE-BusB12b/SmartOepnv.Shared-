@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using SmartOepnv.AppShared.Employees;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
@@ -218,7 +219,11 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
     }
 
     [RelayCommand]
-    private void SaveChanges() => CommitChanges();
+    private void SaveChanges()
+    {
+        StatusMessage = "Speichern…";
+        UiDispatch.RunAfterPaint(() => CommitChanges());
+    }
 
     private async Task ShowSaveSuccessFeedbackAsync()
     {
@@ -337,6 +342,9 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
         PersonnelNumber = e.PersonnelNumber,
         Password = e.Password,
         LicenseExpiry = e.LicenseExpiry,
+        BirthDate = e.BirthDate,
+        EntryDate = e.EntryDate,
+        MaternityProtection = e.MaternityProtection,
         FqnExpiry = e.FqnExpiry,
         DriverCardExpiry = e.DriverCardExpiry,
         LoginAsMainDevice = e.LoginAsMainDevice,
@@ -379,6 +387,7 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
             e.LicenseExpiry,
             e.FqnExpiry,
             e.DriverCardExpiry,
+            e.EntryDate,
             e.LoginAsMainDevice,
             e.PlannerLoginEnabled,
             e.PlannerPassword,

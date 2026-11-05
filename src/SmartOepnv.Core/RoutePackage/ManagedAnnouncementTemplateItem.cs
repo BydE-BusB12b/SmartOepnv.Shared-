@@ -30,6 +30,25 @@ public sealed class ManagedAnnouncementTemplateItem : INotifyPropertyChanged
 
     public string EmbeddedSoundFileName { get; set; } = string.Empty;
 
+    private string _ibisAnnouncementId = string.Empty;
+
+    /// <summary>Nummer am IBIS-Ansagegerät (DS036 <c>hP</c>, vierstellig). Leer = nicht gesetzt.</summary>
+    public string IbisAnnouncementId
+    {
+        get => _ibisAnnouncementId;
+        set
+        {
+            var normalized = IbisAnnouncementIds.Normalize(value);
+            if (_ibisAnnouncementId == normalized)
+            {
+                return;
+            }
+
+            _ibisAnnouncementId = normalized;
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>
     /// Stereo-Zone Tablet: innen | aussen | beide (Default innen).
     /// Wirksam nur wenn auf dem Gerät „Stereo-Zonen“ aktiv ist.

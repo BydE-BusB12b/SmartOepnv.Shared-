@@ -18,8 +18,8 @@
 
     <Style x:Key="TransferBlinkOutlinedOnDarkStyle" TargetType="Button"
            BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-        <Setter Property="Foreground" Value="White" />
-        <Setter Property="BorderBrush" Value="White" />
+        <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SmartForegroundBrush}" />
         <Setter Property="Background" Value="Transparent" />
     </Style>
 
@@ -206,6 +206,8 @@
     <Style x:Key="PlanerWorkspaceExportTransferButtonStyle"
            TargetType="Button"
            BasedOn="{StaticResource TransferBlinkOutlinedOnDarkStyle}">
+        <Setter Property="Foreground" Value="{DynamicResource SmartOnPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SmartOnPrimaryBrush}" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding PlanerWorkspaceExportButtonState}" Value="{x:Static vm:TransferButtonVisualState.Active}">
                 <Setter Property="Foreground" Value="#FFFFCC80" />

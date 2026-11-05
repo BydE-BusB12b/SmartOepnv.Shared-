@@ -10,8 +10,8 @@
         MinWidth="400"
         MaxWidth="720"
         Background="{StaticResource SmartBackgroundBrush}"
-        Foreground="White"
-        TextElement.Foreground="White">
+        Foreground="{DynamicResource SmartForegroundBrush}"
+        TextElement.Foreground="{DynamicResource SmartForegroundBrush}">
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -23,7 +23,7 @@
                    Grid.Row="0"
                    FontSize="20"
                    FontWeight="SemiBold"
-                   Foreground="White"
+                   Foreground="{DynamicResource SmartForegroundBrush}"
                    TextWrapping="Wrap" />
 
         <ScrollViewer Grid.Row="1"
@@ -35,7 +35,7 @@
                        FontSize="13"
                        LineHeight="20"
                        TextWrapping="Wrap"
-                       Foreground="White"
+                       Foreground="{DynamicResource SmartForegroundBrush}"
                        Opacity="0.88" />
         </ScrollViewer>
 
@@ -45,13 +45,15 @@
             <Button x:Name="CancelButton"
                     Margin="0,0,8,0"
                     IsCancel="True"
-                    Foreground="White"
+                    Foreground="{DynamicResource SmartForegroundBrush}"
                     Style="{StaticResource MaterialDesignOutlinedButton}"
                     Padding="16,6"
                     Click="Cancel_Click" />
             <Button x:Name="ConfirmButton"
                     IsDefault="True"
                     Foreground="White"
+                    Background="{StaticResource SmartAccentBrush}"
+                    BorderBrush="{StaticResource SmartAccentBrush}"
                     Style="{StaticResource MaterialDesignRaisedButton}"
                     Padding="16,6"
                     Click="Confirm_Click" />

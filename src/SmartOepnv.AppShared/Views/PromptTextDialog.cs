@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -20,8 +21,8 @@ public sealed class PromptTextDialog : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
-        Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x29, 0x3B));
-        Foreground = Brushes.White;
+        Background = UiTheme.BackgroundBrush;
+        Foreground = UiTheme.ForegroundBrush;
 
         var root = new DockPanel { Margin = new Thickness(16) };
         var buttons = new StackPanel
@@ -100,7 +101,7 @@ public sealed class PromptTextDialog : Window
         {
             Text = prompt,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.95
         });
         body.Children.Add(_textBox);

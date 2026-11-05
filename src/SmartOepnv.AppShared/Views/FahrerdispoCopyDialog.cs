@@ -8,8 +8,8 @@ namespace SmartOepnv.AppShared.Views;
 /// <summary>Tage/Wochen in der Fahrerdisposition kopieren (Quelle → Ziel).</summary>
 public sealed class FahrerdispoCopyDialog : Window
 {
-    private static readonly Brush DialogBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush LabelForeground = Brushes.White;
+    private static Brush DialogBackground => UiTheme.BackgroundBrush;
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
     private static readonly Brush InputBackground = new SolidColorBrush(Color.FromRgb(0x1E, 0x5A, 0x9E));
 
     private readonly DatePicker _sourceFromPicker;
@@ -135,7 +135,7 @@ public sealed class FahrerdispoCopyDialog : Window
             MinHeight = 34,
             IsEnabled = false,
             Background = InputBackground,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 12)
         };
         if (_driverBox.Items.Count > 0)

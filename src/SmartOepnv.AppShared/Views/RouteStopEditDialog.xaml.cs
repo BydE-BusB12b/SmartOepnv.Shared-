@@ -126,8 +126,10 @@ public partial class RouteStopEditDialog : Window
 
         if (_commitPackageOnSave)
         {
+            // Nur markieren + verzögert speichern (wie Verschieben/Löschen) –
+            // volles CommitChanges blockiert sonst Sekunden beim Schließen.
             _viewModel.StopDetailEditedCommand.Execute(null);
-            _viewModel.SaveChangesCommand.Execute(null);
+            _viewModel.SchedulePersistAfterStopEdit();
         }
 
         // RefreshStopAfterEdit macht RoutesView nach ShowDialog – hier nicht doppelt.

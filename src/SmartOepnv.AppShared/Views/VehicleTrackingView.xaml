@@ -19,6 +19,11 @@
                             Command="{Binding RefreshCommand}"
                             Style="{StaticResource MaterialDesignRaisedButton}"
                             Margin="0,0,12,0" />
+                    <Button Content="VDV 454 Dry-Run"
+                            Command="{Binding DryRunVdv454Command}"
+                            ToolTip="SIRI-VM/ET-Vorbereitungs-XML aus aktuellen Live-Fahrzeugen schreiben (kein Verbund-Versand)"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Margin="0,0,12,0" />
                     <TextBlock Text="Auto-Update: 15 s" VerticalAlignment="Center" Opacity="0.75" />
                 </StackPanel>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding StatusMessage}" TextWrapping="Wrap"
@@ -50,9 +55,9 @@
                 <materialDesign:Card Padding="12"
                                      UniformCornerRadius="12"
                                      VerticalAlignment="Stretch"
-                                     Background="{StaticResource SmartPrimaryDarkBrush}">
+                                     Background="{DynamicResource SmartPanelBrush}">
                     <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="Fahrzeugliste" Foreground="White"
+                        <TextBlock DockPanel.Dock="Top" Text="Fahrzeugliste" Foreground="{DynamicResource SmartForegroundBrush}"
                                    FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
                         <TextBlock DockPanel.Dock="Top"
                                    Text="Einfachklick: Karte · Doppelklick: Info · Rechtsklick: Fernsteuerung"
@@ -85,7 +90,7 @@
                                             </Style>
                                         </Border.Style>
                                         <StackPanel>
-                                            <TextBlock Text="{Binding DisplayName, Mode=OneWay}" Foreground="White" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding DisplayName, Mode=OneWay}" Foreground="{DynamicResource SmartForegroundBrush}" FontWeight="Bold" />
                                             <TextBlock Foreground="#BBDEFB">
                                                 <Run Text="Linie/Kurs, Fahrt: " />
                                                 <Run Text="{Binding LineCourse, Mode=OneWay}" FontWeight="SemiBold" />
@@ -134,12 +139,12 @@
                                      Padding="12"
                                      UniformCornerRadius="12"
                                      VerticalAlignment="Stretch"
-                                     Background="{StaticResource SmartPrimaryDarkBrush}">
+                                     Background="{DynamicResource SmartPanelBrush}">
                     <DockPanel>
                         <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
                             <TextBlock x:Name="VehicleDetailTitle"
                                        Text="KOM-Info"
-                                       Foreground="White"
+                                       Foreground="{DynamicResource SmartForegroundBrush}"
                                        FontSize="16"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center" />
@@ -151,7 +156,7 @@
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Top"
                                     Background="#1E5A9E"
-                                    Foreground="White"
+                                    Foreground="{DynamicResource SmartOnPrimaryBrush}"
                                     BorderBrush="#42A5F5"
                                     BorderThickness="1"
                                     Click="VehicleDetailClose_Click"
@@ -162,7 +167,7 @@
                                 Margin="0,12,0,0"
                                 MinHeight="36"
                                 Background="#0D47A1"
-                                Foreground="White"
+                                Foreground="{DynamicResource SmartOnPrimaryBrush}"
                                 BorderBrush="#42A5F5"
                                 BorderThickness="1"
                                 IsCancel="True"

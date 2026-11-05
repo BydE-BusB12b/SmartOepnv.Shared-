@@ -52,13 +52,15 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
     private bool _suppressRouteAssignSearchChanged;
 
-    public ObservableCollection<ManagedStopTemplateItem> FilteredTemplates { get; } = [];
+    private readonly BulkObservableCollection<ManagedStopTemplateItem> _filteredTemplates = new();
+
+    public ObservableCollection<ManagedStopTemplateItem> FilteredTemplates => _filteredTemplates;
     public ObservableCollection<string> AvailableRoutes { get; } = [];
 
     public StopsLibraryViewModel()
     {
-        _searchDebouncer = new SearchQueryDebouncer(ApplyFilter);
-        _routeAssignSearchDebouncer = new SearchQueryDebouncer(ApplyRouteAssignFilter);
+        _searchDebouncer = new SearchQueryDebouncer(ApplyFilter, delayMilliseconds: 40);
+        _routeAssignSearchDebouncer = new SearchQueryDebouncer(ApplyRouteAssignFilter, delayMilliseconds: 40);
         Ds009TextMaxLength = PlanerDs009TextLength.Read();
         PlanerDs009TextLength.Changed += () => Ds009TextMaxLength = PlanerDs009TextLength.Read();
         if (AppServices.IsInitialized)
@@ -351,14 +353,17 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
         PruneEmptyDrafts();
 
+        var announcements = editor.AnnouncementTemplates;
         foreach (var template in _allTemplates)
         {
             template.StopCode = PlannerStopCode.Normalize(template.StopCode);
             CoordinateFormatting.NormalizeTemplate(template);
+            IbisAnnouncementIds.FillIfEmpty(template, announcements);
         }
 
         var persistable = _allTemplates.Where(t => !t.IsEmptyDraft()).Select(Clone).ToList();
         editor.ReplaceStopTemplates(persistable);
+        SyncLinkedAnnouncementSoundFiles(editor, persistable);
         var stopFingerprint = StopTemplateRouteMerger.ComputeApplyFingerprint(persistable);
         var routeStopsUpdated = 0;
         if (!string.Equals(stopFingerprint, _lastAppliedStopTemplatesFingerprint, StringComparison.Ordinal))
@@ -397,6 +402,60 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         _ = ShowSaveSuccessFeedbackAsync();
         _sync.AfterCommit();
         _loadedFingerprint = ComputeFingerprint();
+    }
+
+    /// <summary>
+    /// Die Ansage-Kartei spricht sonst weiter die alte Datei (z. B. Burg Brücke),
+    /// obwohl an der Haltestelle schon Burg Seilbahn hängt.
+    /// </summary>
+    private static void SyncLinkedAnnouncementSoundFiles(
+        EditableRoutePackage editor,
+        IReadOnlyList<ManagedStopTemplateItem> stops)
+    {
+        var byId = new Dictionary<string, ManagedStopTemplateItem>(StringComparer.OrdinalIgnoreCase);
+        foreach (var stop in stops)
+        {
+            if (!string.IsNullOrWhiteSpace(stop.Id))
+            {
+                byId[stop.Id] = stop;
+            }
+        }
+
+        foreach (var announcement in editor.AnnouncementTemplates)
+        {
+            if (string.IsNullOrWhiteSpace(announcement.StopTemplateId) ||
+                !byId.TryGetValue(announcement.StopTemplateId, out var stop))
+            {
+                continue;
+            }
+
+            var sound = stop.EmbeddedSoundFileName?.Trim();
+            if (string.IsNullOrWhiteSpace(sound))
+            {
+                continue;
+            }
+
+            var previous = announcement.EmbeddedSoundFileName?.Trim() ?? string.Empty;
+            if (!string.Equals(previous, sound, StringComparison.OrdinalIgnoreCase))
+            {
+                announcement.EmbeddedSoundFileName = sound;
+            }
+
+            if (string.IsNullOrWhiteSpace(previous) ||
+                string.Equals(previous, sound, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            foreach (var step in announcement.AnnouncementSequence)
+            {
+                if (step.Kind == AnnouncementExportEntryKind.Audio &&
+                    string.Equals(step.FileName, previous, StringComparison.OrdinalIgnoreCase))
+                {
+                    step.FileName = sound;
+                }
+            }
+        }
     }
 
     private async Task ShowSaveSuccessFeedbackAsync()
@@ -459,6 +518,12 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     partial void OnSelectedTemplateChanged(ManagedStopTemplateItem? value)
     {
         InsertIntoRouteButtonIsSuccess = false;
+        if (value is not null &&
+            IbisAnnouncementIds.FillIfEmpty(value, AppServices.Routes.Editor?.AnnouncementTemplates))
+        {
+            MarkDirty();
+        }
+
         SyncCoordinateFieldsFromSelected();
     }
 
@@ -703,7 +768,11 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
     }
 
     [RelayCommand]
-    private void SaveChanges() => CommitChanges();
+    private void SaveChanges()
+    {
+        StatusMessage = "Speichern…";
+        UiDispatch.RunAfterPaint(CommitChanges);
+    }
 
     [RelayCommand]
     private void PickVrrStop()
@@ -889,6 +958,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
         SelectedTemplate.EmbeddedSoundFileName = dialog.SelectedFileName.Trim();
         SelectedTemplate.LocalAudioPath = null;
+        ApplyLinkedIbisAnnouncementId(SelectedTemplate);
         RefreshSelectedTemplateBinding();
         StatusMessage =
             $"Ansage „{SelectedTemplate.EmbeddedSoundFileName}“ verknüpft (bereits in Soundbibliothek) – mit „Speichern“ übernehmen.";
@@ -980,6 +1050,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
         SelectedTemplate.LocalAudioPath = outputPath;
         SelectedTemplate.EmbeddedSoundFileName = outputFileName;
+        ApplyLinkedIbisAnnouncementId(SelectedTemplate);
         RefreshSelectedTemplateBinding();
         StatusMessage =
             $"{dialog.SelectedFileNames.Count} Schnipsel zu „{outputFileName}“ zusammengefügt" +
@@ -1181,6 +1252,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
 
         SelectedTemplate.LocalAudioPath = dialog.FileName;
         SelectedTemplate.EmbeddedSoundFileName = fileName;
+        ApplyLinkedIbisAnnouncementId(SelectedTemplate);
         RefreshSelectedTemplateBinding();
         StatusMessage =
             $"Ton gewählt – mit „Speichern“ wird „{fileName}“ in embeddedSounds eingetragen.";
@@ -1249,12 +1321,13 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         }
 
         editor.AddStopFromTemplate(SelectedRouteForInsert, Clone(SelectedTemplate));
-        AppServices.Routes.ApplyEditorChanges("haltestellen-route", rebuildEmbeddedMedia: false);
         var code = PlannerStopCode.Normalize(SelectedTemplate.StopCode);
         var codeHint = string.IsNullOrEmpty(code) ? string.Empty : $" (ID {code})";
         StatusMessage =
             $"„{SelectedTemplate.StopNameItcs}“{codeHint} in Route „{SelectedRouteForInsert}“ eingefügt – unter „Routen“ bearbeitbar.";
         InsertIntoRouteButtonIsSuccess = true;
+        UiDispatch.RunAfterPaint(() =>
+            AppServices.Routes.ApplyEditorChanges("haltestellen-route", rebuildEmbeddedMedia: false));
     }
 
     [RelayCommand]
@@ -1349,7 +1422,11 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             return RouteMatchesAssignSearchCached(route, query);
         };
         view.Refresh();
+        RouteAssignSearchApplied?.Invoke();
     }
+
+    /// <summary>Nach dem Filtern: Suchfeld behält den Cursor.</summary>
+    internal event Action? RouteAssignSearchApplied;
 
     private void EnsureAvailableRoutesPopulated()
     {
@@ -1443,7 +1520,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         if (SelectedTemplate is not null &&
             !FilteredTemplates.Any(t => t.Id == SelectedTemplate.Id))
         {
-            SelectedTemplate = FilteredTemplates.FirstOrDefault();
+            SelectedTemplate = null;
         }
     }
 
@@ -1467,11 +1544,7 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
             }
         }
 
-        FilteredTemplates.Clear();
-        foreach (var t in next)
-        {
-            FilteredTemplates.Add(t);
-        }
+        _filteredTemplates.ReplaceAll(next);
     }
 
     private static bool TemplateMatchesSearch(ManagedStopTemplateItem t, string q) =>
@@ -1539,6 +1612,10 @@ public partial class StopsLibraryViewModel : ObservableObject, IEditorAreaViewMo
         EmbeddedSoundFileName = source.EmbeddedSoundFileName,
         LocalAudioPath = source.LocalAudioPath,
         EntwerterEnabled = source.EntwerterEnabled,
-        EntwerterCode = source.EntwerterCode
+        EntwerterCode = source.EntwerterCode,
+        IbisAnnouncementId = source.IbisAnnouncementId
     };
+
+    private static void ApplyLinkedIbisAnnouncementId(ManagedStopTemplateItem template) =>
+        IbisAnnouncementIds.ApplyLinked(template, AppServices.Routes.Editor?.AnnouncementTemplates);
 }

@@ -20,6 +20,12 @@ public sealed class VehicleLiveState
     public string? LineCourse { get; init; }
     public string? RouteName { get; init; }
     public string? StopName { get; init; }
+    /// <summary>Planer-Haltcode (5-stellig), Live-JSON <c>plannerStopCode</c> – für VDV 454 StopPointRef.</summary>
+    public string? PlannerStopCode { get; init; }
+    /// <summary>Externe Halt-ID (z. B. VRR/EFA), Live-JSON <c>vrrStopId</c>.</summary>
+    public string? VrrStopId { get; init; }
+    /// <summary>Fahrt-/Kursnummer aus dem Paket, Live-JSON <c>tripNumber</c> – für DatedVehicleJourneyRef.</summary>
+    public string? TripNumber { get; init; }
     public string? Destination { get; init; }
     public string? DriverName { get; init; }
     public string? DriverPersonnelNumber { get; init; }

@@ -12,8 +12,6 @@ namespace SmartOepnv.AppShared.Kom;
 
 internal static class VehicleKomUi
 {
-    private static readonly Brush WindowBackground = FrozenRgb(0x0A, 0x10, 0x20);
-    private static readonly Brush PanelBackground = FrozenRgb(0x00, 0x21, 0x71);
     private static readonly Brush AccentBackground = FrozenRgb(0x0D, 0x47, 0xA1);
     private static readonly Brush InputBackground = FrozenRgb(0x1E, 0x5A, 0x9E);
     private static readonly Brush AccentBorder = FrozenRgb(0x42, 0xA5, 0xF5);
@@ -22,14 +20,14 @@ internal static class VehicleKomUi
 
     public static void PrepareWindow(Window window, UIElement content)
     {
-        window.Background = WindowBackground;
-        window.Foreground = ForegroundBrush;
+        window.Background = UiTheme.BackgroundBrush;
+        window.Foreground = UiTheme.ForegroundBrush;
         WindowTitleBarHelper.ApplyDarkWindowBackground(window);
         WindowTitleBarHelper.ApplySmartOepnvTitleBar(window);
 
         window.Content = new Border
         {
-            Background = PanelBackground,
+            Background = UiTheme.SurfaceBrush,
             Padding = new Thickness(24),
             Child = content
         };
@@ -131,7 +129,8 @@ internal static class VehicleKomUi
             FontWeight = weight ?? FontWeights.Normal,
             TextWrapping = TextWrapping.Wrap,
             Margin = margin ?? new Thickness(0, 0, 0, 8),
-            Foreground = muted ? MutedForeground : ForegroundBrush
+            Opacity = muted ? 0.72 : 1,
+            Foreground = UiTheme.ForegroundBrush
         };
 
     public static Button MakeButton(
@@ -257,7 +256,7 @@ internal static class VehicleKomUi
 
     public static void StyleCheckBox(CheckBox checkBox)
     {
-        checkBox.Foreground = ForegroundBrush;
+        checkBox.Foreground = UiTheme.ForegroundBrush;
     }
 
     public static StackPanel MakeButtonRow(params Button[] buttons)

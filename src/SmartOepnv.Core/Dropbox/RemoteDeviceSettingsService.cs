@@ -90,4 +90,10 @@ public sealed class RemoteDeviceSettingsPayload
     public string? SelectedProtocol { get; set; }
     /// <summary><c>SICMA_ZD_TARGET_NUMBER</c> oder <c>DIRECT_CLEARTEXT</c>.</summary>
     public string? IbisDisplayControlMode { get; set; }
+
+    public bool? SevTftEnabled { get; set; }
+    public bool? SevTftAutoSend { get; set; }
+    public string? SevTftHost { get; set; }
+    public int? SevTftPort { get; set; }
+    public string? SevTftApiToken { get; set; }
 }

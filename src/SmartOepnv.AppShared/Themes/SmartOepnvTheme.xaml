@@ -9,6 +9,9 @@
     <Color x:Key="SmartAccentColor">#FF42A5F5</Color>
     <Color x:Key="SmartSurfaceColor">#FF121A2E</Color>
     <Color x:Key="SmartBackgroundColor">#FF0A1020</Color>
+    <Color x:Key="SmartForegroundColor">#FFFFFFFF</Color>
+    <!-- Inhalts-Panels: Dark = PrimaryDark, Light = hellblau (Surface) -->
+    <Color x:Key="SmartPanelColor">#FF002171</Color>
 
     <SolidColorBrush x:Key="SmartPrimaryBrush" Color="{StaticResource SmartPrimaryColor}" />
     <SolidColorBrush x:Key="SmartPrimaryDarkBrush" Color="{StaticResource SmartPrimaryDarkColor}" />
@@ -16,6 +19,10 @@
     <SolidColorBrush x:Key="SmartAccentBrush" Color="{StaticResource SmartAccentColor}" />
     <SolidColorBrush x:Key="SmartSurfaceBrush" Color="{StaticResource SmartSurfaceColor}" />
     <SolidColorBrush x:Key="SmartBackgroundBrush" Color="{StaticResource SmartBackgroundColor}" />
+    <SolidColorBrush x:Key="SmartForegroundBrush" Color="{StaticResource SmartForegroundColor}" />
+    <SolidColorBrush x:Key="SmartPanelBrush" Color="{StaticResource SmartPanelColor}" />
+    <!-- Text auf Primary-/Dark-Flächen bleibt weiß in beiden Themes -->
+    <SolidColorBrush x:Key="SmartOnPrimaryBrush" Color="White" />
 
     <Color x:Key="SmartSuccessColor">#FF66BB6A</Color>
     <Color x:Key="SmartSuccessBackgroundColor">#264CAF50</Color>
@@ -59,7 +66,7 @@
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Padding" Value="8,6" />
         <Setter Property="Background" Value="{StaticResource SmartPrimaryDarkBrush}" />
-        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Foreground" Value="{DynamicResource SmartOnPrimaryBrush}" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
@@ -226,7 +233,7 @@
     </ControlTemplate>
 
     <Style x:Key="SmartDarkComboBox" TargetType="ComboBox">
-        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Foreground" Value="{DynamicResource SmartOnPrimaryBrush}" />
         <Setter Property="Background" Value="#FF1E5A9E" />
         <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
         <Setter Property="BorderThickness" Value="1" />

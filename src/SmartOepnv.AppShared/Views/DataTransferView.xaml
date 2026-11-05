@@ -69,10 +69,11 @@
         </materialDesign:Card>
 
         <materialDesign:Card Padding="10,8" UniformCornerRadius="10"
-                             Background="{StaticResource SmartPrimaryDarkBrush}"
+                             Background="{DynamicResource SmartPanelBrush}"
                              Margin="0,0,0,8">
             <Grid>
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -87,7 +88,7 @@
                                Text="Dropbox"
                                FontWeight="SemiBold"
                                FontSize="15"
-                               Foreground="White"
+                               Foreground="{DynamicResource SmartForegroundBrush}"
                                VerticalAlignment="Center"
                                Margin="0,0,0,6" />
                     <StackPanel Grid.Row="1">
@@ -139,7 +140,7 @@
                 </Grid>
 
                 <TextBlock Grid.Row="1"
-                           Foreground="White"
+                           Foreground="{DynamicResource SmartForegroundBrush}"
                            Opacity="0.82"
                            Margin="0,4,0,2"
                            FontSize="11"
@@ -159,8 +160,27 @@
                 </TextBlock>
 
                 <TextBlock Grid.Row="2"
+                           Text="{Binding LastVehicleSendText}"
+                           Foreground="{DynamicResource SmartForegroundBrush}"
+                           Opacity="0.88"
+                           Margin="0,2,0,0"
+                           FontSize="12"
+                           FontWeight="SemiBold">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowPlanerVehicleSend}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <TextBlock Grid.Row="3"
                            Text="{Binding LastActionMessage}"
-                           Foreground="White"
+                           Foreground="{DynamicResource SmartForegroundBrush}"
                            Opacity="0.88"
                            FontSize="10"
                            TextTrimming="CharacterEllipsis"
@@ -342,7 +362,7 @@
                                                   VerticalAlignment="Center"
                                                   Margin="0,0,8,0" />
                                         <TextBlock Text="{Binding RouteName}"
-                                                   Foreground="White"
+                                                   Foreground="{DynamicResource SmartForegroundBrush}"
                                                    TextWrapping="Wrap"
                                                    VerticalAlignment="Center" />
                                     </DockPanel>

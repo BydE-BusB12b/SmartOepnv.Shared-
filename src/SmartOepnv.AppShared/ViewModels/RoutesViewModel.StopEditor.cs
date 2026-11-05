@@ -348,6 +348,29 @@ public partial class RoutesViewModel
 
     public bool ShowEntwerterFields => HasSelectedStop && EntwerterEnabled;
 
+    /// <summary>Nummer am IBIS-Ansagegerät (DS036). Leer = aus der Haltestellen-Vorlage, wenn dort gesetzt.</summary>
+    public string IbisAnnouncementId
+    {
+        get => SelectedStop?.IbisAnnouncementId ?? string.Empty;
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            var normalized = IbisAnnouncementIds.Normalize(value);
+            if (string.Equals(SelectedStop.IbisAnnouncementId, normalized, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            SelectedStop.IbisAnnouncementId = normalized;
+            OnPropertyChanged(nameof(IbisAnnouncementId));
+            MarkStopDetailDirty();
+        }
+    }
+
     /// <summary>Nur Wabe (DS004 Ziffer 4–6). Linie = Ziffer 1–3 kommt automatisch von der Route.</summary>
     public string EntwerterWabe
     {
@@ -1567,6 +1590,7 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(ShowStopHintOwnGpsFields));
         OnPropertyChanged(nameof(EntwerterEnabled));
         OnPropertyChanged(nameof(ShowEntwerterFields));
+        OnPropertyChanged(nameof(IbisAnnouncementId));
         OnPropertyChanged(nameof(EntwerterWabe));
         OnPropertyChanged(nameof(EntwerterKurzstrecke));
         OnPropertyChanged(nameof(EntwerterLinieAuto));
@@ -1608,7 +1632,8 @@ public partial class RoutesViewModel
         CancelSaveButtonSuccessFeedback();
         MaintainStartStopMarkerIfNeeded();
         _sync.MarkDirty();
-        _needsStopTemplateEnrich = true;
+        // Kein StopTemplate-Enrich hier: MergeAllRouteStops über alle Routen wäre zu teuer
+        // bei jedem Ziel-/Feld-Edit (Enrich läuft bei Routen anlegen/kopieren o. Ä.).
         if (!RefreshStopTimeOrderWarnings(showDialog: false))
         {
             StatusMessage = "Haltestellen-Änderungen – bitte „Speichern“.";

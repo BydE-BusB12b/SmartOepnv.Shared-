@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -9,6 +10,7 @@ using SmartOepnv.Core;
 using SmartOepnv.Core.Betrieb;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.Core.Session;
 using SmartOepnv.AppShared;
 using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.Pdf;
@@ -51,22 +53,35 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private string brandingStatus = string.Empty;
     [ObservableProperty] private bool showSmartOepnvLogoInPdfs = true;
+    [ObservableProperty] private bool useLightTheme;
     [ObservableProperty] private string ds009TextLengthStatus = string.Empty;
     [ObservableProperty] private CompanyLogoListItem? selectedCompanyLogo;
     [ObservableProperty] private string devicePassword = string.Empty;
     [ObservableProperty] private string unlockPassword = string.Empty;
     [ObservableProperty] private string briefingPasswordsStatus = string.Empty;
+    [ObservableProperty] private string adminPasswordCheckCode = string.Empty;
+    [ObservableProperty] private string currentAdminPlannerPassword = string.Empty;
+    [ObservableProperty] private string newAdminPlannerPassword = string.Empty;
+    [ObservableProperty] private string confirmAdminPlannerPassword = string.Empty;
+    [ObservableProperty] private string adminPlannerPasswordStatus = string.Empty;
     [ObservableProperty] private string sondergongFileLabel = "—";
     [ObservableProperty] private string sondergongStatus = string.Empty;
     [ObservableProperty] private string voipStatusMessage = "—";
     [ObservableProperty] private string voipPublishStatus = string.Empty;
     [ObservableProperty] private string operatorManualExportStatus = string.Empty;
+    [ObservableProperty] private string vdv454ParticipantRef = "SMOEPNV";
+    [ObservableProperty] private string vdv454OperatorRef = "SMOEPNV:Operator:1";
+    [ObservableProperty] private string vdv454LocalCodespace = "SMOEPNV";
+    [ObservableProperty] private string vdv454ExternalStopCodespace = "de:vrr";
+    [ObservableProperty] private string vdv454RefsStatus = string.Empty;
 
     public VoipLeitstelleHost? VoipHost { get; set; }
 
     public bool ShowVoipSection => VoipHost is not null;
 
     public ObservableCollection<CompanyLogoListItem> CompanyLogos { get; } = [];
+
+    public bool ShowVdv454Section => AppServices.PlanerAppSettings is not null;
 
     public bool ShowBrandingSection => AppServices.IsPlannerApp;
 
@@ -84,6 +99,8 @@ public partial class SettingsViewModel : ObservableObject
 
     /// <summary>Dropbox-OAuth erfolgreich abgeschlossen (Leitstelle: Daten nachladen).</summary>
     public event EventHandler? DropboxConnectionEstablished;
+
+    private bool _suppressThemePrompt;
 
     public SettingsViewModel()
     {
@@ -115,10 +132,116 @@ public partial class SettingsViewModel : ObservableObject
         ConnectionStatus = s.IsConnected ? "Verbunden" : "Nicht verbunden";
         ActiveBetriebLabel = BuildActiveBetriebLabel();
         ReloadBranding();
+        ReloadThemePreference();
         ReloadBriefingPasswords();
         ReloadSondergong();
         ReloadDs009TextLength();
+        ReloadVdv454Refs();
         RefreshVoipStatus();
+    }
+
+    private void ReloadVdv454Refs()
+    {
+        if (AppServices.PlanerAppSettings is null)
+        {
+            Vdv454RefsStatus = string.Empty;
+            return;
+        }
+
+        var s = AppServices.PlanerAppSettings.Load();
+        Vdv454ParticipantRef = string.IsNullOrWhiteSpace(s.Vdv454ParticipantRef) ? "SMOEPNV" : s.Vdv454ParticipantRef;
+        Vdv454OperatorRef = string.IsNullOrWhiteSpace(s.Vdv454OperatorRef) ? "SMOEPNV:Operator:1" : s.Vdv454OperatorRef;
+        Vdv454LocalCodespace = string.IsNullOrWhiteSpace(s.Vdv454LocalCodespace) ? "SMOEPNV" : s.Vdv454LocalCodespace;
+        Vdv454ExternalStopCodespace = s.Vdv454ExternalStopCodespace ?? "";
+        Vdv454RefsStatus = "Geladen – für Dry-Run und spätere SIRI-Ausgänge.";
+    }
+
+    [RelayCommand]
+    private void SaveVdv454Refs()
+    {
+        if (AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var stored = AppServices.PlanerAppSettings.Load();
+        stored.Vdv454ParticipantRef = Vdv454ParticipantRef.Trim();
+        stored.Vdv454OperatorRef = Vdv454OperatorRef.Trim();
+        stored.Vdv454LocalCodespace = Vdv454LocalCodespace.Trim();
+        stored.Vdv454ExternalStopCodespace = Vdv454ExternalStopCodespace.Trim();
+        AppServices.PlanerAppSettings.Save(stored);
+        ReloadVdv454Refs();
+        Vdv454RefsStatus = "VDV-454-Verbund-Refs gespeichert.";
+    }
+
+    private void ReloadThemePreference()
+    {
+        _suppressThemePrompt = true;
+        try
+        {
+            UseLightTheme = UiTheme.LoadPreference();
+        }
+        finally
+        {
+            _suppressThemePrompt = false;
+        }
+    }
+
+    partial void OnUseLightThemeChanged(bool value)
+    {
+        if (_suppressThemePrompt ||
+            !AppServices.IsInitialized ||
+            AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        UiTheme.SavePreference(value);
+
+        if (value == UiTheme.IsLight)
+        {
+            return;
+        }
+
+        var result = MessageBox.Show(
+            "Die Darstellung wird nach einem Neustart der Anwendung übernommen.\n\nJetzt neu starten?",
+            "Darstellung",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        RestartApplicationForTheme();
+    }
+
+    private static void RestartApplicationForTheme()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(exe))
+            {
+                exe = Process.GetCurrentProcess().MainModule?.FileName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(exe))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = exe,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch
+        {
+            // Neustart optional – Einstellung ist gespeichert
+        }
+
+        Application.Current.Shutdown();
     }
 
     private void ReloadDs009TextLength()
@@ -767,6 +890,62 @@ public partial class SettingsViewModel : ObservableObject
         }
 
         BriefingPasswordsStatus = "Keine Änderungen an den Passwörtern.";
+    }
+
+    [RelayCommand]
+    private void SaveAdminPlannerPassword()
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return;
+        }
+
+        if (!string.Equals(
+                AdminPasswordCheckCode.Trim(),
+                BuiltinAdminEmployee.PlannerPasswordChangeCode,
+                StringComparison.Ordinal))
+        {
+            AdminPlannerPasswordStatus = "Prüfcode ist falsch. Das Admin-Passwort wurde nicht geändert.";
+            return;
+        }
+
+        var active = BetriebProfileStore.GetActiveProfile();
+        if (active is null || string.IsNullOrWhiteSpace(active.Id))
+        {
+            AdminPlannerPasswordStatus = "Kein aktiver Betrieb.";
+            return;
+        }
+
+        if (!string.Equals(
+                CurrentAdminPlannerPassword.Trim(),
+                PlanerCredentialValidator.ActiveAdminPassword(),
+                StringComparison.Ordinal))
+        {
+            AdminPlannerPasswordStatus = "Das bisherige Admin-Passwort ist falsch. Es wurde nichts geändert.";
+            return;
+        }
+
+        var next = NewAdminPlannerPassword.Trim();
+        var confirm = ConfirmAdminPlannerPassword.Trim();
+        if (string.IsNullOrEmpty(next))
+        {
+            AdminPlannerPasswordStatus = "Bitte ein neues Admin-Passwort eingeben.";
+            return;
+        }
+
+        if (!string.Equals(next, confirm, StringComparison.Ordinal))
+        {
+            AdminPlannerPasswordStatus = "Die beiden Passwörter stimmen nicht überein.";
+            return;
+        }
+
+        BetriebProfileStore.SetAdminPlannerPassword(active.Id, next);
+        AdminPasswordCheckCode = string.Empty;
+        CurrentAdminPlannerPassword = string.Empty;
+        NewAdminPlannerPassword = string.Empty;
+        ConfirmAdminPlannerPassword = string.Empty;
+        var name = string.IsNullOrWhiteSpace(active.DisplayName) ? active.ListLabel : active.DisplayName.Trim();
+        AdminPlannerPasswordStatus = $"Admin-Passwort für „{name}“ gespeichert. Anmeldung mit Admin und dem neuen Passwort.";
     }
 
     private static string NormalizeFolderPath(string? path) => DropboxConstants.NormalizeFolderPath(path);

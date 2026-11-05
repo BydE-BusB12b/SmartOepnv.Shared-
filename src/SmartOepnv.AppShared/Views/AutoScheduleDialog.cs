@@ -11,7 +11,7 @@ namespace SmartOepnv.AppShared.Views;
 
 public sealed class AutoScheduleDialog : Window
 {
-    private static readonly Brush PanelBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+    private static Brush PanelBackground => UiTheme.BackgroundBrush;
     private static readonly Brush InputBackground = Brushes.White;
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
 
@@ -79,7 +79,7 @@ public sealed class AutoScheduleDialog : Window
             Text = "Automatische Fahrplanerstellung",
             FontSize = 20,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             HorizontalAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(0, 0, 0, 20)
         });
@@ -112,7 +112,7 @@ public sealed class AutoScheduleDialog : Window
         _routeButtonText = new TextBlock
         {
             Text = FormatRouteButtonText(_selectedRoute),
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -121,7 +121,7 @@ public sealed class AutoScheduleDialog : Window
         routeButtonGrid.Children.Add(new TextBlock
         {
             Text = "▼",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         });
@@ -135,7 +135,7 @@ public sealed class AutoScheduleDialog : Window
             MaxHeight = 220,
             Visibility = Visibility.Collapsed,
             Background = new SolidColorBrush(Color.FromRgb(0x00, 0x21, 0x71)),
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5)),
             BorderThickness = new Thickness(1),
             Margin = new Thickness(0, 4, 0, 0)
@@ -274,7 +274,7 @@ public sealed class AutoScheduleDialog : Window
         root.Children.Add(new TextBlock
         {
             Text = "Fahrplan-Vorschau:",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(0, 0, 0, 8)
         });
@@ -306,7 +306,7 @@ public sealed class AutoScheduleDialog : Window
         _tripCounterText = new TextBlock
         {
             Text = "Fahrt 1 von 3",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(12, 0, 12, 0)
         };
@@ -624,7 +624,7 @@ public sealed class AutoScheduleDialog : Window
     private static TextBlock MakeLabel(string text) => new()
     {
         Text = text,
-        Foreground = Brushes.White,
+        Foreground = UiTheme.ForegroundBrush,
         Margin = new Thickness(0, 0, 0, 4)
     };
 
@@ -658,7 +658,7 @@ internal sealed class ScheduleTimePickerDialog : Window
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
-        Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+        Background = UiTheme.BackgroundBrush;
 
         var initialHour = 6;
         var initialMinute = 0;
@@ -672,7 +672,7 @@ internal sealed class ScheduleTimePickerDialog : Window
         root.Children.Add(new TextBlock
         {
             Text = "Startzeit",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(0, 0, 0, 12)
         });
@@ -703,7 +703,7 @@ internal sealed class ScheduleTimePickerDialog : Window
         row.Children.Add(new TextBlock
         {
             Text = ":",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontSize = 20,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,

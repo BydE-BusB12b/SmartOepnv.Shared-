@@ -27,19 +27,10 @@ public static class LiteRouteUpdateMerge
 
         "allowedRoutes",
 
-        "managedAnnouncementTemplates",
-
+        // managedAnnouncementTemplates kommt im Lite-Update mit (Flags/Kartei) und ersetzt die Basis-Kartei
         // managedStopTemplates kommen im Katalog-Overlay-Update mit und ersetzen die Basis-Kartei
-
-        "employeeRoster",
-
-        "employeeRosterMeta",
-
-        "registeredVehicles",
-
-        "registeredVehiclesMeta",
-
-        "registeredVehiclesPlannerMeta",
+        // employeeRoster / registeredVehicles: nur übernehmen, wenn das Update Einträge enthält
+        // (leeres Array darf die vorhandene Liste nicht löschen).
 
         "messageTemplates",
 
@@ -314,6 +305,30 @@ public static class LiteRouteUpdateMerge
         return 0;
     }
 
+    /// <summary>
+    /// Leeres Personal oder leere Fahrzeuge im Update nicht übernehmen.
+    /// Die App auf dem Gerät löscht sonst die vorhandene Liste.
+    /// </summary>
+    private static bool KeepBaseBecauseIncomingRosterIsEmpty(string key, JsonNode value, JsonObject liteRoot)
+    {
+        if (key is "employeeRoster" or "registeredVehicles" or "registeredVehiclesPlannerMeta")
+        {
+            return value is not JsonArray rows || rows.Count == 0;
+        }
+
+        if (key == "employeeRosterMeta")
+        {
+            return liteRoot["employeeRoster"] is not JsonArray rows || rows.Count == 0;
+        }
+
+        if (key == "registeredVehiclesMeta")
+        {
+            return liteRoot["registeredVehicles"] is not JsonArray rows || rows.Count == 0;
+        }
+
+        return false;
+    }
+
     public static string MergeIntoPackageJson(string baseJson, string liteJson)
 
     {
@@ -334,9 +349,17 @@ public static class LiteRouteUpdateMerge
 
             if (value is null ||
 
-                PreserveFromBaseKeys.Contains(key) ||
-
                 key is "exportProfile" or "skipEmbeddedSounds" or "autoImport")
+
+            {
+
+                continue;
+
+            }
+
+            if (KeepBaseBecauseIncomingRosterIsEmpty(key, value, liteRoot) ||
+
+                PreserveFromBaseKeys.Contains(key))
 
             {
 

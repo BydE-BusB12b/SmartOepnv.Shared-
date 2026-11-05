@@ -136,8 +136,10 @@ public static class AppServices
             _dutyTemplates = new DutyTemplateStore(settingsSubfolder);
             _dutyTemplateEditorSession = new DutyTemplateEditorSessionStore(settingsSubfolder);
             _planerSession = new PlanerSessionService(_dropbox);
-            _planerAppSettings = new PlanerAppSettingsStore(settingsSubfolder);
         }
+
+        // Planer + Leitstelle: App-Einstellungen (u. a. Hell-/Dunkelmodus)
+        _planerAppSettings = new PlanerAppSettingsStore(settingsSubfolder);
         _initialized = true;
     }
 }

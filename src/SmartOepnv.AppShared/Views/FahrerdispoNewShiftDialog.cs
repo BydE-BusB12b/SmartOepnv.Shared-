@@ -14,8 +14,8 @@ public sealed class FahrerdispoNewShiftDialog : Window
 {
     private static readonly Brush InputBackground = new SolidColorBrush(Color.FromRgb(0x1E, 0x5A, 0x9E));
     private static readonly Brush InputForeground = Brushes.White;
-    private static readonly Brush LabelForeground = Brushes.White;
-    private static readonly Brush DialogBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
+    private static Brush DialogBackground => UiTheme.BackgroundBrush;
     private static readonly Brush DateFieldBackground = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
 
     private readonly ComboBox _employeeBox;
@@ -389,7 +389,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
                 $"Dienstschicht max. {SplitShiftRules.MaxServiceShiftHours} h (Beginn Teil 1 bis Ende Teil 2). " +
                 "Lenkzeit/Ruhezeit nach FPersV (9 h, ggf. 10 h) – geteilte Dienste dürfen länger als 10 h sein, " +
                 "wenn FPersV eingehalten wird. TV-N: jeder Teil mind. 2 h, Teil 2 nicht nach 22:00.",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.65,
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
@@ -399,7 +399,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
         _earliestStartHint = new TextBlock
         {
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.9,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 4, 0, 0),
@@ -452,7 +452,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
         _complianceHint = new TextBlock
         {
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.65,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 6, 0, 0),
@@ -477,7 +477,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
 
         _errorText = new TextBlock
         {
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -1428,7 +1428,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
             {
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 FontWeight = FontWeights.SemiBold,
                 FontSize = 15
             };
@@ -1472,7 +1472,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
                 var header = new TextBlock
                 {
                     Text = WeekdayHeaders[c],
-                    Foreground = Brushes.White,
+                    Foreground = UiTheme.ForegroundBrush,
                     Opacity = 0.85,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Margin = new Thickness(2, 0, 2, 4),
@@ -1593,7 +1593,7 @@ public sealed class FahrerdispoNewShiftDialog : Window
             _dateText = new TextBlock
             {
                 Text = FormatDate(initial),
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 VerticalAlignment = VerticalAlignment.Center
             };
             displayBorder.Child = _dateText;

@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -10,7 +11,7 @@ public sealed class AddRouteDialog : Window
 {
     private static readonly Brush InputBackground = Brushes.White;
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush LabelForeground = Brushes.White;
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
 
     private readonly TextBox _routeNameBox;
     private readonly TextBox _lineCourseBox;
@@ -75,7 +76,7 @@ public sealed class AddRouteDialog : Window
         SizeToContent = SizeToContent.Manual;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.CanResize;
-        Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+        Background = UiTheme.BackgroundBrush;
 
         initial ??= isEdit && EditingRouteKey is not null
             ? RouteDisplayHelper.Parse(EditingRouteKey)

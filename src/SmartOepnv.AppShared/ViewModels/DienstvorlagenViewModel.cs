@@ -158,6 +158,10 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
     [ObservableProperty] private string notes = string.Empty;
 
+    [ObservableProperty] private bool isSixthDuty;
+
+    [ObservableProperty] private string wendePauseFromMinutes = "8";
+
     [ObservableProperty] private bool subtractUnpaidBreak30Minutes;
 
     [ObservableProperty] private bool subtractUnpaidBreak30MinutesPart2;
@@ -530,6 +534,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         DefaultLineCourse = string.Empty;
         ImportedLine = string.Empty;
         Notes = string.Empty;
+        IsSixthDuty = false;
+        WendePauseFromMinutes = "8";
         SubtractUnpaidBreak30Minutes = false;
         SubtractUnpaidBreak30MinutesPart2 = false;
         SubtractUnpaidBreak30MinutesPart3 = false;
@@ -1828,6 +1834,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             DefaultLineCourse = DefaultLineCourse.Trim(),
             ImportedLine = ImportedLine.Trim(),
             Notes = Notes.Trim(),
+            IsSixthDuty = IsSixthDuty,
+            WendePauseFromMinutes = DutyTemplateCalculator.ParseNonNegativeMinutes(WendePauseFromMinutes, 8),
             SubtractUnpaidBreak30Minutes = SubtractUnpaidBreak30Minutes,
             SubtractUnpaidBreak30MinutesPart2 = SubtractUnpaidBreak30MinutesPart2,
             SubtractUnpaidBreak30MinutesPart3 = SubtractUnpaidBreak30MinutesPart3,
@@ -1878,6 +1886,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
 
         OnPropertyChanged(nameof(HasImportedLine));
         Notes = template.Notes;
+        IsSixthDuty = template.IsSixthDuty;
+        WendePauseFromMinutes = (template.WendePauseFromMinutes > 0 ? template.WendePauseFromMinutes : 8).ToString();
         SubtractUnpaidBreak30Minutes = template.SubtractUnpaidBreak30Minutes;
         SubtractUnpaidBreak30MinutesPart2 = template.SubtractUnpaidBreak30MinutesPart2;
         SubtractUnpaidBreak30MinutesPart3 = template.SubtractUnpaidBreak30MinutesPart3;
@@ -2040,6 +2050,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
         ImportedLine = ImportedLine.Trim(),
         Notes = Notes.Trim(),
         ImportFileName = ImportFileName.Trim(),
+        IsSixthDuty = IsSixthDuty,
+        WendePauseFromMinutes = DutyTemplateCalculator.ParseNonNegativeMinutes(WendePauseFromMinutes, 8),
         SubtractUnpaidBreak30Minutes = SubtractUnpaidBreak30Minutes,
         SubtractUnpaidBreak30MinutesPart2 = SubtractUnpaidBreak30MinutesPart2,
         SubtractUnpaidBreak30MinutesPart3 = SubtractUnpaidBreak30MinutesPart3,
@@ -2095,6 +2107,8 @@ public partial class DienstvorlagenViewModel : EditorStatusViewModelBase
             ImportedLine = session.ImportedLine;
             Notes = session.Notes;
             ImportFileName = session.ImportFileName;
+            IsSixthDuty = session.IsSixthDuty;
+            WendePauseFromMinutes = (session.WendePauseFromMinutes > 0 ? session.WendePauseFromMinutes : 8).ToString();
             SubtractUnpaidBreak30Minutes = session.SubtractUnpaidBreak30Minutes;
             SubtractUnpaidBreak30MinutesPart2 = session.SubtractUnpaidBreak30MinutesPart2;
             SubtractUnpaidBreak30MinutesPart3 = session.SubtractUnpaidBreak30MinutesPart3;

@@ -72,6 +72,57 @@ public static class DutyOperatingDayHelper
         return string.Join(", ", groups.Select(FormatGroup));
     }
 
+    /// <summary>Kurzanzeige: Mo-Fr, Sa, So. Alle Tage oder leer → kein Text.</summary>
+    public static string FormatShort(IEnumerable<DutyOperatingDay>? selectedDays)
+    {
+        if (selectedDays is null)
+        {
+            return string.Empty;
+        }
+
+        var sorted = selectedDays.Distinct().OrderBy(day => (int)day).ToList();
+        if (sorted.Count == 0 || sorted.Count >= Definitions.Length)
+        {
+            return string.Empty;
+        }
+
+        var groups = new List<List<DutyOperatingDay>>();
+        var current = new List<DutyOperatingDay> { sorted[0] };
+        for (var i = 1; i < sorted.Count; i++)
+        {
+            if ((int)sorted[i] == (int)sorted[i - 1] + 1)
+            {
+                current.Add(sorted[i]);
+            }
+            else
+            {
+                groups.Add(current);
+                current = [sorted[i]];
+            }
+        }
+
+        groups.Add(current);
+        return string.Join(", ", groups.Select(FormatShortGroup));
+    }
+
+    private static string ShortName(DutyOperatingDay day) =>
+        day switch
+        {
+            DutyOperatingDay.Monday => "Mo",
+            DutyOperatingDay.Tuesday => "Di",
+            DutyOperatingDay.Wednesday => "Mi",
+            DutyOperatingDay.Thursday => "Do",
+            DutyOperatingDay.Friday => "Fr",
+            DutyOperatingDay.Saturday => "Sa",
+            DutyOperatingDay.SundayHoliday => "So",
+            _ => string.Empty
+        };
+
+    private static string FormatShortGroup(IReadOnlyList<DutyOperatingDay> group) =>
+        group.Count == 1
+            ? ShortName(group[0])
+            : $"{ShortName(group[0])}-{ShortName(group[^1])}";
+
     public static HashSet<DutyOperatingDay> Parse(string? text)
     {
         var result = new HashSet<DutyOperatingDay>();

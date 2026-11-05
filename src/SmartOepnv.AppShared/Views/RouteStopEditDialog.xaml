@@ -8,8 +8,8 @@
         Height="700"
         MinHeight="420"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource SmartPrimaryDarkBrush}"
-        Foreground="White"
+        Background="{DynamicResource SmartPanelBrush}"
+        Foreground="{DynamicResource SmartForegroundBrush}"
         ResizeMode="CanResize"
         ShowInTaskbar="False">
     <Grid Margin="20">
@@ -32,16 +32,16 @@
                                       HorizontalAlignment="Stretch" />
         </ScrollViewer>
         <Border Grid.Row="2"
-                Background="{StaticResource SmartPrimaryDarkBrush}"
+                Background="{DynamicResource SmartPanelBrush}"
                 Padding="0,12,0,0"
                 Margin="0,8,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button x:Name="CancelButton" Content="Abbrechen" MinWidth="100" MinHeight="36" Margin="0,0,8,0"
                         IsCancel="True" Click="CancelButton_Click"
-                        Background="#1E5A9E" Foreground="White" BorderBrush="#42A5F5" />
+                        Background="#1E5A9E" Foreground="{DynamicResource SmartOnPrimaryBrush}" BorderBrush="#42A5F5" />
                 <Button x:Name="SaveButton" Content="Speichern" MinWidth="110" MinHeight="36"
                         IsDefault="True" Click="SaveButton_Click"
-                        Background="#0D47A1" Foreground="White" BorderBrush="#42A5F5" />
+                        Background="#0D47A1" Foreground="{DynamicResource SmartOnPrimaryBrush}" BorderBrush="#42A5F5" />
             </StackPanel>
         </Border>
     </Grid>

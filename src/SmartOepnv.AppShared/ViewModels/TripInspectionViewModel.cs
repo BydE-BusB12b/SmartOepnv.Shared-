@@ -6,7 +6,11 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmartOepnv.AppShared.Kom;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Dropbox;
+using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.VehicleTracking;
 
 namespace SmartOepnv.AppShared.ViewModels;
@@ -78,9 +82,10 @@ public partial class TripInspectionViewModel : ObservableObject
             {
                 _files = files;
                 RebuildVehicles();
-                StatusMessage = files.Count == 0
-                    ? "Keine GPS-Spuren in Dropbox (gps_trace_*.json). Aufzeichnung wird beim Abmelden am Fahrzeug hochgeladen."
-                    : $"{files.Count} Fahrzeug(e) mit GPS-Spur (7-Tage-Loop).";
+                var withTrace = files.Count;
+                StatusMessage = withTrace == 0
+                    ? "Keine GPS-Spuren – Fahrzeug wählen und „Daten anfordern“, oder Abmelden am Fahrzeug. Im Planer bleiben 30 Tage."
+                    : $"{withTrace} Fahrzeug(e) mit GPS-Spur · Planer behält 30 Tage, das Fahrzeug überträgt die letzten 7 Tage.";
             });
         }
         catch (Exception ex)
@@ -93,9 +98,92 @@ public partial class TripInspectionViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanRequestTrace))]
+    private async Task RequestTraceAsync()
+    {
+        var vehicle = SelectedVehicle;
+        if (vehicle is null || IsBusy)
+        {
+            return;
+        }
+
+        var owner = Application.Current?.MainWindow;
+        if (owner is null)
+        {
+            return;
+        }
+
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            SmartConfirmDialog.ShowInfo(
+                owner,
+                "Daten anfordern",
+                "Dropbox ist nicht verbunden.");
+            return;
+        }
+
+        if (!SmartConfirmDialog.ShowConfirm(
+                owner,
+                "Daten anfordern",
+                $"Prüfdaten (GPS + Zeitstrahl) von {vehicle.DisplayName} anfordern?\n\n" +
+                "Läuft im Hintergrund am Fahrzeug – der Fahrer sieht keine Meldung. " +
+                "Ohne Logout-Event; beim späteren Abmelden wird die Spur vollständig."))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = $"Prüfdaten von {vehicle.DisplayName} werden angefordert …";
+        RequestTraceCommand.NotifyCanExecuteChanged();
+        try
+        {
+            var outcome = await KomCommandSendFlow.ExecuteAsync(
+                owner,
+                statusLine: null,
+                vehicle.DisplayName,
+                vehicle.Phone,
+                KomRemoteGpsTraceFlushService.CommandType,
+                ct => KomRemoteGpsTraceFlushService.UploadAsync(AppServices.Dropbox, vehicle.Phone, ct));
+
+            if (outcome == KomCommandSendOutcome.Success)
+            {
+                StatusMessage = $"Prüfdaten von {vehicle.DisplayName} empfangen – lade Spur …";
+                IsBusy = false;
+                await RefreshAsync();
+                return;
+            }
+
+            StatusMessage = outcome switch
+            {
+                KomCommandSendOutcome.Timeout =>
+                    $"Keine Rückmeldung von {vehicle.DisplayName} – später „Jetzt laden“ versuchen.",
+                KomCommandSendOutcome.AckError =>
+                    $"Abruf fehlgeschlagen für {vehicle.DisplayName} (keine Spur oder Upload-Fehler).",
+                KomCommandSendOutcome.UploadFailed =>
+                    $"Befehl an {vehicle.DisplayName} konnte nicht gesendet werden.",
+                _ => $"Abruf für {vehicle.DisplayName} unvollständig."
+            };
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Abruf fehlgeschlagen: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            RequestTraceCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool CanRequestTrace() =>
+        HasSelectedVehicle && !IsBusy && !string.IsNullOrWhiteSpace(SelectedVehicle?.Phone);
+
+    partial void OnIsBusyChanged(bool value) => RequestTraceCommand.NotifyCanExecuteChanged();
+
     partial void OnSelectedVehicleChanged(TripInspectionVehicleItem? value)
     {
         HasSelectedVehicle = value is not null;
+        RequestTraceCommand.NotifyCanExecuteChanged();
         IsTimelineOpen = false;
         TimelineSessions.Clear();
         SelectedSegment = null;
@@ -268,17 +356,59 @@ public partial class TripInspectionViewModel : ObservableObject
     {
         var selectedPhone = SelectedVehicle?.Phone;
         Vehicles.Clear();
+
+        var byPhone = new Dictionary<string, TripInspectionVehicleItem>(StringComparer.Ordinal);
         foreach (var file in _files)
         {
+            if (string.IsNullOrWhiteSpace(file.Phone))
+            {
+                continue;
+            }
+
             var points = file.Days.Sum(d => d.Points.Count);
-            Vehicles.Add(new TripInspectionVehicleItem
+            byPhone[file.Phone] = new TripInspectionVehicleItem
             {
                 Phone = file.Phone,
                 DisplayName = file.VehicleName,
                 PointCount = points,
                 DayCount = file.Days.Count,
                 UpdatedLabel = FormatUpdated(file.UpdatedAtEpochMs)
-            });
+            };
+        }
+
+        // Roster-Fahrzeuge ohne Spur: Abruf trotzdem möglich
+        try
+        {
+            var json = AppServices.Routes.CurrentJson;
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                foreach (var roster in RegisteredVehicleInfo.ParseFromJson(json))
+                {
+                    var phone = new string((roster.PhoneNumber ?? string.Empty).Where(char.IsDigit).ToArray());
+                    if (phone.Length == 0 || byPhone.ContainsKey(phone))
+                    {
+                        continue;
+                    }
+
+                    byPhone[phone] = new TripInspectionVehicleItem
+                    {
+                        Phone = phone,
+                        DisplayName = string.IsNullOrWhiteSpace(roster.Name) ? phone : roster.Name.Trim(),
+                        PointCount = 0,
+                        DayCount = 0,
+                        UpdatedLabel = "–"
+                    };
+                }
+            }
+        }
+        catch
+        {
+            // Roster optional
+        }
+
+        foreach (var item in byPhone.Values.OrderBy(v => v.DisplayName, StringComparer.OrdinalIgnoreCase))
+        {
+            Vehicles.Add(item);
         }
 
         SelectedVehicle = !string.IsNullOrWhiteSpace(selectedPhone)

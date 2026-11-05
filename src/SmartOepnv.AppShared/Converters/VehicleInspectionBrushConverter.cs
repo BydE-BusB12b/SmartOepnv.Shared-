@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.Converters;
@@ -13,15 +14,15 @@ public sealed class VehicleInspectionBrushConverter : IValueConverter
         var useForeground = string.Equals(parameter as string, "Foreground", StringComparison.OrdinalIgnoreCase);
         if (value is not RegisteredVehicleItem vehicle)
         {
-            return useForeground ? Brushes.White : Brushes.Transparent;
+            return useForeground ? BodyForeground() : Brushes.Transparent;
         }
 
         var level = VehicleInspectionWarningEvaluator.GetWorstWarningLevel(vehicle);
         var (backgroundHex, foregroundHex) = level switch
         {
-            VehicleInspectionWarningLevel.Notice30To16Days => ("#FFF176", "#1A1A1A"),
-            VehicleInspectionWarningLevel.Notice15To5Days => ("#FF9800", "#FFFFFF"),
-            VehicleInspectionWarningLevel.Urgent4To1Days => ("#E53935", "#FFFFFF"),
+            VehicleInspectionWarningLevel.Notice30To16Days => ("#FFF176", "#002171"),
+            VehicleInspectionWarningLevel.Notice15To5Days => ("#FFE0B2", "#002171"),
+            VehicleInspectionWarningLevel.Urgent4To1Days => ("#FFCDD2", "#002171"),
             VehicleInspectionWarningLevel.Overdue => ("#9C27B0", "#FFFFFF"),
             _ => (string.Empty, string.Empty)
         };
@@ -29,7 +30,7 @@ public sealed class VehicleInspectionBrushConverter : IValueConverter
         var hex = useForeground ? foregroundHex : backgroundHex;
         if (string.IsNullOrWhiteSpace(hex))
         {
-            return useForeground ? Brushes.White : Brushes.Transparent;
+            return useForeground ? BodyForeground() : Brushes.Transparent;
         }
 
         try
@@ -40,9 +41,12 @@ public sealed class VehicleInspectionBrushConverter : IValueConverter
         }
         catch
         {
-            return useForeground ? Brushes.White : Brushes.Transparent;
+            return useForeground ? BodyForeground() : Brushes.Transparent;
         }
     }
+
+    /// <summary>Hellmodus dunkelblau, Dunkelmodus weiß – wie die übrigen Seiten.</summary>
+    private static Brush BodyForeground() => UiTheme.ForegroundBrush;
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

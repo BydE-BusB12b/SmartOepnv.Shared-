@@ -129,6 +129,7 @@ public static class ManagedAnnouncementTemplateEditor
             Lines = obj["lines"]?.GetValue<string>() ?? string.Empty,
             Category = obj["category"]?.GetValue<string>() ?? "haltestelle",
             EmbeddedSoundFileName = obj["embeddedSoundFileName"]?.GetValue<string>() ?? string.Empty,
+            IbisAnnouncementId = IbisAnnouncementIds.Normalize(obj["ibisAnnouncementId"]?.GetValue<string>()),
             AudioOutput = AnnouncementAudioOutput.Normalize(obj["audioOutput"]?.GetValue<string>()),
             IncludeInSpecialAnnouncements = obj["includeInSpecialAnnouncements"]?.GetValue<bool>() ?? false,
             IncludeGong = obj["includeGong"]?.GetValue<bool>() ?? false,
@@ -266,6 +267,12 @@ public static class ManagedAnnouncementTemplateEditor
             ["audioOutput"] = AnnouncementAudioOutput.Normalize(t.AudioOutput),
             ["includeInSpecialAnnouncements"] = t.IncludeInSpecialAnnouncements
         };
+
+        var ibisAnnouncementId = IbisAnnouncementIds.Normalize(t.IbisAnnouncementId);
+        if (!string.IsNullOrEmpty(ibisAnnouncementId))
+        {
+            obj["ibisAnnouncementId"] = ibisAnnouncementId;
+        }
 
         if (t.IncludeGong)
         {

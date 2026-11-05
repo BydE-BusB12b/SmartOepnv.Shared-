@@ -16,7 +16,7 @@ namespace SmartOepnv.AppShared.Views;
 /// </summary>
 public sealed class FahrbereichCopyDialog : Window
 {
-    private static readonly Brush DialogBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+    private static Brush DialogBackground => UiTheme.BackgroundBrush;
     private static readonly Brush AccentBlue = new SolidColorBrush(Color.FromRgb(0x1E, 0x88, 0xE5));
     private static readonly Brush SelectedGreen = new SolidColorBrush(Color.FromRgb(0x2E, 0x7D, 0x32));
     private static readonly Brush SelectedGreenBorder = new SolidColorBrush(Color.FromRgb(0x66, 0xBB, 0x6A));
@@ -76,7 +76,7 @@ public sealed class FahrbereichCopyDialog : Window
             Text = "Fahrbereich kopieren",
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 6)
         });
         header.Children.Add(new TextBlock
@@ -84,7 +84,7 @@ public sealed class FahrbereichCopyDialog : Window
             Text = string.IsNullOrWhiteSpace(routeDisplayName)
                 ? "Haltestellen anklicken (blau → grün). Bei genau zwei Markierungen: Doppelklick öffnet die Kartei zum Einfügen dazwischen. Mit ↑/↓ Reihenfolge ändern (z. B. neu eingefügte Hst. nach oben).\nZeiten: Enter übernimmt den (grauen) Vorschlag bzw. die Eingabe und springt weiter – Zifferntipp verwirft den Vorschlag."
                 : $"Route: {routeDisplayName}\nHaltestellen anklicken (blau → grün). Bei genau zwei Markierungen: Doppelklick öffnet die Kartei zum Einfügen dazwischen. Mit ↑/↓ Reihenfolge ändern (z. B. neu eingefügte Hst. nach oben).\nZeiten: Enter übernimmt den (grauen) Vorschlag bzw. die Eingabe und springt weiter – Zifferntipp verwirft den Vorschlag.",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.85,
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap
@@ -130,7 +130,7 @@ public sealed class FahrbereichCopyDialog : Window
 
         _hint = new TextBlock
         {
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.75,
             FontSize = 12,
             Margin = new Thickness(0, 0, 0, 8),
@@ -191,7 +191,7 @@ public sealed class FahrbereichCopyDialog : Window
         var block = new TextBlock
         {
             Text = text,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.7,
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
@@ -236,7 +236,7 @@ public sealed class FahrbereichCopyDialog : Window
         var indexBlock = new TextBlock
         {
             Text = row.IndexLabel,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             VerticalAlignment = VerticalAlignment.Center,
             Opacity = 0.85
         };
@@ -246,7 +246,7 @@ public sealed class FahrbereichCopyDialog : Window
         var nameBlock = new TextBlock
         {
             Text = row.DisplayName,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,

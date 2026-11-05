@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.Views;
@@ -159,8 +160,8 @@ public sealed class DuplicateAnnouncementsDialog : Window
         MinHeight = 420;
         ShowInTaskbar = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x29, 0x3B));
-        Foreground = Brushes.White;
+        Background = UiTheme.BackgroundBrush;
+        Foreground = UiTheme.ForegroundBrush;
 
         var root = new DockPanel { Margin = new Thickness(16) };
 

@@ -3,14 +3,23 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         Title="Smart-ÖPNV Planer – Anmeldung"
-        Height="500" Width="460"
+        Height="520" Width="480"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
         Background="{StaticResource SmartBackgroundBrush}"
-        Foreground="White"
-        TextElement.Foreground="White">
-    <Grid Margin="24">
+        Foreground="{DynamicResource SmartForegroundBrush}"
+        TextElement.Foreground="{DynamicResource SmartForegroundBrush}">
+    <Grid>
+        <Image Source="pack://application:,,,/SmartOepnv.AppShared;component/Assets/kiara.png"
+               Stretch="Uniform"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               Opacity="0.08"
+               IsHitTestVisible="False"
+               Margin="28"
+               RenderOptions.BitmapScalingMode="HighQuality" />
+        <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -22,11 +31,11 @@
             <TextBlock Text="Anmeldung"
                        FontSize="24"
                        FontWeight="SemiBold"
-                       Foreground="White"
+                       Foreground="{DynamicResource SmartForegroundBrush}"
                        Margin="0,0,0,6" />
             <TextBlock Text="Hauptnutzer mit Vor- und Nachname anmelden. Beim ersten Start zuerst Dropbox einrichten."
                        TextWrapping="Wrap"
-                       Foreground="White"
+                       Foreground="{DynamicResource SmartForegroundBrush}"
                        Opacity="0.78"
                        FontSize="12" />
             <TextBlock x:Name="LockWarningText"
@@ -40,12 +49,12 @@
         <StackPanel Grid.Row="1">
             <TextBlock Text="Benutzername"
                        Margin="0,0,0,4"
-                       Foreground="White"
+                       Foreground="{DynamicResource SmartForegroundBrush}"
                        Opacity="0.9" />
             <TextBox x:Name="UsernameBox"
                      Margin="0,0,0,12"
                      Padding="8,6"
-                     Foreground="White"
+                     Foreground="{DynamicResource SmartForegroundBrush}"
                      CaretBrush="White"
                      materialDesign:HintAssist.Hint="z. B. Max Mustermann"
                      materialDesign:HintAssist.Foreground="#CCFFFFFF"
@@ -53,12 +62,12 @@
 
             <TextBlock Text="Passwort"
                        Margin="0,0,0,4"
-                       Foreground="White"
+                       Foreground="{DynamicResource SmartForegroundBrush}"
                        Opacity="0.9" />
             <PasswordBox x:Name="PasswordBox"
                          Margin="0,0,0,8"
                          Padding="8,6"
-                         Foreground="White"
+                         Foreground="{DynamicResource SmartForegroundBrush}"
                          CaretBrush="White"
                          materialDesign:HintAssist.Hint="Passwort"
                          materialDesign:HintAssist.Foreground="#CCFFFFFF"
@@ -77,7 +86,7 @@
             <Button x:Name="ForceReleaseLockButton"
                     Content="Sperre freigeben (Hauptnutzer)…"
                     HorizontalAlignment="Left"
-                    Foreground="White"
+                    Foreground="{DynamicResource SmartForegroundBrush}"
                     Style="{StaticResource MaterialDesignOutlinedButton}"
                     Padding="16,6"
                     Margin="0,0,0,8"
@@ -85,7 +94,7 @@
                     Click="ForceReleaseLock_Click" />
             <Button Content="Dropbox einrichten…"
                     HorizontalAlignment="Left"
-                    Foreground="White"
+                    Foreground="{DynamicResource SmartForegroundBrush}"
                     Style="{StaticResource MaterialDesignOutlinedButton}"
                     Padding="16,6"
                     Margin="0,0,0,12"
@@ -94,18 +103,19 @@
                 <Button Content="Abbrechen"
                         Margin="0,0,8,0"
                         IsCancel="True"
-                        Foreground="White"
+                        Foreground="{DynamicResource SmartForegroundBrush}"
                         Style="{StaticResource MaterialDesignOutlinedButton}"
                         Padding="16,6"
                         Click="Cancel_Click" />
                 <Button x:Name="LoginButton"
                         Content="Anmelden"
                         IsDefault="True"
-                        Foreground="White"
+                        Foreground="{DynamicResource SmartForegroundBrush}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         Padding="16,6"
                         Click="Login_Click" />
             </StackPanel>
         </StackPanel>
+        </Grid>
     </Grid>
 </Window>

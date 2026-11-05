@@ -1,0 +1,28 @@
+﻿40_sprache :: Sprache und Sound | Sprache | Deutsch (Standard) | Niederländisch | Englisch | Sound | Fahrgastraum Stimmenverstärkung: +0% | Stereo-Zonen (L=Innen, R=Außen) | Haltestellen→Innen. Sonderansagen: Langdruck wechselt Innen/
+41_passwort :: Passwort ändern | ⏸️ Pause Passwort ändern | 🔐 Admin Passwort ändern | Abbrechen
+42_voip :: VoIP / Funk | ●  Online – bereit für Anruf von der Leitstelle.
+ws://82.165.167.157:8787/voip/ws | KOM-Telefon
+015237183253 | Dropbox-Config
+voip_config_015237183253.json | Gerätename
+Tablett | Peer-ID
+015237183253 | Sign
+43_status :: Systemstatus | ●  GPS
+GPS ist im Menü/aktuell deaktiviert. | ●  Anzeige verbunden
+TFT TCP/IP ist deaktiviert oder nicht initialisiert. | ●  IBIS-Wandler
+Kein IBIS-Wandler verbunden. | ●  Dropbox
+OAuth-Verbindung aktiv.
+O
+44_vrr :: VRR Debugmodus | Logcat-Tag: VRR_JSON_DEBUG | Haltestellen-ID, z.B. de:05513:5613 oder 20005613 | Departure-JSON laden | STOPSEQ optional (für Haltestellenperlschnur) | line, z.B. ddb:90E02: :H:j26 | tripCode | 20261102 
+45_testfahrt :: Einstellungen | 🧭 Richtungserkennung ✓ | Sprache und Sound | Passwort ändern | Updates | VoIP / Funk | Statusseite | VRR Debugmodus | Testfahrt (virtuell) ✓ | Zurück
+46_richtung :: Richtungserkennung | Die Richtungserkennung verhindert Ansagen, wenn Sie sich nicht in Richtung der Haltestelle bewegen. | Aktueller Status: Aktiviert | Funktionen:
+• Ansagen nur bei Bewegung in Richtung Haltestelle
+• Mi
+50_protokoll_aussen :: Protokoll auswählen | DS003 (IBIS VDV300 - Seriell) | DS003a (IBIS VDV300 - Seriell) | DS003a Krefeld (IBIS VDV300 - Seriell) | DS003a ÜSTRA (IBIS VDV300 - Seriell) | DS021 (IBIS VDV300 - Seriell) | DS021T (IBIS VDV300 -
+51_protokoll_innen :: Protokoll Innen wählen | Protokoll tippen → Adresse darunter. Grün = aktiv. DS009 zusätzlich bleibt daneben an. | TFT Zeit (Datum/Uhrzeit, d/u) | TFT Datum-Test: Jahr fest auf 2030 | DS009 zusätzlich | DS009 (Standard) |
+52_ibis :: IBIS Transport | Pro Kanal USB oder IP. IP = Raw-IBIS (VDV 300) an Serial-over-IP-Bridge über WLAN oder USB-Ethernet (1200 7E2 Raw). Mobitec bleibt immer USB-RS485. | TFT-Server: deaktiviert
+Außen: USB · Innen: USB
+Bridg
+53_anzeigentests :: 🧪 Anzeigentests | Wählen Sie den gewünschten Anzeigentest: | 🧪 Test Haltestellenanzeige | 🚌 Test außen DS021T | 🚌 Test außen DS03aMAS | 🚌 Test außen DS003a | 🚌 Test außen DS003a Krefeld | 🔧 Test DS021T Protokoll |
+54_zielliste :: 📜 Gespeicherte Außenanzeigen | Routes_Version (DS021T) | Liste | 🗑️ | ACHTUNG ! Defekt (Mobitec) | Liste | 🗑️ | Amazon (DS021T) | Liste | 🗑️ | Bus und Bahn Fan (DS021T) | Liste | 🗑️ | Busnotverkehr (DS021T) | Liste 
+55_sev :: SEV-TFT | Beim Öffnen einer Fahrt (z. B. 004/95) werden Linie und Ziel aus dem Routennamen gelesen. „RE4 Düsseldorf Hbf > Neuss Hbf“ ergibt Linie RE4 und Ziel Neuss Hbf. Die Haltestellen kommen aus dem Verlauf. | SEV-TFT
+56_entwerter :: Entwerter | Razzia AUS | Aus: Entwerter freigegeben. Tippen sperrt (Start-Protokoll mit DS004a …0). | Razziabutton aktiv | Entwertertest | DS004 Linie+Wabe (6 Ziffern) | z.B. 682740 | DS004a (4 Ziffern, 4. = Druckfreigab

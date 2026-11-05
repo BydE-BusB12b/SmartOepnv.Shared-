@@ -1,0 +1,17 @@
+﻿10_administration: Verwaltung | KOM-Tracking | Telefon | Unternehmername | Nachricht | Mitarbeiterverwaltung | Datentransfer | Protokoll | Dropbox-URL ändern | ZBL-Button (Tablet)
+11_anzeigen_passwort: Innen-/Außenanzeigen+Entwerter | Protokoll außen wählen | Protokoll Innen wählen | IBIS Transport (USB / IP) | Anzeigentests | Zielliste Außenanzeige | SEV-TFT | PDF aller Ziele | Entwerter | Abbrechen
+12_einstellungen: Einstellungen | Tastentöne aktivieren | Bluetooth-Zwangskopplung | ℹ️ Hält Bluetooth für Fahrgastraum-Ansagen dauerhaft an, auch wenn es ausgeschaltet wurde. | Hauptgerät-Modus | Automatische Routen-Öffnung | Nachtmodus | Verkauf aktiv | Ersetzt BEARBEITEN durch VERKAUF (Tablet). Produkte kommen aus dem Planer (Ticketing). | Status- und Navigationsleiste ausblenden | Automatisch bei GPS-Betrieb | ℹ️ Blendet Akku/Uhrzeit (oben) und Zurück/Home (unten) aus.
+Wischen vom Rand bringt sie kurz zurück.
+13_zeitwirtschaft: Zeitwirtschaft | Admin · Personalnr. 1995 | Ausgestempelt – Admin (1995) | Arbeitsbeginn jetzt | Angepasster Arbeitsbeginn | Arbeitsende | Korrektur (Leitstelle) | Einträge (aktueller Monat): | 01.11.2026 18:05 – 01.11.2026 18:29 · …3253
+01.11.2026 18:42 – 01.11.2026 18:42 · …3253
+01.11.2026 18:42 – 01.11.2026 20:33 · …3253 | Zurück
+14_maengelkarte: Mängelkarte | Admin · Personalnr. 1995 | 26.07.2026 22:01 | Neu | Neuer Test | 09.06.2026 09:54 | In Bearbeitung | Test | Neuer Mangel | Kurzbeschreibung (max. 60 Zeichen) | 0 / 60 | Speichern | Aktualisieren | Zurück
+15_ansagen: Ansagen | 1x Ansage | 2+ Ansagen | Ansagenliste | Zurück
+16_anleitung: 📖 Bedienungsanleitung | # Smart ÖPNV – Bedienungsanleitung
+
+## 1 📱 Übersicht
+
+Die **Smart ÖPNV App** ist eine intelligente Android-App die automatisch Ansagen abspielt, wenn Sie sich in der Nähe von vorher definierten GPS-Koordinaten, sogenannte Haltestellen, befinden. Die App unterstützt sowohl manuelle als auch automatische Wiedergabe, ist vollständig Android Auto kompatibel und bietet erweiterte Funktionen für Mitarbeiter-Tracking und Geräte-Management.
+
+![Hauptbildschirm der App](screensho
+17_impressum: GPS aktiv | ±209m | IBIS-USB | 84% | 004/95, 06 | > MG Hbf alle Halte | Ziel: MG Hbf alle Halte | 00:00 | 13:40:20 | 02.11.2026 | Pas.-Info on | Navigation | Sonderansagen | Route | Linie/Kurs | Zielanzeige | Postfach | Mail | ZBL | Unfallruf | Razzia | Haltestellen | Aachen Hbf | Aachen Schanz | Aachen West | Kohlscheid | Herzogenrath | Übach-Palenberg | Geilenkirchen | ITCS | VERKAUF | MENÜ | V9.0 · #575 · 02.11.2026 13:16

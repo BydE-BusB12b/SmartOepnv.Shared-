@@ -10,6 +10,7 @@ using Microsoft.Win32;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.AppShared.Zeitwirtschaft;
 using SmartOepnv.Core;
+using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.Dropbox;
 using SmartOepnv.Core.RoutePackage;
 using SmartOepnv.Core.Zeitwirtschaft;
@@ -30,6 +31,14 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
     [ObservableProperty] private ZeitwirtschaftMonthOption? selectedMonth;
 
     [ObservableProperty] private string totalDuration = "—";
+
+    [ObservableProperty] private string totalPay = "—";
+
+    [ObservableProperty] private string totalPause = "—";
+
+    [ObservableProperty] private string timeTableTitle = "Zeiten";
+
+    [ObservableProperty] private string complianceSummary = string.Empty;
 
     public ObservableCollection<ZeitwirtschaftMergedEmployee> Employees { get; } = [];
 
@@ -58,6 +67,7 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
     partial void OnSelectedTimeRowChanged(ZeitwirtschaftTimeTableRow? value)
     {
         CorrectTimeCommand.NotifyCanExecuteChanged();
+        ToggleSixthDutyCommand.NotifyCanExecuteChanged();
         VoidEntryCommand.NotifyCanExecuteChanged();
     }
 
@@ -230,6 +240,26 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         SelectedTimeRow is { IsVoided: false } &&
         AppServices.Dropbox.Settings.IsConnected;
 
+    [RelayCommand(CanExecute = nameof(CanCorrectTime))]
+    private void ToggleSixthDuty()
+    {
+        if (SelectedEmployee is null || SelectedTimeRow is null || string.IsNullOrWhiteSpace(SelectedTimeRow.EntryId))
+        {
+            StatusMessage = "Bitte einen gestempelten Tag auswählen.";
+            return;
+        }
+
+        var entry = SelectedEmployee.Entries.FirstOrDefault(e => e.EntryId == SelectedTimeRow.EntryId);
+        if (entry is null)
+        {
+            StatusMessage = "Eintrag nicht gefunden.";
+            return;
+        }
+
+        var next = !ZeitwirtschaftCompliance.IsSixthDuty(entry, LoadLegal(SelectedEmployee));
+        _ = ApplySixthDutyAsync(entry, next);
+    }
+
     [RelayCommand(CanExecute = nameof(CanVoidEntry))]
     private void VoidEntry(Window? owner)
     {
@@ -359,6 +389,22 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void SelectEmployee(Window? owner)
+    {
+        if (Employees.Count == 0)
+        {
+            StatusMessage = "Keine Mitarbeiter – zuerst aus Dropbox laden.";
+            return;
+        }
+
+        var dialog = new ZeitwirtschaftEmployeePickDialog(owner ?? Application.Current?.MainWindow, Employees.ToList(), SelectedEmployee);
+        if (dialog.ShowDialog() == true && dialog.Selected is not null)
+        {
+            SelectedEmployee = dialog.Selected;
+        }
+    }
+
+    [RelayCommand]
     private void ExportCsv()
     {
         if (_mergedData is null || _mergedData.TotalEntryCount == 0)
@@ -382,18 +428,23 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         try
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Personalnummer;Name;Fahrzeug;Kommen;Gehen;Arbeitszeit;Lohnstunden;Storno;StornoGrund;EintragId");
+            sb.AppendLine("Personalnummer;Name;Fahrzeug;Kommen;Gehen;Pause;Arbeitszeit;Lohnstunden;Hinweis;Storno;StornoGrund;EintragId");
             foreach (var employee in _mergedData.Employees)
             {
-                foreach (var row in ZeitwirtschaftMergeService.BuildTableRows(employee, vehicleLabels: _vehicleLabels))
+                foreach (var row in ZeitwirtschaftMergeService.BuildTableRows(
+                             employee,
+                             vehicleLabels: _vehicleLabels,
+                             legal: LoadLegal(employee)))
                 {
                     sb.Append(Csv(employee.PersonnelNumber)).Append(';')
                         .Append(Csv(employee.Name)).Append(';')
                         .Append(Csv(row.VehicleDisplayName)).Append(';')
                         .Append(Csv(row.Kommen)).Append(';')
                         .Append(Csv(row.Gehen)).Append(';')
+                        .Append(Csv(row.Pause)).Append(';')
                         .Append(Csv(row.Arbeitszeit)).Append(';')
                         .Append(Csv(row.Lohnstunden)).Append(';')
+                        .Append(Csv(row.Hinweis)).Append(';')
                         .Append(Csv(row.IsVoided ? "ja" : "nein")).Append(';')
                         .Append(Csv(row.VoidReason)).Append(';')
                         .Append(Csv(row.EntryId))
@@ -462,6 +513,59 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         {
             IsBusy = false;
             CorrectTimeCommand.NotifyCanExecuteChanged();
+            ToggleSixthDutyCommand.NotifyCanExecuteChanged();
+            VoidEntryCommand.NotifyCanExecuteChanged();
+            ExportPdfCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private async Task ApplySixthDutyAsync(ZeitwirtschaftMergedEntry entry, bool sixthDuty)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var phone = entry.DevicePhone;
+        if (!_documentsByPhone.TryGetValue(phone, out var root))
+        {
+            StatusMessage = $"Keine JSON für Fahrzeug {phone} geladen.";
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = "Speichere Sechstel-Dienst nach Dropbox…";
+        try
+        {
+            if (!ZeitwirtschaftDocumentEditor.TryApplySixthDuty(
+                    root,
+                    entry.PersonnelNumber,
+                    entry.EntryId,
+                    sixthDuty,
+                    out var error))
+            {
+                StatusMessage = error ?? "Umstellung fehlgeschlagen.";
+                return;
+            }
+
+            var json = ZeitwirtschaftDocumentEditor.Serialize(root);
+            var fileName = ZeitwirtschaftMergeService.BuildFileName(phone);
+            await AppServices.Dropbox.UploadNamedFileAsync(fileName, json);
+            TryWriteLocalSyncCopy(fileName, json);
+            RebuildMergedData(_documentsByPhone.Count);
+            StatusMessage = sixthDuty
+                ? "Tag ist ein Sechstel-Dienst. Die Wendezeiten gelten nur tariflich."
+                : "Sechstel-Dienst für diesen Tag aufgehoben.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Speichern fehlgeschlagen: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            CorrectTimeCommand.NotifyCanExecuteChanged();
+            ToggleSixthDutyCommand.NotifyCanExecuteChanged();
             VoidEntryCommand.NotifyCanExecuteChanged();
             ExportPdfCommand.NotifyCanExecuteChanged();
         }
@@ -515,6 +619,7 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         {
             IsBusy = false;
             CorrectTimeCommand.NotifyCanExecuteChanged();
+            ToggleSixthDutyCommand.NotifyCanExecuteChanged();
             VoidEntryCommand.NotifyCanExecuteChanged();
             ExportPdfCommand.NotifyCanExecuteChanged();
         }
@@ -554,38 +659,88 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
         if (SelectedEmployee is null)
         {
             TotalDuration = "—";
+            TotalPay = "—";
+            TotalPause = "—";
+            TimeTableTitle = "Zeiten";
+            ComplianceSummary = string.Empty;
             CorrectTimeCommand.NotifyCanExecuteChanged();
+            ToggleSixthDutyCommand.NotifyCanExecuteChanged();
             VoidEntryCommand.NotifyCanExecuteChanged();
             ExportPdfCommand.NotifyCanExecuteChanged();
             return;
         }
 
-        var rows = BuildRowsForSelectedMonth(SelectedEmployee).ToList();
+        var legal = LoadLegal(SelectedEmployee);
+        var month = SelectedMonth;
+        ComplianceSummary = ZeitwirtschaftCompliance.Assess(
+            SelectedEmployee,
+            legal,
+            month?.Year,
+            month?.Month,
+            _vehicleLabels).Summary;
+
+        var rows = BuildRowsForSelectedMonth(SelectedEmployee, legal).ToList();
         foreach (var row in rows)
         {
             TimeRows.Add(row);
         }
 
-        TotalDuration = ZeitwirtschaftMergeService.SumDurationHhMm(rows);
+        TimeTableTitle = $"Zeiten – {SelectedEmployee.DisplayLine.Trim()}";
+        TotalDuration = ZeitwirtschaftMergeService.SumFieldHhMm(rows, row => row.Arbeitszeit, includeVoided: true);
+        TotalPay = ZeitwirtschaftMergeService.SumFieldHhMm(rows, row => row.Lohnstunden);
+        TotalPause = ZeitwirtschaftMergeService.SumPauseMinutesHhMm(rows);
 
         CorrectTimeCommand.NotifyCanExecuteChanged();
+        ToggleSixthDutyCommand.NotifyCanExecuteChanged();
         VoidEntryCommand.NotifyCanExecuteChanged();
         ExportPdfCommand.NotifyCanExecuteChanged();
     }
 
     private IReadOnlyList<ZeitwirtschaftTimeTableRow> BuildRowsForSelectedMonth(
-        ZeitwirtschaftMergedEmployee employee)
+        ZeitwirtschaftMergedEmployee employee,
+        ZeitwirtschaftLegalContext? legal = null)
     {
+        legal ??= LoadLegal(employee);
         if (SelectedMonth is null)
         {
-            return ZeitwirtschaftMergeService.BuildTableRows(employee, vehicleLabels: _vehicleLabels);
+            return ZeitwirtschaftMergeService.BuildTableRows(employee, vehicleLabels: _vehicleLabels, legal: legal);
         }
 
         return ZeitwirtschaftMergeService.BuildTableRows(
             employee,
             SelectedMonth.Year,
             SelectedMonth.Month,
-            _vehicleLabels);
+            _vehicleLabels,
+            legal);
+    }
+
+    private static ZeitwirtschaftLegalContext LoadLegal(ZeitwirtschaftMergedEmployee employee)
+    {
+        EmployeeRosterItem? roster = null;
+        var editor = AppServices.Routes.Editor;
+        if (editor is not null)
+        {
+            var pin = EmployeeRosterItem.NormalizePersonnelDigits(employee.PersonnelNumber);
+            if (pin.Length > 0)
+            {
+                roster = editor.Employees.FirstOrDefault(item =>
+                    EmployeeRosterItem.NormalizePersonnelDigits(item.PersonnelNumber) == pin);
+            }
+        }
+
+        if (BuiltinAdminEmployee.IsAdminPersonnel(employee.PersonnelNumber))
+        {
+            roster ??= BuiltinAdminEmployee.Create();
+            if (string.IsNullOrWhiteSpace(roster.EntryDate))
+            {
+                roster.EntryDate = BuiltinAdminEmployee.EntryDate;
+            }
+        }
+
+        IReadOnlyList<DriverDispositionAssignment> assignments =
+            AppServices.PlannerLocal?.LoadDriverDisposition() ?? [];
+        IReadOnlyList<DutyTemplate> templates = AppServices.DutyTemplates?.LoadAll() ?? [];
+        return ZeitwirtschaftLegalContext.Create(employee.PersonnelNumber, roster, assignments, templates);
     }
 
     private void RefreshVehicleLabels()
@@ -622,6 +777,7 @@ public partial class ZeitwirtschaftPlannerViewModel : ObservableObject
     partial void OnIsBusyChanged(bool value)
     {
         CorrectTimeCommand.NotifyCanExecuteChanged();
+        ToggleSixthDutyCommand.NotifyCanExecuteChanged();
         VoidEntryCommand.NotifyCanExecuteChanged();
         ExportPdfCommand.NotifyCanExecuteChanged();
     }

@@ -19,22 +19,19 @@ public partial class AnnouncementsLibraryViewModel
 
         PersistCurrentAnnouncementSequence();
 
-        var clusters = FindDuplicateAnnouncementClusters();
-        if (clusters.Count == 0)
+        var removed = MergeDirectionCopiesIntoExistingAnnouncements();
+        ApplyFilter();
+        SelectedAnnouncement = FilteredAnnouncements.FirstOrDefault(a => a.Id == SelectedAnnouncement?.Id)
+                               ?? FilteredAnnouncements.FirstOrDefault();
+        if (removed == 0)
         {
-            StatusMessage = "Keine doppelten Ansagen gefunden.";
+            StatusMessage = "Keine doppelten Ansagen gefunden. Sonderansagen mit „B_“ bleiben unverändert.";
             return;
         }
 
-        var dialogGroups = clusters.Select(BuildDuplicateDialogGroup).ToList();
-        var owner = DialogOwnerHelper.ResolveOwner();
-        var dialog = new DuplicateAnnouncementsDialog(dialogGroups);
-        if (DialogOwnerHelper.ShowOwnedDialog(dialog, owner) != true)
-        {
-            return;
-        }
-
-        ApplyDuplicateResolutions(dialog.Resolutions);
+        MarkDirty();
+        StatusMessage =
+            $"{removed} doppelte Ansage(n) entfernt. Behalten wurde die mit Ansage-ID, Haltestellen zeigen auf diese Datei. „B_“-Sonderansagen bleiben.";
     }
 
     private List<List<ManagedAnnouncementTemplateItem>> FindDuplicateAnnouncementClusters()
@@ -293,7 +290,7 @@ public partial class AnnouncementsLibraryViewModel
                     continue;
                 }
 
-                // Verhindert, dass EnsureAnnouncementsFromStopTemplates die Gelöschten neu anlegt.
+                // Verhindert, dass eine gelöschte Tondatei wieder als eigene Ansage auftaucht.
                 SuppressStopAnnouncementSound(dup.EmbeddedSoundFileName, dup.DisplayName);
                 // Kein DetachStopSounds – Ton wurde bereits auf die Hauptdatei umgebogen.
                 _allAnnouncements.RemoveAll(a => a.Id == dup.Id);
@@ -412,6 +409,34 @@ public partial class AnnouncementsLibraryViewModel
 
             stop.EmbeddedSoundFileName = primaryFile;
             remapped++;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is not null)
+        {
+            foreach (var route in editor.RouteNames)
+            {
+                foreach (var stop in editor.GetStops(route))
+                {
+                    var stopFile = stop.EmbeddedSoundFileName?.Trim();
+                    if (string.IsNullOrEmpty(stopFile) ||
+                        string.Equals(stopFile, primaryFile, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var matchExact = deletedFiles.Contains(stopFile);
+                    var matchKey = !matchExact &&
+                                   EnumerateSoundMatchKeys(stopFile).Any(deletedKeys.Contains);
+                    if (!matchExact && !matchKey)
+                    {
+                        continue;
+                    }
+
+                    stop.EmbeddedSoundFileName = primaryFile;
+                    remapped++;
+                }
+            }
         }
 
         return remapped;

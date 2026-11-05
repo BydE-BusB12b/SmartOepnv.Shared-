@@ -20,15 +20,13 @@ public static class GpsAnsagenRouteExportSync
     private static readonly string[] LiteVehicleUpdateStripKeys =
     [
         "embeddedSounds",
+        // specialAnnouncements kann audioData enthalten → groß; Flags kommen über managedAnnouncementTemplates
         "specialAnnouncements",
         "allowedRoutes",
-        "managedAnnouncementTemplates",
+        // managedAnnouncementTemplates bewusst NICHT strippen – „In Sonderansagen anzeigen“ & Kartei-Metadaten
         // managedStopTemplates bewusst NICHT strippen – nötig für Katalog-Overlays auf dem Gerät
-        "employeeRoster",
-        "employeeRosterMeta",
-        "registeredVehicles",
-        "registeredVehiclesMeta",
-        "registeredVehiclesPlannerMeta",
+        // employeeRoster und registeredVehicles bleiben im Update: die App ersetzt die lokale Liste,
+        // sobald der Schlüssel vorhanden ist. Fehlt er, kommen neue Mitarbeiter nie auf dem Gerät an.
         "messageTemplates",
         "mailTemplates",
         "driverDutyDispatches",
@@ -92,6 +90,7 @@ public static class GpsAnsagenRouteExportSync
             root,
             workspace);
         ManagedAnnouncementTemplateEditor.SaveToRoot(root, package.AnnouncementTemplates);
+        SyncTicketingToRoot(package, root);
         if (rebuildEmbeddedMedia)
         {
             EnsureAnnouncementSoundsFromWorkspace(root, package, workspace);
@@ -528,9 +527,13 @@ public static class GpsAnsagenRouteExportSync
             root.Remove("allowedRoutes");
         }
 
+        // Ticketing immer mitschicken (routes_export und routes_update).
+        SyncTicketingToRoot(package, root);
+
         if (liteVehicleUpdate)
         {
             SyncLiteVehiclePhoneMetadata(package, root);
+            WriteSentRosterAndVehicles(package, root);
             // Senden (prune): Katalog ersetzen. Update (Merge): Geschwisterfahrten behalten.
             ApplyLiteVehicleUpdateMetadata(root, replaceLineCourseRoutes: pruneOthersOnDevice);
         }
@@ -541,8 +544,8 @@ public static class GpsAnsagenRouteExportSync
     }
 
     /// <summary>
-    /// Vollständiges Routenpaket ohne Audio/Sonderansagen – für <see cref="DropboxConstants.RouteUpdateFileName"/>.
-    /// Bestehende Tondateien auf dem Gerät bleiben erhalten (Merge-Import).
+    /// Vollständiges Routenpaket ohne Audio – für <see cref="DropboxConstants.RouteUpdateFileName"/>.
+    /// Ansagen-Kartei inkl. Sonderansagen-Flags wird mitgeschickt; Tondateien bleiben auf dem Gerät.
     /// </summary>
     public static string BuildFullLiteVehicleUpdateJson(
         EditableRoutePackage package,
@@ -591,6 +594,14 @@ public static class GpsAnsagenRouteExportSync
         RouteMainDeviceOnlyEditor.SaveToRoot(root, packageRoutes, package.RoutesMainDeviceOnly);
         AutoScheduleSourceRouteEditor.SaveToRoot(root, packageRoutes, package.AutoScheduleSourceByRoute);
         SyncLiteVehiclePhoneMetadata(package, root);
+        SyncTicketingToRoot(package, root);
+        WriteSentRosterAndVehicles(package, root);
+        // Ansagen-Kartei + „In Sonderansagen anzeigen“ – ohne embeddedSounds / specialAnnouncements-Audio
+        AnnouncementSoundFileResolver.ApplyResolvedFileNames(
+            package.AnnouncementTemplates,
+            root,
+            workspace);
+        ManagedAnnouncementTemplateEditor.SaveToRoot(root, package.AnnouncementTemplates);
         SyncStartStopGreetingMetadata(package, root, workspace);
         SyncEndStopAnnouncementMetadata(package, root, workspace);
     }
@@ -601,11 +612,36 @@ public static class GpsAnsagenRouteExportSync
         RoutePackagePhoneMetadata.SaveOutsideDisplays(root, package.OutsideDisplays);
     }
 
+    /// <summary>
+    /// Mitarbeiter und Fahrzeuge aus dem Planer in die Datei schreiben.
+    /// Die geschickte Liste ist der Stand. Ein leeres Array wird danach weggelassen,
+    /// damit das Gerät die vorhandene Liste nicht löscht.
+    /// </summary>
+    private static void WriteSentRosterAndVehicles(EditableRoutePackage package, JsonObject root)
+    {
+        EmployeeRosterEditor.SaveToRoot(root, package.Employees);
+        RegisteredVehiclesEditor.SaveToRoot(
+            root,
+            package.RegisteredVehicles,
+            package.RegisteredVehiclePhoneRedirects);
+    }
+
+    /// <summary>
+    /// Museums-Ticketing: Sortiment/Preise + Druckvorlage – auch im Lite-Update (ohne Audio),
+    /// damit VERKAUF per routes_update.json aktualisiert werden kann.
+    /// </summary>
+    private static void SyncTicketingToRoot(EditableRoutePackage package, JsonObject root)
+    {
+        TicketProductEditor.SaveToRoot(root, package.TicketProducts);
+        TicketTemplateEditor.SaveToRoot(root, package.TicketTemplate);
+    }
+
     private static void ApplyLiteVehicleUpdateMetadata(
         JsonObject root,
         bool replaceLineCourseRoutes)
     {
         StripLiteVehicleUpdateFields(root);
+        OmitEmptyRosterSoDeviceKeepsExisting(root);
         root["exportProfile"] = LiteExportProfile;
         root["skipEmbeddedSounds"] = true;
         // true: vollständiger Lite-Katalog oder Senden (Allowlist) – App ersetzt lineCourseRoutes.
@@ -618,6 +654,26 @@ public static class GpsAnsagenRouteExportSync
         foreach (var key in LiteVehicleUpdateStripKeys)
         {
             root.Remove(key);
+        }
+    }
+
+    /// <summary>
+    /// Leeres Array würde auf dem Gerät die vorhandene Liste löschen.
+    /// Dann den Schlüssel weglassen, die App behält den lokalen Stand.
+    /// </summary>
+    private static void OmitEmptyRosterSoDeviceKeepsExisting(JsonObject root)
+    {
+        if (root["employeeRoster"] is JsonArray employees && employees.Count == 0)
+        {
+            root.Remove("employeeRoster");
+            root.Remove("employeeRosterMeta");
+        }
+
+        if (root["registeredVehicles"] is JsonArray vehicles && vehicles.Count == 0)
+        {
+            root.Remove("registeredVehicles");
+            root.Remove("registeredVehiclesMeta");
+            root.Remove("registeredVehiclesPlannerMeta");
         }
     }
 
@@ -663,8 +719,17 @@ public static class GpsAnsagenRouteExportSync
         HashSet<string> routesToExport,
         LocalWorkspaceStore? workspace)
     {
+        var allowedCanonical = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var route in routesToExport)
+        {
+            if (!string.IsNullOrWhiteSpace(route))
+            {
+                allowedCanonical.Add(RouteDisplayHelper.ToCanonicalRouteKey(route));
+            }
+        }
+
         var exportedStops = package.StopsByRoute
-            .Where(kv => RoutePackageRouteKeyHelper.IsRouteKeyAllowed(kv.Key, routesToExport))
+            .Where(kv => allowedCanonical.Contains(RouteDisplayHelper.ToCanonicalRouteKey(kv.Key)))
             .SelectMany(kv => kv.Value)
             .ToList();
 

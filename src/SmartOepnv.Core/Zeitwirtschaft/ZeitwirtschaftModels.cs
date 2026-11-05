@@ -42,6 +42,18 @@ public sealed class ZeitwirtschaftMergedEntry
 
     public string? VoidReason { get; init; }
 
+    public IReadOnlyList<ZeitwirtschaftPause> Pauses { get; init; } = [];
+
+    /// <summary>Manuelle Umstellung des Tages. Null folgt der Diensteinteilung.</summary>
+    public bool? SixthDuty { get; init; }
+
+}
+
+public sealed class ZeitwirtschaftPause
+{
+    public long StartEpochMs { get; init; }
+
+    public long? EndEpochMs { get; init; }
 }
 
 
@@ -101,6 +113,13 @@ public sealed class ZeitwirtschaftTimeTableRow
     public required string Arbeitszeit { get; init; }
 
     public required string Lohnstunden { get; init; }
+
+    public required string Pause { get; init; }
+
+    /// <summary>Geschlossene Pausen in vollen Minuten, für die Summe.</summary>
+    public int PauseMinutes { get; init; }
+
+    public required string Hinweis { get; init; }
 
     public required string EntryId { get; init; }
 

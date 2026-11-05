@@ -35,11 +35,13 @@ public partial class MainViewModel : ObservableObject
     private readonly VehicleTrackingViewModel _vehicleTrackingViewModel = new();
     private readonly TripInspectionViewModel _tripInspectionViewModel = new();
     private ZeitwirtschaftPlannerViewModel? _zeitwirtschaftPlannerViewModel;
+    private VerkaufPlannerViewModel? _verkaufPlannerViewModel;
     private SevSignEditorViewModel? _sevSignEditorViewModel;
     private FahrerdispoViewModel? _fahrerdispoViewModel;
     private FahrzeugdispoViewModel? _fahrzeugdispoViewModel;
     private DienstvorlagenViewModel? _dienstvorlagenViewModel;
     private DienstvorlagenLibraryViewModel? _dienstvorlagenLibraryViewModel;
+    private TicketingLibraryViewModel? _ticketingLibraryViewModel;
     private MitteilungViewModel? _mitteilungViewModel;
 
     private RoutesViewModel RoutesViewModel => _routesViewModel ??= new();
@@ -62,6 +64,7 @@ public partial class MainViewModel : ObservableObject
     private MessagesViewModel MessagesViewModel => _messagesViewModel ??= new();
     private DisplaysOperationsViewModel DisplaysOperationsViewModel => _displaysOperationsViewModel ??= new();
     private ZeitwirtschaftPlannerViewModel ZeitwirtschaftPlannerViewModel => _zeitwirtschaftPlannerViewModel ??= new();
+    private VerkaufPlannerViewModel VerkaufPlannerViewModel => _verkaufPlannerViewModel ??= new();
     private SevSignEditorViewModel SevSignEditorViewModel => _sevSignEditorViewModel ??= new();
     private FahrerdispoViewModel FahrerdispoViewModel
     {
@@ -80,6 +83,7 @@ public partial class MainViewModel : ObservableObject
     private FahrzeugdispoViewModel FahrzeugdispoViewModel => _fahrzeugdispoViewModel ??= new();
     private DienstvorlagenViewModel DienstvorlagenViewModel => _dienstvorlagenViewModel ??= new();
     private DienstvorlagenLibraryViewModel DienstvorlagenLibraryViewModel => _dienstvorlagenLibraryViewModel ??= new();
+    private TicketingLibraryViewModel TicketingLibraryViewModel => _ticketingLibraryViewModel ??= new();
     private MitteilungViewModel MitteilungViewModel => _mitteilungViewModel ??= new();
 
     private NavigationItem? _previousNavigationItem;
@@ -436,6 +440,10 @@ public partial class MainViewModel : ObservableObject
         {
             AnnouncementsLibraryViewModel.RefreshFromEditorIfNeeded();
         }
+        else if (value.Title == "Ticketing")
+        {
+            TicketingLibraryViewModel.RefreshFromEditorIfNeeded();
+        }
         else if (value.Title == "Fahrzeugverwaltung")
         {
             _vehicleManagementViewModel.RefreshFromEditorIfNeeded();
@@ -476,6 +484,11 @@ public partial class MainViewModel : ObservableObject
         {
             ZeitwirtschaftPlannerViewModel.RefreshFromEditor();
             ZeitwirtschaftPlannerViewModel.RefreshHint();
+        }
+        else if (value.Title == "Verkauf")
+        {
+            VerkaufPlannerViewModel.RefreshFromEditor();
+            VerkaufPlannerViewModel.RefreshHint();
         }
         else if (value.Title == "SEV-Schilder")
         {
@@ -530,6 +543,7 @@ public partial class MainViewModel : ObservableObject
         _employeesViewModel.CommitChangesIfDirty();
         StopsLibraryViewModel.CommitChangesIfDirty();
         AnnouncementsLibraryViewModel.CommitChangesIfDirty();
+        TicketingLibraryViewModel.CommitChangesIfDirty();
         _vehicleManagementViewModel.CommitChangesIfDirty();
         MessagesViewModel.CommitChangesIfDirty();
         DisplaysOperationsViewModel.CommitChangesIfDirty();
@@ -567,6 +581,7 @@ public partial class MainViewModel : ObservableObject
         "Personalverwaltung" => _employeesViewModel.HasPendingChanges,
         "Haltestellen" => StopsLibraryViewModel.HasPendingChanges,
         "Ansagen" => AnnouncementsLibraryViewModel.HasPendingChanges,
+        "Ticketing" => TicketingLibraryViewModel.HasPendingChanges,
         "Fahrzeugverwaltung" => _vehicleManagementViewModel.HasPendingChanges,
         "Nachrichten" when !_profile.IsLeitstelle => MessagesViewModel.HasPendingChanges,
         "Anzeigen & Hinweise" => DisplaysOperationsViewModel.HasPendingChanges,
@@ -581,6 +596,7 @@ public partial class MainViewModel : ObservableObject
         "Personalverwaltung" => _employeesViewModel.StatusMessage,
         "Haltestellen" => StopsLibraryViewModel.StatusMessage,
         "Ansagen" => AnnouncementsLibraryViewModel.StatusMessage,
+        "Ticketing" => TicketingLibraryViewModel.StatusMessage,
         "Fahrzeugverwaltung" => _vehicleManagementViewModel.StatusMessage,
         "Nachrichten" when !_profile.IsLeitstelle => MessagesViewModel.StatusMessage,
         "Anzeigen & Hinweise" => DisplaysOperationsViewModel.StatusMessage,
@@ -616,6 +632,9 @@ public partial class MainViewModel : ObservableObject
                 break;
             case "Ansagen":
                 AnnouncementsLibraryViewModel.CommitChangesIfDirty();
+                break;
+            case "Ticketing":
+                TicketingLibraryViewModel.CommitChangesIfDirty();
                 break;
             case "Fahrzeugverwaltung":
                 _vehicleManagementViewModel.CommitChangesIfDirty();
@@ -969,6 +988,7 @@ public partial class MainViewModel : ObservableObject
             RoutePathEditorViewModel.RefreshRoutes();
             StopsLibraryViewModel.RefreshFromEditor();
             AnnouncementsLibraryViewModel.RefreshFromEditor();
+            TicketingLibraryViewModel.RefreshFromEditor();
             MessagesViewModel.RefreshFromEditor();
             DisplaysOperationsViewModel.RefreshFromEditor();
             SevSignEditorViewModel.RefreshFromEditor();
@@ -1129,6 +1149,13 @@ public partial class MainViewModel : ObservableObject
                 Description = "Nur Ansagen: 4-stellige ID, Ton, ★ Sonder mit „S“",
                 CreateContent = () => new AnnouncementsLibraryView { DataContext = AnnouncementsLibraryViewModel }
             };
+            var ticketing = new NavigationItem
+            {
+                Title = "Ticketing",
+                Icon = PackIconKind.Ticket,
+                Description = "Ticketprodukte + Druckvorlage (ticketProducts / ticketTemplate) für VERKAUF",
+                CreateContent = () => new TicketingLibraryView { DataContext = TicketingLibraryViewModel }
+            };
             var navidaten = new NavigationItem
             {
                 Title = "Navidaten",
@@ -1164,6 +1191,13 @@ public partial class MainViewModel : ObservableObject
                 Description = "Zeitstempel aus Tablets zusammenführen (Dropbox JSON)",
                 CreateContent = () => new ZeitwirtschaftPlannerView { DataContext = ZeitwirtschaftPlannerViewModel }
             };
+            var verkauf = new NavigationItem
+            {
+                Title = "Verkauf",
+                Icon = PackIconKind.CashRegister,
+                Description = "Verkaufshistorie pro Fahrer (verkauf_*.json) – 5×24 Stunden, Abrechnung jederzeit",
+                CreateContent = () => new VerkaufPlannerView { DataContext = VerkaufPlannerViewModel }
+            };
             var dienstvorlagen = new NavigationItem
             {
                 Title = "Dienstvorlagen",
@@ -1185,6 +1219,7 @@ public partial class MainViewModel : ObservableObject
                 routen,
                 haltestellen,
                 ansagen,
+                ticketing,
                 navidaten,
                 bildfahrplan,
                 anzeigen,
@@ -1195,7 +1230,8 @@ public partial class MainViewModel : ObservableObject
                 PackIconKind.AccountGroup,
                 _personalverwaltungNavItem,
                 fahrerdispo,
-                zeitwirtschaft));
+                zeitwirtschaft,
+                verkauf));
 
             AddGroup(NavigationGroup.Create(
                 "Fahrzeug",

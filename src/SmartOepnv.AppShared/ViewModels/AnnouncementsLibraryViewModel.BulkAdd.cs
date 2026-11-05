@@ -116,7 +116,6 @@ public partial class AnnouncementsLibraryViewModel
             {
                 AnnouncementCode = row.AnnouncementCode,
                 DisplayName = speicherName,
-                Description = speicherName,
                 Category = "haltestelle",
                 EmbeddedSoundFileName = row.SaveFileName,
                 IncludeInSpecialAnnouncements = false,
@@ -149,7 +148,6 @@ public partial class AnnouncementsLibraryViewModel
     {
         var speicherName = row.DisplayName.Trim();
         item.DisplayName = speicherName;
-        item.Description = speicherName;
         item.EmbeddedSoundFileName =
             ManagedAnnouncementTemplateItem.DefaultEmbeddedFileName(item.AnnouncementCode, speicherName);
         item.IncludeGong = row.IncludeGong;

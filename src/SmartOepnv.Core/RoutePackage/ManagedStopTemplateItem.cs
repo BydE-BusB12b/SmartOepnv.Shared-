@@ -120,6 +120,15 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
 
     public bool ShowEntwerterFields => EntwerterEnabled;
 
+    private string _ibisAnnouncementId = string.Empty;
+
+    /// <summary>Nummer am IBIS-Ansagegerät (DS036). Leer und in der Ansage gesetzt: wird von dort übernommen.</summary>
+    public string IbisAnnouncementId
+    {
+        get => _ibisAnnouncementId;
+        set => SetField(ref _ibisAnnouncementId, IbisAnnouncementIds.Normalize(value));
+    }
+
     /// <summary>Wabe (DS004 Ziffer 4–6), drei Ziffern.</summary>
     public string EntwerterWabe
     {
@@ -257,6 +266,11 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
             return true;
         }
 
+        if (!string.IsNullOrWhiteSpace(IbisAnnouncementId))
+        {
+            return true;
+        }
+
         if (CoordinateFormatting.TryParseParts(AnnouncementLat, AnnouncementLng, out _, out _))
         {
             return true;
@@ -292,7 +306,8 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
             EmbeddedSoundFileName = EmbeddedSoundFileName.Trim(),
             IsAnnouncementEnabled = true,
             EntwerterEnabled = EntwerterEnabled,
-            EntwerterCode = (EntwerterCode ?? string.Empty).Trim()
+            EntwerterCode = (EntwerterCode ?? string.Empty).Trim(),
+            IbisAnnouncementId = IbisAnnouncementIds.Normalize(IbisAnnouncementId)
         };
     }
 
@@ -313,7 +328,8 @@ public sealed class ManagedStopTemplateItem : INotifyPropertyChanged
             RadiusMeters = stop.Radius > 0 ? stop.Radius : DefaultRadiusMeters,
             EmbeddedSoundFileName = stop.EmbeddedSoundFileName,
             EntwerterEnabled = stop.EntwerterEnabled,
-            EntwerterCode = (stop.EntwerterCode ?? string.Empty).Trim()
+            EntwerterCode = (stop.EntwerterCode ?? string.Empty).Trim(),
+            IbisAnnouncementId = IbisAnnouncementIds.Normalize(stop.IbisAnnouncementId)
         };
     }
 

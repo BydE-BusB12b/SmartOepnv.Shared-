@@ -2,13 +2,16 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters">
+             xmlns:conv="clr-namespace:SmartOepnv.AppShared.Converters"
+             xmlns:helpers="clr-namespace:SmartOepnv.AppShared.Helpers">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <conv:RouteStopStrikeThroughConverter x:Key="RouteStopStrikeThroughConverter" />
         <conv:RouteStopTimeOrderWarningConverter x:Key="RouteStopTimeOrderWarningConverter" />
         <conv:RouteStopRouteChangeDisplayConverter x:Key="RouteStopRouteChangeDisplayConverter" />
         <conv:RouteStopRouteChangeVisibleConverter x:Key="RouteStopRouteChangeVisibleConverter" />
+        <conv:RouteStopRoleBrushConverter x:Key="RouteStopRoleBrushConverter" />
+        <conv:CompactRouteListLabelConverter x:Key="CompactRouteListLabelConverter" />
         <Style x:Key="RoutesSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
@@ -62,7 +65,7 @@
                 <TextBlock DockPanel.Dock="Top" Text="Routen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8" />
                 <TextBox DockPanel.Dock="Top"
                          materialDesign:HintAssist.Hint="Suchen (Name, Linie/Kurs, Fahrt)"
-                         Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                         helpers:LiveText.Source="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,0,0,12" />
                 <UniformGrid DockPanel.Dock="Top" Columns="2" Margin="0,0,0,12">
                     <Button Content="Route hinzufügen"
@@ -86,17 +89,22 @@
                             Margin="4,4,0,0"
                             Padding="8,6" />
                 </UniformGrid>
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <ListBox ItemsSource="{Binding FilteredRoutes}" SelectedItem="{Binding SelectedRoute}"
-                             BorderThickness="0" Background="Transparent"
-                             HorizontalContentAlignment="Stretch">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" TextWrapping="Wrap" />
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </ScrollViewer>
+                <ListBox ItemsSource="{Binding FilteredRoutes}" SelectedItem="{Binding SelectedRoute}"
+                         BorderThickness="0" Background="Transparent"
+                         HorizontalContentAlignment="Stretch"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         ScrollViewer.CanContentScroll="True"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Converter={StaticResource CompactRouteListLabelConverter}}"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Converter={StaticResource CompactRouteListLabelConverter}}" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </DockPanel>
         </materialDesign:Card>
 
@@ -112,7 +120,7 @@
                            TextWrapping="Wrap" />
 
                 <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                    <TextBlock Text="{Binding SelectedRoute, TargetNullValue='— Keine Route ausgewählt —'}"
+                    <TextBlock Text="{Binding SelectedRoute, Converter={StaticResource CompactRouteListLabelConverter}, TargetNullValue='— Keine Route ausgewählt —'}"
                                TextWrapping="Wrap"
                                FontWeight="SemiBold"
                                FontSize="14"
@@ -310,7 +318,7 @@
                         </WrapPanel>
                     </StackPanel>
 
-                    <Grid Grid.Row="2" Grid.IsSharedSizeScope="True">
+                    <Grid Grid.Row="2">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -326,12 +334,12 @@
                     <Grid Grid.Row="1" Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="68" />
-                            <ColumnDefinition Width="Auto" SharedSizeGroup="RouteStopCols" />
+                            <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="58" />
                             <ColumnDefinition Width="130" />
                             <ColumnDefinition Width="52" />
                             <ColumnDefinition Width="36" />
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="0" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="ID" FontWeight="SemiBold" Margin="4,0" Opacity="0.85" />
                         <TextBlock Grid.Column="1" Text="Name" FontWeight="SemiBold" Margin="12,0,4,0" Opacity="0.85" />
@@ -343,6 +351,9 @@
                              ItemsSource="{Binding Stops}" SelectedItem="{Binding SelectedStop}"
                              BorderThickness="0" Background="Transparent"
                              HorizontalContentAlignment="Stretch"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             ScrollViewer.CanContentScroll="True"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                              PreviewMouseLeftButtonDown="StopsList_PreviewMouseLeftButtonDown">
@@ -352,21 +363,27 @@
                                 <Setter Property="Padding" Value="0" />
                                 <Setter Property="Margin" Value="0" />
                                 <Setter Property="BorderThickness" Value="0,0,0,1" />
-                                <Setter Property="BorderBrush" Value="#22FFFFFF" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SmartAccentBrush}" />
                             </Style>
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel>
+                                <StackPanel ToolTip="Grün = Starthaltestelle, Rot = Endhaltestelle, Gelb = Zielwechsel">
+                                    <StackPanel.Background>
+                                        <MultiBinding Converter="{StaticResource RouteStopRoleBrushConverter}">
+                                            <Binding />
+                                            <Binding ElementName="StopsList" Path="DataContext.RouteChangeDisplayTick" />
+                                        </MultiBinding>
+                                    </StackPanel.Background>
                                     <Grid Margin="0,4">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="68" />
-                                            <ColumnDefinition Width="Auto" SharedSizeGroup="RouteStopCols" />
+                                            <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="58" />
                                             <ColumnDefinition Width="130" />
                                             <ColumnDefinition Width="52" />
                                             <ColumnDefinition Width="36" />
-                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="0" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="{Binding PlannerStopCode}"
                                                    Margin="4,0" VerticalAlignment="Center" />

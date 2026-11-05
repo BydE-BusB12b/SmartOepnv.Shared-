@@ -69,7 +69,7 @@ public static class DropboxConstants
 
     public const string LeitstelleStandFileName = "leitstelle_stand.json";
 
-    /// <summary>GPS-Fahrtenprüfung: eine Datei je Fahrzeug, 7-Tage-Loop (<c>gps_trace_{telefon}.json</c>).</summary>
+    /// <summary>GPS-Fahrtenprüfung: Übertragung je Fahrzeug, 7-Tage-Fenster (<c>gps_trace_{telefon}.json</c>). Der Planer behält 30 Tage.</summary>
     public const string GpsTraceFilePrefix = "gps_trace_";
     public const string MaengelkarteFileName = "maengelkarte.json";
     public const string PlanerSessionFileName = "planer_session.json";

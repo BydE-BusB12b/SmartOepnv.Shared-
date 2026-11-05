@@ -13,7 +13,8 @@ public static class NavCorrectionMemory
     public const string RootKey = "navCorrectionMemory";
     private const int MaxEntries = 2500;
     private const double SymbolMatchRadiusM = 38;
-    private const double WaypointCorridorRadiusM = 55;
+    /// <summary>Nur Punkte auf derselben Straße, nicht die Parallelführung hinter der Bahn.</summary>
+    private const double WaypointCorridorRadiusM = 22;
     private const double BearingToleranceDeg = 55;
 
     public sealed class Entry

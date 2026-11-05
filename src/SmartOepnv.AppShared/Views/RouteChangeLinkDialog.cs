@@ -15,8 +15,8 @@ namespace SmartOepnv.AppShared.Views;
 /// </summary>
 public sealed class RouteChangeLinkDialog : Window
 {
-    private static readonly Brush PanelBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush CardBackground = new SolidColorBrush(Color.FromRgb(0x14, 0x23, 0x3A));
+    private static Brush PanelBackground => UiTheme.BackgroundBrush;
+    private static Brush CardBackground => UiTheme.SurfaceBrush;
     private static readonly Brush AccentBrush = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5));
     private static readonly Brush ButtonBg = new SolidColorBrush(Color.FromRgb(0x1E, 0x5A, 0x9E));
     private static readonly Brush MutedForeground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB));
@@ -124,7 +124,7 @@ public sealed class RouteChangeLinkDialog : Window
             Text = "Routenwechsel verknüpfen",
             FontSize = 18,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 6)
         });
 
@@ -151,7 +151,7 @@ public sealed class RouteChangeLinkDialog : Window
         {
             Content = "Automatischer Routenwechsel",
             IsChecked = _endStop.RouteChangeEnabled,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 10)
         };
         _enabledBox.Checked += (_, _) => UpdateFieldsVisibility();
@@ -163,7 +163,7 @@ public sealed class RouteChangeLinkDialog : Window
         _fieldsPanel.Children.Add(new TextBlock
         {
             Text = "Standard-Folgefahrt (Tage ohne Ausnahme):",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 4),
             Opacity = 0.9
         });
@@ -227,7 +227,7 @@ public sealed class RouteChangeLinkDialog : Window
         {
             Text = "Abweichende Folgefahrt an einzelnen Betriebstagen:",
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 4)
         });
         _fieldsPanel.Children.Add(new TextBlock
@@ -237,7 +237,7 @@ public sealed class RouteChangeLinkDialog : Window
                     "Mit + weitere Abweichungen anlegen.",
             FontSize = 11,
             Opacity = 0.75,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8)
         });
@@ -266,7 +266,7 @@ public sealed class RouteChangeLinkDialog : Window
             Text = "Weitere Abweichung hinzufügen",
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(10, 0, 0, 0),
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.85
         });
         _fieldsPanel.Children.Add(addRow);
@@ -417,7 +417,7 @@ public sealed class RouteChangeLinkDialog : Window
             Text = row.SummaryText,
             FontWeight = FontWeights.SemiBold,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.95,
             Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center
@@ -445,7 +445,7 @@ public sealed class RouteChangeLinkDialog : Window
         stack.Children.Add(new TextBlock
         {
             Text = "Verkehrstage:",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.9,
             Margin = new Thickness(0, 0, 0, 4)
         });
@@ -458,7 +458,7 @@ public sealed class RouteChangeLinkDialog : Window
                 Content = dayItem.Label,
                 IsChecked = dayItem.IsSelected,
                 Margin = new Thickness(0, 0, 12, 4),
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 VerticalAlignment = VerticalAlignment.Center
             };
             var captured = dayItem;
@@ -472,7 +472,7 @@ public sealed class RouteChangeLinkDialog : Window
         stack.Children.Add(new TextBlock
         {
             Text = "Zusätzlich Datum (optional, kommagetrennt):",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.9,
             Margin = new Thickness(0, 0, 0, 4)
         });
@@ -487,7 +487,7 @@ public sealed class RouteChangeLinkDialog : Window
         stack.Children.Add(new TextBlock
         {
             Text = "Wechsel nach Folgefahrt:",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.9,
             Margin = new Thickness(0, 0, 0, 4)
         });

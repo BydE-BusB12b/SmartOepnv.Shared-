@@ -11,8 +11,6 @@
         <SolidColorBrush x:Key="DispoGridLineBrush" Color="#70FFFFFF" />
         <SolidColorBrush x:Key="DispoHeaderBgBrush" Color="#33FFFFFF" />
         <SolidColorBrush x:Key="DispoCellBgBrush" Color="#14000000" />
-        <SolidColorBrush x:Key="DispoHourNumberBrush" Color="#FFEB3B" />
-        <SolidColorBrush x:Key="DispoDayHeaderBrush" Color="#FFE082" />
         <SolidColorBrush x:Key="DispoWeekendBrush" Color="#FF8A80" />
         <Style x:Key="DispoCellButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
             <Setter Property="Padding" Value="2" />
@@ -169,7 +167,7 @@
                                 Padding="8,6">
                             <TextBlock Text="Fahrer"
                                        FontWeight="SemiBold"
-                                       Foreground="{StaticResource DispoDayHeaderBrush}"
+                                       Foreground="{DynamicResource SmartForegroundBrush}"
                                        VerticalAlignment="Center" />
                         </Border>
                         <ItemsControl Grid.Column="1"
@@ -194,7 +192,7 @@
                                                    FontWeight="SemiBold">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
-                                                    <Setter Property="Foreground" Value="{StaticResource DispoDayHeaderBrush}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsWeekend}" Value="True">
                                                             <Setter Property="Foreground" Value="{StaticResource DispoWeekendBrush}" />
@@ -254,7 +252,7 @@
                                         <StackPanel VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Title}"
                                                        FontWeight="Bold"
-                                                       Foreground="White"
+                                                       Foreground="{DynamicResource SmartForegroundBrush}"
                                                        Cursor="Hand"
                                                        MouseLeftButtonUp="DriverName_MouseLeftButtonUp"
                                                        ToolTip="In der Personalverwaltung öffnen"
@@ -316,7 +314,7 @@
                                                                        VerticalAlignment="Center"
                                                                        FontSize="14"
                                                                        FontWeight="SemiBold"
-                                                                       Foreground="{StaticResource DispoHourNumberBrush}">
+                                                                       Foreground="{DynamicResource SmartForegroundBrush}">
                                                                 <TextBlock.Style>
                                                                     <Style TargetType="TextBlock">
                                                                         <Setter Property="Visibility" Value="Collapsed" />
@@ -335,7 +333,7 @@
                                                                        Margin="0,0,0,2"
                                                                        FontSize="9"
                                                                        FontWeight="SemiBold"
-                                                                       Foreground="{StaticResource DispoHourNumberBrush}">
+                                                                       Foreground="{DynamicResource SmartForegroundBrush}">
                                                                 <TextBlock.Style>
                                                                     <Style TargetType="TextBlock">
                                                                         <Setter Property="Visibility" Value="Collapsed" />
@@ -413,7 +411,7 @@
                                                                 </Border.Style>
                                                                 <TextBlock Text="{Binding Label}"
                                                                            FontSize="8"
-                                                                           Foreground="White"
+                                                                           Foreground="{DynamicResource SmartForegroundBrush}"
                                                                            TextTrimming="CharacterEllipsis"
                                                                            VerticalAlignment="Center"
                                                                            Margin="4,0"
@@ -473,7 +471,7 @@
 
                                                             <TextBlock Text="{Binding Label}"
                                                                        FontSize="8"
-                                                                       Foreground="White"
+                                                                       Foreground="{DynamicResource SmartForegroundBrush}"
                                                                        TextTrimming="CharacterEllipsis"
                                                                        VerticalAlignment="Center"
                                                                        Margin="4,0"

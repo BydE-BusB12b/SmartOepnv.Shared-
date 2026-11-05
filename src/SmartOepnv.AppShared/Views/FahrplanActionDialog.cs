@@ -17,7 +17,7 @@ public enum FahrplanActionChoice
 /// <summary>Auswahl: automatische Fahrplanerstellung, Umlauf-Import, HTML-/PDF-Fahrplan oder Fahrbereich kopieren.</summary>
 public sealed class FahrplanActionDialog : Window
 {
-    private static readonly Brush DialogBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+    private static Brush DialogBackground => UiTheme.BackgroundBrush;
 
     public FahrplanActionChoice Choice { get; private set; } = FahrplanActionChoice.Cancel;
 
@@ -49,7 +49,7 @@ public sealed class FahrplanActionDialog : Window
         root.Children.Add(new TextBlock
         {
             Text = "Was möchten Sie tun?",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontWeight = FontWeights.SemiBold,
             FontSize = 15,
             Margin = new Thickness(0, 0, 0, 8)
@@ -57,7 +57,7 @@ public sealed class FahrplanActionDialog : Window
         root.Children.Add(new TextBlock
         {
             Text = "Automatisch neue Fahrten aus einer Vorlage erzeugen, einen Umlauf importieren, den Fahrplan als HTML öffnen oder einen Fahrbereich in eine neue Route übernehmen.",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Opacity = 0.8,
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,

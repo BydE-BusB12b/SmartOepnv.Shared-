@@ -41,6 +41,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [ObservableProperty] private DateBasedHintItem? selectedHint;
     [ObservableProperty] private OutsideDisplayProgram? selectedOutsideProgram;
     [ObservableProperty] private int selectedWechseltextIndex;
+    [ObservableProperty] private string newHintName = string.Empty;
     [ObservableProperty] private string newHintText = string.Empty;
     [ObservableProperty] private string newHintStartDate = string.Empty;
     [ObservableProperty] private string newHintEndDate = string.Empty;
@@ -86,12 +87,14 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         OutsideProgramsView = CollectionViewSource.GetDefaultView(OutsidePrograms);
         OutsideProgramsView.Filter = FilterOutsideProgram;
         ApplyOutsideProgramSort();
-        _outsideSearchDebouncer = new SearchQueryDebouncer(RefreshOutsideProgramsView, delayMilliseconds: 150);
+        _outsideSearchDebouncer = new SearchQueryDebouncer(RefreshOutsideProgramsView, delayMilliseconds: 40);
 
         if (AppServices.IsInitialized)
         {
             AppServices.RegisterFlushBeforeExport(CommitChangesIfDirty);
         }
+
+        InitializeSevTft();
     }
 
     public void RefreshFromEditorIfNeeded()
@@ -440,8 +443,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             return;
         }
 
-        // Aktuelle Auswahl ist durch Filter ausgeblendet → erstes sichtbares Ziel wählen
-        SelectedOutsideProgram = OutsideProgramsView.Cast<OutsideDisplayProgram>().FirstOrDefault();
+        SelectedOutsideProgram = null;
     }
 
     private bool FilterOutsideProgram(object obj)
@@ -671,7 +673,11 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [RelayCommand]
     private void SelectTab(string? tabKey)
     {
-        SelectedTabIndex = tabKey == "hints" ? 1 : 0;
+        SelectedTabIndex = tabKey switch
+        {
+            "hints" => 1,
+            _ => 0
+        };
     }
 
     [RelayCommand]
@@ -768,41 +774,70 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     }
 
     [RelayCommand]
-    private void Save() => CommitChanges(force: true, showSuccessFeedback: true);
+    private void Save()
+    {
+        StatusMessage = "Speichern…";
+        UiDispatch.RunAfterPaint(() => CommitChanges(force: true, showSuccessFeedback: true));
+    }
 
     [RelayCommand]
     private void AddDateBasedHint()
     {
         var text = NewHintText.Trim();
+        var name = NewHintName.Trim();
+        if (name.Length == 0)
+        {
+            name = DateBasedHintItem.FirstLine(text);
+        }
+
+        var startText = NewHintStartDate.Trim();
+        var endText = NewHintEndDate.Trim();
+        if (startText.Length > 0 || endText.Length > 0)
+        {
+            if (!TryParseGermanDate(startText, out var start) || !TryParseGermanDate(endText, out var end))
+            {
+                StatusMessage = "Datum im Format TT.MM.JJJJ (z. B. 01.06.2026).";
+                return;
+            }
+
+            if (end < start)
+            {
+                StatusMessage = "Enddatum darf nicht vor Startdatum liegen.";
+                return;
+            }
+        }
+        else
+        {
+            var today = DateTime.Today.ToString("dd.MM.yyyy", CultureInfo.GetCultureInfo("de-DE"));
+            startText = today;
+            endText = today;
+        }
+
         if (text.Length == 0)
         {
-            StatusMessage = "Bitte Hinweistext eingeben.";
-            return;
+            text = "Neuer Hinweis";
         }
 
-        if (!TryParseGermanDate(NewHintStartDate, out var start) || !TryParseGermanDate(NewHintEndDate, out var end))
+        if (name.Length == 0)
         {
-            StatusMessage = "Datum im Format TT.MM.JJJJ (z. B. 01.06.2026).";
-            return;
-        }
-
-        if (end < start)
-        {
-            StatusMessage = "Enddatum darf nicht vor Startdatum liegen.";
-            return;
+            name = "Hinweis";
         }
 
         var hint = new DateBasedHintItem
         {
+            Name = name,
             HintText = text,
-            StartDate = NewHintStartDate.Trim(),
-            EndDate = NewHintEndDate.Trim()
+            StartDate = startText,
+            EndDate = endText
         };
         DateBasedHints.Add(hint);
         SelectedHint = hint;
+        NewHintName = string.Empty;
         NewHintText = string.Empty;
+        NewHintStartDate = string.Empty;
+        NewHintEndDate = string.Empty;
         MarkDirty();
-        StatusMessage = "Hinweis hinzugefügt – „Speichern“ nicht vergessen.";
+        StatusMessage = "Hinweis geöffnet – Text anpassen und speichern.";
     }
 
     [RelayCommand]

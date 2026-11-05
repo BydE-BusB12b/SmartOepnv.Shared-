@@ -9,8 +9,8 @@
         MaxWidth="480"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource SmartBackgroundBrush}"
-        Foreground="White"
-        TextElement.Foreground="White">
+        Foreground="{DynamicResource SmartForegroundBrush}"
+        TextElement.Foreground="{DynamicResource SmartForegroundBrush}">
 
     <Border Margin="16"
             Padding="28,24"
@@ -28,7 +28,7 @@
             <TextBlock x:Name="TitleText"
                        FontSize="20"
                        FontWeight="SemiBold"
-                       Foreground="White"
+                       Foreground="{DynamicResource SmartForegroundBrush}"
                        TextAlignment="Center"
                        TextWrapping="Wrap"
                        Margin="0,0,0,10" />
@@ -36,7 +36,7 @@
             <TextBlock x:Name="MessageText"
                        FontSize="13"
                        LineHeight="20"
-                       Foreground="White"
+                       Foreground="{DynamicResource SmartForegroundBrush}"
                        Opacity="0.88"
                        TextAlignment="Center"
                        TextWrapping="Wrap" />

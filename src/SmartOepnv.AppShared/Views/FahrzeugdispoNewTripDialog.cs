@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using MaterialDesignThemes.Wpf;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -11,8 +12,8 @@ public sealed class FahrzeugdispoNewTripDialog : Window
 {
     private static readonly Brush InputBackground = Brushes.White;
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush LabelForeground = Brushes.White;
-    private static readonly Brush DialogBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
+    private static Brush DialogBackground => UiTheme.BackgroundBrush;
     private static readonly Brush DateFieldBackground = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
 
     private readonly ComboBox _vehicleBox;
@@ -155,7 +156,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
 
         _errorText = new TextBlock
         {
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -493,7 +494,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
             {
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 FontWeight = FontWeights.SemiBold,
                 FontSize = 15
             };
@@ -537,7 +538,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
                 var header = new TextBlock
                 {
                     Text = WeekdayHeaders[c],
-                    Foreground = Brushes.White,
+                    Foreground = UiTheme.ForegroundBrush,
                     Opacity = 0.85,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Margin = new Thickness(2, 0, 2, 4),
@@ -658,7 +659,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
             _dateText = new TextBlock
             {
                 Text = FormatDate(initial),
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 VerticalAlignment = VerticalAlignment.Center
             };
             displayBorder.Child = _dateText;

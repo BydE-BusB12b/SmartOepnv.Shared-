@@ -32,6 +32,7 @@ public partial class DataTransferViewModel : ObservableObject
     [ObservableProperty] private int driverCount;
     [ObservableProperty] private bool hasLoadedPackage;
     [ObservableProperty] private string lastActionMessage = "Noch kein Route-Paket geladen.";
+    [ObservableProperty] private string lastVehicleSendText = "Zuletzt ans Fahrzeug: noch nicht";
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private TransferButtonVisualState dropboxImportButtonState = TransferButtonVisualState.Idle;
     [ObservableProperty] private TransferButtonVisualState dropboxExportButtonState = TransferButtonVisualState.Idle;
@@ -79,6 +80,31 @@ public partial class DataTransferViewModel : ObservableObject
             RefreshStats();
             RefreshPackageVersions();
         }
+
+        RefreshLastVehicleSendText();
+    }
+
+    private void RefreshLastVehicleSendText()
+    {
+        var utcMs = AppServices.PlanerAppSettings?.Load().LastVehicleSendUtcMs ?? 0;
+        LastVehicleSendText = utcMs <= 0
+            ? "Zuletzt ans Fahrzeug: noch nicht"
+            : "Zuletzt ans Fahrzeug: " +
+              DateTimeOffset.FromUnixTimeMilliseconds(utcMs).ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+    }
+
+    private void RememberVehicleSend()
+    {
+        var store = AppServices.PlanerAppSettings;
+        if (store is null)
+        {
+            return;
+        }
+
+        var settings = store.Load();
+        settings.LastVehicleSendUtcMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        store.Save(settings);
+        RefreshLastVehicleSendText();
     }
 
     /// <summary>Nur Smart-ÖPNV Planer: Dropbox-Upload „Für Leitstelle speichern“.</summary>
@@ -278,6 +304,7 @@ public partial class DataTransferViewModel : ObservableObject
 
             var json = AppServices.Routes.PrepareFullLiteVehicleUpdateJson();
             await AppServices.Dropbox.UploadNamedFileAsync(DropboxConstants.RouteUpdateFileName, json);
+            RememberVehicleSend();
             LastActionMessage =
                 $"Kleines Fahrzeugupdate hochgeladen ({DropboxConstants.RouteUpdateFileName}) – " +
                 "Routen/Haltestellen ohne Tondateien; bestehende Ansagen auf dem Gerät bleiben.";
@@ -327,6 +354,7 @@ public partial class DataTransferViewModel : ObservableObject
 
             var json = AppServices.Routes.PrepareExportJson();
             await AppServices.Dropbox.UploadNamedFileAsync(DropboxConstants.RouteTestFileName, json);
+            RememberVehicleSend();
             var packageVersion = RoutePackageVersionStamp.TryReadPackageVersion(json);
             LastActionMessage = packageVersion > 0
                 ? $"Testupload: {DropboxConstants.RouteTestFileName} (packageVersion={packageVersion}) – nur manuell auf dem Tablet laden."
@@ -421,6 +449,7 @@ public partial class DataTransferViewModel : ObservableObject
                 pruneOthersOnDevice,
                 liteVehicleUpdate: true);
             await AppServices.Dropbox.UploadNamedFileAsync(DropboxConstants.RouteUpdateFileName, json);
+            RememberVehicleSend();
 
             var routeLabel = selectedRoutes.Count == 1
                 ? $"„{selectedRoutes[0]}“"
@@ -769,6 +798,7 @@ public partial class DataTransferViewModel : ObservableObject
             {
                 var json = AppServices.Routes.PrepareExportJson();
                 await AppServices.Dropbox.UploadRouteFileAsync(json).ConfigureAwait(true);
+                RememberVehicleSend();
                 var packageVersion = RoutePackageVersionStamp.TryReadPackageVersion(json);
                 LastActionMessage = packageVersion > 0
                     ? $"Nach Dropbox hochgeladen: {AppServices.Dropbox.GetRouteFilePath()} (packageVersion={packageVersion})"
@@ -856,6 +886,7 @@ public partial class DataTransferViewModel : ObservableObject
                 var commandId = await RemoteDeviceSettingsService
                     .UploadAsync(AppServices.Dropbox, vehiclePhone, settings)
                     .ConfigureAwait(true);
+                RememberVehicleSend();
                 var fileName = RemoteDeviceSettingsService.BuildFileName(vehiclePhone);
                 LastActionMessage =
                     $"Einstellungen an {vehicleName} gesendet ({fileName}, commandId={commandId}).";
@@ -882,6 +913,7 @@ public partial class DataTransferViewModel : ObservableObject
                 var json = AppServices.Routes.PrepareFullLiteVehicleUpdateJson();
                 await AppServices.Dropbox.UploadNamedFileAsync(DropboxConstants.RouteUpdateFileName, json)
                     .ConfigureAwait(true);
+                RememberVehicleSend();
                 uploadLabel =
                     $"{DropboxConstants.RouteUpdateFileName} nach Dropbox hochgeladen ({AppServices.Dropbox.GetNamedFilePath(DropboxConstants.RouteUpdateFileName)})";
             }
@@ -889,6 +921,7 @@ public partial class DataTransferViewModel : ObservableObject
             {
                 var exportJson = AppServices.Routes.PrepareExportJson();
                 await AppServices.Dropbox.UploadRouteFileAsync(exportJson).ConfigureAwait(true);
+                RememberVehicleSend();
                 uploadLabel =
                     $"{DropboxConstants.RouteFileName} nach Dropbox hochgeladen ({AppServices.Dropbox.GetRouteFilePath()})";
             }

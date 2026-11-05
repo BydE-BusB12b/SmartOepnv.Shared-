@@ -32,6 +32,9 @@ public sealed class SearchQueryDebouncer
         _apply();
     }
 
+    /// <summary>Timer stoppen ohne Apply (z. B. vor explizitem Speichern).</summary>
+    public void Cancel() => _timer.Stop();
+
     private void OnTick(object? sender, EventArgs e)
     {
         _timer.Stop();

@@ -18,7 +18,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" MinHeight="280" />
+            <RowDefinition Height="*" MinHeight="0" />
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0"
@@ -28,49 +28,95 @@
                    Margin="0,0,0,4" />
 
         <StackPanel Grid.Row="1" Margin="0,0,0,10">
-            <TextBlock Style="{StaticResource SmartPageSubtitleStyle}"
-                       TextWrapping="Wrap"
-                       Margin="0,0,0,8"
-                       Text="Pro Fahrzeug eine JSON (zeitwirtschaft_&lt;Telefon&gt;.json). Korrekturen und Stornos (mit Grund) werden in der JSON gespeichert und per Dropbox verteilt. Stornierte Zeilen zählen nicht zur Arbeitszeit." />
-            <StackPanel Orientation="Horizontal">
+            <WrapPanel Orientation="Horizontal">
                 <Button Content="Aus Dropbox laden"
                         Command="{Binding LoadFromDropboxCommand}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
-                        Margin="0,0,8,0"
+                        Margin="0,0,8,6"
                         Padding="14,4" />
                 <Button Content="Aus Ordner laden"
                         Command="{Binding LoadFromLocalFolderCommand}"
                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                        Margin="0,0,8,0"
+                        Margin="0,0,8,6"
                         Padding="14,4" />
                 <Button Content="Zeitkorrektur"
                         Command="{Binding CorrectTimeCommand}"
                         CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
-                        Margin="0,0,8,0"
+                        Margin="0,0,8,6"
+                        Padding="14,4" />
+                <Button Content="Sechstel-Dienst"
+                        Command="{Binding ToggleSixthDutyCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Margin="0,0,8,6"
                         Padding="14,4" />
                 <Button Content="Storno"
                         Command="{Binding VoidEntryCommand}"
                         CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                        Margin="0,0,8,0"
+                        Margin="0,0,8,6"
                         Padding="14,4" />
                 <ComboBox ItemsSource="{Binding AvailableMonths}"
                           SelectedItem="{Binding SelectedMonth}"
                           DisplayMemberPath="Label"
                           MinWidth="160"
-                          Margin="0,0,8,0"
+                          Margin="0,0,8,6"
                           VerticalAlignment="Center" />
                 <Button Content="PDF erstellen"
                         Command="{Binding ExportPdfCommand}"
                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                        Margin="0,0,8,0"
+                        Margin="0,0,8,6"
                         Padding="14,4" />
                 <Button Content="CSV exportieren"
                         Command="{Binding ExportCsvCommand}"
                         Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Margin="0,0,8,6"
                         Padding="14,4" />
-            </StackPanel>
+                <ToggleButton x:Name="ZeitwirtschaftInfoButton"
+                              Content="i"
+                              FontStyle="Italic"
+                              FontWeight="SemiBold"
+                              FontSize="16"
+                              Width="36"
+                              MinHeight="32"
+                              Padding="0"
+                              Margin="0,0,8,6"
+                              ToolTip="Hinweise zur Zeitwirtschaft"
+                              Style="{StaticResource MaterialDesignOutlinedButton}"
+                              VerticalAlignment="Center" />
+                <Button Content="Mitarbeiter auswählen"
+                        Command="{Binding SelectEmployeeCommand}"
+                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Margin="0,0,0,6"
+                        Padding="14,4"
+                        VerticalAlignment="Center" />
+                <Popup PlacementTarget="{Binding ElementName=ZeitwirtschaftInfoButton}"
+                       Placement="Bottom"
+                       HorizontalOffset="0"
+                       VerticalOffset="4"
+                       StaysOpen="False"
+                       AllowsTransparency="True"
+                       IsOpen="{Binding IsChecked, ElementName=ZeitwirtschaftInfoButton, Mode=TwoWay}">
+                    <Border Background="{DynamicResource SmartSurfaceBrush}"
+                            BorderBrush="{DynamicResource SmartForegroundBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14"
+                            MaxWidth="520"
+                            TextElement.Foreground="{DynamicResource SmartForegroundBrush}">
+                        <StackPanel>
+                            <TextBlock TextWrapping="Wrap"
+                                       FontSize="13"
+                                       Text="Pro Fahrzeug eine JSON (zeitwirtschaft_&lt;Telefon&gt;.json). Der Pausenbutton schreibt Pausen nur bei eingestempelter Schicht. Gesetzliche Arbeitszeit ist Kommen bis Gehen ohne Ruhepausen von mindestens 15 Minuten. Kürzere Stempel bleiben Arbeitszeit. Ein Sechstel-Dienst zieht Wendezeiten nur von den Lohnstunden ab. Storno nimmt die Stunden nicht aus der gesetzlichen Aufzeichnung." />
+                            <TextBlock Text="{Binding ComplianceSummary}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,12,0,0"
+                                       FontSize="13" />
+                        </StackPanel>
+                    </Border>
+                </Popup>
+            </WrapPanel>
             <TextBlock Text="{Binding StatusMessage}"
                        TextWrapping="Wrap"
                        Margin="0,8,0,0"
@@ -79,42 +125,53 @@
         </StackPanel>
 
         <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" MinWidth="200" MaxWidth="360" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="*" MinWidth="320" />
-            </Grid.ColumnDefinitions>
-
-            <materialDesign:Card Grid.Column="0"
-                                 Padding="0"
+            <materialDesign:Card Padding="0"
+                                 VerticalAlignment="Stretch"
                                  UniformCornerRadius="10"
                                  Background="{StaticResource SmartSurfaceBrush}">
                 <DockPanel LastChildFill="True">
                     <TextBlock DockPanel.Dock="Top"
-                               Text="Mitarbeiter"
+                               Text="{Binding TimeTableTitle}"
                                FontWeight="SemiBold"
                                Margin="12,10,12,6" />
-                    <ListBox ItemsSource="{Binding Employees}"
-                             SelectedItem="{Binding SelectedEmployee}"
-                             DisplayMemberPath="DisplayLine"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             Margin="4,0,4,8"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
-                </DockPanel>
-            </materialDesign:Card>
-
-            <materialDesign:Card Grid.Column="2"
-                                 Padding="0"
-                                 UniformCornerRadius="10"
-                                 Background="{StaticResource SmartSurfaceBrush}">
-                <DockPanel LastChildFill="True">
-                    <TextBlock DockPanel.Dock="Top"
-                               Text="Zeiten pro Fahrer – alle Fahrzeuge chronologisch (Monatsfilter)"
-                               FontWeight="SemiBold"
-                               Margin="12,10,12,6" />
-                    <DataGrid DockPanel.Dock="Top"
-                              ItemsSource="{Binding TimeRows}"
+                    <Border DockPanel.Dock="Bottom"
+                            Margin="8,0,8,8"
+                            Padding="8,10"
+                            Background="#22FFFFFF"
+                            BorderBrush="#33FFFFFF"
+                            BorderThickness="0,1,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*" MinWidth="130" />
+                                <ColumnDefinition Width="*" MinWidth="130" />
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="220" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="Gesamtsumme"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3"
+                                       Text="{Binding TotalPause}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="4"
+                                       Text="{Binding TotalDuration}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="5"
+                                       Text="{Binding TotalPay}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Left" />
+                        </Grid>
+                    </Border>
+                    <DataGrid ItemsSource="{Binding TimeRows}"
                               SelectedItem="{Binding SelectedTimeRow}"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
@@ -128,7 +185,16 @@
                               RowBackground="Transparent"
                               AlternatingRowBackground="#18FFFFFF"
                               Margin="8,0,8,0"
-                              MinRowHeight="40">
+                              MinRowHeight="40"
+                              VerticalAlignment="Stretch"
+                              HorizontalAlignment="Stretch"
+                              EnableRowVirtualization="True"
+                              EnableColumnVirtualization="True"
+                              VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              ScrollViewer.CanContentScroll="False"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
                         <DataGrid.RowStyle>
                             <Style TargetType="DataGridRow">
                                 <Style.Triggers>
@@ -163,6 +229,13 @@
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource ZeitwirtschaftVoidableCellStyle}" />
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
+                            <DataGridTextColumn Header="Pause"
+                                                Binding="{Binding Pause}"
+                                                Width="170">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ZeitwirtschaftVoidableCellStyle}" />
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <DataGridTextColumn Header="Arbeitszeit"
                                                 Binding="{Binding Arbeitszeit}"
                                                 Width="90">
@@ -177,38 +250,17 @@
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource ZeitwirtschaftVoidableCellStyle}" />
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
+                            <DataGridTextColumn Header="Hinweis"
+                                                Binding="{Binding Hinweis}"
+                                                Width="220">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ZeitwirtschaftVoidableCellStyle}">
+                                        <Setter Property="TextWrapping" Value="Wrap" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                         </DataGrid.Columns>
                     </DataGrid>
-                    <Border DockPanel.Dock="Bottom"
-                            Margin="8,0,8,8"
-                            Padding="8,10"
-                            Background="#22FFFFFF"
-                            BorderBrush="#33FFFFFF"
-                            BorderThickness="0,1,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="110" />
-                                <ColumnDefinition Width="*" MinWidth="130" />
-                                <ColumnDefinition Width="*" MinWidth="130" />
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="90" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0"
-                                       Text="Gesamtsumme"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="3"
-                                       Text="{Binding TotalDuration}"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center"
-                                       HorizontalAlignment="Left" />
-                            <TextBlock Grid.Column="4"
-                                       Text="{Binding TotalDuration}"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center"
-                                       HorizontalAlignment="Left" />
-                        </Grid>
-                    </Border>
                 </DockPanel>
             </materialDesign:Card>
         </Grid>

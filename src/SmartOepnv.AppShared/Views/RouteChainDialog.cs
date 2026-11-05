@@ -15,7 +15,7 @@ namespace SmartOepnv.AppShared.Views;
 
 public sealed class RouteChainDialog : Window
 {
-    private static readonly Brush PanelBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+    private static Brush PanelBackground => UiTheme.BackgroundBrush;
     private static readonly Brush InputBackground = Brushes.White;
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
     private static readonly Brush MutedForeground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB));
@@ -83,7 +83,7 @@ public sealed class RouteChainDialog : Window
             Text = "Routenschnur & Fahrplan",
             FontSize = 18,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             HorizontalAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(0, 0, 0, 8)
         };
@@ -597,7 +597,7 @@ public sealed class RouteChainDialog : Window
                 Content = name,
                 IsChecked = effectiveSeedDays.Contains(day),
                 Tag = day,
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 Margin = new Thickness(0, 0, 12, 4)
             };
             dayChecks.Add(check);
@@ -952,7 +952,7 @@ public sealed class RouteChainDialog : Window
                 Content = name,
                 IsChecked = effectiveSeedDays.Contains(day),
                 Tag = day,
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 Margin = new Thickness(0, 0, 12, 4)
             };
             dayChecks.Add(check);
@@ -1243,7 +1243,7 @@ public sealed class RouteChainDialog : Window
         var titleBlock = new TextBlock
         {
             Text = $"{segment.Index}. {segment.RouteLabel}",
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontWeight = FontWeights.SemiBold,
             FontSize = 14,
             TextWrapping = TextWrapping.Wrap,
@@ -1345,7 +1345,7 @@ public sealed class RouteChainDialog : Window
             var timeBlock = new TextBlock
             {
                 Text = stop.TimeDisplay,
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 FontSize = 12,
                 Margin = new Thickness(0, 4, 0, 0)
             };
@@ -1388,7 +1388,7 @@ public sealed class RouteChainDialog : Window
         new()
         {
             Text = text,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(0, 0, 0, 4)
         };

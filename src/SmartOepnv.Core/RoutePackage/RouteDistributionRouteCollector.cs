@@ -14,95 +14,117 @@ public static class RouteDistributionRouteCollector
         IEnumerable<RouteStopItem> allStops,
         IEnumerable<string>? existingRoutes = null)
     {
-        var existing = existingRoutes == null
-            ? null
-            : new HashSet<string>(
-                existingRoutes.Where(static r => !string.IsNullOrWhiteSpace(r)),
-                StringComparer.Ordinal);
+        HashSet<string>? existingExact = null;
+        HashSet<string>? existingCanonical = null;
+        if (existingRoutes != null)
+        {
+            existingExact = new HashSet<string>(StringComparer.Ordinal);
+            existingCanonical = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var name in existingRoutes)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                existingExact.Add(name);
+                existingCanonical.Add(RouteDisplayHelper.ToCanonicalRouteKey(name));
+            }
+        }
+
+        var stopsByRoute = new Dictionary<string, List<RouteStopItem>>(StringComparer.Ordinal);
+        foreach (var stop in allStops)
+        {
+            var key = stop.RouteName ?? string.Empty;
+            if (!stopsByRoute.TryGetValue(key, out var bucket))
+            {
+                bucket = [];
+                stopsByRoute[key] = bucket;
+            }
+
+            bucket.Add(stop);
+        }
 
         var collected = new HashSet<string>(StringComparer.Ordinal);
         foreach (var routeName in initialRoutes)
         {
-            CollectRecursive([routeName], allStops, collected, existing);
+            CollectRecursive(routeName, routeName, stopsByRoute, collected, existingExact, existingCanonical);
         }
 
         return collected;
     }
 
-    private static bool ExistsInPackage(HashSet<string>? existing, string routeKey)
+    private static bool ExistsInPackage(
+        HashSet<string>? exact,
+        HashSet<string>? canonical,
+        string routeKey)
     {
-        if (existing == null)
+        if (exact == null)
         {
             return true;
         }
 
-        if (existing.Contains(routeKey))
+        if (exact.Contains(routeKey))
         {
             return true;
         }
 
-        return existing.Any(name => RouteDisplayHelper.RouteKeysMatch(name, routeKey));
+        return canonical != null &&
+               canonical.Contains(RouteDisplayHelper.ToCanonicalRouteKey(routeKey));
     }
 
     private static void CollectRecursive(
-        IReadOnlyList<string> initialRoutes,
-        IEnumerable<RouteStopItem> allStops,
+        string routeName,
+        string firstInitial,
+        Dictionary<string, List<RouteStopItem>> stopsByRoute,
         HashSet<string> collected,
-        HashSet<string>? existing)
+        HashSet<string>? existingExact,
+        HashSet<string>? existingCanonical)
     {
-        var firstInitial = initialRoutes.Count > 0 ? initialRoutes[0] : null;
-        foreach (var routeName in initialRoutes)
+        if (!ExistsInPackage(existingExact, existingCanonical, routeName) ||
+            !collected.Add(routeName) ||
+            !stopsByRoute.TryGetValue(routeName, out var stops))
         {
-            if (!ExistsInPackage(existing, routeName))
+            return;
+        }
+
+        foreach (var stop in stops)
+        {
+            if (!stop.RouteChangeEnabled)
             {
                 continue;
             }
 
-            if (!collected.Add(routeName))
+            var targets = new List<string>();
+            if (!string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip))
             {
-                continue;
+                targets.Add(stop.SelectedLineCourseTrip.Trim());
             }
 
-            foreach (var stop in allStops.Where(s => s.RouteName == routeName))
+            foreach (var entry in stop.RouteChangeTargetsByDate)
             {
-                if (!stop.RouteChangeEnabled)
+                if (!string.IsNullOrWhiteSpace(entry.SelectedLineCourseTrip))
+                {
+                    targets.Add(entry.SelectedLineCourseTrip.Trim());
+                }
+            }
+
+            foreach (var targetRoute in targets.Distinct(StringComparer.Ordinal))
+            {
+                if (collected.Contains(targetRoute) ||
+                    string.Equals(targetRoute, firstInitial, StringComparison.Ordinal) ||
+                    !ExistsInPackage(existingExact, existingCanonical, targetRoute))
                 {
                     continue;
                 }
 
-                var targets = new List<string>();
-                if (!string.IsNullOrWhiteSpace(stop.SelectedLineCourseTrip))
-                {
-                    targets.Add(stop.SelectedLineCourseTrip.Trim());
-                }
-
-                foreach (var entry in stop.RouteChangeTargetsByDate)
-                {
-                    if (!string.IsNullOrWhiteSpace(entry.SelectedLineCourseTrip))
-                    {
-                        targets.Add(entry.SelectedLineCourseTrip.Trim());
-                    }
-                }
-
-                foreach (var targetRoute in targets.Distinct(StringComparer.Ordinal))
-                {
-                    if (collected.Contains(targetRoute))
-                    {
-                        continue;
-                    }
-
-                    if (string.Equals(targetRoute, firstInitial, StringComparison.Ordinal))
-                    {
-                        continue;
-                    }
-
-                    if (!ExistsInPackage(existing, targetRoute))
-                    {
-                        continue;
-                    }
-
-                    CollectRecursive([targetRoute], allStops, collected, existing);
-                }
+                CollectRecursive(
+                    targetRoute,
+                    firstInitial,
+                    stopsByRoute,
+                    collected,
+                    existingExact,
+                    existingCanonical);
             }
         }
     }

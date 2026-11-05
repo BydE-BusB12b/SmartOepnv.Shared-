@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -30,7 +31,7 @@ public sealed class PickStopFromLibraryDialog : Window
         MinWidth = 460;
         MinHeight = 360;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+        Background = UiTheme.BackgroundBrush;
 
         var root = new Grid { Margin = new Thickness(20) };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -44,7 +45,7 @@ public sealed class PickStopFromLibraryDialog : Window
             Text = $"Haltestelle aus Kartei wählen ({_allTemplates.Count})",
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(title, 0);
@@ -64,7 +65,7 @@ public sealed class PickStopFromLibraryDialog : Window
         _status = new TextBlock
         {
             Opacity = 0.75,
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             Margin = new Thickness(0, 0, 0, 8),
             TextWrapping = TextWrapping.Wrap
         };

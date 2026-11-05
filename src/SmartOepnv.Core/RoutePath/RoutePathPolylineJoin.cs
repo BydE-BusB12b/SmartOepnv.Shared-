@@ -6,7 +6,11 @@ namespace SmartOepnv.Core.RoutePath;
 public static class RoutePathPolylineJoin
 {
     private const double SamePointMeters = 18.0;
-    private const double StitchSearchMeters = 85.0;
+    /// <summary>
+    /// Nur den gemeinsamen Knoten auf derselben Straße treffen.
+    /// 85 m hat die Gegenfahrbahn bzw. die Straße jenseits der Bahn mitgezogen.
+    /// </summary>
+    private const double StitchSearchMeters = 28.0;
 
     public static void AlignSegmentEndpointsAtSharedNodes(RoutePathDraft draft, string edgeKey)
     {

@@ -20,7 +20,7 @@
                        FontWeight="SemiBold"
                        FontSize="13"
                        Margin="8,2,8,4"
-                       Foreground="White" />
+                       Foreground="{DynamicResource SmartForegroundBrush}" />
             <ScrollViewer VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
                           MaxHeight="110"
@@ -87,7 +87,7 @@
                        FontWeight="SemiBold"
                        FontSize="13"
                        Margin="8,6,8,4"
-                       Foreground="White" />
+                       Foreground="{DynamicResource SmartForegroundBrush}" />
             <ScrollViewer VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
                           MaxHeight="110"
@@ -153,7 +153,7 @@
                        FontWeight="SemiBold"
                        FontSize="13"
                        Margin="8,6,8,4"
-                       Foreground="White" />
+                       Foreground="{DynamicResource SmartForegroundBrush}" />
             <ScrollViewer VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
                           MaxHeight="110"

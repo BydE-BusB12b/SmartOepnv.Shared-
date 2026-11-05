@@ -191,6 +191,25 @@ internal static class RoutePathGeo
         return true;
     }
 
+    /// <summary>Größter Abstand eines Wegpunkts zur fertigen Straßenlinie.</summary>
+    public static double MaxDistanceWaypointsToRoute(
+        IReadOnlyList<RoutePathLatLng> waypoints,
+        IReadOnlyList<RoutePathLatLng> route)
+    {
+        if (waypoints.Count == 0 || route.Count == 0)
+        {
+            return double.MaxValue;
+        }
+
+        var max = 0.0;
+        foreach (var waypoint in waypoints)
+        {
+            max = Math.Max(max, DistancePointToPolylineMeters(waypoint, route));
+        }
+
+        return max;
+    }
+
     public static double MaxDeviationFromWaypointChain(
         IReadOnlyList<RoutePathLatLng> route,
         IReadOnlyList<RoutePathLatLng> waypoints)

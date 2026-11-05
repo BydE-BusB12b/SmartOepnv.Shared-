@@ -20,6 +20,53 @@
             <materialDesign:Card Padding="24"
                                  UniformCornerRadius="12"
                                  Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Darstellung" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Heller Modus: sehr hellblaue Flächen, dunkelblaue Schrift. Dunkler Modus bleibt der Standard." />
+                    <CheckBox Content="Heller Modus"
+                              IsChecked="{Binding UseLightTheme, Mode=TwoWay}"
+                              Style="{StaticResource MaterialDesignCheckBox}" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
+                                 Visibility="{Binding ShowVdv454Section, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="VDV 454 / Verbund-Refs" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Codes für SIRI-VM/ET-Dry-Run und spätere Verbundanbindung. Werte mit dem Verbund abstimmen (OperatorRef, Codespaces)." />
+                    <TextBox materialDesign:HintAssist.Hint="ParticipantRef"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding Vdv454ParticipantRef, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="OperatorRef"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding Vdv454OperatorRef, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="Lokaler Codespace"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding Vdv454LocalCodespace, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="Externer Stop-Codespace (z. B. de:vrr)"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding Vdv454ExternalStopCodespace, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding Vdv454RefsStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
+                    <Button Content="Verbund-Refs speichern"
+                            Command="{Binding SaveVdv454RefsCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
                                  Margin="0,0,0,16"
                                  Visibility="{Binding ShowBrandingSection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <StackPanel>
@@ -39,7 +86,7 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <Border Background="{StaticResource SmartPrimaryDarkBrush}"
+                    <Border Background="{DynamicResource SmartPanelBrush}"
                             CornerRadius="8"
                             Padding="16"
                             MinHeight="96"
@@ -104,6 +151,40 @@
                     <TextBlock Text="{Binding BriefingPasswordsStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
                     <Button Content="Passwörter speichern"
                             Command="{Binding SaveBriefingPasswordsCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
+                                 Visibility="{Binding ShowPlanerFolderSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Planer-Admin" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,8"
+                               Text="Anmeldung mit dem Namen Admin. Das Passwort gilt nur für den gerade aktiven Betrieb." />
+                    <TextBlock Text="{Binding ActiveBetriebLabel}" FontWeight="SemiBold" Margin="0,0,0,12" TextWrapping="Wrap" />
+                    <TextBox materialDesign:HintAssist.Hint="Prüfcode"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding AdminPasswordCheckCode, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="Bisheriges Admin-Passwort"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding CurrentAdminPlannerPassword, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="Neues Admin-Passwort"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding NewAdminPlannerPassword, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="Neues Admin-Passwort bestätigen"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding ConfirmAdminPlannerPassword, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding AdminPlannerPasswordStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
+                    <Button Content="Admin-Passwort speichern"
+                            Command="{Binding SaveAdminPlannerPasswordCommand}"
                             HorizontalAlignment="Left"
                             Style="{StaticResource MaterialDesignRaisedButton}" />
                 </StackPanel>
@@ -269,18 +350,18 @@
                 </StackPanel>
             </materialDesign:Card>
 
-            <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{StaticResource SmartPrimaryDarkBrush}">
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Background="{DynamicResource SmartPanelBrush}">
                 <StackPanel>
-                    <TextBlock Text="Verbindungstest" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,8" />
-                    <TextBlock Text="{Binding TestResult}" Foreground="White" TextWrapping="Wrap" Margin="0,0,0,8" />
-                    <TextBlock Text="{Binding RouteFileInfo}" Foreground="White" Opacity="0.9" TextWrapping="Wrap" Margin="0,0,0,4" />
+                    <TextBlock Text="Verbindungstest" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SmartForegroundBrush}" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding TestResult}" Foreground="{DynamicResource SmartForegroundBrush}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding RouteFileInfo}" Foreground="{DynamicResource SmartForegroundBrush}" Opacity="0.9" TextWrapping="Wrap" Margin="0,0,0,4" />
                     <TextBlock Text="{Binding PlanerFolderInfo}"
-                               Foreground="White"
+                               Foreground="{DynamicResource SmartForegroundBrush}"
                                Opacity="0.9"
                                TextWrapping="Wrap"
                                Margin="0,0,0,4"
                                Visibility="{Binding ShowPlanerFolderSection, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <TextBlock Text="{Binding FolderFilesSummary}" Foreground="White" Opacity="0.75" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding FolderFilesSummary}" Foreground="{DynamicResource SmartForegroundBrush}" Opacity="0.75" TextWrapping="Wrap" />
                 </StackPanel>
             </materialDesign:Card>
     </StackPanel>
