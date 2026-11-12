@@ -45,6 +45,12 @@ public sealed class EditableRoutePackage
     public IDictionary<string, string> RouteInteriorDisplayDestinationsByRoute { get; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
+    public IDictionary<string, string> RouteAnnouncementVoicesByRoute { get; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    public IDictionary<string, RouteChainIdentity> RouteChainIdentitiesByRoute { get; } =
+        new Dictionary<string, RouteChainIdentity>(StringComparer.Ordinal);
+
     public HashSet<string> RoutesExcludedFromItcsRouteList { get; } =
         new(StringComparer.Ordinal);
 
@@ -334,6 +340,8 @@ public sealed class EditableRoutePackage
         RouteDateRangesByRoute.Clear();
         RouteOperatingDatesByRoute.Clear();
         RouteInteriorDisplayDestinationsByRoute.Clear();
+        RouteAnnouncementVoicesByRoute.Clear();
+        RouteChainIdentitiesByRoute.Clear();
         RoutesExcludedFromItcsRouteList.Clear();
         RoutesMainDeviceOnly.Clear();
         AutoScheduleSourceByRoute.Clear();
@@ -355,6 +363,16 @@ public sealed class EditableRoutePackage
         foreach (var (key, text) in RouteInteriorDisplayDestinationEditor.LoadFromRoot(_root))
         {
             RouteInteriorDisplayDestinationsByRoute[key] = text;
+        }
+
+        foreach (var (key, voice) in RouteAnnouncementVoiceEditor.LoadFromRoot(_root))
+        {
+            RouteAnnouncementVoicesByRoute[key] = voice;
+        }
+
+        foreach (var (key, identity) in RouteChainIdentityEditor.LoadFromRoot(_root))
+        {
+            RouteChainIdentitiesByRoute[key] = identity;
         }
 
         if (_root["routeStops"] is JsonObject routeStops)
@@ -508,6 +526,7 @@ public sealed class EditableRoutePackage
         EnsureRouteNamesForStopBuckets();
         RecoverOrphanedStopsAfterTripNumberChange();
         PruneOrphanStopBuckets();
+        AlignLinkedChainIdentities();
     }
 
     /// <summary>
@@ -774,6 +793,18 @@ public sealed class EditableRoutePackage
 
                 RouteNavigationMetadataCopy.CopyForRoute(_root, sourceKey, routeKeyForStops);
             }
+
+            var interiorDestination = GetRouteInteriorDisplayDestination(sourceKey);
+            if (!string.IsNullOrWhiteSpace(interiorDestination))
+            {
+                SetRouteInteriorDisplayDestination(displayKey, interiorDestination);
+            }
+
+            var announcementVoice = GetRouteAnnouncementVoice(sourceKey);
+            if (AnnouncementVoiceFiles.IsVoice2(announcementVoice))
+            {
+                SetRouteAnnouncementVoice(displayKey, announcementVoice);
+            }
         }
 
         error = null;
@@ -899,6 +930,8 @@ public sealed class EditableRoutePackage
             RouteDateRangeEditor.RemoveRoute(RouteDateRangesByRoute, key);
             RouteOperatingDatesEditor.RemoveRoute(RouteOperatingDatesByRoute, key);
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, key);
+            RouteAnnouncementVoiceEditor.RemoveRoute(RouteAnnouncementVoicesByRoute, key);
+            RouteChainIdentityEditor.RemoveRoute(RouteChainIdentitiesByRoute, key);
             RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, key);
             RouteMainDeviceOnlyEditor.RemoveRoute(RoutesMainDeviceOnly, key);
             AutoScheduleSourceRouteEditor.RemoveRoute(AutoScheduleSourceByRoute, key);
@@ -1106,6 +1139,18 @@ public sealed class EditableRoutePackage
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, oldKey);
         }
 
+        var announcementVoice = RouteAnnouncementVoiceEditor.GetForRoute(
+            RouteAnnouncementVoicesByRoute,
+            oldKey);
+        if (AnnouncementVoiceFiles.IsVoice2(announcementVoice))
+        {
+            RouteAnnouncementVoiceEditor.SetForRoute(
+                RouteAnnouncementVoicesByRoute,
+                newKey,
+                announcementVoice);
+            RouteAnnouncementVoiceEditor.RemoveRoute(RouteAnnouncementVoicesByRoute, oldKey);
+        }
+
         if (!RouteItcsRouteListEditor.IsInItcsRouteList(RoutesExcludedFromItcsRouteList, oldKey))
         {
             RouteItcsRouteListEditor.SetInItcsRouteList(RoutesExcludedFromItcsRouteList, newKey, false);
@@ -1122,6 +1167,7 @@ public sealed class EditableRoutePackage
         RouteDateRangeEditor.RenameRouteKey(RouteDateRangesByRoute, oldKey, newKey);
         RouteOperatingDatesEditor.RenameRouteKey(RouteOperatingDatesByRoute, oldKey, newKey);
         RouteOperatingDaysEditor.RenameRouteKey(RouteOperatingDaysByRoute, oldKey, newKey);
+        RouteChainIdentityEditor.RenameRouteKey(RouteChainIdentitiesByRoute, oldKey, newKey);
 
         RouteNavigationMetadataCopy.CopyForRoute(_root, oldKey, newKey);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, oldKey);
@@ -1405,6 +1451,17 @@ public sealed class EditableRoutePackage
         }
 
         RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, alias);
+
+        var aliasVoice = RouteAnnouncementVoiceEditor.GetForRoute(RouteAnnouncementVoicesByRoute, alias);
+        if (AnnouncementVoiceFiles.IsVoice2(aliasVoice) &&
+            !AnnouncementVoiceFiles.IsVoice2(
+                RouteAnnouncementVoiceEditor.GetForRoute(RouteAnnouncementVoicesByRoute, primary)))
+        {
+            RouteAnnouncementVoiceEditor.SetForRoute(RouteAnnouncementVoicesByRoute, primary, aliasVoice);
+        }
+
+        RouteAnnouncementVoiceEditor.RemoveRoute(RouteAnnouncementVoicesByRoute, alias);
+        RouteChainIdentityEditor.RenameRouteKey(RouteChainIdentitiesByRoute, alias, primary);
         AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, alias, primary);
         // Verkehrstage/Datum mitnehmen – sonst landen Alias-Merges wieder bei Mo–So.
         RouteOperatingDaysEditor.RenameRouteKey(RouteOperatingDaysByRoute, alias, primary);
@@ -1444,11 +1501,170 @@ public sealed class EditableRoutePackage
     public void SetRouteOperatingDates(string routeDisplayKey, IEnumerable<DateOnly>? dates) =>
         RouteOperatingDatesEditor.SetDatesForRoute(RouteOperatingDatesByRoute, routeDisplayKey, dates);
 
+    public RouteChainIdentity GetRouteChainIdentity(string routeDisplayKey) =>
+        RouteChainIdentityEditor.GetForRoute(RouteChainIdentitiesByRoute, routeDisplayKey);
+
+    public void SetRouteChainIdentity(string routeDisplayKey, string? orderNumber, int sequenceNumber) =>
+        RouteChainIdentityEditor.SetForRoute(
+            RouteChainIdentitiesByRoute,
+            routeDisplayKey,
+            orderNumber,
+            sequenceNumber);
+
+    public int PeekNextChainSequenceNumber() =>
+        RouteChainIdentityEditor.PeekNextSequenceNumber(RouteChainIdentitiesByRoute);
+
+    /// <summary>
+    /// Folgefahrt übernimmt Auftragsnummer und fortlaufende Nummer der Ausgangsfahrt.
+    /// Gleiche Fahrtnummer auf einem anderen Kurs bleibt unangetastet.
+    /// </summary>
+    public void CopyChainIdentityAlongLink(string sourceRouteKey, string? targetRouteKey)
+    {
+        var targetText = (targetRouteKey ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(targetText) ||
+            string.Equals(targetText, RouteStopEditorCatalog.NoLineCourseTripLabel, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        AlignLinkedChainIdentities();
+    }
+
+    /// <summary>
+    /// Jede Routenschnur bekommt genau eine fortlaufende Nummer. Fahrten derselben Schnur
+    /// teilen sie. Getrennte Schnüre, die sich eine Nummer teilen, werden auseinandergezogen.
+    /// Überlappende Folgefahrten bleiben bei der Schnur, die die Nummer zuerst trägt.
+    /// </summary>
+    public bool AlignLinkedChainIdentities()
+    {
+        var changed = false;
+        var heads = RouteChainPlanner.ListChainHeads(this, RouteNames.ToList());
+        var chains = new List<IReadOnlyList<string>>(heads.Count);
+        foreach (var head in heads)
+        {
+            var chain = RouteChainPlanner.BuildConnectedRouteChain(this, head);
+            chains.Add(chain.Count == 0 ? [head] : chain);
+        }
+
+        var ordered = chains
+            .Select((chain, index) => (chain, index))
+            .OrderBy(item =>
+            {
+                var preferred = FirstSequenceNumber(item.chain);
+                return preferred == 0 ? int.MaxValue : preferred;
+            })
+            .ThenByDescending(item => item.chain.Count)
+            .ThenBy(item => item.index)
+            .ToList();
+
+        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var used = new HashSet<int>();
+        foreach (var (chain, _) in ordered)
+        {
+            var pending = new List<string>();
+            foreach (var key in chain)
+            {
+                if (claimed.Add(RouteDisplayHelper.ToCanonicalRouteKey(key)))
+                {
+                    pending.Add(key);
+                }
+            }
+
+            if (pending.Count == 0)
+            {
+                continue;
+            }
+
+            var preferred = FirstSequenceNumber(pending);
+            var sequence = preferred > 0 && used.Add(preferred)
+                ? preferred
+                : NextFreeSequence(used);
+            var order = FirstOrderNumber(pending);
+            foreach (var key in pending)
+            {
+                var current = GetRouteChainIdentity(key);
+                if (current.SequenceNumber == sequence &&
+                    string.Equals(current.OrderNumber, order, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                SetRouteChainIdentity(key, order, sequence);
+                changed = true;
+            }
+        }
+
+        foreach (var name in RouteNames)
+        {
+            if (!claimed.Add(RouteDisplayHelper.ToCanonicalRouteKey(name)))
+            {
+                continue;
+            }
+
+            var sequence = NextFreeSequence(used);
+            var current = GetRouteChainIdentity(name);
+            if (current.SequenceNumber == sequence)
+            {
+                continue;
+            }
+
+            SetRouteChainIdentity(name, current.OrderNumber, sequence);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private int FirstSequenceNumber(IReadOnlyList<string> keys)
+    {
+        foreach (var key in keys)
+        {
+            var sequence = GetRouteChainIdentity(key).SequenceNumber;
+            if (sequence > 0)
+            {
+                return sequence;
+            }
+        }
+
+        return 0;
+    }
+
+    private string FirstOrderNumber(IReadOnlyList<string> keys)
+    {
+        foreach (var key in keys)
+        {
+            var order = GetRouteChainIdentity(key).OrderNumber;
+            if (!string.IsNullOrWhiteSpace(order))
+            {
+                return order;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static int NextFreeSequence(HashSet<int> used)
+    {
+        var sequence = 1;
+        while (!used.Add(sequence))
+        {
+            sequence++;
+        }
+
+        return sequence;
+    }
+
     public string GetRouteInteriorDisplayDestination(string routeDisplayKey) =>
         RouteInteriorDisplayDestinationEditor.GetForRoute(RouteInteriorDisplayDestinationsByRoute, routeDisplayKey);
 
     public void SetRouteInteriorDisplayDestination(string routeDisplayKey, string? text) =>
         RouteInteriorDisplayDestinationEditor.SetForRoute(RouteInteriorDisplayDestinationsByRoute, routeDisplayKey, text);
+
+    public string GetRouteAnnouncementVoice(string routeDisplayKey) =>
+        RouteAnnouncementVoiceEditor.GetForRoute(RouteAnnouncementVoicesByRoute, routeDisplayKey);
+
+    public void SetRouteAnnouncementVoice(string routeDisplayKey, string? voice) =>
+        RouteAnnouncementVoiceEditor.SetForRoute(RouteAnnouncementVoicesByRoute, routeDisplayKey, voice);
 
     public bool IsRouteInItcsRouteList(string routeDisplayKey) =>
         RouteItcsRouteListEditor.IsInItcsRouteList(RoutesExcludedFromItcsRouteList, routeDisplayKey);
@@ -1581,6 +1797,7 @@ public sealed class EditableRoutePackage
                     routeNode["tripNumber"]?.GetValue<string>() ?? string.Empty,
                     routeNode["passengerDisplayLine"]?.GetValue<string>() ?? string.Empty);
                 var interiorDestination = routeNode["interiorDestinationText"]?.GetValue<string>()?.Trim();
+                var announcementVoice = routeNode["announcementVoice"]?.GetValue<string>()?.Trim();
                 var display = RouteDisplayHelper.ToDisplayString(definition);
                 if (string.IsNullOrWhiteSpace(display))
                 {
@@ -1605,6 +1822,16 @@ public sealed class EditableRoutePackage
                             interiorDestination);
                     }
 
+                    if (AnnouncementVoiceFiles.IsVoice2(announcementVoice))
+                    {
+                        var existingKey = RouteNames.First(existing =>
+                            RouteDisplayHelper.RouteKeysMatchSameSchedule(existing, display));
+                        RouteAnnouncementVoiceEditor.SetForRoute(
+                            RouteAnnouncementVoicesByRoute,
+                            existingKey,
+                            announcementVoice);
+                    }
+
                     continue;
                 }
 
@@ -1615,6 +1842,14 @@ public sealed class EditableRoutePackage
                         RouteInteriorDisplayDestinationsByRoute,
                         display,
                         interiorDestination);
+                }
+
+                if (AnnouncementVoiceFiles.IsVoice2(announcementVoice))
+                {
+                    RouteAnnouncementVoiceEditor.SetForRoute(
+                        RouteAnnouncementVoicesByRoute,
+                        display,
+                        announcementVoice);
                 }
             }
         }
@@ -1716,6 +1951,11 @@ public sealed class EditableRoutePackage
                 continue;
             }
 
+            if (AnnouncementVoiceFiles.Voice2SiblingWaiting(workspace, existingNames, name))
+            {
+                return true;
+            }
+
             if (!string.IsNullOrWhiteSpace(localPath) && File.Exists(localPath))
             {
                 return true;
@@ -1788,11 +2028,15 @@ public sealed class EditableRoutePackage
                     CopyToWorkspace(workspace, name, localPath);
                 }
 
+                changed |= AnnouncementVoiceFiles.TryEmbedVoice2Sibling(
+                    _root, workspace, name, existingNames);
                 continue;
             }
 
             if (existingNames.Contains(name))
             {
+                changed |= AnnouncementVoiceFiles.TryEmbedVoice2Sibling(
+                    _root, workspace, name, existingNames);
                 continue;
             }
 
@@ -1806,6 +2050,9 @@ public sealed class EditableRoutePackage
                     changed = true;
                 }
             }
+
+            changed |= AnnouncementVoiceFiles.TryEmbedVoice2Sibling(
+                _root, workspace, name, existingNames);
         }
 
         if (changed)

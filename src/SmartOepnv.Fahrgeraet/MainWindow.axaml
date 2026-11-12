@@ -1,0 +1,16 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SmartOepnv.Fahrgeraet.MainWindow"
+        Title="Smart ÖPNV"
+        Width="1280"
+        Height="800"
+        WindowState="Maximized"
+        Background="#2196F3">
+  <Grid ColumnDefinitions="280,*" Margin="12">
+    <StackPanel x:Name="Nav" Spacing="6" />
+    <Grid Grid.Column="1" RowDefinitions="Auto,*">
+      <TextBlock x:Name="StatusText" Foreground="White" FontSize="16" TextWrapping="Wrap" />
+      <ContentControl x:Name="PageHost" Grid.Row="1" />
+    </Grid>
+  </Grid>
+</Window>

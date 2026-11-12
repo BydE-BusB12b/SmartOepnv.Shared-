@@ -27,6 +27,10 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     private readonly SearchQueryDebouncer _persistDebouncer;
 
     [ObservableProperty] private string? selectedRoute;
+    [ObservableProperty] private bool listByRouteChain;
+    private readonly Dictionary<string, string> _chainLabels = new(StringComparer.Ordinal);
+    private string? _selectedChainHead;
+    private IReadOnlyList<string> _sequenceGroupTrips = [];
     [ObservableProperty] private RouteStopItem? selectedStop;
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private string searchQuery = string.Empty;
@@ -37,6 +41,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private string routeOperatingDatesText = string.Empty;
     [ObservableProperty] private string routeOperatingDatesDisplay = string.Empty;
     [ObservableProperty] private string routeInteriorDisplayDestination = string.Empty;
+    [ObservableProperty] private string routeAnnouncementVoice = AnnouncementVoiceFiles.PetraLabel;
     [ObservableProperty] private int ds009TextMaxLength = PlanerDs009TextLength.Length20;
     [ObservableProperty] private bool routeItcsRouteListEnabled = true;
     [ObservableProperty] private bool routeMainDeviceOnly;
@@ -49,6 +54,9 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private bool hasAnyStopTimeOrderWarning;
     [ObservableProperty] private string stopTimeOrderWarningText = string.Empty;
 
+    public IReadOnlyList<string> AnnouncementVoiceChoices { get; } =
+        [AnnouncementVoiceFiles.PetraLabel, AnnouncementVoiceFiles.Voice2Label];
+
     public string RouteSettingsButtonLabel =>
         IsRouteSettingsExpanded ? "Verkehrstage & Gültigkeit ausblenden" : "Verkehrstage & Gültigkeit";
 
@@ -57,6 +65,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     private bool _suppressDateRangeSync;
     private bool _suppressOperatingDatesSync;
     private bool _suppressInteriorDestinationSync;
+    private bool _suppressAnnouncementVoiceSync;
     private bool _suppressItcsRouteListSync;
     private bool _suppressMainDeviceOnlySync;
     /// <summary>
@@ -227,10 +236,17 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         }
 
         ApplyRouteFilter();
-        if (!FilteredRoutes.Any(r => RouteDisplayHelper.RouteKeysMatch(r, match)))
+        if (!IsRouteVisibleInList(match))
         {
             SearchQuery = string.Empty;
             ApplyRouteFilter();
+        }
+
+        if (ListByRouteChain)
+        {
+            SelectChainTrip(match);
+            StatusMessage = $"Fahrt „{match}“ aus Bildfahrplan geöffnet.";
+            return true;
         }
 
         var visible = FilteredRoutes.FirstOrDefault(r => RouteDisplayHelper.RouteKeysMatch(r, match)) ?? match;
@@ -259,6 +275,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
+        var chainNumbersAligned = editor.AlignLinkedChainIdentities();
+
         foreach (var route in editor.RouteNames)
         {
             _allRoutes.Add(route);
@@ -270,9 +288,124 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         RefreshStopEditorCatalogs();
         UpdateRouteStatusMessage();
         _sync.AfterRefresh();
+        if (chainNumbersAligned)
+        {
+            _sync.MarkDirty();
+            StatusMessage = "Fortlaufende Nummern verknüpfter Fahrten angeglichen – bitte speichern.";
+        }
     }
 
     partial void OnSearchQueryChanged(string value) => _searchDebouncer.Schedule();
+
+    public string RouteListTitle => ListByRouteChain ? "Routenschnüre" : "Routen";
+
+    public string RouteSearchHint => ListByRouteChain
+        ? "Suchen (Name, Auftragsnummer)"
+        : "Suchen (Name, Linie/Kurs, Fahrt)";
+
+    public string? RouteListSelection
+    {
+        get => ListByRouteChain ? _selectedChainHead : SelectedRoute;
+        set
+        {
+            if (ListByRouteChain)
+            {
+                if (string.Equals(_selectedChainHead, value, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _selectedChainHead = value;
+                OnPropertyChanged();
+                return;
+            }
+
+            if (!string.Equals(SelectedRoute, value, StringComparison.Ordinal))
+            {
+                SelectedRoute = value;
+            }
+        }
+    }
+
+    public string SelectedRouteListLabel =>
+        string.IsNullOrWhiteSpace(SelectedRoute)
+            ? "— Keine Route ausgewählt —"
+            : RouteDisplayHelper.ToCompactRouteListLabel(
+                SelectedRoute,
+                AppServices.Routes.Editor?.GetRouteOperatingDays(SelectedRoute));
+
+    public IReadOnlyList<string> TripsInChain(string? headRouteKey)
+    {
+        if (string.IsNullOrWhiteSpace(headRouteKey) || AppServices.Routes.Editor is not { } editor)
+        {
+            return [];
+        }
+
+        if (_sequenceGroupTrips.Count > 0 &&
+            _sequenceGroupTrips.Any(trip => RouteDisplayHelper.RouteKeysMatch(trip, headRouteKey)))
+        {
+            return _sequenceGroupTrips;
+        }
+
+        var chain = RouteChainPlanner.BuildConnectedRouteChain(editor, headRouteKey);
+        return chain.Count == 0 ? [headRouteKey] : chain;
+    }
+
+    public void SelectChainTrip(string? tripKey)
+    {
+        if (string.IsNullOrWhiteSpace(tripKey))
+        {
+            return;
+        }
+
+        var resolved = _allRoutes.FirstOrDefault(route => RouteDisplayHelper.RouteKeysMatch(route, tripKey)) ?? tripKey;
+        if (!string.Equals(SelectedRoute, resolved, StringComparison.Ordinal))
+        {
+            SelectedRoute = resolved;
+        }
+        else
+        {
+            OnPropertyChanged(nameof(SelectedRouteListLabel));
+        }
+    }
+
+    public string LabelForListedRoute(string? routeKey)
+    {
+        if (string.IsNullOrWhiteSpace(routeKey))
+        {
+            return string.Empty;
+        }
+
+        if (ListByRouteChain &&
+            _chainLabels.TryGetValue(routeKey, out var chainLabel) &&
+            chainLabel.Length > 0)
+        {
+            return chainLabel;
+        }
+
+        if (ListByRouteChain && AppServices.Routes.Editor is { } editor)
+        {
+            return RouteChainPlanner.FormatChainLabel(editor, routeKey);
+        }
+
+        var days = AppServices.Routes.Editor?.GetRouteOperatingDays(routeKey);
+        return RouteDisplayHelper.ToCompactRouteListLabel(routeKey, days);
+    }
+
+    partial void OnListByRouteChainChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RouteListTitle));
+        OnPropertyChanged(nameof(RouteSearchHint));
+        OnPropertyChanged(nameof(SelectedRouteListLabel));
+        OnPropertyChanged(nameof(RouteListSelection));
+        ApplyRouteFilter();
+    }
+
+    [RelayCommand]
+    private void ShowIndividualRoutes() => ListByRouteChain = false;
+
+    [RelayCommand]
+    private void ShowRouteChains() => ListByRouteChain = true;
 
     private void ApplyRouteFilter()
     {
@@ -280,16 +413,62 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         var tokens = string.IsNullOrEmpty(query)
             ? Array.Empty<string>()
             : query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var editor = AppServices.Routes.Editor;
+        _sequenceGroupTrips = [];
 
-        List<string> next;
-        if (tokens.Length == 0)
+        List<string> source;
+        if (ListByRouteChain && editor is not null)
         {
-            next = _sortedAllRoutes;
+            source = RouteChainPlanner.ListChainHeads(editor, _sortedAllRoutes).ToList();
+            _chainLabels.Clear();
+            foreach (var head in source)
+            {
+                _chainLabels[head] = RouteChainPlanner.FormatChainLabel(editor, head);
+            }
         }
         else
         {
-            next = new List<string>(_sortedAllRoutes.Count);
-            foreach (var route in _sortedAllRoutes)
+            source = _sortedAllRoutes;
+            _chainLabels.Clear();
+        }
+
+        List<string> next;
+        if (ListByRouteChain &&
+            editor is not null &&
+            TryParseSequenceSearch(editor, query, out var sequenceNumber))
+        {
+            var trips = RouteChainPlanner.ListTripsSharingSequence(editor, sequenceNumber);
+            _sequenceGroupTrips = trips;
+            _chainLabels.Clear();
+            if (trips.Count == 0)
+            {
+                next = [];
+            }
+            else
+            {
+                _chainLabels[trips[0]] = RouteChainPlanner.FormatSequenceGroupLabel(trips, sequenceNumber);
+                next = [trips[0]];
+            }
+        }
+        else if (tokens.Length == 0)
+        {
+            next = source;
+        }
+        else if (ListByRouteChain)
+        {
+            next = new List<string>(source.Count);
+            foreach (var head in source)
+            {
+                if (ChainMatchesSearch(head, tokens))
+                {
+                    next.Add(head);
+                }
+            }
+        }
+        else
+        {
+            next = new List<string>(source.Count);
+            foreach (var route in source)
             {
                 if (RouteMatchesSearchCached(route, tokens))
                 {
@@ -302,12 +481,133 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
         // Während der Suche keine Auto-Auswahl der ersten Treffer-Route – das lud bisher
         // bei jedem Filter-Tick die komplette Haltestellenliste und blockierte das Tippen („R… Pause… E13“).
-        if (SelectedRoute is not null && !FilteredRoutes.Contains(SelectedRoute))
+        if (ListByRouteChain && editor is not null)
         {
-            SelectedRoute = null;
+            string? head = null;
+            if (_sequenceGroupTrips.Count > 0)
+            {
+                head = !string.IsNullOrWhiteSpace(SelectedRoute) &&
+                       _sequenceGroupTrips.Any(trip => RouteDisplayHelper.RouteKeysMatch(trip, SelectedRoute))
+                    ? _sequenceGroupTrips[0]
+                    : null;
+            }
+            else if (!string.IsNullOrWhiteSpace(SelectedRoute))
+            {
+                head = RouteChainPlanner.FindChainHead(editor, source, SelectedRoute);
+            }
+
+            if (head is not null && !FilteredRoutes.Contains(head))
+            {
+                head = null;
+            }
+
+            if (!string.Equals(_selectedChainHead, head, StringComparison.Ordinal))
+            {
+                _selectedChainHead = head;
+                OnPropertyChanged(nameof(RouteListSelection));
+            }
+
+            if (head is null && SelectedRoute is not null)
+            {
+                SelectedRoute = null;
+            }
+        }
+        else
+        {
+            if (_selectedChainHead is not null)
+            {
+                _selectedChainHead = null;
+                OnPropertyChanged(nameof(RouteListSelection));
+            }
+
+            if (SelectedRoute is not null && !FilteredRoutes.Contains(SelectedRoute))
+            {
+                SelectedRoute = null;
+            }
+            else
+            {
+                OnPropertyChanged(nameof(RouteListSelection));
+            }
         }
 
+        OnPropertyChanged(nameof(SelectedRouteListLabel));
         UpdateRouteStatusMessage();
+    }
+
+    private bool IsRouteVisibleInList(string? routeKey)
+    {
+        if (string.IsNullOrWhiteSpace(routeKey))
+        {
+            return false;
+        }
+
+        if (FilteredRoutes.Contains(routeKey) ||
+            FilteredRoutes.Any(route => RouteDisplayHelper.RouteKeysMatch(route, routeKey)))
+        {
+            return true;
+        }
+
+        if (!ListByRouteChain || AppServices.Routes.Editor is not { } editor)
+        {
+            return false;
+        }
+
+        if (_sequenceGroupTrips.Any(trip => RouteDisplayHelper.RouteKeysMatch(trip, routeKey)))
+        {
+            return true;
+        }
+
+        var head = RouteChainPlanner.FindChainHead(editor, FilteredRoutes.ToList(), routeKey);
+        return head is not null && FilteredRoutes.Contains(head);
+    }
+
+    private static bool TryParseSequenceSearch(EditableRoutePackage editor, string query, out int sequenceNumber)
+    {
+        sequenceNumber = 0;
+        var text = query.Trim();
+        if (text.Length == 0 || text.Any(character => !char.IsDigit(character)))
+        {
+            return false;
+        }
+
+        if (!int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out sequenceNumber) ||
+            sequenceNumber <= 0)
+        {
+            return false;
+        }
+
+        var number = sequenceNumber;
+        return editor.RouteNames.Any(route => editor.GetRouteChainIdentity(route).SequenceNumber == number);
+    }
+
+    private bool ChainMatchesSearch(string head, string[] tokens)
+    {
+        _chainLabels.TryGetValue(head, out var label);
+        label ??= string.Empty;
+        if (tokens.All(token => label.Contains(token, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return false;
+        }
+
+        var blob = label;
+        foreach (var member in RouteChainPlanner.BuildConnectedRouteChain(editor, head))
+        {
+            if (!_routeSearchHaystack.TryGetValue(member, out var haystack))
+            {
+                haystack = BuildRouteSearchHaystack(member);
+                _routeSearchHaystack[member] = haystack;
+            }
+
+            blob = blob + " " + haystack;
+        }
+
+        return tokens.All(token => blob.Contains(token, StringComparison.OrdinalIgnoreCase));
     }
 
     private void ReplaceFilteredRoutes(IReadOnlyList<string> next)
@@ -354,7 +654,9 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             definition.LineCourse,
             definition.TripNumber,
             definition.PassengerDisplayLine,
-            RouteDisplayHelper.ToCompactRouteListLabel(routeKey, days));
+            RouteDisplayHelper.ToCompactRouteListLabel(routeKey, days),
+            AppServices.Routes.Editor?.GetRouteChainIdentity(routeKey).OrderNumber,
+            AppServices.Routes.Editor?.GetRouteChainIdentity(routeKey).SequenceNumber.ToString());
     }
 
     private void RebuildRouteSearchIndex()
@@ -402,11 +704,18 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         ApplyRouteFilter();
         RefreshStopEditorCatalogs();
 
-        if (!string.IsNullOrWhiteSpace(selectRouteKey) && FilteredRoutes.Contains(selectRouteKey))
+        if (!string.IsNullOrWhiteSpace(selectRouteKey) && IsRouteVisibleInList(selectRouteKey))
         {
-            SelectedRoute = selectRouteKey;
+            if (ListByRouteChain)
+            {
+                SelectChainTrip(selectRouteKey);
+            }
+            else
+            {
+                SelectedRoute = selectRouteKey;
+            }
         }
-        else if (SelectedRoute is null || !FilteredRoutes.Contains(SelectedRoute))
+        else if (SelectedRoute is null || !IsRouteVisibleInList(SelectedRoute))
         {
             SelectedRoute = FilteredRoutes.FirstOrDefault();
         }
@@ -538,6 +847,16 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         PersistRouteInteriorDisplayDestinationFromSelection();
     }
 
+    partial void OnRouteAnnouncementVoiceChanged(string value)
+    {
+        if (_suppressAnnouncementVoiceSync)
+        {
+            return;
+        }
+
+        PersistRouteAnnouncementVoiceFromSelection();
+    }
+
     partial void OnRouteItcsRouteListEnabledChanged(bool value)
     {
         if (_suppressItcsRouteListSync)
@@ -560,6 +879,26 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     partial void OnSelectedRouteChanged(string? value)
     {
+        OnPropertyChanged(nameof(SelectedRouteListLabel));
+        if (ListByRouteChain)
+        {
+            string? head = null;
+            if (!string.IsNullOrWhiteSpace(value) && AppServices.Routes.Editor is { } chainEditor)
+            {
+                head = RouteChainPlanner.FindChainHead(chainEditor, _sortedAllRoutes, value);
+            }
+
+            if (!string.Equals(_selectedChainHead, head, StringComparison.Ordinal))
+            {
+                _selectedChainHead = head;
+                OnPropertyChanged(nameof(RouteListSelection));
+            }
+        }
+        else
+        {
+            OnPropertyChanged(nameof(RouteListSelection));
+        }
+
         SevTftCoordinator.NotifyRouteOpened(value, autoSend: !SevTftCoordinator.IsAutoSendSuppressed);
 
         if (!_keepRouteSettingsExpandedOnRouteChange)
@@ -576,6 +915,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         LoadRouteDateRangeForSelection(value);
         LoadRouteOperatingDatesForSelection(value);
         LoadRouteInteriorDisplayDestinationForSelection(value);
+        LoadRouteAnnouncementVoiceForSelection(value);
         LoadRouteItcsRouteListForSelection(value);
         LoadRouteMainDeviceOnlyForSelection(value);
         if (string.IsNullOrWhiteSpace(value))
@@ -785,6 +1125,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
+        editor.SetRouteChainIdentity(displayKey, dialog.ResultOrderNumber, dialog.ResultSequenceNumber);
         _sync.MarkDirty();
         _needsStopTemplateEnrich = true;
         RefreshFromEditor();
@@ -832,6 +1173,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
+        editor.SetRouteChainIdentity(displayKey, dialog.ResultOrderNumber, dialog.ResultSequenceNumber);
         _sync.MarkDirty();
         RefreshFromEditor();
         SelectedRoute = displayKey;
@@ -856,6 +1198,21 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
         var stillThere = editor?.RouteNames.ToHashSet(StringComparer.Ordinal) ?? [];
         _allRoutes.RemoveAll(route => !stillThere.Contains(route));
+        if (ListByRouteChain)
+        {
+            RebuildRouteSearchIndex();
+            ApplyRouteFilter();
+            if (!IsRouteVisibleInList(SelectedRoute))
+            {
+                SelectedRoute = FilteredRoutes.FirstOrDefault();
+            }
+
+            CancelSaveButtonSuccessFeedback();
+            StatusMessage = $"Route entfernt. {_allRoutes.Count} Route(n) – speichern…";
+            SchedulePersist();
+            return;
+        }
+
         var removedIndex = FilteredRoutes.IndexOf(removed);
         for (var i = FilteredRoutes.Count - 1; i >= 0; i--)
         {
@@ -1402,6 +1759,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
+        editor.SetRouteChainIdentity(displayKey, addDialog.ResultOrderNumber, addDialog.ResultSequenceNumber);
+
         var clonedStops = copyDialog.ResultStops
             .Select(s =>
             {
@@ -1499,8 +1858,10 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
             _sync.MarkDirty();
             _needsStopTemplateEnrich = true;
+            _routeSearchHaystack.Clear();
+            ApplyRouteFilter();
             ReloadStopsForSelectedRoute();
-            StatusMessage = "Routenwechsel verknüpft – bitte „Speichern“.";
+            StatusMessage = "Routenwechsel verknüpft – Auftragsnummer übernommen. Bitte „Speichern“.";
         }
         catch (Exception ex)
         {
@@ -1808,6 +2169,46 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         editor.SetRouteInteriorDisplayDestination(SelectedRoute, RouteInteriorDisplayDestination);
         _sync.MarkDirty();
         StatusMessage = $"Haltestellenanzeige-Zieltext für „{SelectedRoute}“ geändert – bitte speichern.";
+    }
+
+    private void LoadRouteAnnouncementVoiceForSelection(string? routeKey)
+    {
+        var editor = AppServices.Routes.Editor;
+        _suppressAnnouncementVoiceSync = true;
+        try
+        {
+            var stored = string.IsNullOrWhiteSpace(routeKey) || editor is null
+                ? string.Empty
+                : editor.GetRouteAnnouncementVoice(routeKey);
+            RouteAnnouncementVoice = AnnouncementVoiceFiles.LabelFor(stored);
+        }
+        finally
+        {
+            _suppressAnnouncementVoiceSync = false;
+        }
+    }
+
+    private void PersistRouteAnnouncementVoiceFromSelection()
+    {
+        if (_suppressAnnouncementVoiceSync || string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.SetRouteAnnouncementVoice(
+            SelectedRoute,
+            AnnouncementVoiceFiles.StorageValueForLabel(RouteAnnouncementVoice));
+        _sync.MarkDirty();
+        StatusMessage = AnnouncementVoiceFiles.IsVoice2(
+                AnnouncementVoiceFiles.StorageValueForLabel(RouteAnnouncementVoice))
+            ? $"Ansagestimme für „{SelectedRoute}“: Stimme 2 (_2.wav, sonst Petra) – bitte speichern."
+            : $"Ansagestimme für „{SelectedRoute}“: Linguatec Petra – bitte speichern.";
     }
 
     private void LoadRouteItcsRouteListForSelection(string? routeKey)

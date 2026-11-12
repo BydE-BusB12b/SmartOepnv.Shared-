@@ -28,7 +28,11 @@ public static class RouteChainPlanner
         TimeOnly? StartTime,
         int StopCount);
 
-    public sealed record StopScheduleRow(string Name, string TimeDisplay, bool IsRouteChangeStop);
+    public sealed record StopScheduleRow(
+        string Name,
+        string TimeDisplay,
+        bool IsRouteChangeStop,
+        string DestinationHint = "");
 
     public sealed record ChainSegment(
         int Index,
@@ -295,7 +299,11 @@ public static class RouteChainPlanner
             {
                 var isChange = IsActualRouteChangeStop(stop, filter);
                 var time = string.IsNullOrWhiteSpace(stop.Time) ? "--:--" : stop.Time.Trim();
-                return new StopScheduleRow(stop.Name, time, isChange);
+                return new StopScheduleRow(
+                    stop.Name,
+                    time,
+                    isChange,
+                    RouteStopEditorCatalog.FormatSelectedDestinationHint(stop));
             }).ToList();
 
             segments.Add(new ChainSegment(
@@ -707,7 +715,7 @@ public static class RouteChainPlanner
         return ranked.Count > 0 ? ranked[0].Route : null;
     }
 
-    private static TimeOnly? TryGetRouteStartTime(IReadOnlyList<RouteStopItem> stops)
+    private static TimeOnly? TryGetRouteStartTime(IEnumerable<RouteStopItem> stops)
     {
         foreach (var stop in stops)
         {
@@ -753,5 +761,335 @@ public static class RouteChainPlanner
         return int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
             ? value
             : int.MaxValue;
+    }
+
+    /// <summary>
+    /// Eine Zeile pro Routenschnur. Einzelfahrten ohne Wechsel sind eine Schnur aus einer Fahrt.
+    /// </summary>
+    public static IReadOnlyList<string> ListChainHeads(
+        EditableRoutePackage editor,
+        IReadOnlyList<string> routeKeys)
+    {
+        var incoming = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in routeKeys)
+        {
+            var chain = BuildConnectedRouteChain(editor, key);
+            for (var i = 1; i < chain.Count; i++)
+            {
+                incoming.Add(RouteDisplayHelper.ToCanonicalRouteKey(chain[i]));
+            }
+        }
+
+        var heads = new List<string>();
+        var represented = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in routeKeys)
+        {
+            var canonical = RouteDisplayHelper.ToCanonicalRouteKey(key);
+            if (incoming.Contains(canonical) || !represented.Add(canonical))
+            {
+                continue;
+            }
+
+            heads.Add(key);
+            RememberChain(editor, key, represented);
+        }
+
+        foreach (var key in routeKeys)
+        {
+            var canonical = RouteDisplayHelper.ToCanonicalRouteKey(key);
+            if (!represented.Add(canonical))
+            {
+                continue;
+            }
+
+            heads.Add(key);
+            RememberChain(editor, key, represented);
+        }
+
+        return heads;
+    }
+
+    public static string? FindChainHead(
+        EditableRoutePackage editor,
+        IReadOnlyList<string> heads,
+        string routeKey)
+    {
+        foreach (var head in heads)
+        {
+            if (RouteDisplayHelper.RouteKeysMatch(head, routeKey))
+            {
+                return head;
+            }
+
+            var chain = BuildConnectedRouteChain(editor, head);
+            if (chain.Any(member => RouteDisplayHelper.RouteKeysMatch(member, routeKey)))
+            {
+                return head;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Alle Fahrten mit derselben fortlaufenden Nummer, in Fahrtfolge
+    /// (Routenwechsel, mehrere Teile nach Abfahrtszeit).
+    /// </summary>
+    public static IReadOnlyList<string> ListTripsSharingSequence(
+        EditableRoutePackage editor,
+        int sequenceNumber)
+    {
+        if (sequenceNumber <= 0)
+        {
+            return [];
+        }
+
+        var matches = editor.RouteNames
+            .Where(route => editor.GetRouteChainIdentity(route).SequenceNumber == sequenceNumber)
+            .ToList();
+        if (matches.Count == 0)
+        {
+            return [];
+        }
+
+        var canonical = matches
+            .Select(RouteDisplayHelper.ToCanonicalRouteKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var incoming = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in matches)
+        {
+            var chain = BuildConnectedRouteChain(editor, key);
+            for (var i = 1; i < chain.Count; i++)
+            {
+                var member = RouteDisplayHelper.ToCanonicalRouteKey(chain[i]);
+                if (canonical.Contains(member))
+                {
+                    incoming.Add(member);
+                }
+            }
+        }
+
+        var heads = SortByDeparture(
+            editor,
+            matches.Where(key => !incoming.Contains(RouteDisplayHelper.ToCanonicalRouteKey(key))).ToList());
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var head in heads)
+        {
+            foreach (var member in BuildConnectedRouteChain(editor, head))
+            {
+                var memberKey = RouteDisplayHelper.ToCanonicalRouteKey(member);
+                if (!canonical.Contains(memberKey) || !seen.Add(memberKey))
+                {
+                    continue;
+                }
+
+                result.Add(member);
+            }
+        }
+
+        foreach (var key in SortByDeparture(editor, matches))
+        {
+            if (seen.Add(RouteDisplayHelper.ToCanonicalRouteKey(key)))
+            {
+                result.Add(key);
+            }
+        }
+
+        return result;
+    }
+
+    public static string FormatSequenceGroupLabel(
+        IReadOnlyList<string> trips,
+        int sequenceNumber)
+    {
+        var number = RouteChainIdentityEditor.FormatSequenceNumber(sequenceNumber);
+        var courses = trips
+            .Select(trip => (RouteDisplayHelper.Parse(trip).LineCourse ?? string.Empty).Trim())
+            .Where(course => course.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return courses.Count == 0 ? number : $"{string.Join(", ", courses)} ({number})";
+    }
+
+    private static List<string> SortByDeparture(EditableRoutePackage editor, IReadOnlyList<string> routeKeys)
+    {
+        var startMinutes = routeKeys
+            .Select(key => ToMinutesFromMidnight(TryGetRouteStartTime(editor.GetStops(key))))
+            .Where(minutes => minutes.HasValue)
+            .Select(minutes => minutes!.Value)
+            .ToList();
+        var spansMidnight = DutyTemplateCalculator.SpansOperatingDayMidnight(startMinutes);
+        return routeKeys
+            .OrderBy(key => ToOperatingDaySortKey(TryGetRouteStartTime(editor.GetStops(key)), spansMidnight))
+            .ThenBy(key => ParseTripSortKey(RouteDisplayHelper.Parse(key).TripNumber))
+            .ThenBy(key => key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>z. B. „S28 Neuss Hbf &gt; Kaarster See (4711)“.</summary>
+    public static string FormatChainLabel(EditableRoutePackage editor, string headRouteKey)
+    {
+        var chain = BuildConnectedRouteChain(editor, headRouteKey);
+        if (chain.Count == 0)
+        {
+            chain = [headRouteKey];
+        }
+
+        var first = RouteDisplayHelper.Parse(chain[0]);
+        var last = RouteDisplayHelper.Parse(chain[^1]);
+        var passengerLine = (first.PassengerDisplayLine ?? string.Empty).Trim();
+        var lineCourse = (first.LineCourse ?? string.Empty).Trim();
+        var line = ChainLineLabel(passengerLine, lineCourse);
+        var from = JourneyEnd(first.Name, line, passengerLine, takeDestination: false);
+        var to = JourneyEnd(last.Name, line, passengerLine, takeDestination: true);
+        string title;
+        if (string.IsNullOrEmpty(from) && string.IsNullOrEmpty(to))
+        {
+            title = RouteDisplayHelper.ToCompactRouteListLabel(chain[0]);
+        }
+        else if (chain.Count == 1 &&
+                 (first.Name ?? string.Empty).Contains('>') &&
+                 string.IsNullOrEmpty(line))
+        {
+            title = (first.Name ?? string.Empty).Trim();
+        }
+        else if (string.IsNullOrEmpty(to) ||
+                 string.Equals(from, to, StringComparison.OrdinalIgnoreCase))
+        {
+            title = JoinLine(line, from);
+        }
+        else
+        {
+            title = $"{JoinLine(line, from)} > {to}";
+        }
+
+        title = EnsureLineCourse(title, passengerLine, lineCourse);
+
+        var identity = FirstIdentity(editor, chain);
+        if (!string.IsNullOrWhiteSpace(identity.OrderNumber))
+        {
+            return $"{title} ({identity.OrderNumber})";
+        }
+
+        if (identity.SequenceNumber > 0)
+        {
+            return $"{title} ({RouteChainIdentityEditor.FormatSequenceNumber(identity.SequenceNumber)})";
+        }
+
+        return title;
+    }
+
+    private static void RememberChain(
+        EditableRoutePackage editor,
+        string head,
+        HashSet<string> represented)
+    {
+        foreach (var member in BuildConnectedRouteChain(editor, head))
+        {
+            represented.Add(RouteDisplayHelper.ToCanonicalRouteKey(member));
+        }
+    }
+
+    private static RouteChainIdentity FirstIdentity(EditableRoutePackage editor, IReadOnlyList<string> chain)
+    {
+        foreach (var key in chain)
+        {
+            var identity = editor.GetRouteChainIdentity(key);
+            if (identity.HasValue)
+            {
+                return identity;
+            }
+        }
+
+        return RouteChainIdentity.Empty;
+    }
+
+    /// <summary>Linie im Fahrgastraum plus Kurs, z. B. „S28“ und „S28/01“ → „S28/01“.</summary>
+    private static string ChainLineLabel(string passengerLine, string lineCourse)
+    {
+        if (lineCourse.Length == 0)
+        {
+            return passengerLine;
+        }
+
+        if (passengerLine.Length == 0 ||
+            lineCourse.StartsWith(passengerLine, StringComparison.OrdinalIgnoreCase))
+        {
+            return lineCourse;
+        }
+
+        if (passengerLine.StartsWith(lineCourse, StringComparison.OrdinalIgnoreCase))
+        {
+            return passengerLine;
+        }
+
+        return $"{passengerLine} {lineCourse}";
+    }
+
+    private static string EnsureLineCourse(string title, string passengerLine, string lineCourse)
+    {
+        if (lineCourse.Length == 0 ||
+            title.Contains(lineCourse, StringComparison.OrdinalIgnoreCase))
+        {
+            return title;
+        }
+
+        if (passengerLine.Length > 0 &&
+            lineCourse.StartsWith(passengerLine, StringComparison.OrdinalIgnoreCase) &&
+            title.StartsWith(passengerLine, StringComparison.OrdinalIgnoreCase) &&
+            (title.Length == passengerLine.Length ||
+             !char.IsLetterOrDigit(title[passengerLine.Length])))
+        {
+            return lineCourse + title[passengerLine.Length..];
+        }
+
+        return $"{lineCourse} {title}";
+    }
+
+    private static string JoinLine(string line, string place)
+    {
+        if (string.IsNullOrEmpty(line))
+        {
+            return place;
+        }
+
+        if (string.IsNullOrEmpty(place))
+        {
+            return line;
+        }
+
+        return $"{line} {place}";
+    }
+
+    private static string JourneyEnd(string? name, string line, string passengerLine, bool takeDestination)
+    {
+        var text = (name ?? string.Empty).Trim();
+        text = StripLinePrefix(text, line);
+        text = StripLinePrefix(text, passengerLine);
+        var arrow = text.IndexOf('>');
+        if (arrow < 0)
+        {
+            return takeDestination ? string.Empty : text;
+        }
+
+        var side = takeDestination
+            ? text[(arrow + 1)..]
+            : text[..arrow];
+        return StripLinePrefix(side.Trim(), line);
+    }
+
+    private static string StripLinePrefix(string text, string line)
+    {
+        var value = text.Trim();
+        if (line.Length == 0 ||
+            !value.StartsWith(line, StringComparison.OrdinalIgnoreCase) ||
+            value.Length <= line.Length)
+        {
+            return value;
+        }
+
+        var rest = value[line.Length..].TrimStart(' ', '/', '-', '>');
+        return rest.Length == 0 ? value : rest;
     }
 }

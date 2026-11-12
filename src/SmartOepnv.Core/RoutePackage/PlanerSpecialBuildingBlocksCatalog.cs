@@ -210,6 +210,14 @@ public static class PlanerSpecialBuildingBlocksCatalog
                 displayLine = RouteDisplayHelper.NormalizeLineCourse(parsed.LineCourse);
             }
 
+            var fromName = RouteDisplayHelper.TryExtractProductLine(parsed.Name);
+            if (!string.IsNullOrWhiteSpace(fromName) &&
+                (string.IsNullOrWhiteSpace(displayLine) ||
+                 IsMoreSpecificLine(fromName, displayLine)))
+            {
+                lines.Add(fromName);
+            }
+
             if (!string.IsNullOrWhiteSpace(displayLine))
             {
                 lines.Add(displayLine);
@@ -217,6 +225,25 @@ public static class PlanerSpecialBuildingBlocksCatalog
         }
 
         return lines;
+    }
+
+    /// <summary>„RE47X“ konkretisiert „RE47“ oder einen rein numerischen Kurs.</summary>
+    private static bool IsMoreSpecificLine(string candidate, string other)
+    {
+        var nameKey = candidate.Replace(" ", string.Empty, StringComparison.Ordinal);
+        var otherKey = other.Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (nameKey.Equals(otherKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (nameKey.Length > otherKey.Length &&
+            nameKey.StartsWith(otherKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return otherKey.All(c => char.IsDigit(c) || c == '/');
     }
 
     /// <summary>Alle Linien-Stämme für Export/Staging (Routen + manuell, ohne ausgeblendete).</summary>

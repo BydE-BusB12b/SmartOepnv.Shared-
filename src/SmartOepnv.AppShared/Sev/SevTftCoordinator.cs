@@ -50,9 +50,14 @@ public static class SevTftCoordinator
     {
         if (!TryBuildFromEditor(routeKey, out var payload, out var error) || payload is null)
         {
-            var failed = SevTftCallResult.Fail(error);
-            Report(failed.Message);
-            return failed;
+            if (!SevTftRouteBuilder.IsRouteNameFormatHint(error))
+            {
+                var failed = SevTftCallResult.Fail(error);
+                Report(failed.Message);
+                return failed;
+            }
+
+            return SevTftCallResult.Fail(error);
         }
 
         return await PostAsync(endpoint, payload, cancellationToken).ConfigureAwait(false);
@@ -92,7 +97,11 @@ public static class SevTftCoordinator
 
             if (!TryBuildFromEditor(routeKey, out payload, out var error))
             {
-                Report(error);
+                if (!SevTftRouteBuilder.IsRouteNameFormatHint(error))
+                {
+                    Report(error);
+                }
+
                 return;
             }
 

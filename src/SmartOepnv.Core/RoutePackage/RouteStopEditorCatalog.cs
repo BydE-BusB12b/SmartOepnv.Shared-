@@ -36,6 +36,87 @@ public static class RouteStopEditorCatalog
         !string.IsNullOrWhiteSpace(destination) && !IsStartStopPlaceholder(destination);
 
     /// <summary>
+    /// Hinweis für die Routenschnur: welches Ziel an Start, Ende oder Zielwechsel gewählt ist.
+    /// </summary>
+    public static string FormatSelectedDestinationHint(RouteStopItem stop)
+    {
+        var parts = new List<string>();
+        if (stop.ZielwechselEnabled)
+        {
+            var destination = FirstRealDestination(
+                stop.Destination,
+                stop.Ds021NeuDestination,
+                stop.FmaS1Destination,
+                stop.Ds003aDestination,
+                stop.ZielnummerDestination,
+                stop.MobitecDestination);
+            parts.Add(string.IsNullOrEmpty(destination)
+                ? "Zielwechsel"
+                : $"Zielwechsel · Ziel: {destination}");
+        }
+        else if (IsStartStop(stop))
+        {
+            var destination = FirstRealDestination(
+                stop.Destination,
+                stop.Ds021NeuDestination,
+                stop.FmaS1Destination,
+                stop.Ds003aDestination,
+                stop.ZielnummerDestination,
+                stop.MobitecDestination);
+            if (string.IsNullOrEmpty(destination) && !string.IsNullOrWhiteSpace(stop.LineNumber))
+            {
+                destination = stop.LineNumber.Trim();
+            }
+
+            parts.Add(string.IsNullOrEmpty(destination)
+                ? "Start"
+                : $"Start · Ziel: {destination}");
+        }
+
+        if (stop.IsEndStop)
+        {
+            var destination = FirstRealDestination(
+                stop.EndDestination,
+                stop.Ds021NeuEndDestination,
+                stop.FmaS1EndDestination,
+                stop.Ds003aEndDestination,
+                stop.ZielnummerEndDestination,
+                stop.MobitecEndDestination);
+            if (string.IsNullOrEmpty(destination))
+            {
+                destination = FirstRealDestination(
+                    stop.Destination,
+                    stop.Ds021NeuDestination,
+                    stop.FmaS1Destination,
+                    stop.Ds003aDestination,
+                    stop.ZielnummerDestination,
+                    stop.MobitecDestination);
+            }
+
+            parts.Add(string.IsNullOrEmpty(destination)
+                ? "Endhaltestelle"
+                : $"Endhaltestelle · Ziel: {destination}");
+        }
+
+        return string.Join("  ·  ", parts);
+    }
+
+    private static string FirstRealDestination(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (string.IsNullOrWhiteSpace(value) || IsStartStopPlaceholder(value))
+            {
+                continue;
+            }
+
+            return value.Trim();
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
     /// Starthaltestelle ohne Ziel/Linie: Marker setzen, damit die Haltestelle nicht als „Ansage aus“ gilt.
     /// Entspricht GPSAnsagen dialog_add_stop.
     /// </summary>

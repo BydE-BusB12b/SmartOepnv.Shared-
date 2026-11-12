@@ -26,6 +26,8 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     private const int SuccessFeedbackMs = 5000;
 
     private readonly List<string> _preservedRawEntries = [];
+    private readonly Dictionary<OutsideDisplayProgram, string> _storageEntryCache = new(ReferenceEqualityComparer.Instance);
+    private string _linkedDisplaySignature = string.Empty;
     private bool _hasUnsavedChanges;
     private bool _committingChanges;
     private int _loadedRevision = -1;
@@ -115,6 +117,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     {
         DateBasedHints.Clear();
         OutsidePrograms.Clear();
+        _storageEntryCache.Clear();
         _preservedRawEntries.Clear();
         _hasUnsavedChanges = false;
         SelectedHint = null;
@@ -138,6 +141,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             if (program is not null)
             {
                 OutsidePrograms.Add(program);
+                _storageEntryCache[program] = entry;
             }
             else if (!string.IsNullOrWhiteSpace(entry))
             {
@@ -149,7 +153,13 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
 
         if (OutsideDisplayId.AssignUniqueFourDigitIds(OutsidePrograms))
         {
+            _storageEntryCache.Clear();
             MarkDirty();
+            _linkedDisplaySignature = string.Empty;
+        }
+        else
+        {
+            _linkedDisplaySignature = CurrentDisplayLinkSignature();
         }
 
         SelectedHint = DateBasedHints.FirstOrDefault();
@@ -177,22 +187,32 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         try
         {
             editor.ReplaceDateBasedHints(DateBasedHints.ToList());
-            SortOutsidePrograms();
-
-            var programs = OutsidePrograms.ToList();
-            foreach (var program in programs)
+            foreach (var program in OutsidePrograms)
             {
                 program.ApplyStartTargetName();
             }
 
+            // Datei in Ziellisten-Reihenfolge schreiben, die sichtbare Liste nicht neu aufbauen.
+            // Clear/Add setzt sonst die Scrollposition ans Ende.
+            var programs = OutsidePrograms
+                .OrderBy(p => p, Comparer<OutsideDisplayProgram>.Create(OutsideDisplayProgram.CompareForZielliste))
+                .ToList();
+
             var outsideEntries = programs
-                .Select(p => p.ToStorageEntry())
+                .Select(StorageEntryFor)
                 .Concat(_preservedRawEntries)
                 .Where(e => !string.IsNullOrWhiteSpace(e))
                 .ToList();
-            editor.ReplaceOutsideDisplays(outsideEntries);
-            OutsideDisplayDestinationResolver.SyncStopLinks(editor);
-            AppServices.Routes.ApplyEditorChanges("anzeigen-hinweise", rebuildEmbeddedMedia: false);
+            var signature = CurrentDisplayLinkSignature();
+            if (!string.Equals(signature, _linkedDisplaySignature, StringComparison.Ordinal))
+            {
+                editor.ReplaceOutsideDisplays(outsideEntries);
+                OutsideDisplayDestinationResolver.SyncStopLinks(editor);
+                _linkedDisplaySignature = signature;
+            }
+
+            AppServices.Routes.PersistOutsideDisplaysOnly(outsideEntries, DateBasedHints.ToList());
+            _loadedRevision = AppServices.Routes.EditorDataRevision;
             _hasUnsavedChanges = false;
             RefreshOutsideProgramListLabels();
             var enabledCount = OutsidePrograms.Count(p => p.IsListEnabled);
@@ -246,12 +266,27 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         _isSortingPrograms = true;
+        var orderChanged = false;
         try
         {
             var selected = SelectedOutsideProgram;
             var sorted = OutsidePrograms
                 .OrderBy(p => p, Comparer<OutsideDisplayProgram>.Create(OutsideDisplayProgram.CompareForZielliste))
                 .ToList();
+            for (var i = 0; i < sorted.Count; i++)
+            {
+                if (!ReferenceEquals(sorted[i], OutsidePrograms[i]))
+                {
+                    orderChanged = true;
+                    break;
+                }
+            }
+
+            if (!orderChanged)
+            {
+                return;
+            }
+
             OutsidePrograms.Clear();
             foreach (var program in sorted)
             {
@@ -265,7 +300,10 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         finally
         {
             _isSortingPrograms = false;
-            RefreshOutsideProgramsView();
+            if (orderChanged)
+            {
+                RefreshOutsideProgramsView();
+            }
         }
     }
 
@@ -691,8 +729,31 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         SelectedWechseltextIndex = Math.Clamp(index, 0, OutsideDisplayCycleParser.MaxCycles - 1);
     }
 
+    private string StorageEntryFor(OutsideDisplayProgram program)
+    {
+        if (_storageEntryCache.TryGetValue(program, out var cached))
+        {
+            return cached;
+        }
+
+        var built = program.ToStorageEntry();
+        _storageEntryCache[program] = built;
+        return built;
+    }
+
+    private string CurrentDisplayLinkSignature() =>
+        string.Join('\n', OutsidePrograms.Select(program => $"{program.Id}|{program.Protocol}|{program.Name}"));
+
+    private void InvalidateStorageEntry(OutsideDisplayProgram program) =>
+        _storageEntryCache.Remove(program);
+
     private void OnOutsideProgramPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (sender is OutsideDisplayProgram changed)
+        {
+            InvalidateStorageEntry(changed);
+        }
+
         if (_isSortingPrograms)
         {
             return;
@@ -1061,6 +1122,97 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
     }
 
+    [RelayCommand]
+    private void OpenMobitecGraphicTool()
+    {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
+        var program = SelectedOutsideProgram is { IsMobitec: true } selected ? selected : null;
+        var usedNumbers = OutsidePrograms
+            .Where(item => item.IsMobitec && item.DestinationNumber is int)
+            .Select(item => item.DestinationNumber!.Value);
+
+        try
+        {
+            OutsideDisplayProgram? current = program;
+            var savedToDisk = false;
+            var edit = Views.MobitecGraphicToolWindow.Show(
+                DialogOwnerHelper.ResolveOwner(),
+                program,
+                usedNumbers,
+                incoming =>
+                {
+                    current = UpsertGraphicEdit(current, incoming);
+                    CommitChanges(force: true, showSuccessFeedback: false);
+                    savedToDisk = true;
+                });
+            if (edit is null)
+            {
+                StatusMessage = savedToDisk
+                    ? "Grafik gespeichert."
+                    : "Grafiktool geschlossen, ohne zu übernehmen.";
+                return;
+            }
+
+            current = UpsertGraphicEdit(current, edit);
+            CommitChanges(force: true, showSuccessFeedback: false);
+            StatusMessage = $"„{edit.Name}“ gespeichert.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Grafiktool konnte nicht geöffnet werden: {ex.Message}";
+        }
+    }
+
+    private OutsideDisplayProgram UpsertGraphicEdit(OutsideDisplayProgram? current, Views.MobitecGraphicEdit edit)
+    {
+        if (edit.CreateNew || current is null)
+        {
+            var created = OutsideDisplayProgram.CreateMobitec(edit.Name);
+            created.Id = OutsideDisplayId.NewUniqueId(OutsidePrograms.Select(item => item.Id));
+            ApplyGraphicEdit(created, edit);
+            if (created.FrontCycles.Count > 0)
+            {
+                created.FrontCycles[0].SetFromPair(edit.Name, string.Empty);
+            }
+
+            if (created.SideCycles.Count > 0)
+            {
+                created.SideCycles[0].SetFromPair(edit.Name, string.Empty);
+            }
+
+            OutsidePrograms.Add(created);
+            SortOutsidePrograms();
+            SelectedOutsideProgram = created;
+            MarkDirty();
+            return created;
+        }
+
+        ApplyGraphicEdit(current, edit);
+        if (!string.IsNullOrWhiteSpace(edit.Name))
+        {
+            current.Name = edit.Name;
+        }
+
+        InvalidateStorageEntry(current);
+        MarkDirty();
+        return current;
+    }
+
+    private static void ApplyGraphicEdit(OutsideDisplayProgram program, Views.MobitecGraphicEdit edit)
+    {
+        program.MobitecFrontFrame = edit.Front;
+        program.MobitecSideFrame = edit.Side;
+        program.MobitecLineFrame = edit.Line;
+        program.Ds001Value = edit.LineText;
+        program.DestinationNumber = edit.DestinationNumber;
+        program.IntervalSeconds = edit.IntervalSeconds;
+        program.NotifyMobitecGraphicsChanged();
+    }
+
     private bool EnsurePackageForOutsidePrograms()
     {
         if (!AppServices.Routes.EnsureEmptyPackageIfNeeded())
@@ -1103,6 +1255,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         foreach (var program in OutsidePrograms)
         {
             program.IsListEnabled = true;
+            InvalidateStorageEntry(program);
         }
 
         MarkDirty();

@@ -105,16 +105,32 @@ public static class PlanerDropboxWorkspaceSync
         var localDocument = Workspace.TryReadLocalDocument();
 
         string remoteJson;
+        var readFromLocalMirror = false;
         try
         {
-            var downloadProgress = ScaleProgress(
-                progress,
-                $"{DropboxConstants.PlanerWorkspaceFileName} wird geladen…",
-                5,
-                90);
-            remoteJson = await AppServices.Dropbox
-                .DownloadNamedFileAsync(DropboxConstants.PlanerWorkspaceFileName, ct, downloadProgress)
+            var mirrored = await DropboxLocalMirror.TryReadTextIfMatchesAsync(
+                    DropboxConstants.PlanerWorkspaceFileName,
+                    remoteMeta.Value.SizeBytes,
+                    remoteMeta.Value.ContentHash,
+                    ct)
                 .ConfigureAwait(false);
+            if (mirrored is not null)
+            {
+                remoteJson = mirrored;
+                readFromLocalMirror = true;
+                ReportOverall(progress, "Planer-Arbeitsstand aus dem lokalen Dropbox-Ordner…", 90);
+            }
+            else
+            {
+                var downloadProgress = ScaleProgress(
+                    progress,
+                    $"{DropboxConstants.PlanerWorkspaceFileName} wird geladen…",
+                    5,
+                    90);
+                remoteJson = await AppServices.Dropbox
+                    .DownloadNamedFileAsync(DropboxConstants.PlanerWorkspaceFileName, ct, downloadProgress)
+                    .ConfigureAwait(false);
+            }
         }
         catch (Exception ex) when (ex.Message.Contains("not_found", StringComparison.OrdinalIgnoreCase) ||
                                    ex.Message.Contains("path/not_found", StringComparison.OrdinalIgnoreCase))
@@ -205,13 +221,14 @@ public static class PlanerDropboxWorkspaceSync
         var soundsHintAfterDownload = soundsResultAfterDownload.Downloaded > 0
             ? $" {soundsResultAfterDownload.Downloaded} Ansagen-Rohdatei(en) aus {DropboxConstants.PlanerAnnouncementRawSoundsFolderName}/ geladen."
             : string.Empty;
+        var sourceHint = readFromLocalMirror ? "lokalem Dropbox-Ordner" : "Dropbox";
         return new ImportResult(
             true,
             remoteTimestamp,
             localTimestamp,
             (forceOverwrite
-                ? $"Planer-Arbeitsstand aus Dropbox geladen ({DropboxConstants.PlanerWorkspaceFileName}, lokaler Stand überschrieben)."
-                : $"Planer-Arbeitsstand aus Dropbox übernommen ({DropboxConstants.PlanerWorkspaceFileName}).") + soundsHintAfterDownload,
+                ? $"Planer-Arbeitsstand aus {sourceHint} geladen ({DropboxConstants.PlanerWorkspaceFileName}, lokaler Stand überschrieben)."
+                : $"Planer-Arbeitsstand aus {sourceHint} übernommen ({DropboxConstants.PlanerWorkspaceFileName}).") + soundsHintAfterDownload,
             RemoteHasMoreContent: remoteHasMoreContent);
     }
 
@@ -383,11 +400,14 @@ public static class PlanerDropboxWorkspaceSync
         catch (Exception ex)
         {
             var localSaved = PlanerWorkspaceSaveCoordinator.WasLocalSavedRecently();
+            var detail = ex is OperationCanceledException
+                ? "Der Upload wurde abgebrochen, weil zu lange keine Daten ankamen."
+                : ex.Message;
             return new ExportResult(
                 false,
                 localSaved
-                    ? $"Dropbox-Export fehlgeschlagen (lokal gespeichert): {ex.Message}"
-                    : $"Dropbox-Export fehlgeschlagen: {ex.Message}",
+                    ? $"Dropbox-Export fehlgeschlagen (lokal gespeichert): {detail}"
+                    : $"Dropbox-Export fehlgeschlagen: {detail}",
                 LocalSaved: localSaved);
         }
     }

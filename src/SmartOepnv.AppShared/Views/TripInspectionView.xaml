@@ -31,16 +31,18 @@
                             Margin="0,0,12,0"
                             ToolTip="Zwischenstand vom Fahrzeug (wie Abmelden, ohne Logout) – Fahrer sieht nichts" />
                     <TextBlock Text="Eine Spur je Fahrzeug · 7-Tage-Loop · Upload beim Abmelden oder Abruf"
-                               VerticalAlignment="Center" Opacity="0.75" />
+                               Foreground="{DynamicResource SmartForegroundBrush}"
+                               VerticalAlignment="Center" />
                 </StackPanel>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding StatusMessage}" TextWrapping="Wrap"
-                           VerticalAlignment="Center" Opacity="0.85" MaxWidth="560" HorizontalAlignment="Right" />
+                           Foreground="{DynamicResource SmartForegroundBrush}"
+                           VerticalAlignment="Center" MaxWidth="560" HorizontalAlignment="Right" />
             </DockPanel>
         </materialDesign:Card>
 
         <Grid Grid.Row="1" ClipToBounds="True">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="240" />
                 <ColumnDefinition Width="*" MinWidth="0" />
                 <ColumnDefinition Width="320" />
             </Grid.ColumnDefinitions>
@@ -76,7 +78,7 @@
                                         Background="#22000000" BorderBrush="#44FFFFFF" BorderThickness="1">
                                     <StackPanel>
                                         <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource SmartForegroundBrush}" FontWeight="Bold" />
-                                        <TextBlock Text="{Binding DetailLine}" Foreground="#BBDEFB"
+                                        <TextBlock Text="{Binding DetailLine}" Foreground="{DynamicResource SmartListDetailBrush}"
                                                    FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" />
                                     </StackPanel>
                                 </Border>
@@ -101,22 +103,21 @@
                                 Command="{Binding CloseTimelineCommand}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Foreground="{DynamicResource SmartForegroundBrush}"
-                                BorderBrush="White"
+                                BorderBrush="{DynamicResource SmartForegroundBrush}"
                                 Margin="8,0,0,0"
                                 Padding="10,4" />
-                        <StackPanel>
-                            <TextBlock Text="Zeitleiste"
-                                       Foreground="{DynamicResource SmartForegroundBrush}"
-                                       FontSize="16"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding TimelineStatusMessage}"
-                                       Foreground="{DynamicResource SmartForegroundBrush}"
-                                       Opacity="0.75"
-                                       FontSize="11"
-                                       TextWrapping="Wrap"
-                                       Margin="0,4,0,0" />
-                        </StackPanel>
+                        <TextBlock Text="Zeitleiste"
+                                   Foreground="{DynamicResource SmartForegroundBrush}"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
                     </DockPanel>
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="{Binding TimelineStatusMessage}"
+                               Foreground="{DynamicResource SmartForegroundBrush}"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8" />
                     <DatePicker DockPanel.Dock="Top"
                                 SelectedDate="{Binding TimelineDate}"
                                 SelectedDateFormat="Short"
@@ -141,25 +142,24 @@
                                         <ItemsControl ItemsSource="{Binding Events}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Grid Margin="0,0,0,10" MinHeight="36">
+                                                    <Grid Margin="0,0,0,8" MinHeight="28">
                                                         <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="14" />
+                                                            <ColumnDefinition Width="8" />
                                                             <ColumnDefinition Width="*" />
                                                         </Grid.ColumnDefinitions>
-                                                        <!-- Weißer Zeitstrahl -->
-                                                        <Grid Grid.Column="0" HorizontalAlignment="Center" Width="14">
-                                                            <Rectangle Width="3"
-                                                                       Fill="White"
+                                                        <Grid Grid.Column="0" HorizontalAlignment="Center" Width="8">
+                                                            <Rectangle Width="1"
+                                                                       Fill="{DynamicResource SmartForegroundBrush}"
                                                                        HorizontalAlignment="Center"
                                                                        VerticalAlignment="Stretch" />
-                                                            <Ellipse Width="9"
-                                                                     Height="9"
-                                                                     Fill="White"
+                                                            <Ellipse Width="5"
+                                                                     Height="5"
+                                                                     Fill="{DynamicResource SmartForegroundBrush}"
                                                                      HorizontalAlignment="Center"
                                                                      VerticalAlignment="Top"
                                                                      Margin="0,4,0,0" />
                                                         </Grid>
-                                                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                                        <StackPanel Grid.Column="1" Margin="6,0,0,0">
                                                             <TextBlock Text="{Binding TimeLabel}"
                                                                        Foreground="{DynamicResource SmartForegroundBrush}"
                                                                        FontWeight="SemiBold"
@@ -214,7 +214,7 @@
                                FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
                     <TextBlock DockPanel.Dock="Top"
                                Text="Karte: Klick auf Spur/Punkt → Uhrzeit und ±3 Nachbarpunkte"
-                               Foreground="#90CAF9" FontSize="11" Margin="0,0,0,8" Opacity="0.85" />
+                               Foreground="{DynamicResource SmartListHintBrush}" FontSize="11" Margin="0,0,0,8" />
                     <ListBox ItemsSource="{Binding Segments}"
                              SelectedItem="{Binding SelectedSegment}"
                              Background="Transparent" BorderThickness="0">
@@ -224,7 +224,7 @@
                                         Background="#22000000" BorderBrush="#44FFFFFF" BorderThickness="1">
                                     <StackPanel>
                                         <TextBlock Text="{Binding Title}" Foreground="{DynamicResource SmartForegroundBrush}" FontWeight="Bold" />
-                                        <TextBlock Text="{Binding Detail}" Foreground="#BBDEFB"
+                                        <TextBlock Text="{Binding Detail}" Foreground="{DynamicResource SmartListDetailBrush}"
                                                    FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" />
                                     </StackPanel>
                                 </Border>
@@ -244,9 +244,11 @@
             <DockPanel>
                 <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                     <TextBlock Text="Fahrplan Soll / Ist"
+                               Foreground="{DynamicResource SmartForegroundBrush}"
                                FontSize="16" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding ScheduleStatusMessage}"
-                               Opacity="0.8" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" />
+                               Foreground="{DynamicResource SmartForegroundBrush}"
+                               FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" />
                 </StackPanel>
                 <DataGrid ItemsSource="{Binding ScheduleRows}"
                           AutoGenerateColumns="False"
@@ -255,6 +257,7 @@
                           CanUserDeleteRows="False"
                           HeadersVisibility="Column"
                           GridLinesVisibility="Horizontal"
+                          Foreground="{DynamicResource SmartForegroundBrush}"
                           AlternatingRowBackground="#14000000"
                           Visibility="{Binding HasScheduleTable, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <DataGrid.Columns>

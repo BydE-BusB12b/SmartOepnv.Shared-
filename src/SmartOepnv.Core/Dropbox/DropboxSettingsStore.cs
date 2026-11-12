@@ -24,6 +24,11 @@ public sealed class DropboxSettingsStore
 
     public DropboxSettings Load()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return ReadJson(PlainPath()) ?? new DropboxSettings();
+        }
+
         if (!File.Exists(_settingsPath))
         {
             return new DropboxSettings();
@@ -45,7 +50,35 @@ public sealed class DropboxSettingsStore
     public void Save(DropboxSettings settings)
     {
         var json = JsonSerializer.Serialize(settings, JsonOptions);
+        if (!OperatingSystem.IsWindows())
+        {
+            var path = PlainPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, json);
+            return;
+        }
+
         var protectedBytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(json), null, DataProtectionScope.CurrentUser);
         File.WriteAllBytes(_settingsPath, protectedBytes);
+    }
+
+    private string PlainPath() =>
+        Path.Combine(Path.GetDirectoryName(_settingsPath)!, "dropbox.settings.json");
+
+    private static DropboxSettings? ReadJson(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<DropboxSettings>(File.ReadAllText(path), JsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

@@ -928,6 +928,11 @@
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
                                         Margin="0,0,8,6"
                                         ToolTip="ZEdit32 TRANS.OUT / *.out einlesen und als Mobitec-Ziele in die Anzeigenliste übernehmen" />
+                                <Button Content="Grafiktool öffnen"
+                                        Command="{Binding OpenMobitecGraphicToolCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,6"
+                                        ToolTip="Zeichenfeld für Front 128×16, Seite 120×16 und Linie 28×16. Legt ein neues Mobitec-Ziel an oder übernimmt die Grafik ins ausgewählte." />
                                 <Button Content="Auswahl löschen"
                                         Command="{Binding RemoveOutsideProgramCommand}"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"

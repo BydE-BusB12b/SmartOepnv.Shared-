@@ -314,9 +314,17 @@ public static class ZeitwirtschaftMergeService
                 figures = ZeitwirtschaftShiftFigures.Empty;
             }
 
-            var pauseText = FormatPauseRanges(entry.Pauses);
+            var pauseLines = DescribePauses(entry);
+            var pauseText = pauseLines.Count == 0 ? "—" : string.Join("\n", pauseLines.Select(line => line.Text));
             var pauseMinutes = SumClosedPauseMinutes(entry.Pauses);
             var breakHint = string.Join("\n", figures.Hints);
+            if (entry.Manual)
+            {
+                var nachtrag = string.IsNullOrWhiteSpace(entry.ManualReason)
+                    ? "Nachtrag, Stempelung hat gefehlt."
+                    : "Nachtrag: " + entry.ManualReason.Trim();
+                breakHint = breakHint.Length == 0 ? nachtrag : nachtrag + "\n" + breakHint;
+            }
             if (assessment.PeriodHints.TryGetValue(entry.EntryId, out var extra) && extra.Length > 0)
             {
                 breakHint = breakHint.Length == 0 ? extra : breakHint + "\n" + extra;
@@ -330,12 +338,12 @@ public static class ZeitwirtschaftMergeService
             }
             else if (isVoided)
             {
-                arbeitszeit = FormatMinutesHhMm(figures.StatutoryMinutes);
+                arbeitszeit = FormatMinutesHhMm(figures.PresenceMinutes);
                 lohnstunden = "—";
             }
             else
             {
-                arbeitszeit = FormatMinutesHhMm(figures.StatutoryMinutes);
+                arbeitszeit = FormatMinutesHhMm(figures.PresenceMinutes);
                 lohnstunden = FormatMinutesHhMm(figures.PayMinutes);
             }
 
@@ -381,7 +389,11 @@ public static class ZeitwirtschaftMergeService
 
                 VehiclePhone = entry.DevicePhone,
 
-                VehicleDisplayName = ZeitwirtschaftVehicleLabelResolver.Resolve(entry.DevicePhone, vehicleLabels),
+                VehicleDisplayName = FormatPlace(
+                    PlaceLabel(entry.DevicePhone, entry.CheckInPoint, vehicleLabels),
+                    PlaceLabel(null, entry.CheckOutPoint, vehicleLabels),
+                    ZeitwirtschaftVehicleLabelResolver.TryVehicleName(entry.DevicePhone, vehicleLabels)
+                        ?? ZeitwirtschaftVehicleLabelResolver.Resolve(entry.DevicePhone, vehicleLabels)),
 
                 PersonnelNumber = employee.PersonnelNumber,
 
@@ -394,6 +406,8 @@ public static class ZeitwirtschaftMergeService
                 Lohnstunden = lohnstunden,
 
                 Pause = pauseText,
+
+                PauseLines = pauseLines,
 
                 PauseMinutes = isVoided ? 0 : pauseMinutes,
 
@@ -445,8 +459,20 @@ public static class ZeitwirtschaftMergeService
 
 
     public static bool HasCorrection(ZeitwirtschaftMergedEntry entry) =>
+        IsRealCorrection(entry.StartEpochMs, entry.CorrectedStartEpochMs) ||
+        IsRealCorrection(entry.EndEpochMs ?? 0, entry.CorrectedEndEpochMs) ||
+        entry.Pauses.Any(pause =>
+            IsRealCorrection(pause.StartEpochMs, pause.CorrectedStartEpochMs) ||
+            IsRealCorrection(pause.EndEpochMs ?? 0, pause.CorrectedEndEpochMs));
 
-        entry.CorrectedStartEpochMs is > 0 || entry.CorrectedEndEpochMs is > 0;
+    /// <summary>Gespeicherte Korrektur, die sich in der angezeigten Minute von der Stempelzeit unterscheidet.</summary>
+    public static bool IsRealCorrection(long originalMs, long? correctedMs) =>
+        correctedMs is > 0 && (originalMs <= 0 || !SameMinute(originalMs, correctedMs.Value));
+
+    public static bool SameMinute(long leftMs, long rightMs) =>
+        leftMs > 0 &&
+        rightMs > 0 &&
+        FormatStamp(leftMs, null) == FormatStamp(rightMs, null);
 
 
 
@@ -484,12 +510,10 @@ public static class ZeitwirtschaftMergeService
 
             : "—";
 
-        if (correctedMs is not > 0)
-
+        if (correctedMs is not > 0 ||
+            (originalMs > 0 && SameMinute(originalMs, correctedMs.Value)))
         {
-
             return original;
-
         }
 
 
@@ -585,34 +609,98 @@ public static class ZeitwirtschaftMergeService
     public static string FormatMinutesHhMm(int totalMinutes) =>
         $"{totalMinutes / 60}:{totalMinutes % 60:D2}";
 
-    /// <summary>Gestempelte Pausen als Uhrzeiten, eine Zeile je Pause.</summary>
-    public static string FormatPauseRanges(IReadOnlyList<ZeitwirtschaftPause> pauses)
+    /// <summary>
+    /// Eine Zeile je Pause. Orange (Ignored) sind Pausen, die nicht als Ruhepause zählen:
+    /// kürzer als 15 Minuten, offen, oder außerhalb der Schicht.
+    /// </summary>
+    public static IReadOnlyList<ZeitwirtschaftPauseLine> DescribePauses(ZeitwirtschaftMergedEntry entry)
     {
-        var lines = new List<string>();
-        foreach (var pause in pauses.OrderBy(p => p.StartEpochMs))
+        var shiftStart = EffectiveStartMs(entry);
+        var shiftEnd = EffectiveEndMs(entry);
+        var qualifying = shiftEnd is > 0
+            ? ZeitwirtschaftArbzg.ClosedIntervals(shiftStart, shiftEnd.Value, entry.Pauses)
+                .Where(interval => WholeMinutesBetween(interval.StartMs, interval.EndMs) >= ZeitwirtschaftArbzg.QualifyingSegmentMinutes)
+                .ToList()
+            : [];
+        var lines = new List<ZeitwirtschaftPauseLine>();
+        foreach (var pause in entry.Pauses.OrderBy(p => p.StartEpochMs))
         {
             if (pause.StartEpochMs <= 0)
             {
                 continue;
             }
 
-            var start = DateTimeOffset.FromUnixTimeMilliseconds(pause.StartEpochMs).ToLocalTime();
-            var startText = start.ToString("HH:mm", CultureInfo.CurrentCulture);
-            if (pause.EndEpochMs is > 0)
+            var originalStart = DateTimeOffset.FromUnixTimeMilliseconds(pause.StartEpochMs).ToLocalTime();
+            var originalEnd = pause.EndEpochMs is > 0
+                ? DateTimeOffset.FromUnixTimeMilliseconds(pause.EndEpochMs.Value).ToLocalTime()
+                : (DateTimeOffset?)null;
+            var effectiveStart = DateTimeOffset.FromUnixTimeMilliseconds(pause.EffectiveStartMs).ToLocalTime();
+            var effectiveEnd = pause.EffectiveEndMs is > 0
+                ? DateTimeOffset.FromUnixTimeMilliseconds(pause.EffectiveEndMs.Value).ToLocalTime()
+                : (DateTimeOffset?)null;
+            var originalText = RangeText(originalStart, originalEnd);
+            var changed = IsRealCorrection(pause.StartEpochMs, pause.CorrectedStartEpochMs) ||
+                          IsRealCorrection(pause.EndEpochMs ?? 0, pause.CorrectedEndEpochMs);
+            var text = changed
+                ? originalText + "\n→ " + RangeText(effectiveStart, effectiveEnd)
+                : originalText;
+            lines.Add(new ZeitwirtschaftPauseLine
             {
-                var end = DateTimeOffset.FromUnixTimeMilliseconds(pause.EndEpochMs.Value).ToLocalTime();
-                var endText = end.Date == start.Date
-                    ? end.ToString("HH:mm", CultureInfo.CurrentCulture)
-                    : end.ToString("dd.MM. HH:mm", CultureInfo.CurrentCulture);
-                lines.Add($"{startText}–{endText}");
-            }
-            else
-            {
-                lines.Add($"{startText}–offen");
-            }
+                Text = text,
+                Ignored = !PauseCounts(pause, shiftStart, shiftEnd, qualifying)
+            });
         }
 
-        return lines.Count == 0 ? "—" : string.Join("\n", lines);
+        return lines;
+    }
+
+    private static bool PauseCounts(
+        ZeitwirtschaftPause pause,
+        long shiftStartMs,
+        long? shiftEndMs,
+        IReadOnlyList<ZeitwirtschaftArbzg.Interval> qualifying)
+    {
+        if (pause.EffectiveEndMs is not long end)
+        {
+            return false;
+        }
+
+        if (shiftEndMs is not long shiftEnd)
+        {
+            return WholeMinutesBetween(pause.EffectiveStartMs, end) >= ZeitwirtschaftArbzg.QualifyingSegmentMinutes;
+        }
+
+        var start = pause.EffectiveStartMs;
+        if (end <= shiftStartMs || start >= shiftEnd || end <= start)
+        {
+            return false;
+        }
+
+        if (start < shiftStartMs)
+        {
+            start = shiftStartMs;
+        }
+
+        if (end > shiftEnd)
+        {
+            end = shiftEnd;
+        }
+
+        return qualifying.Any(interval => start < interval.EndMs && end > interval.StartMs);
+    }
+
+    private static string RangeText(DateTimeOffset start, DateTimeOffset? end)
+    {
+        var startText = start.ToString("HH:mm", CultureInfo.CurrentCulture);
+        if (end is not DateTimeOffset finish)
+        {
+            return startText + "–offen";
+        }
+
+        var endText = finish.Date == start.Date
+            ? finish.ToString("HH:mm", CultureInfo.CurrentCulture)
+            : finish.ToString("dd.MM. HH:mm", CultureInfo.CurrentCulture);
+        return startText + "–" + endText;
     }
 
     public static int SumClosedPauseMinutes(IReadOnlyList<ZeitwirtschaftPause> pauses)
@@ -620,9 +708,9 @@ public static class ZeitwirtschaftMergeService
         var total = 0;
         foreach (var pause in pauses)
         {
-            if (pause.StartEpochMs > 0 && pause.EndEpochMs is > 0)
+            if (pause.EffectiveStartMs > 0 && pause.EffectiveEndMs is > 0)
             {
-                total += WholeMinutesBetween(pause.StartEpochMs, pause.EndEpochMs.Value);
+                total += WholeMinutesBetween(pause.EffectiveStartMs, pause.EffectiveEndMs.Value);
             }
         }
 
@@ -737,6 +825,10 @@ public static class ZeitwirtschaftMergeService
 
             DevicePhone = string.IsNullOrWhiteSpace(recorded) ? devicePhone : recorded,
 
+            CheckInPoint = entryObj["checkInPoint"]?.GetValue<string>()?.Trim(),
+
+            CheckOutPoint = entryObj["checkOutPoint"]?.GetValue<string>()?.Trim(),
+
             StartEpochMs = startMs,
 
             EndEpochMs = endMs,
@@ -767,7 +859,11 @@ public static class ZeitwirtschaftMergeService
 
             Pauses = ReadPauses(entryObj),
 
-            SixthDuty = ReadOptionalBool(entryObj, "sixthDuty")
+            SixthDuty = ReadOptionalBool(entryObj, "sixthDuty"),
+
+            Manual = entryObj["manual"]?.GetValue<bool>() == true,
+
+            ManualReason = entryObj["manualReason"]?.GetValue<string>()
 
         };
 
@@ -792,11 +888,53 @@ public static class ZeitwirtschaftMergeService
             list.Add(new ZeitwirtschaftPause
             {
                 StartEpochMs = start.Value,
-                EndEpochMs = ReadPositiveLong(node, "endEpochMs")
+                EndEpochMs = ReadPositiveLong(node, "endEpochMs"),
+                CorrectedStartEpochMs = ReadPositiveLong(node, "correctedStartEpochMs"),
+                CorrectedEndEpochMs = ReadPositiveLong(node, "correctedEndEpochMs")
             });
         }
 
         return list;
+    }
+
+    private static string? FirstPlace(string? preferred, string? fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(preferred))
+        {
+            return preferred.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(fallback) ? null : fallback.Trim();
+    }
+
+    /// <summary>
+    /// Anmeldeort ist das Kennzeichen des Geräts. Ein beim Stempeln gespeicherter Name
+    /// gilt nur, wenn die Nummer in der Fahrzeugliste fehlt.
+    /// </summary>
+    private static string? PlaceLabel(
+        string? phone,
+        string? stamped,
+        IReadOnlyDictionary<string, string>? vehicleLabels)
+    {
+        var fromRegistry = ZeitwirtschaftVehicleLabelResolver.TryVehicleName(phone, vehicleLabels);
+        if (!string.IsNullOrWhiteSpace(fromRegistry))
+        {
+            return fromRegistry;
+        }
+
+        return string.IsNullOrWhiteSpace(stamped) ? null : stamped.Trim();
+    }
+
+    private static string FormatPlace(string? checkIn, string? checkOut, string fallback)
+    {
+        var start = string.IsNullOrWhiteSpace(checkIn) ? null : checkIn.Trim();
+        var end = string.IsNullOrWhiteSpace(checkOut) ? null : checkOut.Trim();
+        if (start is not null && end is not null)
+        {
+            return string.Equals(start, end, StringComparison.Ordinal) ? start : $"{start} → {end}";
+        }
+
+        return start ?? end ?? fallback;
     }
 
     private static long? ReadPositiveLong(JsonObject obj, string key)
@@ -831,6 +969,10 @@ public static class ZeitwirtschaftMergeService
 
         var endIso = existing.EndIso;
 
+        var checkInPoint = FirstPlace(existing.CheckInPoint, incoming.CheckInPoint);
+
+        var checkOutPoint = FirstPlace(existing.CheckOutPoint, incoming.CheckOutPoint);
+
         if (existing.EndEpochMs is not > 0 && incoming.EndEpochMs is > 0)
 
         {
@@ -838,6 +980,8 @@ public static class ZeitwirtschaftMergeService
             endEpochMs = incoming.EndEpochMs;
 
             endIso = incoming.EndIso;
+
+            checkOutPoint = FirstPlace(incoming.CheckOutPoint, existing.CheckOutPoint);
 
         }
 
@@ -902,6 +1046,12 @@ public static class ZeitwirtschaftMergeService
         }
 
         var pauses = MergePauses(existing.Pauses, incoming.Pauses);
+        var incomingCorrectionWins = incoming.CorrectedAtMs is > 0 &&
+            (existing.CorrectedAtMs is null or 0 || incoming.CorrectedAtMs > existing.CorrectedAtMs);
+        if (incomingCorrectionWins)
+        {
+            pauses = OverlayPauseCorrections(pauses, incoming.Pauses);
+        }
 
         var sixth = incoming.SixthDuty ?? existing.SixthDuty;
 
@@ -925,7 +1075,15 @@ public static class ZeitwirtschaftMergeService
 
             SamePauses(pauses, existing.Pauses) &&
 
-            sixth == existing.SixthDuty)
+            sixth == existing.SixthDuty &&
+
+            checkInPoint == existing.CheckInPoint &&
+
+            checkOutPoint == existing.CheckOutPoint &&
+
+            (existing.Manual || !incoming.Manual) &&
+
+            (existing.ManualReason ?? incoming.ManualReason) == existing.ManualReason)
 
         {
 
@@ -946,6 +1104,10 @@ public static class ZeitwirtschaftMergeService
             Name = existing.Name,
 
             DevicePhone = existing.DevicePhone,
+
+            CheckInPoint = checkInPoint,
+
+            CheckOutPoint = checkOutPoint,
 
             StartEpochMs = existing.StartEpochMs,
 
@@ -977,7 +1139,13 @@ public static class ZeitwirtschaftMergeService
 
             Pauses = pauses,
 
-            SixthDuty = sixth
+            SixthDuty = sixth,
+
+            Manual = existing.Manual || incoming.Manual,
+
+            ManualReason = string.IsNullOrWhiteSpace(existing.ManualReason)
+                ? incoming.ManualReason
+                : existing.ManualReason
 
         };
 
@@ -1008,13 +1176,55 @@ public static class ZeitwirtschaftMergeService
                 continue;
             }
 
-            var previousEnd = previous.EndEpochMs ?? 0;
-            var nextEnd = pause.EndEpochMs ?? 0;
-            if (nextEnd > previousEnd)
+            var end = LaterEnd(previous.EndEpochMs, pause.EndEpochMs);
+            byStart[pause.StartEpochMs] = new ZeitwirtschaftPause
             {
-                byStart[pause.StartEpochMs] = pause;
-            }
+                StartEpochMs = previous.StartEpochMs,
+                EndEpochMs = end,
+                CorrectedStartEpochMs = pause.CorrectedStartEpochMs ?? previous.CorrectedStartEpochMs,
+                CorrectedEndEpochMs = pause.CorrectedEndEpochMs ?? previous.CorrectedEndEpochMs
+            };
         }
+    }
+
+    private static long? LaterEnd(long? left, long? right)
+    {
+        if (left is not > 0)
+        {
+            return right;
+        }
+
+        if (right is not > 0)
+        {
+            return left;
+        }
+
+        return right > left ? right : left;
+    }
+
+    /// <summary>
+    /// Die neuere Korrektur gilt vollständig, auch wenn eine Pausenzeit zurück auf die Stempelzeit gesetzt wurde.
+    /// </summary>
+    private static IReadOnlyList<ZeitwirtschaftPause> OverlayPauseCorrections(
+        IReadOnlyList<ZeitwirtschaftPause> pauses,
+        IReadOnlyList<ZeitwirtschaftPause> authority)
+    {
+        var byStart = authority.ToDictionary(pause => pause.StartEpochMs);
+        return pauses.Select(pause =>
+        {
+            if (!byStart.TryGetValue(pause.StartEpochMs, out var source))
+            {
+                return pause;
+            }
+
+            return new ZeitwirtschaftPause
+            {
+                StartEpochMs = pause.StartEpochMs,
+                EndEpochMs = pause.EndEpochMs,
+                CorrectedStartEpochMs = source.CorrectedStartEpochMs,
+                CorrectedEndEpochMs = source.CorrectedEndEpochMs
+            };
+        }).ToList();
     }
 
     private static bool SamePauses(IReadOnlyList<ZeitwirtschaftPause> left, IReadOnlyList<ZeitwirtschaftPause> right)
@@ -1026,7 +1236,10 @@ public static class ZeitwirtschaftMergeService
 
         for (var i = 0; i < left.Count; i++)
         {
-            if (left[i].StartEpochMs != right[i].StartEpochMs || left[i].EndEpochMs != right[i].EndEpochMs)
+            if (left[i].StartEpochMs != right[i].StartEpochMs ||
+                left[i].EndEpochMs != right[i].EndEpochMs ||
+                left[i].CorrectedStartEpochMs != right[i].CorrectedStartEpochMs ||
+                left[i].CorrectedEndEpochMs != right[i].CorrectedEndEpochMs)
             {
                 return false;
             }

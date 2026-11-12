@@ -1,0 +1,9 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="SmartOepnv.Fahrgeraet.App"
+             RequestedThemeVariant="Light">
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://SmartOepnv.Fahrgeraet/Styles.axaml" />
+  </Application.Styles>
+</Application>

@@ -160,6 +160,11 @@ public partial class RouteStopEditPanel : UserControl
             }
 
             ApplyDestinationToStop(stop, fieldKey, ResolveComboSelection(combo));
+            if (string.Equals(fieldKey, "lineCourseTrip", StringComparison.Ordinal) &&
+                DataContext is RoutesViewModel routeViewModel)
+            {
+                routeViewModel.CopyChainIdentityToLinkedTrip(stop.SelectedLineCourseTrip);
+            }
         }
     }
 

@@ -73,6 +73,27 @@ public static class PlanerRoutesDropboxSync
 
         try
         {
+            var local = DropboxLocalMirror.TryGetHydratedFile(DropboxConstants.PlanerRoutesFileName);
+            if (local is not null)
+            {
+                var meta = await AppServices.Dropbox
+                    .TryGetNamedFileMetadataAsync(DropboxConstants.PlanerRoutesFileName, ct)
+                    .ConfigureAwait(false);
+                if (meta is { SizeBytes: > 0 })
+                {
+                    var mirrored = await DropboxLocalMirror.TryReadTextIfMatchesAsync(
+                            DropboxConstants.PlanerRoutesFileName,
+                            meta.Value.SizeBytes,
+                            meta.Value.ContentHash,
+                            ct)
+                        .ConfigureAwait(false);
+                    if (mirrored is not null)
+                    {
+                        return mirrored;
+                    }
+                }
+            }
+
             return await AppServices.Dropbox
                 .DownloadNamedFileAsync(DropboxConstants.PlanerRoutesFileName, ct)
                 .ConfigureAwait(false);

@@ -370,6 +370,11 @@
                    Visibility="{Binding HasSelectedStop, Converter={StaticResource BoolToVis}}">
             <CheckBox Content="Starthaltestelle" IsChecked="{Binding IsStartStop, Mode=TwoWay}"
                       Margin="0,0,16,4" VerticalAlignment="Center" />
+            <CheckBox Content="Countdown"
+                      IsChecked="{Binding DepartureCountdownEnabled, Mode=TwoWay}"
+                      Margin="0,0,16,4"
+                      VerticalAlignment="Center"
+                      ToolTip="Abfahrtscountdown an dieser Starthaltestelle. Standard an. Bei Betriebsfahrten ausschalten." />
             <CheckBox Content="Ansage ausblenden"
                       IsChecked="{Binding IsAnnouncementHidden, Mode=TwoWay}"
                       Visibility="{Binding ShowAnnouncementHiddenOption, Converter={StaticResource BoolToVis}}"

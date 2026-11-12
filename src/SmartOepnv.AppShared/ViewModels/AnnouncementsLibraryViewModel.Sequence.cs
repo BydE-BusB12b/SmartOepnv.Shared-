@@ -119,6 +119,7 @@ public partial class AnnouncementsLibraryViewModel
             IncludeNextStopInAnnouncementMerge = false;
             IncludeNextStopMp3InAnnouncementMerge = false;
             IncludeFollowingStopsInAnnouncementMerge = false;
+            RefreshGreetingSequenceNotes();
             return;
         }
 
@@ -146,7 +147,112 @@ public partial class AnnouncementsLibraryViewModel
             _nextStopMp3ByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
         IncludeFollowingStopsInAnnouncementMerge =
             _followingStopsByAnnouncementId.GetValueOrDefault(SelectedAnnouncement.Id, false);
+        RefreshGreetingSequenceNotes();
     }
+
+    /// <summary>
+    /// Begrüßung Teil 1: dieselbe Folge für Petra und Stimme 2.
+    /// Die 150-ms-Lücke setzt die App, sie ist kein Pause-Eintrag.
+    /// </summary>
+    private void RefreshGreetingSequenceNotes()
+    {
+        OnPropertyChanged(nameof(IsGreetingPart1Sequence));
+        OnPropertyChanged(nameof(SelectedVoice2SoundLabel));
+        var part1 = IsGreetingPart1Sequence;
+        for (var i = 0; i < AnnouncementSequence.Count; i++)
+        {
+            var item = AnnouncementSequence[i];
+            var parts = new List<string>();
+            if (part1 &&
+                item.Kind != AnnouncementSequenceEntryKind.Pause &&
+                i < AnnouncementSequence.Count - 1)
+            {
+                parts.Add("danach automatisch 150 ms");
+            }
+
+            if (item.Kind == AnnouncementSequenceEntryKind.Audio)
+            {
+                if (KeepsPetraFile(item.DisplayName))
+                {
+                    parts.Add("bleibt Petra");
+                }
+                else
+                {
+                    var voice2Name = AnnouncementVoiceFiles.Voice2FileName(item.DisplayName);
+                    var present = Voice2FilePresent(voice2Name);
+                    parts.Add(present ? $"Stimme 2: {voice2Name}" : $"Stimme 2 fehlt: {voice2Name}");
+                }
+            }
+            else if (part1 && item.Kind != AnnouncementSequenceEntryKind.Pause)
+            {
+                parts.Add("Stimme 2 von der Route, sonst Petra");
+            }
+
+            item.SequenceNote = string.Join(" · ", parts);
+        }
+    }
+
+    public string SelectedVoice2SoundLabel
+    {
+        get
+        {
+            var names = new List<string>();
+            AddVoice2SourceName(names, SelectedAnnouncement?.EmbeddedSoundFileName);
+            foreach (var item in AnnouncementSequence)
+            {
+                if (item.Kind == AnnouncementSequenceEntryKind.Audio)
+                {
+                    AddVoice2SourceName(names, item.DisplayName);
+                }
+            }
+
+            if (names.Count == 0)
+            {
+                return "Noch keine Tondatei.";
+            }
+
+            var lines = new List<string>();
+            foreach (var name in names)
+            {
+                if (KeepsPetraFile(name))
+                {
+                    lines.Add($"{Path.GetFileName(name)} bleibt Petra");
+                    continue;
+                }
+
+                var voice2Name = AnnouncementVoiceFiles.Voice2FileName(name);
+                lines.Add(Voice2FilePresent(voice2Name)
+                    ? $"Vorhanden: {voice2Name}"
+                    : $"Fehlt: {voice2Name}");
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
+
+    private static void AddVoice2SourceName(List<string> names, string? fileName)
+    {
+        var trimmed = fileName?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0 ||
+            names.Any(name => name.Equals(trimmed, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        names.Add(trimmed);
+    }
+
+    private static bool Voice2FilePresent(string voice2Name) =>
+        !string.IsNullOrWhiteSpace(voice2Name) &&
+        AppServices.IsInitialized &&
+        PlanerSpecialBuildingBlocksCatalog.TryResolvePath(
+            AppServices.Workspace,
+            voice2Name,
+            ActiveDropboxFolderPath) is not null;
+
+    public bool IsGreetingPart1Sequence =>
+        SelectedAnnouncement is not null &&
+        StartStopGreetingResolver.MatchesPart1Template(SelectedAnnouncement);
 
     private static string BuildPrefixSequenceLabel(
         bool includeGong,
@@ -363,6 +469,7 @@ public partial class AnnouncementsLibraryViewModel
         OnPropertyChanged(nameof(PickAudioButtonLabel));
         MarkDirty();
         UpdateSelectedAudioHint();
+        RefreshGreetingSequenceNotes();
         ClearEmbeddedSoundCommand.NotifyCanExecuteChanged();
     }
 
@@ -1052,10 +1159,15 @@ public partial class AnnouncementsLibraryViewModel
         bool includeNextStopMp3,
         bool includeFollowingStops,
         out List<EmbeddedSoundSequencePart> parts,
-        out string? error)
+        out string? error,
+        bool voice2 = false,
+        List<string>? voice2Used = null,
+        List<string>? voice2Missing = null)
     {
         parts = [];
         error = null;
+        voice2Used ??= [];
+        voice2Missing ??= [];
 
         if (includeGong || includeSondergong || includeNextStopGerman || includeNextStopMp3 ||
             includeFollowingStops)
@@ -1120,7 +1232,10 @@ public partial class AnnouncementsLibraryViewModel
                     PlanerNextStopSoundResolver.TryResolve(AppServices.Workspace, ActiveDropboxFolderPath),
                     PlanerNextStopSoundResolver.FileName,
                     parts,
-                    out error))
+                    out error,
+                    voice2,
+                    voice2Used,
+                    voice2Missing))
             {
                 return false;
             }
@@ -1160,7 +1275,14 @@ public partial class AnnouncementsLibraryViewModel
             var followingLabel = followingPath is not null
                 ? Path.GetFileName(followingPath)
                 : PlanerFollowingStopsSoundResolver.FileName;
-            if (!TryAddStandardAudio(followingPath, followingLabel, parts, out error))
+            if (!TryAddStandardAudio(
+                    followingPath,
+                    followingLabel,
+                    parts,
+                    out error,
+                    voice2,
+                    voice2Used,
+                    voice2Missing))
             {
                 return false;
             }
@@ -1171,23 +1293,33 @@ public partial class AnnouncementsLibraryViewModel
             switch (item.Kind)
             {
                 case AnnouncementSequenceEntryKind.Audio:
-                    var audioPath = AppServices.IsInitialized
+                    var petraPath = AppServices.IsInitialized
                         ? PlanerAnnouncementRawSoundsWorkspace.ResolveAudioPath(
                             AppServices.Workspace,
                             item.SourcePath,
                             item.DisplayName)
                         : item.SourcePath;
-                    if (string.IsNullOrWhiteSpace(audioPath) || !File.Exists(audioPath))
+                    var playPath = PreferVoice2Path(
+                        petraPath,
+                        item.DisplayName,
+                        voice2,
+                        voice2Used,
+                        voice2Missing);
+                    if (string.IsNullOrWhiteSpace(playPath) || !File.Exists(playPath))
                     {
                         error = $"Tondatei „{item.DisplayName}“ nicht gefunden.";
                         return false;
                     }
 
-                    item.SourcePath = audioPath;
+                    if (!string.IsNullOrWhiteSpace(petraPath) && File.Exists(petraPath))
+                    {
+                        item.SourcePath = petraPath;
+                    }
+
                     parts.Add(new EmbeddedSoundSequencePart
                     {
                         Kind = EmbeddedSoundSequencePartKind.Audio,
-                        AudioPath = audioPath
+                        AudioPath = playPath
                     });
                     break;
                 case AnnouncementSequenceEntryKind.Pause:
@@ -1220,10 +1352,14 @@ public partial class AnnouncementsLibraryViewModel
         string? path,
         string fileName,
         List<EmbeddedSoundSequencePart> parts,
-        out string? error)
+        out string? error,
+        bool voice2 = false,
+        List<string>? voice2Used = null,
+        List<string>? voice2Missing = null)
     {
         error = null;
-        if (path is null)
+        var playPath = PreferVoice2Path(path, fileName, voice2, voice2Used, voice2Missing);
+        if (string.IsNullOrWhiteSpace(playPath) || !File.Exists(playPath))
         {
             error =
                 $"„{fileName}“ nicht gefunden – bitte unter Dropbox/Verkehrsbetrieb Hambloch/Ansagen ablegen.";
@@ -1233,9 +1369,130 @@ public partial class AnnouncementsLibraryViewModel
         parts.Add(new EmbeddedSoundSequencePart
         {
             Kind = EmbeddedSoundSequencePartKind.Audio,
-            AudioPath = path
+            AudioPath = playPath
         });
         return true;
+    }
+
+    /// <summary>
+    /// Stimme 2 sucht dieselbe Datei mit _2 vor der Endung. Gong und Next Stop bleiben Petra.
+    /// </summary>
+    private static string? PreferVoice2Path(
+        string? petraPath,
+        string fileName,
+        bool voice2,
+        List<string>? voice2Used,
+        List<string>? voice2Missing)
+    {
+        if (!voice2 || KeepsPetraFile(fileName))
+        {
+            return petraPath;
+        }
+
+        var voice2Name = AnnouncementVoiceFiles.Voice2FileName(Path.GetFileName(fileName));
+        var alt = ResolveWorkspaceAudio(voice2Name);
+        if (!string.IsNullOrWhiteSpace(alt) && File.Exists(alt))
+        {
+            voice2Used?.Add(Path.GetFileName(alt));
+            return alt;
+        }
+
+        if (voice2Name.Length > 0)
+        {
+            voice2Missing?.Add(voice2Name);
+        }
+
+        return petraPath;
+    }
+
+    private static string? ResolveWorkspaceAudio(string fileName)
+    {
+        if (!AppServices.IsInitialized || string.IsNullOrWhiteSpace(fileName))
+        {
+            return null;
+        }
+
+        return PlanerSpecialBuildingBlocksCatalog.TryResolvePath(
+            AppServices.Workspace,
+            fileName,
+            ActiveDropboxFolderPath);
+    }
+
+    private static bool KeepsPetraFile(string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return false;
+        }
+
+        var name = Path.GetFileName(fileName.Trim());
+        var ext = Path.GetExtension(name);
+        var stem = ext.Length == 0 ? name : Path.GetFileNameWithoutExtension(name);
+        var underscore = stem.IndexOf('_');
+        var bare = stem;
+        if (underscore > 0 && stem[..underscore].All(char.IsDigit))
+        {
+            bare = stem[(underscore + 1)..];
+        }
+
+        return bare.Equals("Hambloch Gong", StringComparison.OrdinalIgnoreCase) ||
+               bare.Equals("Gong", StringComparison.OrdinalIgnoreCase) ||
+               bare.Equals("Next Stop", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void PlayAnnouncementPreviewCore(bool voice2)
+    {
+        if (SelectedAnnouncement is null)
+        {
+            StatusMessage = "Bitte zuerst eine Ansage auswählen.";
+            return;
+        }
+
+        var used = new List<string>();
+        var missing = new List<string>();
+        if (!TryBuildPreviewPartsForSelection(voice2, used, missing, out var parts, out var buildError))
+        {
+            StatusMessage = buildError ?? "Vorschau nicht möglich.";
+            return;
+        }
+
+        var previewDir = Path.Combine(Path.GetTempPath(), "SmartOepnv", "announcement_preview");
+        Directory.CreateDirectory(previewDir);
+        var previewPath = Path.Combine(previewDir, $"preview_{DateTime.UtcNow:yyyyMMddHHmmssfff}.wav");
+
+        try
+        {
+            EmbeddedSoundConcatenator.ConcatenateSequenceToWav(parts, previewPath);
+            AnnouncementPreviewPlayer.Play(previewPath);
+            StatusMessage = voice2
+                ? BuildVoice2PreviewStatus(used, missing)
+                : "Vorschau der Sequenz wird abgespielt…";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Vorschau fehlgeschlagen: {ex.Message}";
+        }
+    }
+
+    private static string BuildVoice2PreviewStatus(IReadOnlyList<string> used, IReadOnlyList<string> missing)
+    {
+        if (used.Count == 0 && missing.Count == 0)
+        {
+            return "Vorschau Stimme 2: diese Ansage hat keine austauschbaren Töne, es läuft wie Petra.";
+        }
+
+        if (used.Count == 0)
+        {
+            return "Vorschau Stimme 2: keine _2-Datei vorhanden, es kommt Petra.";
+        }
+
+        if (missing.Count == 0)
+        {
+            return "Vorschau Stimme 2: " + string.Join(", ", used);
+        }
+
+        return "Vorschau Stimme 2: " + string.Join(", ", used) +
+               ". Petra, weil _2 fehlt: " + string.Join(", ", missing);
     }
 
     private static string BuildEmbeddedFileNameForAnnouncement(
@@ -1266,6 +1523,9 @@ public partial class AnnouncementsLibraryViewModel
     }
 
     private bool TryBuildPreviewPartsForSelection(
+        bool voice2,
+        List<string> voice2Used,
+        List<string> voice2Missing,
         out List<EmbeddedSoundSequencePart> parts,
         out string? error)
     {
@@ -1302,7 +1562,10 @@ public partial class AnnouncementsLibraryViewModel
             includeNextStopMp3,
             includeFollowingStops,
             out parts,
-            out error);
+            out error,
+            voice2,
+            voice2Used,
+            voice2Missing);
     }
 
     private static string? ActiveDropboxFolderPath =>

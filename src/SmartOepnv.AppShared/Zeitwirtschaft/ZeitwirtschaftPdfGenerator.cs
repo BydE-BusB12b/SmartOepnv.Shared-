@@ -61,7 +61,7 @@ public static class ZeitwirtschaftPdfGenerator
 
                     table.Header(header =>
                     {
-                        header.Cell().Element(CellHeader).Text("Fahrzeug");
+                        header.Cell().Element(CellHeader).Text("Ort");
                         header.Cell().Element(CellHeader).Text("Kommen");
                         header.Cell().Element(CellHeader).Text("Gehen");
                         header.Cell().Element(CellHeader).Text("Pause");
@@ -75,7 +75,7 @@ public static class ZeitwirtschaftPdfGenerator
                         table.Cell().Element(CellBody).Text(row.VehicleDisplayName);
                         table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Kommen));
                         table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Gehen));
-                        table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Pause, keepLineBreaks: true));
+                        table.Cell().Element(CellBody).Element(c => WritePauseCell(c, row));
                         table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Arbeitszeit));
                         table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Lohnstunden));
                         table.Cell().Element(CellBody).Text(row.Hinweis);
@@ -94,6 +94,38 @@ public static class ZeitwirtschaftPdfGenerator
                 });
             });
         }).GeneratePdf(outputPath);
+    }
+
+    private static void WritePauseCell(IContainer container, ZeitwirtschaftTimeTableRow row)
+    {
+        if (row.PauseLines.Count == 0)
+        {
+            container.Text(row.Pause);
+            return;
+        }
+
+        container.Text(text =>
+        {
+            for (var i = 0; i < row.PauseLines.Count; i++)
+            {
+                if (i > 0)
+                {
+                    text.Span("\n");
+                }
+
+                var line = row.PauseLines[i];
+                var span = text.Span(line.Text);
+                if (row.IsVoided)
+                {
+                    span.Strikethrough();
+                }
+
+                if (line.Ignored)
+                {
+                    span.FontColor(Colors.Orange.Darken2);
+                }
+            }
+        });
     }
 
     private static void WriteCell(IContainer container, ZeitwirtschaftTimeTableRow row, string text, bool keepLineBreaks = false)

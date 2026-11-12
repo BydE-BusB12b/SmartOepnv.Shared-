@@ -135,6 +135,12 @@ public static class OutsideDisplayDestinationResolver
             }
         }
 
+        // Mobitec zeigt kein fremdes Ziel (z. B. Lawo/DS021), nur einen Katalogtreffer.
+        if (protocol == OutsideDisplayProtocolKind.Mobitec)
+        {
+            return string.Empty;
+        }
+
         return destinationName?.Trim() ?? string.Empty;
     }
 
@@ -286,8 +292,6 @@ public static class OutsideDisplayDestinationResolver
         Func<string> getId,
         Action<string, string> set)
     {
-        _ = stop;
-        _ = isEnd;
         var name = getName()?.Trim() ?? string.Empty;
         var id = OutsideDisplayId.Normalize(getId());
 
@@ -310,6 +314,7 @@ public static class OutsideDisplayDestinationResolver
         if (string.IsNullOrWhiteSpace(name) ||
             RouteStopEditorCatalog.IsStartStopPlaceholder(name))
         {
+            TryAdoptMobitecFromDonor(stop, catalog, protocol, isEnd, set);
             return;
         }
 
@@ -317,7 +322,39 @@ public static class OutsideDisplayDestinationResolver
         if (!string.IsNullOrWhiteSpace(resolvedId))
         {
             set(name, resolvedId);
+            return;
         }
+
+        if (protocol == OutsideDisplayProtocolKind.Mobitec &&
+            catalog.Any(entry => entry.Protocol == OutsideDisplayProtocolKind.Mobitec))
+        {
+            set(string.Empty, string.Empty);
+        }
+    }
+
+    /// <summary>
+    /// Leeres Mobitec-Feld nur füllen, wenn der allgemeine Zielname wirklich ein Mobitec-Programm ist.
+    /// </summary>
+    private static void TryAdoptMobitecFromDonor(
+        RouteStopItem stop,
+        IReadOnlyList<CatalogEntry> catalog,
+        OutsideDisplayProtocolKind protocol,
+        bool isEnd,
+        Action<string, string> set)
+    {
+        if (protocol != OutsideDisplayProtocolKind.Mobitec)
+        {
+            return;
+        }
+
+        var donor = isEnd ? stop.EndDestination : stop.Destination;
+        var entry = FindEntryByComboLabel(catalog, OutsideDisplayProtocolKind.Mobitec, donor);
+        if (entry is null)
+        {
+            return;
+        }
+
+        set(entry.Name, entry.Id);
     }
 
     /// <summary>Vergibt eindeutige 4-stellige IDs in outsideDisplays und schreibt Einträge zurück.</summary>

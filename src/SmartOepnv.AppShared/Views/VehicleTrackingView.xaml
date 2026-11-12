@@ -61,7 +61,7 @@
                                    FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
                         <TextBlock DockPanel.Dock="Top"
                                    Text="Einfachklick: Karte · Doppelklick: Info · Rechtsklick: Fernsteuerung"
-                                   Foreground="#90CAF9" FontSize="11" Margin="0,0,0,8" Opacity="0.85" />
+                                   Foreground="{DynamicResource SmartListHintBrush}" FontSize="11" Margin="0,0,0,8" Opacity="0.85" />
                         <ListBox x:Name="VehicleListBox"
                                  ItemsSource="{Binding Vehicles}"
                                  SelectedItem="{Binding SelectedVehicle}"
@@ -91,11 +91,11 @@
                                         </Border.Style>
                                         <StackPanel>
                                             <TextBlock Text="{Binding DisplayName, Mode=OneWay}" Foreground="{DynamicResource SmartForegroundBrush}" FontWeight="Bold" />
-                                            <TextBlock Foreground="#BBDEFB">
+                                            <TextBlock Foreground="{DynamicResource SmartListLineBrush}">
                                                 <Run Text="Linie/Kurs, Fahrt: " />
                                                 <Run Text="{Binding LineCourse, Mode=OneWay}" FontWeight="SemiBold" />
                                             </TextBlock>
-                                            <TextBlock Text="{Binding DetailLine, Mode=OneWay}" Foreground="#E3F2FD" TextWrapping="Wrap" FontSize="12" />
+                                            <TextBlock Text="{Binding DetailLine, Mode=OneWay}" Foreground="{DynamicResource SmartListDetailBrush}" TextWrapping="Wrap" FontSize="12" />
                                             <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                                 <TextBlock Text="{Binding PasInfoDisplay, Mode=OneWay}"
                                                            Foreground="{Binding PasInfoForeground, Mode=OneWay}"
@@ -108,22 +108,22 @@
                                                 <TextBlock Text="{Binding StatusLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Margin="0,0,8,0">
                                                     <TextBlock.Style>
                                                         <Style TargetType="TextBlock">
-                                                            <Setter Property="Foreground" Value="#C8E6C9" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource SmartStatusIdleBrush}" />
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding StatusLabel}" Value="Online">
-                                                                    <Setter Property="Foreground" Value="#81C784" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource SmartStatusOnlineBrush}" />
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding StatusLabel}" Value="Veraltet">
-                                                                    <Setter Property="Foreground" Value="#EF9A9A" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource SmartStatusStaleBrush}" />
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding StatusLabel}" Value="Offline">
-                                                                    <Setter Property="Foreground" Value="#CE93D8" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource SmartStatusOfflineBrush}" />
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
                                                     </TextBlock.Style>
                                                 </TextBlock>
-                                                <TextBlock Text="{Binding LastUpdateLabel, Mode=OneWay}" Foreground="#B0BEC5" FontSize="11" />
+                                                <TextBlock Text="{Binding LastUpdateLabel, Mode=OneWay}" Foreground="{DynamicResource SmartListTimestampBrush}" FontSize="11" />
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>

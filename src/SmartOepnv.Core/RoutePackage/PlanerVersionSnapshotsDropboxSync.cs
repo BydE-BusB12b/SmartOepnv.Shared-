@@ -173,10 +173,25 @@ public static class PlanerVersionSnapshotsDropboxSync
         }
 
         var downloaded = 0;
+        var fromLocalMirror = 0;
         for (var i = 0; i < toDownload.Count; i++)
         {
             var (index, id) = toDownload[i];
             var fileName = Path.GetFileName(id) + ".json";
+            var mirroredText = await DropboxLocalMirror.TryReadTextIfMatchesAsync(
+                    GetDropboxFileRelativePath(id),
+                    snapshots[index].ByteSize,
+                    contentHash: null,
+                    ct)
+                .ConfigureAwait(false);
+            if (mirroredText is not null)
+            {
+                snapshots[index].PackageJson = mirroredText;
+                downloaded++;
+                fromLocalMirror++;
+                continue;
+            }
+
             var tempPath = Path.Combine(Path.GetTempPath(), $"planer-snap-dl-{fileName}");
             try
             {
@@ -204,12 +219,15 @@ public static class PlanerVersionSnapshotsDropboxSync
             }
         }
 
+        var source = fromLocalMirror == downloaded && downloaded > 0
+            ? "dem lokalen Dropbox-Ordner"
+            : "Dropbox";
         return new SyncResult(
             0,
             downloaded,
             skipped,
             downloaded > 0
-                ? $"{downloaded} Version(en) aus Dropbox geladen."
+                ? $"{downloaded} Version(en) aus {source} geladen."
                 : "Keine Versionen aus Dropbox geladen.");
     }
 

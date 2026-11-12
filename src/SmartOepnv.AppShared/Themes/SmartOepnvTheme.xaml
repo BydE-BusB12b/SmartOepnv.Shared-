@@ -24,6 +24,16 @@
     <!-- Text auf Primary-/Dark-Flächen bleibt weiß in beiden Themes -->
     <SolidColorBrush x:Key="SmartOnPrimaryBrush" Color="White" />
 
+    <!-- Fahrzeugliste: im Dunkelmodus helle Schrift auf Blau, im Hellmodus überschrieben -->
+    <SolidColorBrush x:Key="SmartListHintBrush" Color="#FF90CAF9" />
+    <SolidColorBrush x:Key="SmartListLineBrush" Color="#FFBBDEFB" />
+    <SolidColorBrush x:Key="SmartListDetailBrush" Color="#FFE3F2FD" />
+    <SolidColorBrush x:Key="SmartListTimestampBrush" Color="#FFB0BEC5" />
+    <SolidColorBrush x:Key="SmartStatusOnlineBrush" Color="#FF81C784" />
+    <SolidColorBrush x:Key="SmartStatusStaleBrush" Color="#FFEF9A9A" />
+    <SolidColorBrush x:Key="SmartStatusOfflineBrush" Color="#FFCE93D8" />
+    <SolidColorBrush x:Key="SmartStatusIdleBrush" Color="#FFC8E6C9" />
+
     <Color x:Key="SmartSuccessColor">#FF66BB6A</Color>
     <Color x:Key="SmartSuccessBackgroundColor">#264CAF50</Color>
     <Color x:Key="SmartSuccessBorderColor">#664CAF50</Color>

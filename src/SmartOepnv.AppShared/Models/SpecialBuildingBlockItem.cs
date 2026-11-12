@@ -15,6 +15,10 @@ public partial class SpecialBuildingBlockItem : ObservableObject
     [ObservableProperty] private bool isPresent;
     [ObservableProperty] private string statusLabel = "⚠ fehlt";
     [ObservableProperty] private string? resolvedPath;
+    [ObservableProperty] private string voice2FileName = string.Empty;
+    [ObservableProperty] private string voice2StatusLabel = string.Empty;
+    [ObservableProperty] private string? voice2ResolvedPath;
+    [ObservableProperty] private bool supportsVoice2;
 
     public string DisplayLabel =>
         IsPresent

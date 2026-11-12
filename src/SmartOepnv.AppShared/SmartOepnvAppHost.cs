@@ -319,49 +319,78 @@ public static class SmartOepnvAppHost
         await AppServices.PlanerSession.ReleaseLockAsync().ConfigureAwait(false);
     }
 
+    /// <summary>Obergrenze für den stillen Export, wenn das Fenster schon zu ist.</summary>
+    private static readonly TimeSpan ShutdownNetworkBudget = TimeSpan.FromSeconds(20);
+
+    /// <summary>Speichern mit Dialog: der Upload darf mehrere Minuten dauern.</summary>
+    private static readonly TimeSpan ExplicitExportOverall = TimeSpan.FromMinutes(8);
+
+    /// <summary>Ohne Fortschritt (kein Netz) nicht ewig warten.</summary>
+    private static readonly TimeSpan ExplicitExportStall = TimeSpan.FromSeconds(90);
+
     /// <summary>
-    /// Dropbox-Export nach UI-Commit (ohne Dispatcher). Für Logout-Dialog und Hintergrund-Beenden.
+    /// Dropbox-Export nach UI-Commit. Läuft weiter, solange Bytes ankommen.
+    /// Kommt 90 Sekunden nichts, wird abgebrochen und das Fenster ist wieder bedienbar.
     /// </summary>
     public static async Task ExportPlanerWorkspaceForShutdownAsync(
         IProgress<DropboxTransferProgress>? transferProgress = null)
     {
-        PlanerDropboxWorkspaceSync.ExportResult? exportResult = null;
-        await Task.Run(async () =>
+        using var timeout = new CancellationTokenSource();
+        var started = Environment.TickCount64;
+        var lastProgress = started;
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        var watch = Task.Run(async () =>
         {
-            const int maxExportAttempts = 3;
-            for (var attempt = 1; attempt <= maxExportAttempts; attempt++)
+            while (await timer.WaitForNextTickAsync().ConfigureAwait(false))
             {
-                exportResult = await PlanerDropboxWorkspaceSync.TryExportAsync(
-                        flushBeforeCapture: false,
-                        progress: transferProgress)
-                    .ConfigureAwait(false);
-                if (exportResult is { Exported: true })
+                var now = Environment.TickCount64;
+                var idle = now - Volatile.Read(ref lastProgress);
+                if (now - started >= (long)ExplicitExportOverall.TotalMilliseconds ||
+                    idle >= (long)ExplicitExportStall.TotalMilliseconds)
                 {
+                    timeout.Cancel();
                     return;
                 }
-
-                if (exportResult?.Message.Contains("payload_too_large", StringComparison.OrdinalIgnoreCase) == true)
-                {
-                    break;
-                }
-
-                if (attempt < maxExportAttempts)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(8 * attempt)).ConfigureAwait(false);
-                }
             }
-        }).ConfigureAwait(false);
+        });
 
-        if (exportResult is { Exported: false })
+        var progress = new Progress<DropboxTransferProgress>(update =>
         {
-            var hint = exportResult.LocalSaved
-                ? "\n\nDer Arbeitsstand liegt lokal vor – bitte Internetverbindung prüfen und erneut speichern."
-                : string.Empty;
-            throw new InvalidOperationException(exportResult.Message + hint);
+            Volatile.Write(ref lastProgress, Environment.TickCount64);
+            transferProgress?.Report(update);
+        });
+
+        try
+        {
+            var exportResult = await PlanerDropboxWorkspaceSync.TryExportAsync(
+                    timeout.Token,
+                    flushBeforeCapture: false,
+                    progress: progress)
+                .ConfigureAwait(false);
+
+            if (exportResult is { Exported: false })
+            {
+                var hint = exportResult.LocalSaved
+                    ? "\n\nDer Arbeitsstand liegt auf diesem PC. Das Programm bleibt benutzbar."
+                    : string.Empty;
+                throw new InvalidOperationException(exportResult.Message + hint);
+            }
+        }
+        finally
+        {
+            timer.Dispose();
+            try
+            {
+                await watch.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Der Wächter endet mit dem Timer.
+            }
         }
     }
 
-    /// <summary>Beim Beenden synchron speichern und Dropbox-Sperre freigeben (blockiert bis Upload fertig).</summary>
+    /// <summary>Beim Beenden lokal sichern, Dropbox nur kurz versuchen, Sperre freigeben. Blockiert höchstens wenige Sekunden.</summary>
     public static void EnsurePlanerShutdownSaveAndRelease()
     {
         if (!AppServices.IsPlannerApp || !AppServices.IsInitialized || SkipShutdownSave)
@@ -390,17 +419,32 @@ public static class SmartOepnvAppHost
             // trotzdem exportieren/freigeben
         }
 
-        try
-        {
-            PlanerDropboxWorkspaceSync.TryExportAsync(flushBeforeCapture: true).GetAwaiter().GetResult();
-        }
-        catch
-        {
-            // trotzdem Sperre freigeben
-        }
+        using var exportTimeout = new CancellationTokenSource(ShutdownNetworkBudget);
+        var export = PlanerDropboxWorkspaceSync.TryExportAsync(exportTimeout.Token, flushBeforeCapture: true);
+        ObserveFault(export);
+        WaitBounded(export, exportTimeout.Token);
 
         AppServices.PlanerSession.ReleaseLockBestEffortSync();
     }
+
+    private static void WaitBounded(Task task, CancellationToken timeout)
+    {
+        try
+        {
+            task.Wait(timeout);
+        }
+        catch
+        {
+            // Zeit abgelaufen oder kein Netz: Aufrufer läuft weiter.
+        }
+    }
+
+    private static void ObserveFault(Task task) =>
+        task.ContinueWith(
+            static finished => { _ = finished.Exception; },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 
     public static void SaveAndReleasePlanerSessionSync() => EnsurePlanerShutdownSaveAndRelease();
 

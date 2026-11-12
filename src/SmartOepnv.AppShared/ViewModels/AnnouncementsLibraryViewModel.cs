@@ -438,6 +438,7 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
     private void RefreshSelectedAnnouncementDisplay()
     {
         OnPropertyChanged(nameof(SelectedEmbeddedSoundFileName));
+        OnPropertyChanged(nameof(SelectedVoice2SoundLabel));
     }
 
 
@@ -952,45 +953,19 @@ public partial class AnnouncementsLibraryViewModel : ObservableObject, IEditorAr
 
 
 
-        if (!TryBuildPreviewPartsForSelection(out var parts, out var buildError))
+        PlayAnnouncementPreviewCore(voice2: false);
 
-        {
-
-            StatusMessage = buildError ?? "Vorschau nicht möglich.";
-
-            return;
-
-        }
+    }
 
 
 
-        var previewDir = Path.Combine(Path.GetTempPath(), "SmartOepnv", "announcement_preview");
+    [RelayCommand]
 
-        Directory.CreateDirectory(previewDir);
+    private void PlayAnnouncementVoice2Preview()
 
-        var previewPath = Path.Combine(previewDir, $"preview_{DateTime.UtcNow:yyyyMMddHHmmssfff}.wav");
+    {
 
-
-
-        try
-
-        {
-
-            EmbeddedSoundConcatenator.ConcatenateSequenceToWav(parts, previewPath);
-
-            AnnouncementPreviewPlayer.Play(previewPath);
-
-            StatusMessage = "Vorschau der Sequenz wird abgespielt…";
-
-        }
-
-        catch (Exception ex)
-
-        {
-
-            StatusMessage = $"Vorschau fehlgeschlagen: {ex.Message}";
-
-        }
+        PlayAnnouncementPreviewCore(voice2: true);
 
     }
 

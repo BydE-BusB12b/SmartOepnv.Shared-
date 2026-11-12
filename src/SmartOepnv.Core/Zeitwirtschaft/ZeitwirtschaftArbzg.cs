@@ -37,13 +37,12 @@ public static class ZeitwirtschaftArbzg
                 continue;
             }
 
-            if (pause.EndEpochMs is not > 0)
+            if (pause.EffectiveEndMs is not long end)
             {
                 continue;
             }
 
-            var start = pause.StartEpochMs;
-            var end = pause.EndEpochMs.Value;
+            var start = pause.EffectiveStartMs;
             if (end <= shiftStartMs || start >= shiftEndMs || end <= start)
             {
                 continue;

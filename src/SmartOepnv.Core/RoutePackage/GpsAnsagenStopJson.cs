@@ -35,7 +35,8 @@ public static class GpsAnsagenStopJson
             Ds003aDestinationId = OutsideDisplayId.Normalize(JsonNodeReading.GetString(obj["ds003aDestinationId"])),
             ZielnummerDestination = ReadProtocolDestination(obj, "zielnummerDestination", "destination"),
             ZielnummerDestinationId = OutsideDisplayId.Normalize(JsonNodeReading.GetString(obj["zielnummerDestinationId"])),
-            MobitecDestination = ReadProtocolDestination(obj, "mobitecDestination", "destination"),
+            // Nicht aus dem allgemeinen Ziel (Lawo/DS021) übernehmen – nur ein echtes Mobitec-Feld.
+            MobitecDestination = JsonNodeReading.GetString(obj["mobitecDestination"]),
             MobitecDestinationId = OutsideDisplayId.Normalize(JsonNodeReading.GetString(obj["mobitecDestinationId"])),
             LineNumber = JsonNodeReading.GetString(obj["lineNumber"]),
             EndDestination = JsonNodeReading.GetString(obj["endDestination"]),
@@ -48,9 +49,10 @@ public static class GpsAnsagenStopJson
             Ds003aEndDestinationId = OutsideDisplayId.Normalize(JsonNodeReading.GetString(obj["ds003aEndDestinationId"])),
             ZielnummerEndDestination = ReadProtocolDestination(obj, "zielnummerEndDestination", "endDestination"),
             ZielnummerEndDestinationId = OutsideDisplayId.Normalize(JsonNodeReading.GetString(obj["zielnummerEndDestinationId"])),
-            MobitecEndDestination = ReadProtocolDestination(obj, "mobitecEndDestination", "endDestination"),
+            MobitecEndDestination = JsonNodeReading.GetString(obj["mobitecEndDestination"]),
             MobitecEndDestinationId = OutsideDisplayId.Normalize(JsonNodeReading.GetString(obj["mobitecEndDestinationId"])),
             IsEndStop = JsonNodeReading.GetBoolean(obj["isEndStop"]),
+            DepartureCountdownEnabled = JsonNodeReading.GetBoolean(obj["departureCountdownEnabled"], defaultValue: true),
             PlayEndStopAnnouncementEn = ReadPlayEndStopAnnouncementEn(obj),
             PlayEndStopAnnouncementNl = JsonNodeReading.GetBoolean(obj["playEndStopAnnouncementNl"]),
             PlayStartStopGreeting = JsonNodeReading.GetBoolean(obj["playStartStopGreeting"]),
@@ -135,6 +137,7 @@ public static class GpsAnsagenStopJson
             ["mobitecEndDestination"] = stop.MobitecEndDestination,
             ["mobitecEndDestinationId"] = stop.MobitecEndDestinationId,
             ["isEndStop"] = stop.IsEndStop,
+            ["departureCountdownEnabled"] = stop.DepartureCountdownEnabled,
             ["playEndStopAnnouncement"] = stop.PlayEndStopAnnouncement,
             ["playEndStopAnnouncementEn"] = stop.PlayEndStopAnnouncementEn,
             ["playEndStopAnnouncementNl"] = stop.PlayEndStopAnnouncementNl,
@@ -325,6 +328,8 @@ public static class GpsAnsagenStopJson
         {
             obj["isEndStop"] = true;
         }
+
+        obj["departureCountdownEnabled"] = stop.DepartureCountdownEnabled;
 
         // Endhalt immer mit explizitem false speichern. Fehlende Felder dürfen nicht
         // wieder als gesetzte Endansage gelesen werden.

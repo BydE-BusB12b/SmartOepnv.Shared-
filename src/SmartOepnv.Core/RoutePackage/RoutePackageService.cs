@@ -21,6 +21,9 @@ public sealed class RoutePackageService
 {
     private string? _currentJson;
 
+    /// <summary>Letzter schlanker Paket-Body ohne Audio. Anzeigen-Speichern hängt nur die Ziele an.</summary>
+    private string? _slimPackageJson;
+
     public bool HasPackage => !string.IsNullOrWhiteSpace(_currentJson);
 
     public string? CurrentJson => _currentJson;
@@ -245,6 +248,10 @@ public sealed class RoutePackageService
             rebuildEmbeddedMedia: rebuildEmbeddedMedia,
             includeHeavyMedia: false);
         _currentJson = body;
+        if (!JsonContainsHeavyMedia(body))
+        {
+            _slimPackageJson = body;
+        }
         Stats = ParseStats(body);
         EditorDataRevision++;
 
@@ -263,6 +270,92 @@ public sealed class RoutePackageService
                 archivePreviousSave,
                 heavyMediaJson: heavy,
                 updateHeavyMediaSidecar: updateHeavy && !string.IsNullOrWhiteSpace(heavy));
+        }
+    }
+
+    /// <summary>
+    /// Speichert nur Außenanzeigen und Hinweise. Routen und Haltestellen bleiben im letzten schlanken JSON.
+    /// </summary>
+    public void PersistOutsideDisplaysOnly(
+        IList<string> outsideEntries,
+        IList<DateBasedHintItem> hints,
+        string source = "anzeigen-hinweise")
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        Editor.ReplaceOutsideDisplays(outsideEntries);
+        Editor.ReplaceDateBasedHints(hints);
+        RoutePackagePhoneMetadata.SaveOutsideDisplays(Editor.PackageRoot, outsideEntries);
+        DateBasedHintsEditor.SaveToRoot(Editor.PackageRoot, hints);
+
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        Editor.PackageRoot["timestamp"] = timestamp;
+
+        var displaysJson = Editor.PackageRoot["outsideDisplays"]?.ToJsonString() ?? "[]";
+        var hintsNode = Editor.PackageRoot["dateBasedHints"];
+        var hintsJson = hintsNode?.ToJsonString() ?? "[]";
+
+        var slim = _slimPackageJson;
+        if (string.IsNullOrEmpty(slim) || JsonContainsHeavyMedia(slim))
+        {
+            slim = TryReadSlimPackageFile();
+        }
+
+        string body;
+        if (!string.IsNullOrEmpty(slim) && !JsonContainsHeavyMedia(slim))
+        {
+            body = JsonTopLevelProperty.Upsert(slim, "outsideDisplays", displaysJson);
+            body = JsonTopLevelProperty.Upsert(body, "dateBasedHints", hintsJson);
+            body = JsonTopLevelProperty.Upsert(body, "timestamp", timestamp.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            body = Editor.SerializeCurrentRootWithoutSync(includeHeavyMedia: false);
+        }
+
+        _slimPackageJson = body;
+        _currentJson = body;
+        EditorDataRevision++;
+
+        if (AppServices.IsInitialized)
+        {
+            AppServices.Workspace.SavePackageBody(
+                body,
+                source,
+                archivePrevious: false,
+                heavyMediaJson: null,
+                updateHeavyMediaSidecar: false);
+        }
+    }
+
+    private static bool JsonContainsHeavyMedia(string json) =>
+        json.Contains("\"embeddedSounds\"", StringComparison.Ordinal) ||
+        json.Contains("\"specialAnnouncements\"", StringComparison.Ordinal);
+
+    private static string? TryReadSlimPackageFile()
+    {
+        if (!AppServices.IsInitialized)
+        {
+            return null;
+        }
+
+        var path = AppServices.Workspace.PackageFilePath;
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            var text = File.ReadAllText(path);
+            return JsonContainsHeavyMedia(text) ? null : text;
+        }
+        catch
+        {
+            return null;
         }
     }
 

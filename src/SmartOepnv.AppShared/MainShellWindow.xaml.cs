@@ -773,69 +773,73 @@ public partial class MainShellWindow : Window
             };
             await ShowSavingDialogAsync(savingDialog).ConfigureAwait(true);
 
+            var saved = false;
             try
             {
                 var progress = new Progress<DropboxTransferProgress>(p => savingDialog.UpdateTransferProgress(p));
                 await SavePlanerWorkspaceAsync("app-exit", bestEffortFlush: false, transferProgress: progress)
                     .ConfigureAwait(true);
-
-                try
-                {
-                    await SmartOepnvAppHost.ReleasePlanerSessionAsync().ConfigureAwait(true);
-                }
-                catch
-                {
-                    AppServices.PlanerSession?.ReleaseLockBestEffortSync();
-                }
+                await ReleasePlanerLockBoundedAsync().ConfigureAwait(true);
+                saved = true;
             }
             catch (Exception ex)
             {
                 savingDialog.PrepareToClose();
                 savingDialog.Close();
                 IsEnabled = true;
-                _idleLogoutMonitor?.Resume();
-                RestartIdleLogoutMonitor();
-                _closeHandlerRunning = false;
                 SmartConfirmDialog.ShowInfo(
                     this,
                     "Speichern fehlgeschlagen",
                     $"Der Arbeitsstand konnte nicht nach Dropbox gespeichert werden.\n\n{ex.Message}\n\n" +
-                    "Das Programm bleibt geöffnet. Bitte erneut schließen oder zuerst unter Versand manuell speichern.");
-                return;
+                    "Das Programm bleibt geöffnet und benutzbar. Bitte erneut schließen, sobald eine Verbindung da ist.");
             }
             finally
             {
-                if (!PlanerWorkspaceSaveCoordinator.WasDropboxExportedRecently())
+                savingDialog.PrepareToClose();
+                if (savingDialog.IsVisible)
                 {
-                    SmartOepnvAppHost.EnsurePlanerShutdownSaveAndRelease();
-                }
-                else if (AppServices.PlanerSession?.IsLoggedIn == true)
-                {
-                    AppServices.PlanerSession.ReleaseLockBestEffortSync();
+                    savingDialog.Close();
                 }
 
-                savingDialog.PrepareToClose();
-                savingDialog.Close();
                 IsEnabled = true;
                 _idleLogoutMonitor?.Resume();
+            }
+
+            if (!saved)
+            {
+                _closeHandlerRunning = false;
+                RestartIdleLogoutMonitor();
+                return;
             }
         }
         else
         {
             SmartOepnvAppHost.SkipShutdownSave = true;
-            try
-            {
-                await SmartOepnvAppHost.ReleasePlanerSessionAsync().ConfigureAwait(true);
-            }
-            catch
-            {
-                AppServices.PlanerSession?.ReleaseLockBestEffortSync();
-            }
+            await ReleasePlanerLockBoundedAsync().ConfigureAwait(true);
         }
 
         _closeHandlerRunning = false;
         StopIdleLogoutMonitor();
         ConfirmAndClose();
+    }
+
+    /// <summary>Dropbox-Sperre lösen, ohne bei fehlendem Netz hängen zu bleiben.</summary>
+    private static async Task ReleasePlanerLockBoundedAsync()
+    {
+        if (AppServices.PlanerSession is null)
+        {
+            return;
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        try
+        {
+            await AppServices.PlanerSession.ReleaseLockAsync(timeout.Token).ConfigureAwait(true);
+        }
+        catch
+        {
+            // Dieselbe Maschine darf sich danach wieder anmelden.
+        }
     }
 
     /// <summary>Schließen außerhalb des Closing-Events auslösen (sonst zweites X nötig).</summary>

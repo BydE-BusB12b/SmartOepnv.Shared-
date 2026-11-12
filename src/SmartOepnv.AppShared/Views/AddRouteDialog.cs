@@ -14,6 +14,8 @@ public sealed class AddRouteDialog : Window
     private static Brush LabelForeground => UiTheme.ForegroundBrush;
 
     private readonly TextBox _routeNameBox;
+    private readonly TextBox _orderNumberBox;
+    private readonly int _sequenceNumber;
     private readonly TextBox _lineCourseBox;
     private readonly TextBox _tripNumberBox;
     private readonly TextBox _passengerLineBox;
@@ -36,6 +38,8 @@ public sealed class AddRouteDialog : Window
     public string? EditingRouteKey { get; }
     public bool ResultItcsRouteListEnabled { get; private set; }
     public bool ResultMainDeviceOnly { get; private set; }
+    public string ResultOrderNumber { get; private set; } = string.Empty;
+    public int ResultSequenceNumber { get; private set; }
 
     public AddRouteDialog(EditableRoutePackage package, RouteDefinition? initial = null, string? copyFromRouteKey = null, string? editingRouteKey = null)
         : this(
@@ -47,7 +51,13 @@ public sealed class AddRouteDialog : Window
             copyFromRouteKey,
             editingRouteKey,
             editingRouteKey is not null && package.IsRouteInItcsRouteList(editingRouteKey),
-            editingRouteKey is not null && package.IsRouteMainDeviceOnly(editingRouteKey))
+            editingRouteKey is not null && package.IsRouteMainDeviceOnly(editingRouteKey),
+            editingRouteKey is null
+                ? string.Empty
+                : package.GetRouteChainIdentity(editingRouteKey).OrderNumber,
+            editingRouteKey is null
+                ? package.PeekNextChainSequenceNumber()
+                : package.GetRouteChainIdentity(editingRouteKey).SequenceNumber)
     {
     }
 
@@ -60,7 +70,9 @@ public sealed class AddRouteDialog : Window
         string? copyFromRouteKey = null,
         string? editingRouteKey = null,
         bool initialItcsRouteListEnabled = false,
-        bool initialMainDeviceOnly = false)
+        bool initialMainDeviceOnly = false,
+        string? initialOrderNumber = null,
+        int initialSequenceNumber = 0)
     {
         _dateRangesByRoute = dateRangesByRoute;
         _operatingDatesByRoute = operatingDatesByRoute;
@@ -68,12 +80,11 @@ public sealed class AddRouteDialog : Window
         var isEdit = EditingRouteKey is not null;
 
         Title = isEdit ? "Route bearbeiten" : "Neue Route hinzufügen";
-        Width = 460;
-        MinWidth = 420;
+        Width = 920;
+        MinWidth = 860;
         MinHeight = 480;
-        MaxHeight = SystemParameters.WorkArea.Height * 0.88;
-        Height = Math.Min(700, MaxHeight);
-        SizeToContent = SizeToContent.Manual;
+        MaxHeight = SystemParameters.WorkArea.Height * 0.92;
+        SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.CanResize;
         Background = UiTheme.BackgroundBrush;
@@ -119,10 +130,40 @@ public sealed class AddRouteDialog : Window
         shell.Children.Add(_errorText);
         DockPanel.SetDock(_errorText, Dock.Bottom);
 
+        _sequenceNumber = initialSequenceNumber;
         var form = new StackPanel();
-        form.Children.Add(MakeLabel("Routenname"));
-        _routeNameBox = MakeInput("Routenname (z.B. Hamburg/Berlin)", initial.Name);
-        form.Children.Add(_routeNameBox);
+        var nameRow = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(180) });
+
+        var nameColumn = new StackPanel();
+        nameColumn.Children.Add(MakeLabel("Routenname"));
+        _routeNameBox = MakeInput("Routenname (z.B. Neuss Hbf > Kaarster See)", initial.Name);
+        nameColumn.Children.Add(_routeNameBox);
+        Grid.SetColumn(nameColumn, 0);
+        nameRow.Children.Add(nameColumn);
+
+        var orderColumn = new StackPanel();
+        orderColumn.Children.Add(MakeLabel("Auftragsnummer"));
+        _orderNumberBox = MakeInput("Auftragsnummer", initialOrderNumber ?? string.Empty);
+        orderColumn.Children.Add(_orderNumberBox);
+        Grid.SetColumn(orderColumn, 2);
+        nameRow.Children.Add(orderColumn);
+
+        var sequenceColumn = new StackPanel();
+        sequenceColumn.Children.Add(MakeLabel("Fortlaufende Nummer"));
+        var sequenceBox = MakeInput(
+            string.Empty,
+            RouteChainIdentityEditor.FormatSequenceNumber(_sequenceNumber));
+        sequenceBox.IsReadOnly = true;
+        sequenceBox.ToolTip = "Wird automatisch vergeben. Beim Routenwechsel übernimmt die Folgefahrt diese Nummer.";
+        sequenceColumn.Children.Add(sequenceBox);
+        Grid.SetColumn(sequenceColumn, 4);
+        nameRow.Children.Add(sequenceColumn);
+        form.Children.Add(nameRow);
 
         form.Children.Add(MakeLabel("Linie/Kurs"));
         _lineCourseBox = MakeInput(string.Empty, initial.LineCourse);
@@ -473,6 +514,8 @@ public sealed class AddRouteDialog : Window
         ResultOperatingDates = candidateOperatingDates;
         ResultItcsRouteListEnabled = _itcsRouteListCheck.IsChecked == true;
         ResultMainDeviceOnly = _mainDeviceOnlyCheck.IsChecked == true;
+        ResultOrderNumber = _orderNumberBox.Text.Trim();
+        ResultSequenceNumber = _sequenceNumber;
         DialogResult = true;
         Close();
     }

@@ -87,6 +87,12 @@ public sealed class RouteChangeLinkDialog : Window
         ok.Click += (_, _) =>
         {
             ApplyToEndStop();
+            _editor.CopyChainIdentityAlongLink(_routeKey, _endStop.SelectedLineCourseTrip);
+            foreach (var entry in _endStop.RouteChangeTargetsByDate)
+            {
+                _editor.CopyChainIdentityAlongLink(_routeKey, entry.SelectedLineCourseTrip);
+            }
+
             DialogResult = true;
             Close();
         };

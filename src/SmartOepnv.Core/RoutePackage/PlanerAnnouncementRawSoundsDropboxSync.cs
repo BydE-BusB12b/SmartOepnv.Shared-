@@ -151,10 +151,18 @@ public static class PlanerAnnouncementRawSoundsDropboxSync
         }
 
         var downloaded = 0;
+        var fromLocalMirror = 0;
         for (var i = 0; i < toDownload.Count; i++)
         {
-            var (fileName, _) = toDownload[i];
+            var (fileName, entry) = toDownload[i];
             var localPath = Path.Combine(dir, fileName);
+            if (DropboxLocalMirror.TryCopyIfSizeMatches(GetDropboxFileRelativePath(fileName), localPath, entry.Size))
+            {
+                downloaded++;
+                fromLocalMirror++;
+                continue;
+            }
+
             var fileProgress = ScaleProgress(
                 progress,
                 $"Ansage {i + 1}/{toDownload.Count}: {fileName}",
@@ -169,11 +177,14 @@ public static class PlanerAnnouncementRawSoundsDropboxSync
             downloaded++;
         }
 
+        var source = fromLocalMirror == downloaded && downloaded > 0
+            ? "dem lokalen Dropbox-Ordner"
+            : "Dropbox";
         return new SyncResult(
             0,
             downloaded,
             skipped,
-            $"{downloaded} Ansagen-Rohdatei(en) aus Dropbox geladen, {skipped} lokal bereits vorhanden.");
+            $"{downloaded} Ansagen-Rohdatei(en) aus {source} geladen, {skipped} lokal bereits vorhanden.");
     }
 
     private static IProgress<DropboxTransferProgress>? ScaleProgress(

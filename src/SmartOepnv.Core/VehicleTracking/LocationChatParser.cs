@@ -86,6 +86,7 @@ public static class LocationChatParser
                 AppVersion = ReadOptionalString(loc, "appVersion"),
                 RoutesExportPackageVersion = ReadOptionalLong(loc, "routesExportPackageVersion"),
                 RoutesUpdatePackageVersion = ReadOptionalLong(loc, "routesUpdatePackageVersion"),
+                Fms = FmsSignals.ReadObject(loc),
                 TimestampEpochMs = timestamp,
                 FileTimestampEpochMs = fileTimestamp,
                 Status = status

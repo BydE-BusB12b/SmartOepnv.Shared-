@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using SmartOepnv.AppShared.Helpers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -62,6 +63,18 @@ public partial class AnnouncementsLibraryViewModel
             var displayFileName = path is not null
                 ? Path.GetFileName(path)
                 : def.FileName;
+            var supportsVoice2 = !string.Equals(def.Id, "gong", StringComparison.OrdinalIgnoreCase) &&
+                                 !string.Equals(def.Id, "next_stop", StringComparison.OrdinalIgnoreCase);
+            var voice2Name = AnnouncementVoiceFiles.Voice2FileName(def.FileName);
+            string? voice2Path = null;
+            if (supportsVoice2 && !string.IsNullOrWhiteSpace(voice2Name))
+            {
+                voice2Path = PlanerSpecialBuildingBlocksCatalog.TryResolvePath(
+                    AppServices.Workspace,
+                    voice2Name,
+                    dropbox);
+            }
+
             var item = new SpecialBuildingBlockItem
             {
                 Id = def.Id,
@@ -72,7 +85,15 @@ public partial class AnnouncementsLibraryViewModel
                 IsUserAdded = def.IsUserAdded,
                 IsPresent = path is not null,
                 StatusLabel = path is not null ? "✓ vorhanden" : "⚠ fehlt",
-                ResolvedPath = path
+                ResolvedPath = path,
+                SupportsVoice2 = supportsVoice2,
+                Voice2FileName = voice2Name,
+                Voice2ResolvedPath = voice2Path,
+                Voice2StatusLabel = !supportsVoice2
+                    ? string.Empty
+                    : voice2Path is not null
+                        ? $"Stimme 2: ✓ {voice2Name}"
+                        : $"Stimme 2: fehlt ({voice2Name})"
             };
             if (item.IsPresent)
             {
@@ -237,18 +258,61 @@ public partial class AnnouncementsLibraryViewModel
             return;
         }
 
+        TryInstallSpecialBuildingBlockAudio(block, dialog.FileName, voice2: false);
+    }
+
+    [RelayCommand]
+    private void AssignSpecialBuildingBlockVoice2File()
+    {
+        var block = SelectedSpecialBuildingBlock;
+        if (block is null || !block.SupportsVoice2)
+        {
+            StatusMessage = "Für diesen Baustein gibt es keine Stimme 2.";
+            return;
+        }
+
+        if (!AppServices.IsInitialized || AppServices.Routes.Editor is null)
+        {
+            StatusMessage = "Workspace nicht initialisiert.";
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = $"Stimme 2 für „{block.Title}“ → wird als {block.Voice2FileName} gespeichert",
+            Filter = "Audiodateien|*.wav;*.mp3;*.ogg;*.m4a|Alle Dateien|*.*",
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.FileName))
+        {
+            return;
+        }
+
+        TryInstallSpecialBuildingBlockAudio(block, dialog.FileName, voice2: true);
+    }
+
+    private void TryInstallSpecialBuildingBlockAudio(SpecialBuildingBlockItem block, string sourcePath, bool voice2)
+    {
         try
         {
             AnnouncementPreviewPlayer.Stop();
-            var targetFileName = string.Equals(block.Id, "next_stop", StringComparison.OrdinalIgnoreCase)
-                ? PlanerNextStopMp3SoundResolver.TargetFileNameForSource(dialog.FileName)
-                : string.Equals(block.Id, "folgende", StringComparison.OrdinalIgnoreCase)
-                    ? PlanerFollowingStopsSoundResolver.TargetFileNameForSource(dialog.FileName)
-                    : block.FileName;
+            var targetFileName = voice2
+                ? block.Voice2FileName
+                : string.Equals(block.Id, "next_stop", StringComparison.OrdinalIgnoreCase)
+                    ? PlanerNextStopMp3SoundResolver.TargetFileNameForSource(sourcePath)
+                    : string.Equals(block.Id, "folgende", StringComparison.OrdinalIgnoreCase)
+                        ? PlanerFollowingStopsSoundResolver.TargetFileNameForSource(sourcePath)
+                        : block.FileName;
+
+            if (string.IsNullOrWhiteSpace(targetFileName))
+            {
+                StatusMessage = "Dateiname für Stimme 2 fehlt.";
+                return;
+            }
 
             var rawDir = PlanerAnnouncementRawSoundsWorkspace.GetRawSoundsDirectory(AppServices.Workspace);
             var rawTarget = Path.Combine(rawDir, targetFileName);
-            File.Copy(dialog.FileName, rawTarget, overwrite: true);
+            File.Copy(sourcePath, rawTarget, overwrite: true);
 
             var embeddedDir = PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(AppServices.Workspace);
             Directory.CreateDirectory(embeddedDir);
@@ -276,8 +340,9 @@ public partial class AnnouncementsLibraryViewModel
             RefreshSpecialBuildingBlocks();
             SelectedSpecialBuildingBlock =
                 SpecialBuildingBlocks.FirstOrDefault(b => b.Id == block.Id) ?? SelectedSpecialBuildingBlock;
-            StatusMessage =
-                $"„{targetFileName}“ übernommen (Rohordner + embeddedSounds). „Speichern & JSON“ fürs Handy-Update.";
+            StatusMessage = voice2
+                ? $"„{targetFileName}“ als Stimme 2 übernommen. Petra bleibt. „Speichern & JSON“ fürs Handy."
+                : $"„{targetFileName}“ übernommen (Rohordner + embeddedSounds). „Speichern & JSON“ fürs Handy-Update.";
         }
         catch (Exception ex)
         {
@@ -413,6 +478,19 @@ public partial class AnnouncementsLibraryViewModel
             if (TryStageStandardSound(editor, path, block.FileName, out _))
             {
                 staged++;
+            }
+
+            if (block.SupportsVoice2 && !string.IsNullOrWhiteSpace(block.Voice2FileName))
+            {
+                var voice2Path = PlanerSpecialBuildingBlocksCatalog.TryResolvePath(
+                    AppServices.Workspace,
+                    block.Voice2FileName,
+                    ActiveDropboxFolderPath);
+                if (voice2Path is not null &&
+                    TryStageStandardSound(editor, voice2Path, block.Voice2FileName, out _))
+                {
+                    staged++;
+                }
             }
         }
 

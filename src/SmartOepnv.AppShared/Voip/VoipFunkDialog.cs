@@ -13,6 +13,8 @@ namespace SmartOepnv.AppShared.Voip;
 public sealed class VoipFunkDialog : Window
 {
     private static readonly Brush PanelBackground = FrozenRgb(0x00, 0x21, 0x71);
+    private static readonly Brush OnBlueText = Brushes.White;
+    private static readonly Brush OnBlueMuted = FrozenRgb(0xE3, 0xF2, 0xFD);
     private static readonly Brush GreenBorder = FrozenRgb(0x43, 0xA0, 0x47);
     private static readonly Brush DefaultBorder = FrozenRgb(0x42, 0xA5, 0xF5);
 
@@ -71,21 +73,21 @@ public sealed class VoipFunkDialog : Window
         var lte = host.LteReachability;
 
         _fullPanel = new StackPanel();
-        _fullPanel.Children.Add(VehicleKomUi.MakeText($"Funk – {vehicle.DisplayName}", 17, FontWeights.SemiBold));
-        _fullPanel.Children.Add(VehicleKomUi.MakeText(
+        _fullPanel.Children.Add(OnBlue($"Funk – {vehicle.DisplayName}", 17, FontWeights.SemiBold));
+        _fullPanel.Children.Add(OnBlue(
             _online ? "Status: online" : "Status: offline (Tablet-App läuft, VoIP-Config geladen, unterwegs erreichbar?)",
             13,
             muted: true,
             margin: new Thickness(0, 0, 0, 8)));
         if (lte.IsRelevant)
         {
-            _fullPanel.Children.Add(VehicleKomUi.MakeText(
+            _fullPanel.Children.Add(OnBlue(
                 lte.Summary,
                 13,
                 muted: !lte.IsReady,
                 margin: new Thickness(0, 0, 0, 8)));
         }
-        _fullPanel.Children.Add(VehicleKomUi.MakeText(
+        _fullPanel.Children.Add(OnBlue(
             host.IsSignalingReady
                 ? host.Settings.UsesCloudSignaling()
                     ? "Signaling: Cloud verbunden"
@@ -96,15 +98,15 @@ public sealed class VoipFunkDialog : Window
             13,
             muted: true,
             margin: new Thickness(0, 0, 0, 4)));
-        _fullPanel.Children.Add(VehicleKomUi.MakeText(status, 12, muted: true, margin: new Thickness(0, 0, 0, 8)));
-        _fullPanel.Children.Add(VehicleKomUi.MakeText(
+        _fullPanel.Children.Add(OnBlue(status, 12, muted: true, margin: new Thickness(0, 0, 0, 8)));
+        _fullPanel.Children.Add(OnBlue(
             vehicleOnlineCount > 0
                 ? $"Fahrzeuge online: {vehicleOnlineCount}"
                 : "Fahrzeuge online: keins",
             12,
             muted: true,
             margin: new Thickness(0, 0, 0, 4)));
-        _fullPanel.Children.Add(VehicleKomUi.MakeText(
+        _fullPanel.Children.Add(OnBlue(
             dispatchOnline
                 ? "Leitstelle (intern): verbunden"
                 : "Leitstelle (intern): nicht verbunden",
@@ -114,12 +116,12 @@ public sealed class VoipFunkDialog : Window
 
         if (vehicleOnlineCount > 0)
         {
-            _fullPanel.Children.Add(VehicleKomUi.MakeText("Registrierte Fahrzeuge:", 12, FontWeights.SemiBold,
+            _fullPanel.Children.Add(OnBlue("Registrierte Fahrzeuge:", 12, FontWeights.SemiBold,
                 margin: new Thickness(0, 0, 0, 4)));
             foreach (var peer in vehiclePeers)
             {
                 var label = ResolvePeerLabel(peer, resolveVehicleName);
-                _fullPanel.Children.Add(VehicleKomUi.MakeText(
+                _fullPanel.Children.Add(OnBlue(
                     $"• {label}",
                     12,
                     muted: true,
@@ -171,7 +173,7 @@ public sealed class VoipFunkDialog : Window
         _hangUpButton.Margin = new Thickness(0, 0, 0, 8);
         _hangUpButton.Visibility = Visibility.Collapsed;
 
-        _callStatusText = VehicleKomUi.MakeText(string.Empty, 13, FontWeights.SemiBold,
+        _callStatusText = OnBlue(string.Empty, 13, FontWeights.SemiBold,
             margin: new Thickness(0, 8, 0, 0));
         _callStatusText.Visibility = Visibility.Collapsed;
 
@@ -203,8 +205,8 @@ public sealed class VoipFunkDialog : Window
         close.Click += (_, _) => Close();
         _fullPanel.Children.Add(close);
 
-        _compactPartnerText = VehicleKomUi.MakeText(vehicle.DisplayName, 15, FontWeights.SemiBold);
-        _compactStatusText = VehicleKomUi.MakeText("Verbindung aktiv", 12, muted: true, margin: new Thickness(0, 0, 0, 10));
+        _compactPartnerText = OnBlue(vehicle.DisplayName, 15, FontWeights.SemiBold);
+        _compactStatusText = OnBlue("Verbindung aktiv", 12, muted: true, margin: new Thickness(0, 0, 0, 10));
         var compactHangUp = VehicleKomUi.MakeButton("Auflegen", primary: true, horizontalAlignment: HorizontalAlignment.Stretch);
         compactHangUp.Click += (_, _) => host.HangUpActiveCall();
         _compactPanel = new StackPanel();
@@ -283,8 +285,8 @@ public sealed class VoipFunkDialog : Window
         _callStatusText.Text = callStatus.StatusText;
         _callStatusText.Foreground = callStatus.State switch
         {
-            VoipCallConnectionState.Failed => new SolidColorBrush(Color.FromRgb(0xC6, 0x28, 0x28)),
-            _ => new SolidColorBrush(Color.FromRgb(0x15, 0x65, 0xC0))
+            VoipCallConnectionState.Failed => new SolidColorBrush(Color.FromRgb(0xFF, 0xCD, 0xD2)),
+            _ => OnBlueText
         };
         var active = callStatus.IsActive;
         _hangUpButton.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
@@ -456,6 +458,18 @@ public sealed class VoipFunkDialog : Window
         }
 
         return peer.PeerId;
+    }
+
+    private static TextBlock OnBlue(
+        string text,
+        double fontSize,
+        FontWeight? weight = null,
+        Thickness? margin = null,
+        bool muted = false)
+    {
+        var block = VehicleKomUi.MakeText(text, fontSize, weight, margin, muted: false);
+        block.Foreground = muted ? OnBlueMuted : OnBlueText;
+        return block;
     }
 
     private static SolidColorBrush FrozenRgb(byte r, byte g, byte b)

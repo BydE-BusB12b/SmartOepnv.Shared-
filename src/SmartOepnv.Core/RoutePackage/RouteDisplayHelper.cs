@@ -422,6 +422,37 @@ public static class RouteDisplayHelper
         return parts[0].PadLeft(3, '0') + "/" + parts[1].PadLeft(2, '0');
     }
 
+    private static readonly Regex ProductLineInName = new(
+        @"\b(IRE|ICE|IC|RE|RB|S|EC|NJ|EN|TGV|RJX|RJ)\s*(\d+)([A-Za-z])?\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Produktlinie aus dem Routennamen, z. B. „RE47X“ aus „RE47X Düsseldorf &gt; Solingen“.
+    /// Ein angehängter Buchstabe gehört zur Linie.
+    /// </summary>
+    public static string? TryExtractProductLine(string? routeName)
+    {
+        var trimmed = (routeName ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        var match = ProductLineInName.Match(trimmed);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var product = match.Groups[1].Value;
+        var number = match.Groups[2].Value;
+        var suffix = match.Groups[3].Value;
+        var raw = match.Value.Trim();
+        return raw.Contains(' ')
+            ? $"{product} {number}{suffix}"
+            : $"{product}{number}{suffix}";
+    }
+
     /// <summary>Linie/Kurs aus App-Eingabe (Ziffernblock oder mit „/“) – wie GPSAnsagen <c>normalizeLineCourse</c>.</summary>
     public static bool TryParseLineCourseUserInput(string? input, out string normalizedLineCourse)
     {

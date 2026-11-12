@@ -41,6 +41,8 @@ public sealed class VehicleLiveState
     public long? RoutesExportPackageVersion { get; init; }
     /// <summary>Zuletzt installierte packageVersion von routes_update.json.</summary>
     public long? RoutesUpdatePackageVersion { get; init; }
+    /// <summary>Fahrzeugdiagnose aus der Standort-JSON, nur die angehakten FMS-Felder.</summary>
+    public IReadOnlyDictionary<string, string>? Fms { get; init; }
     public long TimestampEpochMs { get; init; }
     public long FileTimestampEpochMs { get; init; }
     public VehicleOnlineStatus Status { get; init; }

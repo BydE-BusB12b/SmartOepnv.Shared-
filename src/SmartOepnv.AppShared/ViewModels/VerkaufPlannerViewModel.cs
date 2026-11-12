@@ -183,7 +183,9 @@ public partial class VerkaufPlannerViewModel : ObservableObject
             return;
         }
 
-        var file = SelectedDriver.SourceFileName;
+        var file = string.IsNullOrWhiteSpace(SelectedDriver.SourceFileName)
+            ? VerkaufDocumentParser.BuildFileName(SelectedDriver.PersonnelNumber)
+            : SelectedDriver.SourceFileName;
         if (!_rawJsonByFile.TryGetValue(file, out var json))
         {
             json = VerkaufDocumentParser.BuildEmptyJson(
@@ -195,9 +197,35 @@ public partial class VerkaufPlannerViewModel : ObservableObject
         try
         {
             var newJson = VerkaufDocumentParser.ApplyUnlock(json, "planer");
+            var uploaded = false;
+            string? saveError = null;
+            var localWritten = TryWriteLocalDropboxFile(file, newJson, out var localError);
+            if (!localWritten && localError is not null)
+            {
+                saveError = localError;
+            }
+
             if (AppServices.Dropbox.Settings.IsConnected)
             {
-                await AppServices.Dropbox.UploadNamedFileAsync(file, newJson).ConfigureAwait(true);
+                try
+                {
+                    await AppServices.Dropbox.UploadNamedFileAsync(file, newJson).ConfigureAwait(true);
+                    uploaded = true;
+                }
+                catch (Exception ex)
+                {
+                    saveError = ex.Message;
+                }
+            }
+            else if (!localWritten)
+            {
+                saveError ??= "Dropbox nicht verbunden und kein lokaler Dropbox-Ordner.";
+            }
+
+            if (!uploaded && !localWritten)
+            {
+                StatusMessage = $"Freischalten nicht gespeichert: {saveError}";
+                return;
             }
 
             _rawJsonByFile[file] = newJson;
@@ -212,7 +240,14 @@ public partial class VerkaufPlannerViewModel : ObservableObject
 
             ShowDrivers();
 
-            StatusMessage = $"Freigeschaltet: {SelectedDriver?.Name} – Periode zurückgesetzt.";
+            var where = uploaded && localWritten
+                ? "in Dropbox und im lokalen Ordner"
+                : uploaded
+                    ? "in Dropbox"
+                    : "im lokalen Dropbox-Ordner";
+            StatusMessage = $"Freigeschaltet und {where} gespeichert: {SelectedDriver?.Name}. " +
+                            "Fahrzeuge übernehmen das beim nächsten Öffnen von Verkauf." +
+                            (saveError is null ? string.Empty : $" Hinweis: {saveError}");
         }
         catch (Exception ex)
         {
@@ -221,6 +256,31 @@ public partial class VerkaufPlannerViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    private static bool TryWriteLocalDropboxFile(string fileName, string json, out string? error)
+    {
+        error = null;
+        try
+        {
+            var folder = DropboxSyncFolderLocator.TryResolveSmartOepnvFolder(
+                AppServices.Dropbox.Settings.FolderPath);
+            if (folder is null)
+            {
+                return false;
+            }
+
+            var path = Path.Combine(folder, fileName);
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, json);
+            File.Move(temp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
         }
     }
 

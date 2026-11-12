@@ -214,7 +214,9 @@ public partial class DisplaysOperationsViewModel
         {
             SevPreviewLine = string.Empty;
             SevPreviewDestination = string.Empty;
-            SevPreviewMessage = buildError;
+            SevPreviewMessage = SevTftRouteBuilder.IsRouteNameFormatHint(buildError)
+                ? string.Empty
+                : buildError;
             return;
         }
 

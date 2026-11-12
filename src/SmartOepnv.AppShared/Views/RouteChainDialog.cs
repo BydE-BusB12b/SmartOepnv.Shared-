@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -20,6 +21,8 @@ public sealed class RouteChainDialog : Window
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
     private static readonly Brush MutedForeground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB));
     private static readonly Brush AccentBrush = new SolidColorBrush(Color.FromRgb(0x4F, 0xC3, 0xF7));
+    /// <summary>Lesbar auf den dunkelblauen Schnur-Karten (Hellmodus-Vordergrund wäre #002171).</summary>
+    private static readonly Brush CardEmphasisBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xB7, 0x4D));
 
     private readonly EditableRoutePackage _editor;
     /// <summary>Optional: Anzuzeigende Route nach Änderung (z. B. erste kopierte Fahrt).</summary>
@@ -863,7 +866,11 @@ public sealed class RouteChainDialog : Window
             Title: $"{segment.Index}. {segment.RouteLabel}",
             MetaLine: string.Join("  ·  ", meta),
             Stops: segment.Stops
-                .Select(s => new RouteChainPdfGenerator.StopRow(s.Name, s.TimeDisplay, s.IsRouteChangeStop))
+                .Select(s => new RouteChainPdfGenerator.StopRow(
+                    s.Name,
+                    s.TimeDisplay,
+                    s.IsRouteChangeStop,
+                    s.DestinationHint))
                 .ToList());
     }
 
@@ -1336,16 +1343,26 @@ public sealed class RouteChainDialog : Window
             var stop = segment.Stops[rowIndex];
             var nameBlock = new TextBlock
             {
-                Text = stop.IsRouteChangeStop ? $"{stop.Name}  (Routenwechsel)" : stop.Name,
-                Foreground = stop.IsRouteChangeStop ? AccentBrush : Brushes.White,
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 4, 8, 0)
             };
+            nameBlock.Inlines.Add(new Run(stop.IsRouteChangeStop ? $"{stop.Name}  (Routenwechsel)" : stop.Name)
+            {
+                Foreground = stop.IsRouteChangeStop ? AccentBrush : Brushes.White
+            });
+            if (!string.IsNullOrWhiteSpace(stop.DestinationHint))
+            {
+                nameBlock.Inlines.Add(new Run($"   {stop.DestinationHint}")
+                {
+                    Foreground = CardEmphasisBrush
+                });
+            }
+
             var timeBlock = new TextBlock
             {
                 Text = stop.TimeDisplay,
-                Foreground = UiTheme.ForegroundBrush,
+                Foreground = CardEmphasisBrush,
                 FontSize = 12,
                 Margin = new Thickness(0, 4, 0, 0)
             };

@@ -6,12 +6,53 @@
              xmlns:helpers="clr-namespace:SmartOepnv.AppShared.Helpers">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
         <conv:RouteStopStrikeThroughConverter x:Key="RouteStopStrikeThroughConverter" />
         <conv:RouteStopTimeOrderWarningConverter x:Key="RouteStopTimeOrderWarningConverter" />
         <conv:RouteStopRouteChangeDisplayConverter x:Key="RouteStopRouteChangeDisplayConverter" />
         <conv:RouteStopRouteChangeVisibleConverter x:Key="RouteStopRouteChangeVisibleConverter" />
         <conv:RouteStopRoleBrushConverter x:Key="RouteStopRoleBrushConverter" />
         <conv:CompactRouteListLabelConverter x:Key="CompactRouteListLabelConverter" />
+        <conv:RouteListLabelConverter x:Key="RouteListLabelConverter" />
+        <Style x:Key="ChainRowButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0,2" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="RouteModeIndividualButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="Foreground" Value="{StaticResource SmartPrimaryBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ListByRouteChain}" Value="False">
+                    <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+                    <Setter Property="Foreground" Value="White" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="RouteModeChainButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="Foreground" Value="{StaticResource SmartPrimaryBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ListByRouteChain}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+                    <Setter Property="Foreground" Value="White" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="RoutesSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
@@ -62,9 +103,21 @@
                              VerticalAlignment="Stretch"
                              Background="{StaticResource SmartSurfaceBrush}">
             <DockPanel LastChildFill="True">
-                <TextBlock DockPanel.Dock="Top" Text="Routen" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8" />
+                <TextBlock DockPanel.Dock="Top" Text="{Binding RouteListTitle}" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8" />
+                <UniformGrid DockPanel.Dock="Top" Columns="2" Margin="0,0,0,8">
+                    <Button Content="Einzelne Routen"
+                            Command="{Binding ShowIndividualRoutesCommand}"
+                            Style="{StaticResource RouteModeIndividualButton}"
+                            Margin="0,0,4,0"
+                            Padding="8,6" />
+                    <Button Content="Routenschnüre"
+                            Command="{Binding ShowRouteChainsCommand}"
+                            Style="{StaticResource RouteModeChainButton}"
+                            Margin="4,0,0,0"
+                            Padding="8,6" />
+                </UniformGrid>
                 <TextBox DockPanel.Dock="Top"
-                         materialDesign:HintAssist.Hint="Suchen (Name, Linie/Kurs, Fahrt)"
+                         materialDesign:HintAssist.Hint="{Binding RouteSearchHint}"
                          helpers:LiveText.Source="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,0,0,12" />
                 <UniformGrid DockPanel.Dock="Top" Columns="2" Margin="0,0,0,12">
@@ -89,7 +142,8 @@
                             Margin="4,4,0,0"
                             Padding="8,6" />
                 </UniformGrid>
-                <ListBox ItemsSource="{Binding FilteredRoutes}" SelectedItem="{Binding SelectedRoute}"
+                <ListBox ItemsSource="{Binding FilteredRoutes}"
+                         SelectedItem="{Binding RouteListSelection}"
                          BorderThickness="0" Background="Transparent"
                          HorizontalContentAlignment="Stretch"
                          VirtualizingPanel.IsVirtualizing="True"
@@ -99,9 +153,42 @@
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding Converter={StaticResource CompactRouteListLabelConverter}}"
-                                       TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding Converter={StaticResource CompactRouteListLabelConverter}}" />
+                            <Grid>
+                                <TextBlock TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding DataContext.ListByRouteChain, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                    <TextBlock.Text>
+                                        <MultiBinding Converter="{StaticResource RouteListLabelConverter}">
+                                            <Binding />
+                                            <Binding Path="DataContext"
+                                                     RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                    <TextBlock.ToolTip>
+                                        <MultiBinding Converter="{StaticResource RouteListLabelConverter}">
+                                            <Binding />
+                                            <Binding Path="DataContext"
+                                                     RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                        </MultiBinding>
+                                    </TextBlock.ToolTip>
+                                </TextBlock>
+                                <Button Style="{StaticResource ChainRowButton}"
+                                        Click="ChainRow_Click"
+                                        ToolTip="Fahrten dieser Routenschnur"
+                                        Visibility="{Binding DataContext.ListByRouteChain, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <DockPanel LastChildFill="True">
+                                        <TextBlock DockPanel.Dock="Right" Text="▾" Margin="8,0,0,0" VerticalAlignment="Center" Opacity="0.75" />
+                                        <TextBlock TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                                            <TextBlock.Text>
+                                                <MultiBinding Converter="{StaticResource RouteListLabelConverter}">
+                                                    <Binding />
+                                                    <Binding Path="DataContext"
+                                                             RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                </MultiBinding>
+                                            </TextBlock.Text>
+                                        </TextBlock>
+                                    </DockPanel>
+                                </Button>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -120,7 +207,7 @@
                            TextWrapping="Wrap" />
 
                 <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                    <TextBlock Text="{Binding SelectedRoute, Converter={StaticResource CompactRouteListLabelConverter}, TargetNullValue='— Keine Route ausgewählt —'}"
+                    <TextBlock Text="{Binding SelectedRouteListLabel}"
                                TextWrapping="Wrap"
                                FontWeight="SemiBold"
                                FontSize="14"
@@ -165,6 +252,14 @@
                                     Style="{StaticResource Ds009Length20ButtonStyle}" />
                         </StackPanel>
                     </Grid>
+                    <ComboBox Margin="0,8,0,0"
+                              HorizontalAlignment="Left"
+                              MinWidth="240"
+                              materialDesign:HintAssist.Hint="Ansagestimme"
+                              materialDesign:HintAssist.IsFloating="True"
+                              ItemsSource="{Binding AnnouncementVoiceChoices}"
+                              SelectedItem="{Binding RouteAnnouncementVoice}"
+                              ToolTip="Linguatec Petra ist die bisherige Stimme. Stimme 2 sucht dieselbe Datei mit _2 vor der Endung und nimmt Petra, wenn die Datei fehlt." />
                 </StackPanel>
 
                 <Grid>
@@ -454,5 +549,51 @@
                 </Grid>
             </DockPanel>
         </materialDesign:Card>
+        <Popup x:Name="ChainTripPopup"
+               Placement="Bottom"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PopupAnimation="Fade">
+            <Border Background="White"
+                    BorderBrush="#90CAF9"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="4"
+                    MaxHeight="320">
+                <ListBox x:Name="ChainTripList"
+                         BorderThickness="0"
+                         Background="White"
+                         Foreground="#0A1628"
+                         MaxHeight="300"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectionChanged="ChainTripList_SelectionChanged">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Foreground" Value="#0A1628" />
+                            <Setter Property="Background" Value="White" />
+                            <Setter Property="Padding" Value="6,4" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#E3F2FD" />
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#BBDEFB" />
+                                    <Setter Property="Foreground" Value="#0A1628" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Converter={StaticResource CompactRouteListLabelConverter}}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="#0A1628"
+                                       Margin="2,3" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+        </Popup>
     </Grid>
 </UserControl>

@@ -185,44 +185,23 @@ public sealed class PlanerSessionService
         }
     }
 
-    /// <summary>Letzter Versuch beim Beenden – blockiert bis Upload oder Fehler.</summary>
+    /// <summary>Letzter Versuch beim Beenden. Ohne Netz nach wenigen Sekunden aufgeben.</summary>
     public void ReleaseLockBestEffortSync()
     {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         try
         {
-            ReleaseLockAsync().GetAwaiter().GetResult();
+            var release = ReleaseLockAsync(timeout.Token);
+            release.ContinueWith(
+                static finished => { _ = finished.Exception; },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            release.Wait(timeout.Token);
         }
         catch
         {
-            // optional
-        }
-
-        if (!PlanerSessionLocalStore.HasPendingRelease())
-        {
-            return;
-        }
-
-        var ownSessionId = SessionId ?? PlanerSessionLocalStore.TryReadSessionId();
-        if (string.IsNullOrWhiteSpace(ownSessionId) || !_dropbox.Settings.IsConnected)
-        {
-            return;
-        }
-
-        try
-        {
-            var document = _dropboxService.LoadAsync().GetAwaiter().GetResult();
-            if (string.Equals(document.SessionId, ownSessionId, StringComparison.Ordinal))
-            {
-                ClearLockDocumentAsync(document, CancellationToken.None).GetAwaiter().GetResult();
-            }
-
-            SessionId = null;
-            CurrentUsername = null;
-            PlanerSessionLocalStore.Clear();
-        }
-        catch
-        {
-            // Lokale Session bleibt für nächsten Start (TryReleasePendingLocalSessionAsync).
+            // Lokale Session bleibt für den nächsten Start auf diesem PC.
         }
     }
 

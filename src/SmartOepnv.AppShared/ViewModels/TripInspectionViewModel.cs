@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.Kom;
 using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
@@ -565,10 +566,19 @@ public sealed class TripInspectionTimelineSessionItem
 public sealed class TripInspectionTimelineEventItem
 {
     private static readonly Brush LoginBrush = FreezeBrush(0xA5, 0xD6, 0xA7);
-    private static readonly Brush AlertBrush = FreezeBrush(0xEF, 0x53, 0x50);
+    private static readonly Brush LoginLightBrush = FreezeBrush(0x1B, 0x5E, 0x20);
+    private static readonly Brush AlertBrush = FreezeBrush(0xC6, 0x28, 0x28);
     private static readonly Brush RouteBrush = FreezeBrush(0xFF, 0xEE, 0x58);
+    private static readonly Brush RouteLightBrush = FreezeBrush(0xE6, 0x51, 0x00);
     private static readonly Brush CrashBrush = FreezeBrush(0xCE, 0x93, 0xD8);
+    private static readonly Brush CrashLightBrush = FreezeBrush(0x6A, 0x1B, 0x9A);
     private static readonly Brush NeutralBrush = Brushes.White;
+    private static readonly Brush NeutralLightBrush = FreezeBrush(0x00, 0x21, 0x71);
+
+    private static Brush LoginColor => UiTheme.IsLight ? LoginLightBrush : LoginBrush;
+    private static Brush RouteColor => UiTheme.IsLight ? RouteLightBrush : RouteBrush;
+    private static Brush CrashColor => UiTheme.IsLight ? CrashLightBrush : CrashBrush;
+    private static Brush NeutralColor => UiTheme.IsLight ? NeutralLightBrush : NeutralBrush;
 
     public required string TimeLabel { get; init; }
     public required string KindLabel { get; init; }
@@ -595,22 +605,22 @@ public sealed class TripInspectionTimelineEventItem
         var d = string.IsNullOrWhiteSpace(ev.Detail) ? null : ev.Detail.Trim();
         if (GpsTripTraceParser.IsCrashKind(ev.Kind))
         {
-            return ("App-Absturz", JoinParts(d, user), CrashBrush);
+            return ("App-Absturz", JoinParts(d, user), CrashColor);
         }
 
         return ev.Kind.ToLowerInvariant() switch
         {
-            "login" => ("Anmeldung", JoinParts(user, d is null ? null : $"PN {d}"), LoginBrush),
-            "logout" => ("Abmeldung", JoinParts(user, d is null ? null : $"PN {d}"), NeutralBrush),
+            "login" => ("Anmeldung", JoinParts(user, d is null ? null : $"PN {d}"), LoginColor),
+            "logout" => ("Abmeldung", JoinParts(user, d is null ? null : $"PN {d}"), NeutralColor),
             "line" or "route" or "kurs" =>
-                ("Linie/Kurs", JoinParts(d ?? GpsTripTraceParser.UncodedLineCourse, user), RouteBrush),
-            "dest" or "zielwechsel" => ("Zielwechsel", JoinParts(d, user), RouteBrush),
-            "pas_on" => ("Pas.Info an", user ?? "–", NeutralBrush),
+                ("Linie/Kurs", JoinParts(d ?? GpsTripTraceParser.UncodedLineCourse, user), RouteColor),
+            "dest" or "zielwechsel" => ("Zielwechsel", JoinParts(d, user), RouteColor),
+            "pas_on" => ("Pas.Info an", user ?? "–", NeutralColor),
             "pas_off" => ("Pas.Info deaktiviert", user ?? "–", AlertBrush),
             "gps_off" or "gps_disable" or "gps_disabled" or "gps_deactivated" =>
                 ("GPS deaktiviert", JoinParts(d, user), AlertBrush),
-            "bt_enable" => ("Bluetooth einschalten", JoinParts("BT war aus", d, user), NeutralBrush),
-            _ => (ev.Kind, JoinParts(d, user), NeutralBrush)
+            "bt_enable" => ("Bluetooth einschalten", JoinParts("BT war aus", d, user), NeutralColor),
+            _ => (ev.Kind, JoinParts(d, user), NeutralColor)
         };
     }
 

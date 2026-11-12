@@ -10,8 +10,8 @@ namespace SmartOepnv.Core.RoutePackage;
 /// </summary>
 public static class UmlaufImportPlanner
 {
-    public const string SwsAusfahrtStopName = "SWS Ausfahrt";
-    public const string SwsEinfahrtStopName = "SWS Einfahrt";
+    public const string SwsAusfahrtStopName = "Betriebshof Ausfahrt";
+    public const string SwsEinfahrtStopName = "Betriebshof Einfahrt";
 
     public enum Direction
     {
@@ -544,7 +544,7 @@ public static class UmlaufImportPlanner
 
         if (string.IsNullOrWhiteSpace(ausfahrtTime))
         {
-            warnings.Add("SWS Ausfahrt ohne Zeit (Ausfahrtzeit leer).");
+            warnings.Add("Betriebshof Ausfahrt ohne Zeit (Ausfahrtzeit leer).");
         }
     }
 
@@ -567,7 +567,7 @@ public static class UmlaufImportPlanner
 
         if (string.IsNullOrWhiteSpace(einfahrtTime))
         {
-            warnings.Add("SWS Einfahrt ohne Zeit (Einfahrtzeit leer, Vorlage hatte Einfahrt).");
+            warnings.Add("Betriebshof Einfahrt ohne Zeit (Einfahrtzeit leer, Vorlage hatte Einfahrt).");
         }
     }
 

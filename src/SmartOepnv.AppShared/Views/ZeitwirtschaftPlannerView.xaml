@@ -39,6 +39,12 @@
                         Style="{StaticResource MaterialDesignOutlinedButton}"
                         Margin="0,0,8,6"
                         Padding="14,4" />
+                <Button Content="Zeit nachtragen"
+                        Command="{Binding AddManualEntryCommand}"
+                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Margin="0,0,8,6"
+                        Padding="14,4" />
                 <Button Content="Zeitkorrektur"
                         Command="{Binding CorrectTimeCommand}"
                         CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
@@ -108,7 +114,7 @@
                         <StackPanel>
                             <TextBlock TextWrapping="Wrap"
                                        FontSize="13"
-                                       Text="Pro Fahrzeug eine JSON (zeitwirtschaft_&lt;Telefon&gt;.json). Der Pausenbutton schreibt Pausen nur bei eingestempelter Schicht. Gesetzliche Arbeitszeit ist Kommen bis Gehen ohne Ruhepausen von mindestens 15 Minuten. Kürzere Stempel bleiben Arbeitszeit. Ein Sechstel-Dienst zieht Wendezeiten nur von den Lohnstunden ab. Storno nimmt die Stunden nicht aus der gesetzlichen Aufzeichnung." />
+                                       Text="Pro Fahrzeug eine JSON (zeitwirtschaft_&lt;Telefon&gt;.json). Der Pausenbutton schreibt Pausen nur bei eingestempelter Schicht. Die Arbeitszeit ist Kommen bis Gehen einschließlich der Pausen. Die Lohnstunden sind diese Zeit ohne Ruhepausen von mindestens 15 Minuten. Kürzere Stempel bleiben in den Lohnstunden. Ein Sechstel-Dienst zieht Wendezeiten nur von den Lohnstunden ab. Storno nimmt die Stunden nicht aus der gesetzlichen Aufzeichnung." />
                             <TextBlock Text="{Binding ComplianceSummary}"
                                        TextWrapping="Wrap"
                                        Margin="0,12,0,0"
@@ -205,7 +211,7 @@
                             </Style>
                         </DataGrid.RowStyle>
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Fahrzeug"
+                            <DataGridTextColumn Header="Ort"
                                                 Binding="{Binding VehicleDisplayName}"
                                                 Width="*" MinWidth="140">
                                 <DataGridTextColumn.ElementStyle>
@@ -229,13 +235,43 @@
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource ZeitwirtschaftVoidableCellStyle}" />
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Pause"
-                                                Binding="{Binding Pause}"
-                                                Width="170">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ZeitwirtschaftVoidableCellStyle}" />
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
+                            <DataGridTemplateColumn Header="Pause" Width="170">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <ItemsControl ItemsSource="{Binding PauseLines}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Ignored}" Value="True">
+                                                                            <Setter Property="Foreground" Value="#FF8C00" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="{Binding Pause}" VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ZeitwirtschaftVoidableCellStyle}">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding PauseLines.Count}" Value="0">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Arbeitszeit"
                                                 Binding="{Binding Arbeitszeit}"
                                                 Width="90">

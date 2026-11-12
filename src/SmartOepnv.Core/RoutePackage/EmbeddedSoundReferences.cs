@@ -107,6 +107,33 @@ public static class EmbeddedSoundReferences
             names.Add(PlanerUndSoundResolver.FileName);
         }
 
+        IEnumerable<string>? extraLines = null;
+        IEnumerable<string>? hiddenLines = null;
+        if (AppServices.IsInitialized)
+        {
+            var settings = AppServices.PlanerAppSettings?.Load();
+            extraLines = settings?.SpecialBuildingBlockLines;
+            hiddenLines = settings?.SpecialBuildingBlockLinesHidden;
+        }
+
+        foreach (var block in PlanerSpecialBuildingBlocksCatalog.BuildAll(package, extraLines, hiddenLines))
+        {
+            if (!string.IsNullOrWhiteSpace(block.FileName))
+            {
+                names.Add(block.FileName.Trim());
+            }
+        }
+
+        if (workspace is not null)
+        {
+            var sondergong = StartStopGreetingResolver.TryResolveSondergongFileName(
+                AppServices.IsInitialized ? AppServices.PlanerAppSettings?.Load() : null);
+            AnnouncementVoiceFiles.IncludeExistingVoice2Siblings(
+                names,
+                voice2Name => PlanerHamblochAnsagenSoundResolver.TryResolve(workspace, voice2Name) is not null,
+                sondergong);
+        }
+
         return names;
     }
 }

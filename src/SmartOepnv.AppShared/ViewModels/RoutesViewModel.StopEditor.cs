@@ -147,7 +147,9 @@ public partial class RoutesViewModel
 
         var typical = BuildLearnedStopSuggestions();
         if (!RouteZielwechselLearner.TrySuggest(typical, SelectedStop.PlannerStopCode, out var suggestion) ||
-            !RouteZielwechselLearner.TryApplyZielwechselToEmptyFields(SelectedStop, suggestion))
+            !RouteZielwechselLearner.TryApplyZielwechselToEmptyFields(
+                SelectedStop,
+                KeepOnlyCatalogMobitec(suggestion)))
         {
             return false;
         }
@@ -167,7 +169,9 @@ public partial class RoutesViewModel
 
         var typical = BuildLearnedStopSuggestions();
         if (!RouteZielwechselLearner.TrySuggest(typical, SelectedStop.PlannerStopCode, out var suggestion) ||
-            !RouteZielwechselLearner.TryApplyStartDestinationToEmptyFields(SelectedStop, suggestion))
+            !RouteZielwechselLearner.TryApplyStartDestinationToEmptyFields(
+                SelectedStop,
+                KeepOnlyCatalogMobitec(suggestion)))
         {
             return false;
         }
@@ -596,6 +600,22 @@ public partial class RoutesViewModel
                 SelectedStop.RouteChangeEnabled = false;
             }
 
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
+    public bool DepartureCountdownEnabled
+    {
+        get => SelectedStop?.DepartureCountdownEnabled ?? true;
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.DepartureCountdownEnabled = value;
             NotifyStopEditorStateChanged();
             MarkStopDetailDirty();
         }
@@ -1030,6 +1050,7 @@ public partial class RoutesViewModel
             }
 
             SelectedStop.SelectedLineCourseTrip = FromComboLabel(value, RouteStopEditorCatalog.NoLineCourseTripLabel);
+            CopyChainIdentityToLinkedTrip(SelectedStop.SelectedLineCourseTrip);
             OnPropertyChanged();
             MarkStopDetailDirty();
         }
@@ -1157,10 +1178,21 @@ public partial class RoutesViewModel
                 OperatingDates = dates,
                 OperatingDays = days
             });
+            CopyChainIdentityToLinkedTrip(trip);
         }
 
         SelectedStop.RouteChangeTargetsByDate = rebuilt;
         MarkStopDetailDirty();
+    }
+
+    public void CopyChainIdentityToLinkedTrip(string? targetRouteKey)
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        AppServices.Routes.Editor?.CopyChainIdentityAlongLink(SelectedRoute, targetRouteKey);
     }
 
     partial void OnSelectedStopVrrStopIdChanged(string value)
@@ -1430,6 +1462,7 @@ public partial class RoutesViewModel
             }
 
             RefreshStopEditorCatalogs();
+            DropMobitecSelectionThatIsNotMobitec(stop);
             var learned = false;
             if (_startStopCheckbox)
             {
@@ -1464,6 +1497,85 @@ public partial class RoutesViewModel
         _syncingStopVrrStopId = false;
     }
 
+    private void DropMobitecSelectionThatIsNotMobitec(RouteStopItem stop)
+    {
+        var changed = ClearMobitecIfForeign(
+            stop.MobitecDestinationId,
+            stop.MobitecDestination,
+            (name, id) =>
+            {
+                stop.MobitecDestination = name;
+                stop.MobitecDestinationId = id;
+            });
+        changed |= ClearMobitecIfForeign(
+            stop.MobitecEndDestinationId,
+            stop.MobitecEndDestination,
+            (name, id) =>
+            {
+                stop.MobitecEndDestination = name;
+                stop.MobitecEndDestinationId = id;
+            });
+        if (changed)
+        {
+            MarkStopDetailDirty();
+        }
+    }
+
+    private bool ClearMobitecIfForeign(string? id, string? name, Action<string, string> set)
+    {
+        if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(id))
+        {
+            return false;
+        }
+
+        if (!DestinationCatalog.Any(entry => entry.Protocol == OutsideDisplayProtocolKind.Mobitec))
+        {
+            return false;
+        }
+
+        if (OutsideDisplayDestinationResolver.FindListLabelById(
+                DestinationCatalog,
+                OutsideDisplayProtocolKind.Mobitec,
+                id) is not null ||
+            OutsideDisplayDestinationResolver.FindEntryByComboLabel(
+                DestinationCatalog,
+                OutsideDisplayProtocolKind.Mobitec,
+                name) is not null)
+        {
+            return false;
+        }
+
+        set(string.Empty, string.Empty);
+        return true;
+    }
+
+    private RouteZielwechselLearner.Suggestion KeepOnlyCatalogMobitec(
+        RouteZielwechselLearner.Suggestion suggestion)
+    {
+        if (string.IsNullOrWhiteSpace(suggestion.MobitecDestination) &&
+            string.IsNullOrWhiteSpace(suggestion.MobitecDestinationId))
+        {
+            return suggestion;
+        }
+
+        if (!DestinationCatalog.Any(entry => entry.Protocol == OutsideDisplayProtocolKind.Mobitec))
+        {
+            return suggestion;
+        }
+
+        var known = OutsideDisplayDestinationResolver.FindListLabelById(
+                DestinationCatalog,
+                OutsideDisplayProtocolKind.Mobitec,
+                suggestion.MobitecDestinationId) is not null ||
+            OutsideDisplayDestinationResolver.FindEntryByComboLabel(
+                DestinationCatalog,
+                OutsideDisplayProtocolKind.Mobitec,
+                suggestion.MobitecDestination) is not null;
+        return known
+            ? suggestion
+            : suggestion with { MobitecDestination = string.Empty, MobitecDestinationId = string.Empty };
+    }
+
     private void EnsureCatalogContainsStopSelections(RouteStopItem stop)
     {
         EnsureComboValue(Ds021tDestinations, ToComboLabel(stop.Destination, RouteStopEditorCatalog.NoDestinationLabel));
@@ -1476,7 +1588,10 @@ public partial class RoutesViewModel
                 OutsideDisplayProtocolKind.Ds003,
                 stop.ZielnummerDestinationId,
                 stop.ZielnummerDestination));
-        EnsureComboValue(MobitecDestinations, ToComboLabel(stop.MobitecDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(MobitecDestinations, ResolveComboLabel(
+            OutsideDisplayProtocolKind.Mobitec,
+            stop.MobitecDestinationId,
+            stop.MobitecDestination));
         EnsureComboValue(Ds021tDestinations, ToComboLabel(stop.EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(Ds021NeuDestinations, ToComboLabel(stop.Ds021NeuEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
         EnsureComboValue(FmaS1Destinations, ToComboLabel(stop.FmaS1EndDestination, RouteStopEditorCatalog.NoDestinationLabel));
@@ -1487,7 +1602,10 @@ public partial class RoutesViewModel
                 OutsideDisplayProtocolKind.Ds003,
                 stop.ZielnummerEndDestinationId,
                 stop.ZielnummerEndDestination));
-        EnsureComboValue(MobitecDestinations, ToComboLabel(stop.MobitecEndDestination, RouteStopEditorCatalog.NoDestinationLabel));
+        EnsureComboValue(MobitecDestinations, ResolveComboLabel(
+            OutsideDisplayProtocolKind.Mobitec,
+            stop.MobitecEndDestinationId,
+            stop.MobitecEndDestination));
         EnsureComboValue(
             LineCourseTripRoutes,
             ToComboLabel(stop.SelectedLineCourseTrip, RouteStopEditorCatalog.NoLineCourseTripLabel));
@@ -1596,6 +1714,7 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(EntwerterLinieAuto));
         OnPropertyChanged(nameof(EntwerterTelegramPreview));
         OnPropertyChanged(nameof(IsEndStop));
+        OnPropertyChanged(nameof(DepartureCountdownEnabled));
         OnPropertyChanged(nameof(PlayEndStopAnnouncement));
         OnPropertyChanged(nameof(PlayEndStopAnnouncementEn));
         OnPropertyChanged(nameof(PlayEndStopAnnouncementNl));

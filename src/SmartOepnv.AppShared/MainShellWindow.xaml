@@ -177,13 +177,14 @@
             <!-- Hauptbereich mit Navigation -->
             <Grid Grid.Row="1" ClipToBounds="True">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="300" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <materialDesign:Card Grid.Column="0"
                                      HorizontalAlignment="Left"
-                                     Margin="12,12,6,12"
+                                     MaxWidth="280"
+                                     Margin="12,12,4,12"
                                      Padding="0"
                                      UniformCornerRadius="12"
                                      Background="{StaticResource SmartSurfaceBrush}">

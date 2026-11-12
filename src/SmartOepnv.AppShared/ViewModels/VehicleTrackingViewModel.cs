@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Diagnostics;
 using System.IO;
+using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Geo;
 using SmartOepnv.Core.Realtime.Vdv454;
@@ -839,6 +840,11 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
             detailParts.Add($"{v.SpeedKmh} km/h");
         }
 
+        if (v.Fms is { Count: > 0 })
+        {
+            detailParts.Add(string.Join(", ", v.Fms.Select(pair => $"{FmsSignals.Label(pair.Key)} {pair.Value}")));
+        }
+
         var coordsChanged = !CoordinatesMatch(Latitude, Longitude, v.Latitude, v.Longitude);
 
         PhoneRaw = v.PhoneNumber;
@@ -926,8 +932,10 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
     public string BatteryDisplay => BatteryLevel is >= 0 and <= 100 ? $"{BatteryLevel} %" : "–";
 
     private static readonly Brush StatusActiveBrush = CreateFrozenBrush(0x90, 0xEE, 0x90);
-    private static readonly Brush StatusInactiveBrush = CreateFrozenBrush(0xEF, 0x53, 0x50);
+    private static readonly Brush StatusActiveLightBrush = CreateFrozenBrush(0x1B, 0x5E, 0x20);
+    private static readonly Brush StatusInactiveBrush = CreateFrozenBrush(0xC6, 0x28, 0x28);
     private static readonly Brush StatusUnknownBrush = CreateFrozenBrush(0xB0, 0xBE, 0xC5);
+    private static readonly Brush StatusUnknownLightBrush = CreateFrozenBrush(0x00, 0x21, 0x71);
 
     public string PasInfoDisplay => FormatActiveFlag(PasInfoActive, "Pas.Info aktiv", "Pas.Info aus !");
 
@@ -945,13 +953,25 @@ public sealed class VehicleListItemViewModel : INotifyPropertyChanged
             null => "–"
         };
 
-    private static Brush ForegroundForFlag(bool? value) =>
-        value switch
+    private static Brush ForegroundForFlag(bool? value)
+    {
+        if (UiTheme.IsLight)
+        {
+            return value switch
+            {
+                true => StatusActiveLightBrush,
+                false => StatusInactiveBrush,
+                _ => StatusUnknownLightBrush
+            };
+        }
+
+        return value switch
         {
             true => StatusActiveBrush,
             false => StatusInactiveBrush,
-            null => StatusUnknownBrush
+            _ => StatusUnknownBrush
         };
+    }
 
     private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
     {

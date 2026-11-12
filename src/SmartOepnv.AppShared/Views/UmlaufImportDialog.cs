@@ -167,7 +167,7 @@ public sealed class UmlaufImportDialog : Window
         globalGrid.Children.Add(linePanel);
 
         var ausPanel = new StackPanel();
-        ausPanel.Children.Add(MakeLabel("Ausfahrtzeit → SWS Ausfahrt"));
+        ausPanel.Children.Add(MakeLabel("Ausfahrtzeit → Betriebshof Ausfahrt"));
         _ausfahrtTimeBox = MakeInput(string.Empty);
         _ausfahrtTimeBox.LostFocus += (_, _) =>
         {
@@ -181,7 +181,7 @@ public sealed class UmlaufImportDialog : Window
         globalGrid.Children.Add(ausPanel);
 
         var einPanel = new StackPanel();
-        einPanel.Children.Add(MakeLabel("Einfahrtzeit → SWS Einfahrt"));
+        einPanel.Children.Add(MakeLabel("Einfahrtzeit → Betriebshof Einfahrt"));
         _einfahrtTimeBox = MakeInput(string.Empty);
         _einfahrtTimeBox.LostFocus += (_, _) =>
         {
@@ -962,7 +962,7 @@ public sealed class UmlaufImportDialog : Window
                 BorderThickness = new Thickness(0, 0, 0, 1),
                 Padding = new Thickness(8, 4, 8, 4),
                 ToolTip = isDepot
-                    ? "Depot-Halt (SWS Ausfahrt/Einfahrt aus Umlaufkarte)"
+                    ? "Betriebshof-Halt (Ausfahrt/Einfahrt aus Umlaufkarte)"
                     : showRouteChange
                         ? routeChangeHint
                         : null
@@ -976,7 +976,7 @@ public sealed class UmlaufImportDialog : Window
 
             var timeBox = MakeStopInlineBox(
                 string.IsNullOrWhiteSpace(stop.Time) ? string.Empty : stop.Time!,
-                AccentBrush,
+                showRouteChange ? Brushes.White : AccentBrush,
                 FontWeights.SemiBold,
                 maxLength: 5);
             timeBox.ToolTip = "Abfahrtszeit. Enter übernimmt und springt zur nächsten Zeit (grauer Vorschlag).";
@@ -994,7 +994,7 @@ public sealed class UmlaufImportDialog : Window
             var nameText = new TextBlock
             {
                 Text = string.IsNullOrWhiteSpace(stop.Name) ? "(ohne Name)" : stop.Name,
-                Foreground = UiTheme.ForegroundBrush,
+                Foreground = showRouteChange ? Brushes.White : UiTheme.ForegroundBrush,
                 FontSize = 12,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Cursor = Cursors.Hand,
@@ -1010,12 +1010,10 @@ public sealed class UmlaufImportDialog : Window
             {
                 nameCol.Children.Add(new TextBlock
                 {
-                    Text = string.Equals(
-                            stop.Name?.Trim(),
-                            UmlaufImportPlanner.SwsAusfahrtStopName,
-                            StringComparison.OrdinalIgnoreCase)
-                        ? "Betr.Hof → erste Fahrt"
-                        : "letzte Fahrt → Betr.Hof",
+                    Text = UmlaufImportPlanner.IsSwsDepotStopName(stop.Name) &&
+                           (stop.Name?.Contains("ausfahrt", StringComparison.OrdinalIgnoreCase) ?? false)
+                        ? "Betriebshof → erste Fahrt"
+                        : "letzte Fahrt → Betriebshof",
                     Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xCD, 0xD2)),
                     FontSize = 11,
                     Margin = new Thickness(0, 2, 0, 0)
@@ -1026,7 +1024,7 @@ public sealed class UmlaufImportDialog : Window
                 nameCol.Children.Add(new TextBlock
                 {
                     Text = routeChangeHint,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xC8, 0xE6, 0xC9)),
+                    Foreground = Brushes.White,
                     FontSize = 11,
                     FontWeight = FontWeights.SemiBold,
                     TextWrapping = TextWrapping.Wrap,
@@ -1050,7 +1048,9 @@ public sealed class UmlaufImportDialog : Window
                 destCol.Children.Add(new TextBlock
                 {
                     Text = stopHint,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xEB, 0x3B)),
+                    Foreground = showRouteChange
+                        ? Brushes.White
+                        : new SolidColorBrush(Color.FromRgb(0xFF, 0xEB, 0x3B)),
                     FontSize = 11,
                     FontWeight = FontWeights.SemiBold,
                     TextTrimming = TextTrimming.CharacterEllipsis,
@@ -1065,7 +1065,9 @@ public sealed class UmlaufImportDialog : Window
             var destText = new TextBlock
             {
                 Text = string.IsNullOrWhiteSpace(dest) ? "Ziele…" : dest,
-                Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+                Foreground = showRouteChange
+                    ? Brushes.White
+                    : new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
                 FontSize = 11,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -1400,7 +1402,8 @@ public sealed class UmlaufImportDialog : Window
         }
 
         var einIdx = trip.Stops.FindIndex(s =>
-            string.Equals(s.Name, UmlaufImportPlanner.SwsEinfahrtStopName, StringComparison.OrdinalIgnoreCase));
+            UmlaufImportPlanner.IsSwsDepotStopName(s.Name) &&
+            (s.Name?.Contains("einfahrt", StringComparison.OrdinalIgnoreCase) ?? false));
         if (einIdx >= 0 && index > einIdx)
         {
             index = einIdx;
@@ -1432,10 +1435,8 @@ public sealed class UmlaufImportDialog : Window
                 trip.EndTime = trip.Stops[^1].Time!;
             }
 
-            if (string.Equals(
-                    trip.Stops[^1].Name,
-                    UmlaufImportPlanner.SwsEinfahrtStopName,
-                    StringComparison.OrdinalIgnoreCase))
+            if (UmlaufImportPlanner.IsSwsDepotStopName(trip.Stops[^1].Name) &&
+                (trip.Stops[^1].Name?.Contains("einfahrt", StringComparison.OrdinalIgnoreCase) ?? false))
             {
                 UmlaufImportPlanner.EnsureDienstfahrtEndBeforeEinfahrt(trip.Stops, _editor);
             }

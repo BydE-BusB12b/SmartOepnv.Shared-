@@ -17,11 +17,12 @@ public static class RouteChainPdfGenerator
     private const string Accent = "#4FC3F7";
     private const string Muted = "#BBDEFB";
     private const string White = "#FFFFFF";
+    private const string Emphasis = "#FFB74D";
 
     static RouteChainPdfGenerator() =>
         QuestPDF.Settings.License = LicenseType.Community;
 
-    public sealed record StopRow(string Name, string TimeDisplay, bool IsRouteChangeStop);
+    public sealed record StopRow(string Name, string TimeDisplay, bool IsRouteChangeStop, string? DestinationHint = null);
 
     public sealed record Segment(
         string Title,
@@ -191,12 +192,18 @@ public static class RouteChainPdfGenerator
                             : stop.Name;
                         var nameColor = stop.IsRouteChangeStop ? Accent : White;
 
-                        table.Cell().PaddingTop(3).Text(name)
-                            .FontSize(11)
-                            .FontColor(nameColor);
+                        var hint = stop.DestinationHint;
+                        table.Cell().PaddingTop(3).Text(text =>
+                        {
+                            text.Span(name).FontSize(11).FontColor(nameColor);
+                            if (!string.IsNullOrWhiteSpace(hint))
+                            {
+                                text.Span($"   {hint}").FontSize(11).FontColor(Emphasis);
+                            }
+                        });
                         table.Cell().PaddingTop(3).AlignRight().Text(stop.TimeDisplay)
                             .FontSize(11)
-                            .FontColor(White);
+                            .FontColor(Emphasis);
                     }
                 });
             });

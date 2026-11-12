@@ -83,7 +83,8 @@ public sealed class MobitecOutImportDialog : Window
             Text = "Ziele aus OUT auswählen",
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 0, 0, 6)
+            Margin = new Thickness(0, 0, 0, 6),
+            Foreground = LightModeTextBrush()
         };
         Grid.SetRow(title, 0);
 
@@ -93,9 +94,10 @@ public sealed class MobitecOutImportDialog : Window
                    "„!“ = diese Zielnummer gibt es bereits – Import aktualisiert dieses Ziel. " +
                    "Linie zeigt „Grafik“ bei Linien-Bitmap. Nur markierte Zeilen werden importiert.",
             TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.75,
+            Opacity = 0.95,
             FontSize = 12,
-            Margin = new Thickness(0, 0, 0, 10)
+            Margin = new Thickness(0, 0, 0, 10),
+            Foreground = LightModeTextBrush()
         };
         Grid.SetRow(hint, 1);
 
@@ -110,8 +112,9 @@ public sealed class MobitecOutImportDialog : Window
         {
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(16, 0, 0, 0),
-            Opacity = 0.8,
-            FontSize = 12
+            Opacity = 0.95,
+            FontSize = 12,
+            Foreground = LightModeTextBrush()
         };
         left.Children.Add(_selectionSummary);
         DockPanel.SetDock(left, Dock.Left);
@@ -170,6 +173,12 @@ public sealed class MobitecOutImportDialog : Window
         var ok = DialogOwnerHelper.ShowOwnedDialog(dialog, owner) == true;
         return ok ? dialog.SelectedImports : null;
     }
+
+    /// <summary>Hellmodus: Gelb statt Dunkelblau. Dunkelmodus behält die helle Schrift.</summary>
+    private static Brush LightModeTextBrush() =>
+        UiTheme.IsLight
+            ? new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07))
+            : UiTheme.ForegroundBrush;
 
     private DataGrid CreateGrid()
     {

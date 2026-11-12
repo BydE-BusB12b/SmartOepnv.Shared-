@@ -20,6 +20,9 @@
     <Content Include="Assets\stops_vrr.csv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <EmbeddedResource Include="Assets\Zstndrd.bib">
+      <LogicalName>SmartOepnv.Core.Assets.Zstndrd.bib</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

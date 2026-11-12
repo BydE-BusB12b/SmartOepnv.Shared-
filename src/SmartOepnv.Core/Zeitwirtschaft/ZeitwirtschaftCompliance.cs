@@ -85,6 +85,9 @@ public sealed class ZeitwirtschaftShiftFigures
 
     public int StatutoryMinutes { get; init; }
 
+    /// <summary>Kommen bis Gehen, Pausen eingeschlossen.</summary>
+    public int PresenceMinutes { get; init; }
+
     public int QualifyingPauseMinutes { get; init; }
 
     public int PayMinutes { get; init; }
@@ -394,10 +397,10 @@ public static class ZeitwirtschaftCompliance
             hints.Add("Storno hebt die Aufzeichnung nicht auf.");
         }
 
-        var unclosed = entry.Pauses.Any(p => p.StartEpochMs > 0 && p.EndEpochMs is not > 0);
+        var unclosed = entry.Pauses.Any(p => p.StartEpochMs > 0 && p.EffectiveEndMs is not > 0);
         if (unclosed)
         {
-            hints.Add("Pause ohne Ende. Sie wird nicht von der Arbeitszeit abgezogen.");
+            hints.Add("Pause ohne Ende. Sie wird nicht von den Lohnstunden abgezogen.");
         }
 
         if (end is null || end <= start)
@@ -425,12 +428,13 @@ public static class ZeitwirtschaftCompliance
         var qualifying = ZeitwirtschaftArbzg.QualifyingIntervals(closed);
         var qualifyingMinutes = ZeitwirtschaftArbzg.QualifyingMinutes(closed);
         var shortMinutes = Math.Max(0, ZeitwirtschaftArbzg.MinutesOf(closed) - qualifyingMinutes);
-        var statutory = Math.Max(0, ZeitwirtschaftMergeService.WholeMinutesBetween(start, end.Value) - qualifyingMinutes);
+        var presence = ZeitwirtschaftMergeService.WholeMinutesBetween(start, end.Value);
+        var statutory = Math.Max(0, presence - qualifyingMinutes);
         if (shortMinutes > 0)
         {
             hints.Add(
                 "Kurzunterbrechung " + ZeitwirtschaftMergeService.FormatMinutesHhMm(shortMinutes) +
-                " bleibt Arbeitszeit.");
+                " bleibt in den Lohnstunden.");
         }
 
         var day = LocalDate(start);
@@ -507,6 +511,7 @@ public static class ZeitwirtschaftCompliance
             new ZeitwirtschaftShiftFigures
             {
                 StatutoryMinutes = statutory,
+                PresenceMinutes = presence,
                 QualifyingPauseMinutes = qualifyingMinutes,
                 PayMinutes = pay,
                 Hints = hints

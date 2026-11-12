@@ -65,7 +65,11 @@ public static class GpsAnsagenRouteExportSync
                     .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routeOfflineGuidance")))
             .ToList();
 
-        SyncRoutesAndLineCourse(packageRoutes, root, package.RouteInteriorDisplayDestinationsByRoute);
+        SyncRoutesAndLineCourse(
+            packageRoutes,
+            root,
+            package.RouteInteriorDisplayDestinationsByRoute,
+            package.RouteAnnouncementVoicesByRoute);
         // Wie Lite-Update: routeStops als Kartei-Overlays (Audio weiterhin separat in embeddedSounds).
         ManagedStopTemplateEditor.SaveToRoot(root, package.StopTemplates);
         SyncRouteStops(package, packageRoutes, root, catalogOverlays: true);
@@ -107,6 +111,11 @@ public static class GpsAnsagenRouteExportSync
             root,
             packageRoutes,
             package.RouteInteriorDisplayDestinationsByRoute);
+        RouteAnnouncementVoiceEditor.SaveToRoot(
+            root,
+            packageRoutes,
+            package.RouteAnnouncementVoicesByRoute);
+        RouteChainIdentityEditor.SaveToRoot(root, packageRoutes, package.RouteChainIdentitiesByRoute);
         RouteItcsRouteListEditor.SaveToRoot(root, packageRoutes, package.RoutesExcludedFromItcsRouteList);
         RouteMainDeviceOnlyEditor.SaveToRoot(root, packageRoutes, package.RoutesMainDeviceOnly);
         AutoScheduleSourceRouteEditor.SaveToRoot(root, packageRoutes, package.AutoScheduleSourceByRoute);
@@ -271,8 +280,19 @@ public static class GpsAnsagenRouteExportSync
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(name) || existing.ContainsKey(name))
+            if (string.IsNullOrWhiteSpace(name))
             {
+                continue;
+            }
+
+            if (existing.ContainsKey(name))
+            {
+                var present = new HashSet<string>(existing.Keys, StringComparer.OrdinalIgnoreCase);
+                if (AnnouncementVoiceFiles.TryEmbedVoice2Sibling(root, workspace, name, present))
+                {
+                    existing = GpsAnsagenEmbeddedSoundsJson.ReadAllEntries(root);
+                }
+
                 continue;
             }
 
@@ -290,6 +310,8 @@ public static class GpsAnsagenRouteExportSync
             try
             {
                 EmbeddedSoundsEditor.UpsertFromFile(root, name, path);
+                var names = new HashSet<string>(existing.Keys, StringComparer.OrdinalIgnoreCase) { name };
+                AnnouncementVoiceFiles.TryEmbedVoice2Sibling(root, workspace, name, names);
                 existing = GpsAnsagenEmbeddedSoundsJson.ReadAllEntries(root);
             }
             catch
@@ -318,7 +340,8 @@ public static class GpsAnsagenRouteExportSync
     private static void SyncRoutesAndLineCourse(
         IEnumerable<string> routesToExport,
         JsonObject root,
-        IDictionary<string, string> interiorDisplayDestinations)
+        IDictionary<string, string> interiorDisplayDestinations,
+        IDictionary<string, string> announcementVoices)
     {
         var simpleRoutes = new JsonArray();
         var lineCourseRoutes = new JsonObject();
@@ -364,6 +387,14 @@ public static class GpsAnsagenRouteExportSync
                 if (!string.IsNullOrEmpty(interiorDestination))
                 {
                     routeObj["interiorDestinationText"] = interiorDestination;
+                }
+
+                var announcementVoice = RouteAnnouncementVoiceEditor.GetForRoute(
+                    announcementVoices,
+                    displayKey);
+                if (AnnouncementVoiceFiles.IsVoice2(announcementVoice))
+                {
+                    routeObj["announcementVoice"] = AnnouncementVoiceFiles.Voice2;
                 }
             }
 
@@ -575,7 +606,11 @@ public static class GpsAnsagenRouteExportSync
                     .Union(RoutePackagePhoneMetadata.GetRouteKeysFromBlock(root, "routeOfflineGuidance")))
             .ToList();
 
-        SyncRoutesAndLineCourse(packageRoutes, root, package.RouteInteriorDisplayDestinationsByRoute);
+        SyncRoutesAndLineCourse(
+            packageRoutes,
+            root,
+            package.RouteInteriorDisplayDestinationsByRoute,
+            package.RouteAnnouncementVoicesByRoute);
         // Lite-Update: Kartei + schlanke Overlays statt voller Stop-Kopien
         ManagedStopTemplateEditor.SaveToRoot(root, package.StopTemplates);
         SyncRouteStops(package, packageRoutes, root, catalogOverlays: true);
@@ -590,6 +625,11 @@ public static class GpsAnsagenRouteExportSync
             root,
             packageRoutes,
             package.RouteInteriorDisplayDestinationsByRoute);
+        RouteAnnouncementVoiceEditor.SaveToRoot(
+            root,
+            packageRoutes,
+            package.RouteAnnouncementVoicesByRoute);
+        RouteChainIdentityEditor.SaveToRoot(root, packageRoutes, package.RouteChainIdentitiesByRoute);
         RouteItcsRouteListEditor.SaveToRoot(root, packageRoutes, package.RoutesExcludedFromItcsRouteList);
         RouteMainDeviceOnlyEditor.SaveToRoot(root, packageRoutes, package.RoutesMainDeviceOnly);
         AutoScheduleSourceRouteEditor.SaveToRoot(root, packageRoutes, package.AutoScheduleSourceByRoute);
@@ -691,7 +731,8 @@ public static class GpsAnsagenRouteExportSync
             SyncRoutesAndLineCourse(
                 routesToExport,
                 root,
-                package.RouteInteriorDisplayDestinationsByRoute);
+                package.RouteInteriorDisplayDestinationsByRoute,
+                package.RouteAnnouncementVoicesByRoute);
             SyncRouteStops(package, routesToExport, root, replaceAll: true, catalogOverlays: catalogOverlays);
             RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", routesToExport);
             RoutePathDraftRepository.NormalizeDraftKeysToCanonical(root);
@@ -703,7 +744,8 @@ public static class GpsAnsagenRouteExportSync
             SyncRoutesAndLineCourse(
                 routesToExport,
                 root,
-                package.RouteInteriorDisplayDestinationsByRoute);
+                package.RouteInteriorDisplayDestinationsByRoute,
+                package.RouteAnnouncementVoicesByRoute);
         }
 
         root.Remove("routeDirections");

@@ -58,6 +58,9 @@ public sealed class RouteStopItem
     public string MobitecEndDestinationId { get; set; } = string.Empty;
 
     public bool IsEndStop { get; set; }
+
+    /// <summary>Abfahrtscountdown an dieser Starthaltestelle. Standard an, Betriebsfahrten aus.</summary>
+    public bool DepartureCountdownEnabled { get; set; } = true;
     /// <summary>Englische Endhaltestellen-Ansage (aktueller Kartei-Eintrag „Endhaltestelle“).</summary>
     public bool PlayEndStopAnnouncementEn { get; set; }
     /// <summary>Niederländische Endhaltestellen-Ansage (Kartei „Eindhalteplaats“ / Endhaltestelle NL).</summary>
@@ -167,6 +170,7 @@ public sealed class RouteStopItem
         MobitecEndDestination = MobitecEndDestination,
         MobitecEndDestinationId = MobitecEndDestinationId,
         IsEndStop = IsEndStop,
+        DepartureCountdownEnabled = DepartureCountdownEnabled,
         PlayEndStopAnnouncementEn = PlayEndStopAnnouncementEn,
         PlayEndStopAnnouncementNl = PlayEndStopAnnouncementNl,
         PlayStartStopGreeting = PlayStartStopGreeting,
@@ -238,6 +242,7 @@ public sealed class RouteStopItem
         MobitecEndDestination = other.MobitecEndDestination;
         MobitecEndDestinationId = other.MobitecEndDestinationId;
         IsEndStop = other.IsEndStop;
+        DepartureCountdownEnabled = other.DepartureCountdownEnabled;
         PlayEndStopAnnouncementEn = other.PlayEndStopAnnouncementEn;
         PlayEndStopAnnouncementNl = other.PlayEndStopAnnouncementNl;
         PlayStartStopGreeting = other.PlayStartStopGreeting;

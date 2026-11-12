@@ -151,6 +151,12 @@ public static class SevTftRouteBuilder
         return true;
     }
 
+    /// <summary>Hinweis zur Namensform, kein Fehler für den Benutzer.</summary>
+    public static bool IsRouteNameFormatHint(string? error) =>
+        error is not null &&
+        (error.StartsWith("Im Routennamen fehlt das Ziel", StringComparison.Ordinal) ||
+         error.StartsWith("Im Routennamen fehlt die Linie", StringComparison.Ordinal));
+
     /// <summary>ITCS-Verlaufsname, nicht der IBIS-Kurztext.</summary>
     public static string ResolveStopLabel(RouteStopItem stop)
     {

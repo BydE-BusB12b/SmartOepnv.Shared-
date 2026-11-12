@@ -18,6 +18,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     private string _sideLine1 = string.Empty;
     private string _sideLine2 = string.Empty;
     private bool _isStartTarget;
+    private bool _suppressCycleSync;
 
     public OutsideDisplayProgram()
     {
@@ -127,11 +128,13 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     private void OnCycleChanged()
     {
+        if (_suppressCycleSync)
+        {
+            return;
+        }
+
         SyncLegacyLinesFromCycles();
-        OnPropertyChanged(nameof(FrontPreview));
-        OnPropertyChanged(nameof(SidePreview));
-        OnPropertyChanged(nameof(WechseltextPreview));
-        OnPropertyChanged(nameof(WechseltextCount));
+        NotifyCyclePreviews();
     }
 
     internal void SyncLegacyLinesFromCycles()
@@ -146,13 +149,96 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
 
     private void SyncCyclesFromLegacyLines()
     {
-        if (FrontCycles.Count == 0)
+        if (FrontCycles.Count == 0 || SideCycles.Count == 0)
         {
             return;
         }
 
-        FrontCycles[0].SetFromPair(_frontLine1, _frontLine2);
-        SideCycles[0].SetFromPair(_sideLine1, _sideLine2);
+        // Front-Zyklus löst sonst sofort SyncLegacyLinesFromCycles aus und leert die
+        // schon gelesenen Seitenzeilen, bevor sie in den Seiten-Zyklus geschrieben werden.
+        _suppressCycleSync = true;
+        try
+        {
+            FrontCycles[0].SetFromPair(_frontLine1, _frontLine2);
+            SideCycles[0].SetFromPair(_sideLine1, _sideLine2);
+        }
+        finally
+        {
+            _suppressCycleSync = false;
+        }
+
+        NotifyCyclePreviews();
+    }
+
+    /// <summary>
+    /// Grafikziele speichern auf der Seite oft nur den Anzeigenamen.
+    /// Steht im Seitenbild ein anderer Text, wird der übernommen.
+    /// </summary>
+    private void RecoverSideTextFromBitmap()
+    {
+        if (!FrameContainsBitmap(MobitecSideFrame))
+        {
+            return;
+        }
+
+        var stored = $"{_sideLine1}\n{_sideLine2}".Trim();
+        var placeholder = string.IsNullOrWhiteSpace(stored)
+            || string.Equals(stored, Name.Trim(), StringComparison.Ordinal);
+        if (!placeholder)
+        {
+            return;
+        }
+
+        var fonts = MobitecSignFont.LoadEnabled();
+        var sign = MobitecBitmapFrame.DecodeSign(MobitecSideFrame, MobitecBitmapFrame.SideWidth, fonts);
+        if (sign.Pages.Count == 0)
+        {
+            return;
+        }
+
+        string? best = null;
+        var bestCoverage = 0d;
+        foreach (var face in fonts)
+        {
+            if (!face.IsFavorite)
+            {
+                continue;
+            }
+
+            if (!face.TryReadBitmapText(sign.Pages[0], out var text, out var coverage) || coverage <= bestCoverage)
+            {
+                continue;
+            }
+
+            best = text;
+            bestCoverage = coverage;
+        }
+
+        if (string.IsNullOrWhiteSpace(best))
+        {
+            return;
+        }
+
+        var lines = best.Split('\n');
+        var line1 = lines[0].Trim();
+        var line2 = lines.Length > 1 ? lines[1].Trim() : string.Empty;
+        if (string.Equals(line1, _sideLine1, StringComparison.Ordinal) &&
+            string.Equals(line2, _sideLine2, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _sideLine1 = line1;
+        _sideLine2 = line2;
+        SyncCyclesFromLegacyLines();
+    }
+
+    private void NotifyCyclePreviews()
+    {
+        OnPropertyChanged(nameof(FrontPreview));
+        OnPropertyChanged(nameof(SidePreview));
+        OnPropertyChanged(nameof(WechseltextPreview));
+        OnPropertyChanged(nameof(WechseltextCount));
     }
 
     public string Name
@@ -223,14 +309,19 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
                 return string.Empty;
             }
 
-            if (FrameContainsBitmap(MobitecLineFrame))
+            var lineKinds = MobitecBitmapFrame.PageKinds(MobitecLineFrame);
+            if (lineKinds.Contains("Grafik") || lineKinds.Contains("Text+Grafik"))
             {
-                return "Linie: Grafik";
+                return "Linie: " + string.Join(" → ", lineKinds);
             }
 
-            return string.IsNullOrWhiteSpace(Ds001Value)
-                ? string.Empty
-                : $"Linie: {Ds001Value.Trim()}";
+            if (string.IsNullOrWhiteSpace(Ds001Value))
+            {
+                return string.Empty;
+            }
+
+            var line = Ds001Value.Trim().Replace(" | ", " → ");
+            return $"Linie: {line}";
         }
     }
 
@@ -304,32 +395,22 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             }
 
             var parts = new List<string>();
-            if (FrameContainsBitmap(MobitecFrontFrame)) parts.Add("Front");
-            if (FrameContainsBitmap(MobitecSideFrame)) parts.Add("Seite");
-            if (FrameContainsBitmap(MobitecLineFrame)) parts.Add("Linie");
-            if (parts.Count == 0)
-            {
-                return "OUT-Rohframe (nur Text)";
-            }
-
-            var gfx = $"OUT-Grafik: {string.Join("+", parts)}";
-            // Häufige Verwechslung: Logo auf Front, Linie bleibt Text (z. B. Mc Donalds + RE47)
-            if (FrameContainsBitmap(MobitecFrontFrame) &&
-                !FrameContainsBitmap(MobitecLineFrame) &&
-                !string.IsNullOrWhiteSpace(Ds001Value))
-            {
-                return $"{gfx} · Linie-Text „{Ds001Value.Trim()}“ (kein Linien-Logo)";
-            }
-
-            if (FrameContainsBitmap(MobitecLineFrame))
-            {
-                return string.IsNullOrWhiteSpace(Ds001Value)
-                    ? $"{gfx} · Linienanzeige = Bitmap (kein Linien-Text)"
-                    : $"{gfx} · Linienanzeige = Bitmap; Feld „{Ds001Value.Trim()}“ nur Fallback";
-            }
-
-            return gfx;
+            AddBoard(parts, "Front", MobitecFrontFrame);
+            AddBoard(parts, "Seite", MobitecSideFrame);
+            AddBoard(parts, "Linie", MobitecLineFrame);
+            return parts.Count == 0 ? string.Empty : string.Join(" · ", parts);
         }
+    }
+
+    private static void AddBoard(List<string> parts, string name, byte[]? frame)
+    {
+        var kinds = MobitecBitmapFrame.PageKinds(frame);
+        if (kinds.Count == 0)
+        {
+            return;
+        }
+
+        parts.Add(name + ": " + string.Join(" → ", kinds));
     }
 
     private static bool FrameContainsBitmap(byte[]? frame)
@@ -1037,6 +1118,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             program.SyncCyclesFromLegacyLines();
             program.MobitecFrontFrame = IsMobitecWireFrame(frontBytes) ? frontBytes : null;
             program.MobitecSideFrame = IsMobitecWireFrame(sideBytes) ? sideBytes : null;
+            program.RecoverSideTextFromBitmap();
         }
         else
         {
@@ -1302,7 +1384,9 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         parts.Add(EncodeUtf8(AutoFitFonts ? "true" : "false"));
         // Index 16: Mobitec-Linien-Rohframe (Tasse/Schraubenschlüssel/Logo/…)
         parts.Add(Protocol == OutsideDisplayProtocolKind.Mobitec
-            ? EncodeBytes(MobitecLineFrame ?? Array.Empty<byte>())
+            ? EncodeBytes(MobitecLineFrame is { Length: > 0 } line
+                ? line
+                : Array.Empty<byte>())
             : string.Empty);
         // Index 17: Mobitec-ICU-Zielnummer (leer wenn nicht gesetzt)
         parts.Add(DestinationNumber is int dn
@@ -1517,6 +1601,7 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         OnPropertyChanged(nameof(MobitecLineListLabel));
         OnPropertyChanged(nameof(FrontPreview));
         OnPropertyChanged(nameof(WechseltextPreview));
+        OnPropertyChanged(nameof(IntervalSeconds));
     }
 
     public void RefreshListDisplayProperties()

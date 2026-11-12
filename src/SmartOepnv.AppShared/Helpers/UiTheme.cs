@@ -118,6 +118,18 @@ public static class UiTheme
         resources["SmartForegroundBrush"] = Brush(foreground);
         resources["SmartPanelBrush"] = Brush(panel);
         resources["SmartOnPrimaryBrush"] = Brush(Colors.White);
+        if (useLight)
+        {
+            var darkBlue = foreground;
+            resources["SmartListHintBrush"] = Brush(darkBlue);
+            resources["SmartListLineBrush"] = Brush(darkBlue);
+            resources["SmartListDetailBrush"] = Brush(darkBlue);
+            resources["SmartListTimestampBrush"] = Brush(darkBlue);
+            resources["SmartStatusOnlineBrush"] = Brush(Color.FromRgb(0x1B, 0x5E, 0x20));
+            resources["SmartStatusStaleBrush"] = Brush(Color.FromRgb(0xB7, 0x1C, 0x1C));
+            resources["SmartStatusOfflineBrush"] = Brush(Color.FromRgb(0x4A, 0x14, 0x8C));
+            resources["SmartStatusIdleBrush"] = Brush(darkBlue);
+        }
 
         resources["MaterialDesign.Brush.Primary"] = Brush(primary);
         resources["MaterialDesign.Brush.Primary.Dark"] = Brush(primaryDark);

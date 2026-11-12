@@ -14,6 +14,10 @@ public sealed class ZeitwirtschaftMergedEntry
 
     public required string DevicePhone { get; init; }
 
+    public string? CheckInPoint { get; init; }
+
+    public string? CheckOutPoint { get; init; }
+
     public long StartEpochMs { get; init; }
 
     public long? EndEpochMs { get; init; }
@@ -47,6 +51,11 @@ public sealed class ZeitwirtschaftMergedEntry
     /// <summary>Manuelle Umstellung des Tages. Null folgt der Diensteinteilung.</summary>
     public bool? SixthDuty { get; init; }
 
+    /// <summary>Im Planer nachgetragen, weil Ein- oder Ausstempeln gefehlt hat.</summary>
+    public bool Manual { get; init; }
+
+    public string? ManualReason { get; init; }
+
 }
 
 public sealed class ZeitwirtschaftPause
@@ -54,6 +63,16 @@ public sealed class ZeitwirtschaftPause
     public long StartEpochMs { get; init; }
 
     public long? EndEpochMs { get; init; }
+
+    public long? CorrectedStartEpochMs { get; init; }
+
+    public long? CorrectedEndEpochMs { get; init; }
+
+    public long EffectiveStartMs =>
+        CorrectedStartEpochMs is > 0 ? CorrectedStartEpochMs.Value : StartEpochMs;
+
+    public long? EffectiveEndMs =>
+        CorrectedEndEpochMs is > 0 ? CorrectedEndEpochMs : EndEpochMs;
 }
 
 
@@ -116,6 +135,9 @@ public sealed class ZeitwirtschaftTimeTableRow
 
     public required string Pause { get; init; }
 
+    /// <summary>Eine Zeile je Pause. Ignoriert heißt: zählt nicht als Ruhepause und bleibt in den Lohnstunden.</summary>
+    public IReadOnlyList<ZeitwirtschaftPauseLine> PauseLines { get; init; } = [];
+
     /// <summary>Geschlossene Pausen in vollen Minuten, für die Summe.</summary>
     public int PauseMinutes { get; init; }
 
@@ -132,6 +154,13 @@ public sealed class ZeitwirtschaftTimeTableRow
 }
 
 
+
+public sealed class ZeitwirtschaftPauseLine
+{
+    public required string Text { get; init; }
+
+    public bool Ignored { get; init; }
+}
 
 public sealed class ZeitwirtschaftMonthOption
 
