@@ -45,16 +45,28 @@ public static class RouteAnnouncementVoiceEditor
             return AnnouncementVoiceFiles.Voice2;
         }
 
+        foreach (var entry in map)
+        {
+            if (!AnnouncementVoiceFiles.IsVoice2(entry.Value))
+            {
+                continue;
+            }
+
+            if (SameTrip(routeDisplayKey, entry.Key))
+            {
+                return AnnouncementVoiceFiles.Voice2;
+            }
+        }
+
         return string.Empty;
     }
 
     public static void SetForRoute(IDictionary<string, string> map, string routeDisplayKey, string? voice)
     {
         var key = RouteDisplayHelper.ToDistributionDisplayString(routeDisplayKey);
-        map.Remove(routeDisplayKey.Trim());
+        RemoveSameTrip(map, routeDisplayKey);
         if (!AnnouncementVoiceFiles.IsVoice2(voice))
         {
-            map.Remove(key);
             return;
         }
 
@@ -63,9 +75,56 @@ public static class RouteAnnouncementVoiceEditor
 
     public static void RemoveRoute(IDictionary<string, string> map, string routeDisplayKey)
     {
-        var key = RouteDisplayHelper.ToDistributionDisplayString(routeDisplayKey);
-        map.Remove(key);
+        RemoveSameTrip(map, routeDisplayKey);
+    }
+
+    /// <summary>
+    /// Dieselbe Fahrt, auch wenn die Fahrtnummer führende Nullen hat
+    /// oder der Name ein Datum vorangestellt hat.
+    /// </summary>
+    internal static bool SameTrip(string? left, string? right)
+    {
+        var a = RouteDisplayHelper.Parse(RouteDisplayHelper.ToDistributionDisplayString(left ?? string.Empty));
+        var b = RouteDisplayHelper.Parse(RouteDisplayHelper.ToDistributionDisplayString(right ?? string.Empty));
+        if (string.IsNullOrWhiteSpace(a.Name) || string.IsNullOrWhiteSpace(b.Name))
+        {
+            return false;
+        }
+
+        if (!string.Equals(a.TripNumber, b.TripNumber, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.Equals(
+                RouteDisplayHelper.NormalizeLineCourse(a.LineCourse),
+                RouteDisplayHelper.NormalizeLineCourse(b.LineCourse),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(a.Name, b.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(
+            RouteDisplayHelper.StripLeadingCalendarDatePrefix(a.Name),
+            RouteDisplayHelper.StripLeadingCalendarDatePrefix(b.Name),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void RemoveSameTrip(IDictionary<string, string> map, string routeDisplayKey)
+    {
+        var doomed = map.Keys.Where(key => SameTrip(routeDisplayKey, key)).ToList();
+        foreach (var key in doomed)
+        {
+            map.Remove(key);
+        }
+
         map.Remove(routeDisplayKey.Trim());
+        map.Remove(RouteDisplayHelper.ToDistributionDisplayString(routeDisplayKey));
     }
 
     public static void SaveToRoot(
@@ -79,10 +138,9 @@ public static class RouteAnnouncementVoiceEditor
             .ToHashSet(StringComparer.Ordinal);
 
         var obj = new JsonObject();
-        foreach (var entry in map.OrderBy(e => e.Key, StringComparer.OrdinalIgnoreCase))
+        foreach (var key in allowedKeys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase))
         {
-            var key = RouteDisplayHelper.ToDistributionDisplayString(entry.Key);
-            if (!allowedKeys.Contains(key) || !AnnouncementVoiceFiles.IsVoice2(entry.Value))
+            if (!AnnouncementVoiceFiles.IsVoice2(GetForRoute(map, key)))
             {
                 continue;
             }

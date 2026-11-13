@@ -104,8 +104,7 @@ public partial class AnnouncementsLibraryViewModel
         }
 
         SpecialBuildingBlocksSummary =
-            $"{present} von {SpecialBuildingBlocks.Count} Bausteinen vorhanden · " +
-            "Töne hinzufügen/entfernen (ohne Haltestellenansage)";
+            $"{present} von {SpecialBuildingBlocks.Count} Bausteinen vorhanden";
         SelectedSpecialBuildingBlock = SpecialBuildingBlocks.FirstOrDefault(b => !b.IsPresent)
             ?? SpecialBuildingBlocks.FirstOrDefault();
     }

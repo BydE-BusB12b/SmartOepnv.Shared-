@@ -629,6 +629,7 @@ public static class GpsAnsagenRouteExportSync
             root,
             packageRoutes,
             package.RouteAnnouncementVoicesByRoute);
+        EnsureAnnouncementVoiceMap(root);
         RouteChainIdentityEditor.SaveToRoot(root, packageRoutes, package.RouteChainIdentitiesByRoute);
         RouteItcsRouteListEditor.SaveToRoot(root, packageRoutes, package.RoutesExcludedFromItcsRouteList);
         RouteMainDeviceOnlyEditor.SaveToRoot(root, packageRoutes, package.RoutesMainDeviceOnly);
@@ -674,6 +675,19 @@ public static class GpsAnsagenRouteExportSync
     {
         TicketProductEditor.SaveToRoot(root, package.TicketProducts);
         TicketTemplateEditor.SaveToRoot(root, package.TicketTemplate);
+    }
+
+    /// <summary>
+    /// Leeres Objekt bleibt stehen. Die App erkennt daran, dass das Update die Stimme trägt
+    /// und eine Fahrt ohne Eintrag auf Petra zurücksetzt. Ein fehlender Schlüssel würde die
+    /// vom vollen Export gesetzte Stimme stehen lassen.
+    /// </summary>
+    private static void EnsureAnnouncementVoiceMap(JsonObject root)
+    {
+        if (root[RouteAnnouncementVoiceEditor.RootFieldName] is null)
+        {
+            root[RouteAnnouncementVoiceEditor.RootFieldName] = new JsonObject();
+        }
     }
 
     private static void ApplyLiteVehicleUpdateMetadata(
@@ -733,6 +747,11 @@ public static class GpsAnsagenRouteExportSync
                 root,
                 package.RouteInteriorDisplayDestinationsByRoute,
                 package.RouteAnnouncementVoicesByRoute);
+            RouteAnnouncementVoiceEditor.SaveToRoot(
+                root,
+                routesToExport,
+                package.RouteAnnouncementVoicesByRoute);
+            EnsureAnnouncementVoiceMap(root);
             SyncRouteStops(package, routesToExport, root, replaceAll: true, catalogOverlays: catalogOverlays);
             RoutePackagePhoneMetadata.SyncStringKeyedRouteBlocks(root, "routeOfflineGuidance", routesToExport);
             RoutePathDraftRepository.NormalizeDraftKeysToCanonical(root);
@@ -746,6 +765,11 @@ public static class GpsAnsagenRouteExportSync
                 root,
                 package.RouteInteriorDisplayDestinationsByRoute,
                 package.RouteAnnouncementVoicesByRoute);
+            RouteAnnouncementVoiceEditor.SaveToRoot(
+                root,
+                routesToExport,
+                package.RouteAnnouncementVoicesByRoute);
+            EnsureAnnouncementVoiceMap(root);
         }
 
         root.Remove("routeDirections");

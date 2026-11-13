@@ -933,22 +933,14 @@
                     <DockPanel LastChildFill="True">
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Spezialbausteine" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,4" />
-                            <TextBlock Text="Feste Bausteine + Linien aus Routen. Fehlende Töne über „Ton hinzufügen…“ – ohne Haltestellenansage."
-                                       Opacity="0.65" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding SpecialBuildingBlocksSummary}" Opacity="0.85" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
                             <Button Content="Ton hinzufügen…" Command="{Binding AddLineSpecialBuildingBlockCommand}"
                                     Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,0,4" Padding="10,4" />
                             <Button Content="Aus Liste entfernen" Command="{Binding RemoveSelectedSpecialBuildingBlockCommand}"
-                                    Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,0,4" Padding="10,4"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}" Padding="10,4"
                                     IsEnabled="{Binding CanRemoveSelectedSpecialBuildingBlock}" />
-                            <Button Content="Liste aktualisieren" Command="{Binding RefreshSpecialBuildingBlocksListCommand}"
-                                    Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,0,4" Padding="10,4" />
-                            <Button Content="Vorhandene in embeddedSounds übernehmen" Command="{Binding StageAllPresentSpecialBuildingBlocksCommand}"
-                                    Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,0,4" Padding="10,4" />
-                            <Button Content="Ordner Rohdateien öffnen" Command="{Binding OpenRawSoundsFolderCommand}"
-                                    Style="{StaticResource MaterialDesignOutlinedButton}" Padding="10,4" />
                         </StackPanel>
                         <ListBox ItemsSource="{Binding SpecialBuildingBlocks}" SelectedItem="{Binding SelectedSpecialBuildingBlock}"
                                  BorderThickness="1" BorderBrush="#334155" Background="Transparent"

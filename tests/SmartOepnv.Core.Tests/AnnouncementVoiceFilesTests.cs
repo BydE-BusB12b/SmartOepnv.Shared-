@@ -66,4 +66,25 @@ public class AnnouncementVoiceFilesTests
         var loaded = RouteAnnouncementVoiceEditor.LoadFromRoot(root);
         Assert.Equal("2", RouteAnnouncementVoiceEditor.GetForRoute(loaded, route));
     }
+
+    [Fact]
+    public void Route_voice_matches_same_trip_with_padded_number_or_date_prefix()
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        const string morning = "RE47X Düsseldorf > Solingen (Linie: 047/01, Fahrt: 1)";
+        const string afternoonStored = "RE47X Solingen > Düsseldorf (Linie: 047/01, Fahrt: 09)";
+        RouteAnnouncementVoiceEditor.SetForRoute(map, morning, "2");
+        RouteAnnouncementVoiceEditor.SetForRoute(map, afternoonStored, "2");
+
+        Assert.Equal("2", RouteAnnouncementVoiceEditor.GetForRoute(
+            map,
+            "RE47X Solingen > Düsseldorf (Linie: 47/1, Fahrt: 9, Verkehr: Mo-Fr)"));
+        Assert.Equal("2", RouteAnnouncementVoiceEditor.GetForRoute(
+            map,
+            "13.11.2026RE47X Solingen > Düsseldorf (Linie: 047/01, Fahrt: 9)"));
+        Assert.Equal(string.Empty, RouteAnnouncementVoiceEditor.GetForRoute(
+            map,
+            "RE47X Solingen > Düsseldorf (Linie: 047/01, Fahrt: 10)"));
+        Assert.Equal("2", RouteAnnouncementVoiceEditor.GetForRoute(map, morning));
+    }
 }
