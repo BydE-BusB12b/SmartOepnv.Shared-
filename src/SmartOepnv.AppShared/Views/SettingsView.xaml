@@ -35,6 +35,71 @@
                                  UniformCornerRadius="12"
                                  Background="{StaticResource SmartSurfaceBrush}"
                                  Margin="0,0,0,16"
+                                 Visibility="{Binding ShowInteriorTextSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Innenanzeige" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Der Standardtext steht unten auf der Innenanzeige, wenn kein Liveticker und kein Hinweis der Route läuft." />
+                    <TextBox materialDesign:HintAssist.Hint="Standardtext"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding InteriorStandardText, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding InteriorTextStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
+                    <Button Content="Innenanzeige speichern"
+                            Command="{Binding SaveInteriorTextCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
+                                 Visibility="{Binding ShowInteriorTickerSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="Liveticker" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                               Text="Von und Bis legen fest, wann der Text läuft. Einträge können in der Zukunft liegen. Die eigene Datei geht an alle Fahrzeuge und hat Vorrang vor dem Hinweis der Route. Dieselbe Liste geht auch mit dem Routenpaket mit." />
+                    <TextBox materialDesign:HintAssist.Hint="Livetickertext"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding InteriorTickerDraft, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="Von, zum Beispiel 16.11.2026 06:00"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding InteriorTickerFrom, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <TextBox materialDesign:HintAssist.Hint="Bis, zum Beispiel 16.11.2026 09:00"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding InteriorTickerUntil, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="Eintrag hinzufügen"
+                                Command="{Binding AddInteriorTickerCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="Eintrag entfernen"
+                                Command="{Binding RemoveInteriorTickerCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                    </StackPanel>
+                    <ListBox ItemsSource="{Binding InteriorTickerRows}"
+                             SelectedItem="{Binding SelectedInteriorTicker}"
+                             DisplayMemberPath="Label"
+                             MinHeight="72"
+                             MaxHeight="160"
+                             Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding InteriorTickerStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
+                    <Button Content="Liveticker speichern und senden"
+                            Command="{Binding SendInteriorTickerCommand}"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                </StackPanel>
+            </materialDesign:Card>
+
+            <materialDesign:Card Padding="24"
+                                 UniformCornerRadius="12"
+                                 Background="{StaticResource SmartSurfaceBrush}"
+                                 Margin="0,0,0,16"
                                  Visibility="{Binding ShowVdv454Section, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <StackPanel>
                     <TextBlock Text="VDV 454 / Verbund-Refs" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />

@@ -731,34 +731,73 @@ public partial class DataTransferViewModel : ObservableObject
             return false;
         }
 
-        var json = await AppServices.Dropbox.DownloadRouteFileAsync(cancellationToken);
-        AppServices.Routes.LoadFromJson(json, persistLocally: true, source: "dropbox-import");
+        var loadedSlim = false;
+        if (_isLeitstelleProfile)
+        {
+            var slim = await AppServices.Dropbox
+                .TryDownloadNamedFileAsync(DropboxConstants.LeitstelleRoutesFileName, cancellationToken)
+                .ConfigureAwait(true);
+            if (!string.IsNullOrWhiteSpace(slim))
+            {
+                loadedSlim = await Task.Run(() =>
+                {
+                    if (!LiteRouteUpdateMerge.IsLiteVehicleUpdate(slim))
+                    {
+                        return false;
+                    }
+
+                    AppServices.Routes.LoadLeitstellePackage(slim, "leitstelle-routes");
+                    return true;
+                }).ConfigureAwait(true);
+            }
+        }
+
+        if (!loadedSlim)
+        {
+            var json = await AppServices.Dropbox.DownloadRouteFileAsync(cancellationToken).ConfigureAwait(true);
+            var isLeitstelle = _isLeitstelleProfile;
+            await Task.Run(() =>
+            {
+                AppServices.Routes.LoadFromJson(json, persistLocally: true, source: "dropbox-import");
+                if (isLeitstelle)
+                {
+                    AppServices.Routes.ReleaseAnnouncementAudioFromWorkingCopy();
+                }
+            }).ConfigureAwait(true);
+        }
+
         if (_isLeitstelleProfile)
         {
             // Vollpaket ersetzt Workspace – sonst bleibt Merge von leitstelle_routes „bereits übernommen“.
-            if (AppServices.IsInitialized)
+            if (!loadedSlim && AppServices.IsInitialized)
             {
                 AppServices.Workspace.SaveLastMergedLeitstelleRoutesTimestamp(0);
                 AppServices.Workspace.SaveLastMergedRouteUpdateTimestamp(0);
             }
 
             var standResult = await LeitstelleStandDropboxSync.TryMergeFromDropboxAsync(cancellationToken)
-                .ConfigureAwait(false);
+                .ConfigureAwait(true);
             if (standResult.Imported)
             {
                 LastActionMessage += $" {standResult.Message}";
             }
 
-            var leitstelleRoutesResult = await LeitstelleRoutesDropboxSync.TryMergeFromDropboxAsync(cancellationToken)
-                .ConfigureAwait(false);
-            if (leitstelleRoutesResult.Imported)
+            if (!loadedSlim)
             {
-                LastActionMessage += $" {leitstelleRoutesResult.Message}";
+                var leitstelleRoutesResult = await LeitstelleRoutesDropboxSync.TryMergeFromDropboxAsync(cancellationToken)
+                    .ConfigureAwait(true);
+                if (leitstelleRoutesResult.Imported)
+                {
+                    LastActionMessage += $" {leitstelleRoutesResult.Message}";
+                }
             }
 
             var liteResult = await LiteRouteUpdateDropboxSync
-                .TryMergeFromDropboxAsync(cancellationToken, skipWhenLeitstelleRoutesPresent: true)
-                .ConfigureAwait(false);
+                .TryMergeFromDropboxAsync(
+                    cancellationToken,
+                    skipWhenLeitstelleRoutesPresent: true,
+                    leitstelleRoutesKnownPresent: loadedSlim)
+                .ConfigureAwait(true);
             if (liteResult.Imported)
             {
                 LastActionMessage += $" {liteResult.Message}";
@@ -772,7 +811,9 @@ public partial class DataTransferViewModel : ObservableObject
             }
         }
 
-        LastActionMessage = $"Importiert von Dropbox und lokal gespeichert: {AppServices.Dropbox.GetRouteFilePath()}";
+        LastActionMessage = loadedSlim
+            ? $"Importiert von Dropbox und lokal gespeichert: {DropboxConstants.LeitstelleRoutesFileName}"
+            : $"Importiert von Dropbox und lokal gespeichert: {AppServices.Dropbox.GetRouteFilePath()}";
         RefreshStats();
         return true;
     }

@@ -516,6 +516,12 @@ public sealed class RemoteSettingsSendDialog : Window
 
         settings.SevTftEnabled = _sevEnabled.IsChecked == true;
         settings.SevTftAutoSend = _sevAuto.IsChecked == true;
+        var interior = AppServices.IsInitialized ? AppServices.PlanerAppSettings?.Load() : null;
+        var standard = interior?.InteriorStandardText;
+        settings.InteriorStandardText = string.IsNullOrWhiteSpace(standard)
+            ? "info@smart-oepnv.de"
+            : standard.Trim();
+        settings.InteriorTickerText = interior?.InteriorTickerText?.Trim() ?? string.Empty;
         return true;
     }
 

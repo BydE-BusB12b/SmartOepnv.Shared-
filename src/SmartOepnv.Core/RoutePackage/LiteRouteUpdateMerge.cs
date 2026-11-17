@@ -58,6 +58,8 @@ public static class LiteRouteUpdateMerge
 
         RouteInteriorDisplayDestinationEditor.RootFieldName,
 
+        RouteInteriorHintEditor.RootFieldName,
+
         RouteAnnouncementVoiceEditor.RootFieldName,
 
         AutoScheduleSourceRouteEditor.RootFieldName,

@@ -235,6 +235,7 @@ public sealed class FahrVoip : IAsyncDisposable
         }
 
         await CloseCallAsync("Neuer Anruf");
+        _ = Task.Run(IvuTon.Funk);
         IncomingFrom = string.IsNullOrWhiteSpace(fromName) ? from : fromName;
         Set($"Anruf von {IncomingFrom}");
         await SendAsync(new { type = "accept", callId, to = from, from = _config.PeerId });

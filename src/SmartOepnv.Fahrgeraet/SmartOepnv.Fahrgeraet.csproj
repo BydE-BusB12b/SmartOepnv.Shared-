@@ -29,4 +29,8 @@
     <ProjectReference Include="..\SmartOepnv.Core\SmartOepnv.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="sounds\IVU_*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -2,7 +2,18 @@ namespace SmartOepnv.Core.RoutePackage;
 
 public sealed class PlanerAppSettings
 {
-    public const int FileVersion = 13;
+    public const int FileVersion = 14;
+
+    /// <summary>
+    /// Untere Zeile der Innenanzeige, solange kein Liveticker gesetzt ist.
+    /// </summary>
+    public string InteriorStandardText { get; set; } = "info@smart-oepnv.de";
+
+    /// <summary>Ersetzt den Standardtext, sobald ein Text eingetragen ist.</summary>
+    public string InteriorTickerText { get; set; } = string.Empty;
+
+    /// <summary>Liveticker mit Anfang und Ende. Liegt in der Zukunft, bis das Fenster beginnt.</summary>
+    public List<InteriorTickerEntry> InteriorTickerEntries { get; set; } = [];
 
     /// <summary>Legacy: einzelnes Logo vor Mehrfach-Verwaltung.</summary>
     public string CompanyLogoFileName { get; set; } = string.Empty;

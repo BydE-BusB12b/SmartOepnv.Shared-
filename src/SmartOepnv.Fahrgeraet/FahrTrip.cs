@@ -19,6 +19,7 @@ public sealed class FahrTrip
     private double? _previousLat;
     private double? _previousLon;
     private string? _route;
+    private string? _destinationRoute;
     private string? _shapeRoute;
     private List<RoutePathLatLng>? _shape;
     private string? _sevRoute;
@@ -27,6 +28,19 @@ public sealed class FahrTrip
     private double _entwerterLon;
     private bool _entwerterLeft;
     private readonly HashSet<int> _hints = [];
+    private static readonly object PlayGate = new();
+    public double LastLat { get; private set; }
+    public double LastLon { get; private set; }
+    public double LastSpeedMps { get; private set; }
+    public bool HasFix { get; private set; }
+    public DateTime LastFixUtc { get; private set; } = DateTime.MinValue;
+    public double ShownAlong { get; set; }
+    public bool HasShownAlong { get; set; }
+    private bool _simulating;
+    private DateTime _previousFixUtc = DateTime.MinValue;
+    private double _holdLat;
+    private double _holdLon;
+    private bool _hasHold;
 
     public bool Running { get; private set; }
     public string Status { get; private set; } = "Fahrt nicht gestartet.";
@@ -41,8 +55,11 @@ public sealed class FahrTrip
         _entwerterIndex = null;
         _sevRoute = null;
         _previousLat = _previousLon = null;
+        _hasHold = false;
+        _previousFixUtc = DateTime.MinValue;
         NextIndex = null;
         _route = null;
+        _destinationRoute = null;
         _shapeRoute = null;
         _shape = null;
         Status = "Haltestellenfolge zurückgesetzt.";
@@ -72,6 +89,8 @@ public sealed class FahrTrip
         Running = true;
         Status = "Warte auf GPS.";
         Changed?.Invoke();
+        Abfahrtston.Arm(session);
+        IbisIpDienst.Ensure(session);
     }
 
     public void Stop()
@@ -84,6 +103,7 @@ public sealed class FahrTrip
         }
 
         GpsQuelle.Drop("fahrt");
+        Abfahrtston.Disarm();
         Status = "Fahrt gestoppt.";
         Changed?.Invoke();
     }
@@ -131,12 +151,50 @@ public sealed class FahrTrip
 
     private void OnFix(FahrSession session, double lat, double lon)
     {
+        var now = DateTime.UtcNow;
+        var speed = 0.0;
+        if (_previousLat is not null && _previousLon is not null)
+        {
+            var seconds = (now - _previousFixUtc).TotalSeconds;
+            if (seconds > 0.05)
+            {
+                speed = StopMatch.Meters(_previousLat.Value, _previousLon.Value, lat, lon) / seconds;
+            }
+        }
+
+        if (_hasHold && speed <= 0.3 && StopMatch.Meters(lat, lon, _holdLat, _holdLon) > 20)
+        {
+            lat = _holdLat;
+            lon = _holdLon;
+        }
+        else
+        {
+            _holdLat = lat;
+            _holdLon = lon;
+            _hasHold = true;
+        }
+
+        _previousFixUtc = now;
+        LastLat = lat;
+        LastLon = lon;
+        HasFix = true;
+        LastSpeedMps = speed;
+        LastFixUtc = now;
+        GpsSpur.Note(session, lat, lon, speed);
+        IbisIpDienst.NoteGnss(lat, lon, speed);
+        Abfahrtston.Tick(session, this, lat, lon);
         var stops = Stops(session);
         if (!string.Equals(_route, session.RouteName, StringComparison.Ordinal))
         {
+            var routeChanged = _route is not null;
             _played.Clear();
             _zielwechsel.Clear();
             _hints.Clear();
+            if (routeChanged)
+            {
+                _destinationRoute = null;
+            }
+
             _route = session.RouteName;
             _ = SendSevAsync(session, stops);
         }
@@ -183,11 +241,18 @@ public sealed class FahrTrip
             return;
         }
 
-        Play(session, stop);
-        if (stop.PlayStartStopGreeting)
+        var greeting = stop.PlayStartStopGreeting;
+        Task.Run(() =>
         {
-            PlayGreeting(session);
-        }
+            lock (PlayGate)
+            {
+                Play(session, stop);
+                if (greeting)
+                {
+                    PlayGreeting(session);
+                }
+            }
+        });
 
         if (stop.StopHintEnabled &&
             RouteStopHintTrigger.Normalize(stop.StopHintTriggerMode) == RouteStopHintTrigger.WithAnnouncement &&
@@ -210,6 +275,71 @@ public sealed class FahrTrip
         }
 
         _ = SendDisplay(session, stop, stops);
+    }
+
+    /// <summary>
+    /// Doppeltipp auf eine Haltestelle: Ansage und Zielversand wie in der Android-App.
+    /// Der erste Versand einer Fahrt nimmt Linie und Ziel der Starthaltestelle.
+    /// Ein Dreifachtipp spielt die Begrüßung, wenn der Halt sie hat.
+    /// </summary>
+    public void PlayClicked(FahrSession session, int index, bool greeting)
+    {
+        var stops = Stops(session);
+        if (index < 0 || index >= stops.Count)
+        {
+            return;
+        }
+
+        var stop = stops[index];
+        if (greeting && !stop.PlayStartStopGreeting)
+        {
+            greeting = false;
+        }
+
+        for (var i = 0; i <= index; i++)
+        {
+            _played.Add(i);
+        }
+
+        NextIndex = NextPlayable(stops);
+        var target = stop;
+        if (!greeting && !string.Equals(_destinationRoute, session.RouteName, StringComparison.Ordinal))
+        {
+            target = stops.FirstOrDefault(item => !item.IsWaypoint && IsStartStop(item))
+                ?? stops.FirstOrDefault(item => !item.IsWaypoint)
+                ?? stop;
+        }
+
+        var choice = ChooseDisplay(session, target);
+        Status = choice.Send
+            ? $"Linie {choice.Line} · {choice.Destination}"
+            : greeting
+                ? $"Begrüßung: {stop.Name}"
+                : $"Manuell: {stop.Name}";
+        if (!choice.Send && !string.Equals(_destinationRoute, session.RouteName, StringComparison.Ordinal))
+        {
+            Status = $"Kein Ziel für {target.Name}";
+        }
+
+        Changed?.Invoke();
+        Task.Run(() =>
+        {
+            lock (PlayGate)
+            {
+                if (greeting)
+                {
+                    PlayGreeting(session);
+                }
+                else
+                {
+                    Play(session, stop);
+                }
+            }
+        });
+        if (choice.Send)
+        {
+            _ = SendDisplay(session, target, stops);
+        }
     }
 
     private void ScanZielwechsel(FahrSession session, IReadOnlyList<RouteStopItem> stops, double lat, double lon)
@@ -250,12 +380,21 @@ public sealed class FahrTrip
         }
     }
 
-    private static async Task SendDisplay(FahrSession session, RouteStopItem stop, IReadOnlyList<RouteStopItem> stops)
+    private async Task SendDisplay(FahrSession session, RouteStopItem stop, IReadOnlyList<RouteStopItem> stops)
     {
+        var choice = ChooseDisplay(session, stop);
+        if (!choice.Send)
+        {
+            return;
+        }
+
         try
         {
+            _destinationRoute = session.RouteName;
             var course = stops.Select(item => item.Name).ToList();
-            await DisplayTelegrams.SendAsync(session, stop.LineNumber, DestinationOf(stop), stop.Name, course);
+            IbisIpDienst.NoteStop(session, stop, choice.Destination);
+            IbisIpDienst.NoteManual(choice.Line, choice.Destination);
+            await DisplayTelegrams.SendAsync(session, choice.Line, choice.Destination, stop.Name, course);
         }
         catch (Exception ex)
         {
@@ -286,17 +425,8 @@ public sealed class FahrTrip
             return;
         }
 
-        var sounds = GpsAnsagenEmbeddedSoundsJson.ReadAllEntries(session.Package.PackageRoot);
-        var key = sounds.Keys.FirstOrDefault(k =>
-            string.Equals(k, stop.EmbeddedSoundFileName, StringComparison.OrdinalIgnoreCase));
-        if (key is null)
-        {
-            return;
-        }
-
-        var zones = GeraetEinstellungen.Bool("announcement_stereo_zones_enabled", true);
-        var bytes = Convert.FromBase64String(sounds[key].Base64);
-        StereoWav.Play(bytes, zones ? true : null);
+        AnsageSequenz.PlayStop(session, stop);
+        IbisIpDienst.NoteAnnouncement(stop.Name);
     }
 
     private void MaybeOpenNextRoute(FahrSession session, RouteStopItem stop)
@@ -315,6 +445,7 @@ public sealed class FahrTrip
         session.RouteName = next;
         _played.Clear();
         _zielwechsel.Clear();
+        _destinationRoute = null;
         _route = next;
         Status = $"Nächste Fahrt: {next}";
         Changed?.Invoke();
@@ -495,6 +626,85 @@ public sealed class FahrTrip
     private static string DestinationOf(RouteStopItem stop) =>
         First(stop.Destination, stop.EndDestination, stop.Ds021NeuDestination, stop.FmaS1Destination, stop.Ds003aDestination);
 
+    private readonly record struct DisplayChoice(string Line, string Destination, bool Send);
+
+    /// <summary>Gleiche Zielwahl wie die Android-App: Start sendet Linie und Ziel, Zielwechsel und Endhalt das Ziel.</summary>
+    private static DisplayChoice ChooseDisplay(FahrSession session, RouteStopItem stop)
+    {
+        var protocol = session.OutsideProtocol ?? "";
+        var start = DestinationName(protocol, stop, end: false);
+        var end = DestinationName(protocol, stop, end: true);
+        if (IsStartStop(stop) && start.Length > 0)
+        {
+            return new DisplayChoice(LineOf(session, stop), start, true);
+        }
+
+        if (stop.ZielwechselEnabled && start.Length > 0)
+        {
+            return new DisplayChoice(LineOf(session, stop), start, true);
+        }
+
+        if ((stop.IsEndStop || stop.PlayEndStopAnnouncement) && end.Length > 0)
+        {
+            return new DisplayChoice(LineOf(session, stop), end, true);
+        }
+
+        return new DisplayChoice("", "", false);
+    }
+
+    private static bool IsStartStop(RouteStopItem stop)
+    {
+        if (stop.ZielwechselEnabled)
+        {
+            return false;
+        }
+
+        return HasText(stop.Destination) || HasText(stop.Ds021NeuDestination) || HasText(stop.FmaS1Destination) ||
+               HasText(stop.Ds003aDestination) || HasText(stop.ZielnummerDestination) || HasText(stop.MobitecDestination) ||
+               HasText(stop.LineNumber);
+    }
+
+    private static string DestinationName(string protocol, RouteStopItem stop, bool end)
+    {
+        var name = protocol switch
+        {
+            "DS003a_Krefeld" => end ? stop.Ds003aEndDestination : stop.Ds003aDestination,
+            "DS021neu" => end ? stop.Ds021NeuEndDestination : stop.Ds021NeuDestination,
+            "FMA-S1" => end ? stop.FmaS1EndDestination : stop.FmaS1Destination,
+            "DS003" or "Zielnummer" => end ? stop.ZielnummerEndDestination : stop.ZielnummerDestination,
+            "Mobitec" => end ? stop.MobitecEndDestination : stop.MobitecDestination,
+            _ => end ? stop.EndDestination : stop.Destination
+        };
+        if (!HasText(name) || name.Equals("Kein Ziel", StringComparison.OrdinalIgnoreCase))
+        {
+            if (protocol == "IBIS-IP")
+            {
+                name = end ? stop.MobitecEndDestination : stop.MobitecDestination;
+            }
+        }
+
+        if (!HasText(name) || name.Equals("Kein Ziel", StringComparison.OrdinalIgnoreCase))
+        {
+            return "";
+        }
+
+        return name.Trim();
+    }
+
+    private static string LineOf(FahrSession session, RouteStopItem stop)
+    {
+        if (HasText(stop.LineNumber))
+        {
+            return stop.LineNumber.Trim();
+        }
+
+        var parsed = RouteDisplayHelper.Parse(session.RouteName ?? "");
+        var line = HasText(parsed.PassengerDisplayLine) ? parsed.PassengerDisplayLine : parsed.LineCourse;
+        return line?.Trim() ?? "";
+    }
+
+    private static bool HasText(string? value) => !string.IsNullOrWhiteSpace(value);
+
     private static string First(params string[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? "";
 
@@ -553,27 +763,347 @@ public sealed class FahrTrip
             return;
         }
 
-        var root = session.Package.PackageRoot;
-        PlayNamed(session, root[StartStopGreetingResolver.Part1RootJsonFieldName]?.GetValue<string>());
-        PlayNamed(session, root[StartStopGreetingResolver.Part2RootJsonFieldName]?.GetValue<string>());
+        var templates = session.Package.AnnouncementTemplates;
+        if (StartStopGreetingResolver.Part1UsesSequencePlayback(templates))
+        {
+            PlayGreetingSequence(session, StartStopGreetingResolver.TryGetPart1Sequence(templates));
+            Thread.Sleep(150);
+        }
+        else
+        {
+            var root = session.Package.PackageRoot;
+            PlayNamed(session, root[StartStopGreetingResolver.Part1RootJsonFieldName]?.GetValue<string>());
+        }
+
+        var part2 = session.Package.PackageRoot[StartStopGreetingResolver.Part2RootJsonFieldName]?.GetValue<string>();
+        PlayNamed(session, part2);
     }
 
-    private static void PlayNamed(FahrSession session, string? fileName)
+    /// <summary>Doppeltipp auf Linie/Kurs: Linie, Nach, Ziel, nur rechts (außen).</summary>
+    public void PlayOutsideDirection(FahrSession session)
+    {
+        if (session.Package is null || string.IsNullOrWhiteSpace(session.RouteName))
+        {
+            Status = "Keine Route für die Außenansage.";
+            Changed?.Invoke();
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            lock (PlayGate)
+            {
+                var voice2 = AnsageWahl.RouteUsesVoice2(session);
+                var steps = new List<string?>
+                {
+                    LineSound(session),
+                    PlanerNachSoundResolver.FileName,
+                    EndDestinationSound(session)
+                };
+                var files = steps.Where(file => !string.IsNullOrWhiteSpace(file)).Cast<string>().ToList();
+                if (files.Count == 0)
+                {
+                    Status = "Außenansage nicht verfügbar.";
+                    Changed?.Invoke();
+                    return;
+                }
+
+                FahrAnsage.Active = true;
+                Changed?.Invoke();
+                try
+                {
+                    for (var i = 0; i < files.Count; i++)
+                    {
+                        if (i > 0)
+                        {
+                            Thread.Sleep(150);
+                        }
+
+                        PlayNamed(session, files[i], forceVoice2: voice2, zone: AnnouncementAudioOutput.Outside);
+                    }
+                }
+                finally
+                {
+                    FahrAnsage.Active = false;
+                    Changed?.Invoke();
+                }
+            }
+        });
+    }
+
+    /// <summary>Normale Bausteinlücke 150 ms. Direkt vor und nach der Linie 75 ms.</summary>
+    private static void PlayGreetingSequence(FahrSession session, IReadOnlyList<AnnouncementSequenceEntry> sequence)
+    {
+        var voice2 = AnsageWahl.RouteUsesVoice2(session);
+        var previousAudio = false;
+        foreach (var entry in sequence)
+        {
+            if (entry.Kind == AnnouncementExportEntryKind.Pause)
+            {
+                continue;
+            }
+
+            var file = entry.Kind switch
+            {
+                AnnouncementExportEntryKind.Audio => entry.FileName,
+                AnnouncementExportEntryKind.Line => LineSound(session),
+                AnnouncementExportEntryKind.Nach => PlanerNachSoundResolver.FileName,
+                AnnouncementExportEntryKind.RouteEndDestination => EndDestinationSound(session),
+                _ => null
+            };
+            if (string.IsNullOrWhiteSpace(file))
+            {
+                continue;
+            }
+
+            if (entry.Kind == AnnouncementExportEntryKind.Line)
+            {
+                if (previousAudio)
+                {
+                    Thread.Sleep(75);
+                }
+
+                PlayNamed(session, file, forceVoice2: voice2);
+                Thread.Sleep(75);
+                previousAudio = false;
+                continue;
+            }
+
+            if (previousAudio)
+            {
+                Thread.Sleep(150);
+            }
+
+            PlayNamed(session, file, forceVoice2: voice2);
+            previousAudio = true;
+        }
+    }
+
+    private static string? LineSound(FahrSession session)
+    {
+        if (session.Package is null || string.IsNullOrWhiteSpace(session.RouteName))
+        {
+            return null;
+        }
+
+        var parsed = RouteDisplayHelper.Parse(session.RouteName);
+        var fromName = LineFromRouteName(parsed.Name);
+        var passenger = string.IsNullOrWhiteSpace(parsed.PassengerDisplayLine) ? null : parsed.PassengerDisplayLine.Trim();
+        var keys = new List<string>();
+        if (fromName is not null && PreferNameLine(fromName, passenger))
+        {
+            keys.Add(fromName);
+        }
+
+        if (passenger is not null)
+        {
+            keys.Add(passenger);
+        }
+
+        if (fromName is not null)
+        {
+            keys.Add(fromName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(parsed.LineCourse))
+        {
+            keys.Add(parsed.LineCourse);
+        }
+
+        foreach (var key in keys.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var template = session.Package.AnnouncementTemplates.FirstOrDefault(item =>
+                string.Equals(item.DisplayName?.Trim(), key, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(item.EmbeddedSoundFileName));
+            if (template is not null)
+            {
+                return template.EmbeddedSoundFileName;
+            }
+        }
+
+        return keys.FirstOrDefault();
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex ProductLine =
+        new(@"\b(IRE|ICE|IC|RE|RB|S|EC|NJ|EN|TGV|RJX|RJ)\s*(\d+)([A-Za-z])?\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static string? LineFromRouteName(string? routeName)
+    {
+        var trimmed = (routeName ?? "").Trim();
+        var match = ProductLine.Match(trimmed);
+        if (match.Success)
+        {
+            var raw = match.Value.Trim();
+            var spaced = match.Groups[1].Value + " " + match.Groups[2].Value + match.Groups[3].Value;
+            return raw.Contains(' ') ? spaced : match.Groups[1].Value + match.Groups[2].Value + match.Groups[3].Value;
+        }
+
+        var token = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(token) || token.Length < 2)
+        {
+            return null;
+        }
+
+        return token.Any(char.IsLetter) && token.Any(char.IsDigit) ? token : null;
+    }
+
+    private static bool PreferNameLine(string fromName, string? passenger)
+    {
+        if (string.IsNullOrWhiteSpace(passenger))
+        {
+            return true;
+        }
+
+        var nameKey = fromName.Replace(" ", "");
+        var passengerKey = passenger.Replace(" ", "");
+        if (nameKey.Equals(passengerKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (nameKey.Length > passengerKey.Length &&
+            nameKey.StartsWith(passengerKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return passengerKey.All(ch => char.IsDigit(ch) || ch == '/');
+    }
+
+    private static string? EndDestinationSound(FahrSession session)
+    {
+        var stops = Stops(session);
+        for (var i = stops.Count - 1; i >= 0; i--)
+        {
+            if (stops[i].IsWaypoint)
+            {
+                continue;
+            }
+
+            var name = DestinationOf(stops[i]);
+            return string.IsNullOrWhiteSpace(name) ? stops[i].Name : name;
+        }
+
+        return null;
+    }
+
+    private static void PlayNamed(
+        FahrSession session,
+        string? fileName,
+        bool forceVoice2 = false,
+        string zone = AnnouncementAudioOutput.Inside)
     {
         if (session.Package is null || string.IsNullOrWhiteSpace(fileName))
         {
             return;
         }
 
-        var sounds = GpsAnsagenEmbeddedSoundsJson.ReadAllEntries(session.Package.PackageRoot);
-        var key = sounds.Keys.FirstOrDefault(k => string.Equals(k, fileName, StringComparison.OrdinalIgnoreCase));
-        if (key is null)
+        var voice2 = forceVoice2 || AnsageWahl.RouteUsesVoice2(session);
+        var wanted = fileName.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) ||
+                     fileName.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
+            ? fileName
+            : fileName + ".wav";
+        AnsageSequenz.PlayClip(session, wanted, voice2, zone);
+    }
+
+    /// <summary>Pas.-Info: bereits passierte Haltestellen gelten als erledigt, die nächste liegt voraus.</summary>
+    public void AlignPas(FahrSession session)
+    {
+        if (!HasFix)
+        {
+            Status = "Pas.-Info wartet auf GPS.";
+            Changed?.Invoke();
+            return;
+        }
+
+        var stops = Stops(session);
+        var best = -1;
+        var bestDistance = double.MaxValue;
+        for (var i = 0; i < stops.Count; i++)
+        {
+            if (stops[i].IsWaypoint)
+            {
+                continue;
+            }
+
+            var located = StopMatch.TryCoord(stops[i], out var slat, out var slon) ||
+                          StopMatch.TryParse(stops[i].StopCoordinates, out slat, out slon) ||
+                          StopMatch.TryParse(stops[i].GpsCoordinates, out slat, out slon);
+            if (!located)
+            {
+                continue;
+            }
+
+            var distance = StopMatch.Meters(LastLat, LastLon, slat, slon);
+            if (distance < bestDistance)
+            {
+                best = i;
+                bestDistance = distance;
+            }
+        }
+
+        if (best < 0)
         {
             return;
         }
 
-        StereoWav.Play(Convert.FromBase64String(sounds[key].Base64), true);
+        if (!Towards(session, LastLat, LastLon, stops[best]) && best + 1 < stops.Count)
+        {
+            best++;
+        }
+
+        _played.Clear();
+        for (var i = 0; i < best; i++)
+        {
+            _played.Add(i);
+        }
+
+        NextIndex = best;
+        Status = $"Pas.-Info: {stops[best].Name}";
+        GpsSpur.Event(session, "pas_on", stops[best].Name);
+        Changed?.Invoke();
     }
+
+    public void Simulate(FahrSession session)
+    {
+        if (_simulating)
+        {
+            return;
+        }
+
+        var shape = FahrKarte.Shape(session);
+        var total = FahrKarte.Length(shape);
+        if (shape.Count < 2 || total < 10)
+        {
+            Status = "Kein Fahrweg für diese Route.";
+            Changed?.Invoke();
+            return;
+        }
+
+        _simulating = true;
+        const double speed = 50.0 / 3.6;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var along = 0.0;
+                while (_simulating && along <= total)
+                {
+                    var (lat, lon) = FahrKarte.At(shape, along);
+                    OnFix(session, lat, lon);
+                    along += speed * 0.5;
+                    await Task.Delay(500);
+                }
+            }
+            finally
+            {
+                _simulating = false;
+            }
+        });
+    }
+
+    public void StopSimulation() => _simulating = false;
 
     private void ScanHints(FahrSession session, IReadOnlyList<RouteStopItem> stops, double lat, double lon)
     {

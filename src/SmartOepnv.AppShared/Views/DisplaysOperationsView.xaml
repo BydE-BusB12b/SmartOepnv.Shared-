@@ -18,6 +18,9 @@
                     <Setter Property="Background" Value="{StaticResource SmartSuccessOnDarkBackgroundBrush}" />
                     <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessOnDarkBorderBrush}" />
                 </DataTrigger>
+                <DataTrigger Binding="{Binding SelectedTabIndex}" Value="2">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
             </Style.Triggers>
         </Style>
         <!-- Aktiver Tab oben grün, inaktiver Tab dunkelblau -->
@@ -38,6 +41,17 @@
             <Setter Property="BorderBrush" Value="{DynamicResource SmartPanelBrush}" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding SelectedTabIndex}" Value="1">
+                    <Setter Property="Background" Value="{StaticResource SmartSuccessForegroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessForegroundBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="DisplaysOpsInteriorTabButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{DynamicResource SmartPanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SmartPanelBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SelectedTabIndex}" Value="2">
                     <Setter Property="Background" Value="{StaticResource SmartSuccessForegroundBrush}" />
                     <Setter Property="BorderBrush" Value="{StaticResource SmartSuccessForegroundBrush}" />
                 </DataTrigger>
@@ -76,6 +90,11 @@
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center">
+                <Button Content="Linienersatzliste"
+                        Command="{Binding OpenLineReplacementListCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Margin="0,0,8,0"
+                        ToolTip="IBIS-IP: eingegebene Linie durch den Ersatztext ersetzen, auch als Bereich von–bis" />
                 <Button Content="Zielliste / Außenanzeigen"
                         Command="{Binding SelectTabCommand}"
                         CommandParameter="zielliste"
@@ -84,7 +103,12 @@
                 <Button Content="Datumgesteuerte Hinweise"
                         Command="{Binding SelectTabCommand}"
                         CommandParameter="hints"
-                        Style="{StaticResource DisplaysOpsHintsTabButtonStyle}" />
+                        Style="{StaticResource DisplaysOpsHintsTabButtonStyle}"
+                        Margin="0,0,8,0" />
+                <Button Content="Innenhinweise"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="interior"
+                        Style="{StaticResource DisplaysOpsInteriorTabButtonStyle}" />
             </StackPanel>
         </Grid>
 
@@ -1146,6 +1170,98 @@
                     </materialDesign:Card>
                 </Grid>
             </TabItem>
+
+            <TabItem Header="Innenhinweise"
+                     HorizontalContentAlignment="Stretch"
+                     VerticalContentAlignment="Stretch">
+                <Grid Margin="0,8,0,0"
+                      VerticalAlignment="Stretch"
+                      DataContext="{Binding InteriorHints}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="340" MinWidth="280" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <materialDesign:Card Grid.Column="0"
+                                         Margin="0,0,10,0"
+                                         Padding="16"
+                                         VerticalAlignment="Stretch"
+                                         Background="{StaticResource SmartSurfaceBrush}">
+                        <StackPanel>
+                            <TextBlock Text="Standardtext" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8" />
+                            <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                                       Text="Dieser Text steht unten auf der Innenanzeige, wenn kein Liveticker läuft und die Route keinen eigenen Hinweis hat." />
+                            <TextBox materialDesign:HintAssist.Hint="Standardtext"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     Text="{Binding InteriorStandardText, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding InteriorTextStatus}" Opacity="0.85" Margin="0,0,0,12" TextWrapping="Wrap" />
+                            <Button Content="Standardtext speichern"
+                                    Command="{Binding SaveInteriorTextCommand}"
+                                    HorizontalAlignment="Left"
+                                    Style="{StaticResource MaterialDesignRaisedButton}"
+                                    Margin="0,0,0,20" />
+                            <TextBlock Text="Hinweis der Route" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8" />
+                            <TextBlock TextWrapping="Wrap" Opacity="0.75"
+                                       Text="Der Hinweis einer Route wird beim Bearbeiten der Route eingetragen. Er gilt nur für diese Route und nur, solange kein zeitlicher Liveticker läuft." />
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <materialDesign:Card Grid.Column="1"
+                                         Padding="16"
+                                         VerticalAlignment="Stretch"
+                                         Background="{StaticResource SmartSurfaceBrush}">
+                        <DockPanel LastChildFill="True">
+                            <StackPanel DockPanel.Dock="Top">
+                                <TextBlock Text="Liveticker" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8" />
+                                <TextBlock TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,12"
+                                           Text="Von und Bis legen fest, wann der Text läuft. Einträge können in der Zukunft liegen. Vergangene Einträge fallen aus der Liste. Die Datei geht an alle Fahrzeuge und hat Vorrang vor dem Hinweis der Route." />
+                                <TextBox materialDesign:HintAssist.Hint="Livetickertext"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Text="{Binding InteriorTickerDraft, UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="0,0,0,8" />
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Margin="0,0,6,0"
+                                             materialDesign:HintAssist.Hint="Von, zum Beispiel 16.11.2026 06:00"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                             Text="{Binding InteriorTickerFrom, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Grid.Column="1"
+                                             materialDesign:HintAssist.Hint="Bis, zum Beispiel 16.11.2026 09:00"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                             Text="{Binding InteriorTickerUntil, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Button Content="Eintrag hinzufügen"
+                                            Command="{Binding AddInteriorTickerCommand}"
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                                            Margin="0,0,8,0" />
+                                    <Button Content="Eintrag entfernen"
+                                            Command="{Binding RemoveInteriorTickerCommand}"
+                                            Style="{StaticResource MaterialDesignOutlinedButton}" />
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel DockPanel.Dock="Bottom">
+                                <TextBlock Text="{Binding InteriorTickerStatus}" Opacity="0.85" Margin="0,8,0,12" TextWrapping="Wrap" />
+                                <Button Content="Liveticker speichern und senden"
+                                        Command="{Binding SendInteriorTickerCommand}"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource MaterialDesignRaisedButton}" />
+                            </StackPanel>
+                            <ListBox ItemsSource="{Binding InteriorTickerRows}"
+                                     SelectedItem="{Binding SelectedInteriorTicker}"
+                                     DisplayMemberPath="Label"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                        </DockPanel>
+                    </materialDesign:Card>
+                </Grid>
+            </TabItem>
         </TabControl>
 
         <DockPanel Grid.Row="2" Margin="0,10,0,0">
@@ -1166,6 +1282,9 @@
                         <Setter Property="Visibility" Value="Visible" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding SelectedTabIndex}" Value="1">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding SelectedTabIndex}" Value="2">
                                 <Setter Property="Visibility" Value="Collapsed" />
                             </DataTrigger>
                         </Style.Triggers>

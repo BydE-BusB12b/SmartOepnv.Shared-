@@ -24,7 +24,12 @@ public sealed class RoutePackageService
     /// <summary>Letzter schlanker Paket-Body ohne Audio. Anzeigen-Speichern hängt nur die Ziele an.</summary>
     private string? _slimPackageJson;
 
+    private IReadOnlyList<RegisteredVehicleInfo> _vehicleRoster = [];
+
     public bool HasPackage => !string.IsNullOrWhiteSpace(_currentJson);
+
+    /// <summary>Fahrzeuge und Personal aus dem geladenen Editor, ohne das Paket neu zu parsen.</summary>
+    public IReadOnlyList<RegisteredVehicleInfo> VehicleRoster => _vehicleRoster;
 
     public string? CurrentJson => _currentJson;
 
@@ -63,7 +68,7 @@ public sealed class RoutePackageService
             Stats = ParseStats(_currentJson);
         }
 
-        if (AppServices.IsInitialized)
+        if (AppServices.IsInitialized && AppServices.IsPlannerApp)
         {
             var extracted = PlanerEmbeddedSoundsWorkspace.ExtractFromJsonToWorkspace(AppServices.Workspace, json);
             if (extracted > 0)
@@ -75,6 +80,48 @@ public sealed class RoutePackageService
         if (persistLocally && AppServices.IsInitialized)
         {
             AppServices.Workspace.SavePackage(GetPersistableJson(), source, archivePrevious: true);
+        }
+
+        RefreshVehicleRosterCache();
+    }
+
+    /// <summary>
+    /// Leitstelle: Ansagen-Audio aus dem Arbeitsspeicher nehmen.
+    /// Die laufende Anzeige braucht die Töne nicht und soll das Paket nicht alle paar Sekunden neu parsen.
+    /// </summary>
+    public void ReleaseAnnouncementAudioFromWorkingCopy()
+    {
+        if (Editor is null || string.IsNullOrEmpty(_currentJson) ||
+            !_currentJson.Contains("\"embeddedSounds\"", StringComparison.Ordinal))
+        {
+            RefreshVehicleRosterCache();
+            return;
+        }
+
+        Editor.InvalidateEmbeddedSoundsJsonCache();
+        Editor.InvalidateSpecialAnnouncementsJsonCache();
+        Editor.PackageRoot.Remove("embeddedSounds");
+        Editor.PackageRoot.Remove("specialAnnouncements");
+        _currentJson = Editor.SerializeCurrentRootWithoutSync(includeHeavyMedia: false);
+        _slimPackageJson = _currentJson;
+        Stats = ParseStats(_currentJson);
+        RefreshVehicleRosterCache();
+    }
+
+    /// <summary>Schlanken Leitstelle-Stand laden und als maßgeblich merken.</summary>
+    public void LoadLeitstellePackage(string json, string source)
+    {
+        LoadFromJson(json, persistLocally: true, source);
+        ReleaseAnnouncementAudioFromWorkingCopy();
+        if (!AppServices.IsInitialized)
+        {
+            return;
+        }
+
+        var timestamp = LocalWorkspaceStore.ExtractPackageTimestamp(json);
+        if (timestamp > 0)
+        {
+            AppServices.Workspace.SaveLastMergedLeitstelleRoutesTimestamp(timestamp);
         }
     }
 
@@ -271,6 +318,38 @@ public sealed class RoutePackageService
                 heavyMediaJson: heavy,
                 updateHeavyMediaSidecar: updateHeavy && !string.IsNullOrWhiteSpace(heavy));
         }
+
+        RefreshVehicleRosterCache();
+    }
+
+    private void RefreshVehicleRosterCache()
+    {
+        try
+        {
+            var root = Editor?.PackageRoot;
+            if (root is null)
+            {
+                _vehicleRoster = [];
+                return;
+            }
+
+            var slice = new JsonObject();
+            if (root["registeredVehicles"] is JsonNode vehicles)
+            {
+                slice["registeredVehicles"] = vehicles.DeepClone();
+            }
+
+            if (root["employeeRoster"] is JsonNode roster)
+            {
+                slice["employeeRoster"] = roster.DeepClone();
+            }
+
+            _vehicleRoster = RegisteredVehicleInfo.ParseFromJson(slice.ToJsonString());
+        }
+        catch
+        {
+            _vehicleRoster = [];
+        }
     }
 
     /// <summary>
@@ -290,6 +369,7 @@ public sealed class RoutePackageService
         Editor.ReplaceDateBasedHints(hints);
         RoutePackagePhoneMetadata.SaveOutsideDisplays(Editor.PackageRoot, outsideEntries);
         DateBasedHintsEditor.SaveToRoot(Editor.PackageRoot, hints);
+        LineReplacementList.SaveToRoot(Editor.PackageRoot, Editor.LineReplacements);
 
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         Editor.PackageRoot["timestamp"] = timestamp;
@@ -297,6 +377,7 @@ public sealed class RoutePackageService
         var displaysJson = Editor.PackageRoot["outsideDisplays"]?.ToJsonString() ?? "[]";
         var hintsNode = Editor.PackageRoot["dateBasedHints"];
         var hintsJson = hintsNode?.ToJsonString() ?? "[]";
+        var lineReplacementsJson = Editor.PackageRoot[LineReplacementList.JsonKey]?.ToJsonString() ?? "[]";
 
         var slim = _slimPackageJson;
         if (string.IsNullOrEmpty(slim) || JsonContainsHeavyMedia(slim))
@@ -309,6 +390,7 @@ public sealed class RoutePackageService
         {
             body = JsonTopLevelProperty.Upsert(slim, "outsideDisplays", displaysJson);
             body = JsonTopLevelProperty.Upsert(body, "dateBasedHints", hintsJson);
+            body = JsonTopLevelProperty.Upsert(body, LineReplacementList.JsonKey, lineReplacementsJson);
             body = JsonTopLevelProperty.Upsert(body, "timestamp", timestamp.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
         else

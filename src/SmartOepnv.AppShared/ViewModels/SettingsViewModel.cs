@@ -75,6 +75,22 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string vdv454ExternalStopCodespace = "de:vrr";
     [ObservableProperty] private string vdv454RefsStatus = string.Empty;
 
+    [ObservableProperty] private string interiorStandardText = "info@smart-oepnv.de";
+
+    [ObservableProperty] private string interiorTickerText = string.Empty;
+
+    [ObservableProperty] private string interiorTextStatus = string.Empty;
+
+    [ObservableProperty] private string interiorTickerDraft = string.Empty;
+
+    [ObservableProperty] private string interiorTickerFrom = string.Empty;
+
+    [ObservableProperty] private string interiorTickerUntil = string.Empty;
+
+    [ObservableProperty] private InteriorTickerListItem? selectedInteriorTicker;
+
+    [ObservableProperty] private string interiorTickerStatus = string.Empty;
+
     public VoipLeitstelleHost? VoipHost { get; set; }
 
     public bool ShowVoipSection => VoipHost is not null;
@@ -82,6 +98,14 @@ public partial class SettingsViewModel : ObservableObject
     public ObservableCollection<CompanyLogoListItem> CompanyLogos { get; } = [];
 
     public bool ShowVdv454Section => AppServices.PlanerAppSettings is not null;
+
+    public bool ShowInteriorTextSection => false;
+
+    public bool ShowInteriorTickerSection => false;
+
+    public void ReloadInteriorHints() => ReloadInteriorText();
+
+    public ObservableCollection<InteriorTickerListItem> InteriorTickerRows { get; } = [];
 
     public bool ShowBrandingSection => AppServices.IsPlannerApp;
 
@@ -137,7 +161,149 @@ public partial class SettingsViewModel : ObservableObject
         ReloadSondergong();
         ReloadDs009TextLength();
         ReloadVdv454Refs();
+        ReloadInteriorText();
         RefreshVoipStatus();
+    }
+
+    private void ReloadInteriorText()
+    {
+        if (AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var stored = AppServices.PlanerAppSettings.Load();
+        InteriorStandardText = string.IsNullOrWhiteSpace(stored.InteriorStandardText)
+            ? "info@smart-oepnv.de"
+            : stored.InteriorStandardText.Trim();
+        InteriorTickerText = stored.InteriorTickerText?.Trim() ?? string.Empty;
+
+        LoadInteriorTickerRows(stored);
+        if (AppServices.PlanerAppSettings is not null &&
+            stored.InteriorTickerEntries.Count != InteriorTickerRows.Count)
+        {
+            stored.InteriorTickerEntries = CurrentTickerEntries();
+            AppServices.PlanerAppSettings.Save(stored);
+        }
+    }
+
+    private void LoadInteriorTickerRows(PlanerAppSettings stored)
+    {
+        InteriorTickerRows.Clear();
+        foreach (var entry in stored.InteriorTickerEntries)
+        {
+            var text = entry.Text?.Trim() ?? string.Empty;
+            if (text.Length == 0 ||
+                !InteriorTickerSchedule.TryParseLocal(entry.Until, out var until) ||
+                until <= DateTime.Now)
+            {
+                continue;
+            }
+
+            InteriorTickerRows.Add(new InteriorTickerListItem(
+                text,
+                entry.From ?? string.Empty,
+                entry.Until ?? string.Empty));
+        }
+    }
+
+    private List<InteriorTickerEntry> CurrentTickerEntries() =>
+        InteriorTickerRows
+            .Select(row => new InteriorTickerEntry { Text = row.Text, From = row.From, Until = row.Until })
+            .ToList();
+
+    [RelayCommand]
+    private void SaveInteriorText()
+    {
+        if (AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var stored = AppServices.PlanerAppSettings.Load();
+        stored.InteriorStandardText = string.IsNullOrWhiteSpace(InteriorStandardText)
+            ? "info@smart-oepnv.de"
+            : InteriorStandardText.Trim();
+        stored.InteriorTickerText = InteriorTickerText.Trim();
+        AppServices.PlanerAppSettings.Save(stored);
+        InteriorStandardText = stored.InteriorStandardText;
+        InteriorTickerText = stored.InteriorTickerText;
+        InteriorTextStatus = "Gespeichert. Der Standardtext gilt, wenn kein Liveticker und kein Routenhinweis läuft.";
+    }
+
+    [RelayCommand]
+    private void AddInteriorTicker()
+    {
+        if (!InteriorTickerSchedule.TryParseLocal(InteriorTickerFrom, out var from) ||
+            !InteriorTickerSchedule.TryParseLocal(InteriorTickerUntil, out var until) ||
+            until <= from)
+        {
+            InteriorTickerStatus = "Von und Bis als Datum und Uhrzeit, zum Beispiel 16.11.2026 06:00. Bis muss nach Von liegen.";
+            return;
+        }
+
+        var text = InteriorTickerDraft.Trim();
+        if (text.Length == 0)
+        {
+            InteriorTickerStatus = "Bitte den Livetickertext eintragen.";
+            return;
+        }
+
+        InteriorTickerRows.Add(new InteriorTickerListItem(
+            text,
+            InteriorTickerSchedule.ToStorage(from),
+            InteriorTickerSchedule.ToStorage(until)));
+        InteriorTickerDraft = string.Empty;
+        InteriorTickerStatus = "Eintrag liegt in der Liste. Speichern und senden, damit die Fahrzeuge ihn bekommen.";
+    }
+
+    [RelayCommand]
+    private void RemoveInteriorTicker()
+    {
+        if (SelectedInteriorTicker is null)
+        {
+            return;
+        }
+
+        InteriorTickerRows.Remove(SelectedInteriorTicker);
+        SelectedInteriorTicker = null;
+    }
+
+    [RelayCommand]
+    private async Task SendInteriorTickerAsync()
+    {
+        if (AppServices.PlanerAppSettings is null)
+        {
+            return;
+        }
+
+        var stored = AppServices.PlanerAppSettings.Load();
+        stored.InteriorTickerEntries = CurrentTickerEntries()
+            .Where(entry =>
+                InteriorTickerSchedule.TryParseLocal(entry.Until, out var until) && until > DateTime.Now)
+            .ToList();
+        LoadInteriorTickerRows(stored);
+        stored.InteriorStandardText = string.IsNullOrWhiteSpace(InteriorStandardText)
+            ? "info@smart-oepnv.de"
+            : InteriorStandardText.Trim();
+
+        AppServices.PlanerAppSettings.Save(stored);
+        if (!AppServices.Dropbox.Settings.IsConnected)
+        {
+            InteriorTickerStatus = "Gespeichert. Dropbox ist nicht verbunden, die Datei wurde nicht gesendet.";
+            return;
+        }
+
+        try
+        {
+            var json = InteriorTickerSchedule.BuildFile(stored.InteriorStandardText, stored.InteriorTickerEntries);
+            await AppServices.Dropbox.UploadNamedFileAsync(DropboxConstants.InteriorTickerFileName, json);
+            InteriorTickerStatus = "Gesendet. Die Fahrzeuge übernehmen interior_ticker.json. Ein laufendes Zeitfenster ersetzt den Hinweis der Route.";
+        }
+        catch (Exception ex)
+        {
+            InteriorTickerStatus = "Senden fehlgeschlagen: " + ex.Message;
+        }
     }
 
     private void ReloadVdv454Refs()
@@ -1079,4 +1245,20 @@ public partial class SettingsViewModel : ObservableObject
             OperatorManualExportStatus = $"PDF-Erstellung fehlgeschlagen: {ex.Message}";
         }
     }
+}
+
+public sealed class InteriorTickerListItem
+{
+    public InteriorTickerListItem(string text, string from, string until)
+    {
+        Text = text;
+        From = from;
+        Until = until;
+        Label = $"{InteriorTickerSchedule.ToDisplay(from)} – {InteriorTickerSchedule.ToDisplay(until)}: {text}";
+    }
+
+    public string Text { get; }
+    public string From { get; }
+    public string Until { get; }
+    public string Label { get; }
 }

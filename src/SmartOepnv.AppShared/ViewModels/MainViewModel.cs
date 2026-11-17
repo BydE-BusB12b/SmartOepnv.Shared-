@@ -176,16 +176,66 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var localJson = await Task.Run(AppServices.Workspace.TryLoadPackageJson).ConfigureAwait(true);
-            var localLoaded = !string.IsNullOrWhiteSpace(localJson) && LoadLocalWorkspaceOnStartup(localJson);
+            var local = await Task.Run(() =>
+            {
+                var json = AppServices.Workspace.TryLoadPackageJson(includeHeavyMedia: false);
+                var holdsAudio = json is not null &&
+                    json.Contains("\"embeddedSounds\"", StringComparison.Ordinal);
+                return (json, holdsAudio);
+            }).ConfigureAwait(true);
+
+            var dropboxReady = _profile.AutoLoadDropboxOnStartup && AppServices.Dropbox.Settings.IsConnected;
+            var localLoaded = false;
+            if (!string.IsNullOrWhiteSpace(local.json) && (!local.holdsAudio || !dropboxReady))
+            {
+                Exception? loadError = null;
+                var localJson = local.json;
+                var holdsAudio = local.holdsAudio;
+                await Task.Run(() =>
+                {
+                    try
+                    {
+                        AppServices.Routes.LoadFromJson(localJson, persistLocally: false, source: "local-restore");
+                        if (holdsAudio)
+                        {
+                            AppServices.Routes.ReleaseAnnouncementAudioFromWorkingCopy();
+                            if (AppServices.IsInitialized)
+                            {
+                                var slim = AppServices.Routes.CurrentJson;
+                                if (!string.IsNullOrWhiteSpace(slim))
+                                {
+                                    AppServices.Workspace.SavePackage(slim, "leitstelle-ohne-audio", archivePrevious: false);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        loadError = ex;
+                    }
+                }).ConfigureAwait(true);
+
+                if (loadError is null)
+                {
+                    OnRoutePackageLoaded();
+                    localLoaded = true;
+                }
+                else
+                {
+                    _dataTransferViewModel.LastActionMessage =
+                        $"Lokales Paket konnte nicht geladen werden: {loadError.Message}";
+                }
+            }
 
             CurrentPage = SelectedNavigationItem?.Content;
 
-            if (_profile.AutoLoadDropboxOnStartup && AppServices.Dropbox.Settings.IsConnected)
+            if (dropboxReady)
             {
                 StatusText = localLoaded
                     ? BuildLocalStatusText("Lokal – synchronisiere Dropbox…")
-                    : "Lade Daten von Dropbox…";
+                    : local.holdsAudio
+                        ? "Lade den schlanken Leitstelle-Stand…"
+                        : "Lade Daten von Dropbox…";
                 _ = SyncLeitstelleFromDropboxAsync(isBackground: true);
             }
             else if (localLoaded)
@@ -221,14 +271,18 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        dispatcher.BeginInvoke(() =>
-        {
-            foreach (var title in new[] { "Fahrzeuge", "Fahrtenprüfung" })
-            {
-                var nav = NavigationItems.FirstOrDefault(i => i.Title == title);
-                _ = nav?.Content;
-            }
-        }, DispatcherPriority.ApplicationIdle);
+        dispatcher.BeginInvoke(
+            () => TouchNavigationContent("Fahrzeuge"),
+            DispatcherPriority.ApplicationIdle);
+        dispatcher.BeginInvoke(
+            () => TouchNavigationContent("Fahrtenprüfung"),
+            DispatcherPriority.SystemIdle);
+    }
+
+    private void TouchNavigationContent(string title)
+    {
+        var nav = NavigationItems.FirstOrDefault(i => i.Title == title);
+        _ = nav?.Content;
     }
 
     /// <summary>Planer: Arbeitsstand und Dropbox-Sync nach Anmeldung im Hintergrund laden.</summary>
@@ -280,7 +334,7 @@ public partial class MainViewModel : ObservableObject
 
             if (!AppServices.Routes.HasPackage)
             {
-                var localJson = await Task.Run(AppServices.Workspace.TryLoadPackageJson).ConfigureAwait(true);
+                var localJson = await Task.Run(() => AppServices.Workspace.TryLoadPackageJson()).ConfigureAwait(true);
                 if (!string.IsNullOrWhiteSpace(localJson) && LoadLocalWorkspaceOnStartup(localJson))
                 {
                     StatusText = BuildLocalStatusText("routes_export lokal geladen");
@@ -763,6 +817,33 @@ public partial class MainViewModel : ObservableObject
         await SyncLeitstelleFromDropboxAsync(isBackground: true).ConfigureAwait(true);
     }
 
+    private static (bool Handled, bool Imported, string Message) ApplyLeitstelleRoutesFile(string json)
+    {
+        if (!LiteRouteUpdateMerge.IsLiteVehicleUpdate(json))
+        {
+            return (false, false, string.Empty);
+        }
+
+        var current = AppServices.Routes.CurrentJson;
+        var holdsAudio = current is not null &&
+            current.Contains("\"embeddedSounds\"", StringComparison.Ordinal);
+        if (!AppServices.Routes.HasPackage || holdsAudio)
+        {
+            AppServices.Routes.LoadLeitstellePackage(json, "leitstelle-routes");
+            return (
+                true,
+                true,
+                $"{DropboxConstants.LeitstelleRoutesFileName} übernommen " +
+                $"({AppServices.Routes.Stats.RouteCount} Routen, {AppServices.Routes.Stats.StopCount} Haltestellen).");
+        }
+
+        var imported = AppServices.Routes.TryMergeLiteRouteUpdateJson(
+            json,
+            out var message,
+            trackLeitstelleRoutes: true);
+        return (true, imported, message);
+    }
+
     private async Task SyncLeitstelleFromDropboxAsync(bool isBackground)
     {
         if (!_profile.IsLeitstelle)
@@ -793,42 +874,72 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var localTimestamp = AppServices.Routes.Stats.Timestamp ?? 0;
-            var hadLocal = AppServices.Routes.HasPackage;
             var importedRoutePackage = false;
+            var usedSlimRoutes = false;
 
-            var remoteJson = await AppServices.Dropbox.DownloadRouteFileAsync().ConfigureAwait(true);
-            var remoteTimestamp = LocalWorkspaceStore.ExtractPackageTimestamp(remoteJson);
-
-            if (!hadLocal || remoteTimestamp > localTimestamp)
+            var slimJson = await AppServices.Dropbox
+                .TryDownloadNamedFileAsync(DropboxConstants.LeitstelleRoutesFileName)
+                .ConfigureAwait(true);
+            if (!string.IsNullOrWhiteSpace(slimJson))
             {
-                AppServices.Routes.LoadFromJson(remoteJson, persistLocally: true, source: "dropbox-startup");
-                // Vollpaket ersetzt Workspace – Lite-/Leitstelle-Timestamps ungültig, sonst bleiben Snaps weg.
-                if (AppServices.IsInitialized)
+                var slimOutcome = await Task.Run(() => ApplyLeitstelleRoutesFile(slimJson)).ConfigureAwait(true);
+                usedSlimRoutes = slimOutcome.Handled;
+                if (slimOutcome.Imported)
                 {
-                    AppServices.Workspace.SaveLastMergedLeitstelleRoutesTimestamp(0);
-                    AppServices.Workspace.SaveLastMergedRouteUpdateTimestamp(0);
-                }
-
-                OnRoutePackageLoaded();
-                importedRoutePackage = true;
-
-                if (isBackground)
-                {
-                    _dataTransferViewModel.LastActionMessage =
-                        $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm}): Route-Paket übernommen.";
-                }
-                else
-                {
-                    StatusText = BuildLocalStatusText("Dropbox synchronisiert");
-                    _dataTransferViewModel.LastActionMessage =
-                        $"Dropbox-Stand übernommen ({AppServices.Dropbox.GetRouteFilePath()}).";
+                    importedRoutePackage = true;
+                    var prefix = isBackground ? $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm})" : "Dropbox-Stand";
+                    _dataTransferViewModel.LastActionMessage = $"{prefix}: {slimOutcome.Message}";
                 }
             }
-            else if (!isBackground)
+
+            if (!usedSlimRoutes)
             {
-                StatusText = BuildLocalStatusText("Lokal (aktueller als Dropbox)");
-                _dataTransferViewModel.LastActionMessage = "Lokaler Arbeitsstand ist neuer – Dropbox unverändert.";
+                var remoteJson = await AppServices.Dropbox.DownloadRouteFileAsync().ConfigureAwait(true);
+                var adoptedExport = await Task.Run(() =>
+                {
+                    var remoteTimestamp = LocalWorkspaceStore.ExtractPackageTimestamp(remoteJson);
+                    var localTimestamp = AppServices.Routes.Stats.Timestamp ?? 0;
+                    if (AppServices.Routes.HasPackage && remoteTimestamp <= localTimestamp)
+                    {
+                        return false;
+                    }
+
+                    AppServices.Routes.LoadFromJson(remoteJson, persistLocally: true, source: "dropbox-startup");
+                    AppServices.Routes.ReleaseAnnouncementAudioFromWorkingCopy();
+                    if (AppServices.IsInitialized)
+                    {
+                        AppServices.Workspace.SaveLastMergedLeitstelleRoutesTimestamp(0);
+                        AppServices.Workspace.SaveLastMergedRouteUpdateTimestamp(0);
+                        var slim = AppServices.Routes.CurrentJson;
+                        if (!string.IsNullOrWhiteSpace(slim))
+                        {
+                            AppServices.Workspace.SavePackage(slim, "leitstelle-ohne-audio", archivePrevious: false);
+                        }
+                    }
+
+                    return true;
+                }).ConfigureAwait(true);
+
+                if (adoptedExport)
+                {
+                    importedRoutePackage = true;
+                    if (isBackground)
+                    {
+                        _dataTransferViewModel.LastActionMessage =
+                            $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm}): Route-Paket ohne Ansagen-Audio übernommen.";
+                    }
+                    else
+                    {
+                        StatusText = BuildLocalStatusText("Dropbox synchronisiert");
+                        _dataTransferViewModel.LastActionMessage =
+                            $"Dropbox-Stand ohne Ansagen-Audio übernommen ({AppServices.Dropbox.GetRouteFilePath()}).";
+                    }
+                }
+                else if (!isBackground)
+                {
+                    StatusText = BuildLocalStatusText("Lokal (aktueller als Dropbox)");
+                    _dataTransferViewModel.LastActionMessage = "Lokaler Arbeitsstand ist neuer – Dropbox unverändert.";
+                }
             }
 
             await TryProcessDeviceRegistrationsFromDropboxAsync().ConfigureAwait(true);
@@ -838,7 +949,6 @@ public partial class MainViewModel : ObservableObject
                 var standResult = await LeitstelleStandDropboxSync.TryMergeFromDropboxAsync().ConfigureAwait(true);
                 if (standResult.Imported)
                 {
-                    OnRoutePackageLoaded();
                     importedRoutePackage = true;
                     var prefix = isBackground ? $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm})" : "Dropbox-Stand";
                     _dataTransferViewModel.LastActionMessage = string.IsNullOrWhiteSpace(_dataTransferViewModel.LastActionMessage)
@@ -847,19 +957,37 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
-            var leitstelleRoutesResult = await LeitstelleRoutesDropboxSync.TryMergeFromDropboxAsync().ConfigureAwait(true);
-            if (leitstelleRoutesResult.Imported)
+            if (!usedSlimRoutes)
             {
-                OnRoutePackageLoaded();
-                importedRoutePackage = true;
-                var prefixRoutes = isBackground ? $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm})" : "Dropbox-Stand";
-                _dataTransferViewModel.LastActionMessage = string.IsNullOrWhiteSpace(_dataTransferViewModel.LastActionMessage)
-                    ? $"{prefixRoutes}: {leitstelleRoutesResult.Message}"
-                    : $"{_dataTransferViewModel.LastActionMessage} {leitstelleRoutesResult.Message}";
+                var leitstelleRoutesResult = await LeitstelleRoutesDropboxSync.TryMergeFromDropboxAsync()
+                    .ConfigureAwait(true);
+                if (leitstelleRoutesResult.Imported)
+                {
+                    importedRoutePackage = true;
+                    var prefixRoutes = isBackground ? $"Dropbox-Hintergrundsync ({DateTime.Now:HH:mm})" : "Dropbox-Stand";
+                    _dataTransferViewModel.LastActionMessage = string.IsNullOrWhiteSpace(_dataTransferViewModel.LastActionMessage)
+                        ? $"{prefixRoutes}: {leitstelleRoutesResult.Message}"
+                        : $"{_dataTransferViewModel.LastActionMessage} {leitstelleRoutesResult.Message}";
+                }
+            }
+
+            if (importedRoutePackage)
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher is not null && !dispatcher.CheckAccess())
+                {
+                    await dispatcher.InvokeAsync(OnRoutePackageLoaded);
+                }
+                else
+                {
+                    OnRoutePackageLoaded();
+                }
             }
 
             var liteResult = await LiteRouteUpdateDropboxSync
-                .TryMergeFromDropboxAsync(skipWhenLeitstelleRoutesPresent: true)
+                .TryMergeFromDropboxAsync(
+                    skipWhenLeitstelleRoutesPresent: true,
+                    leitstelleRoutesKnownPresent: usedSlimRoutes)
                 .ConfigureAwait(true);
             if (liteResult.Imported)
             {
@@ -1111,6 +1239,17 @@ public partial class MainViewModel : ObservableObject
                 Description = "Vorlagen wählen und per Dropbox an Fahrzeuge senden (zbl_message)",
                 CreateContent = () => new MessageSendView { DataContext = _messageSendViewModel }
             });
+            AddLeaf(new NavigationItem
+            {
+                Title = "Innenhinweise",
+                Icon = PackIconKind.MessageTextOutline,
+                Description = "Standardtext und Liveticker der Innenanzeige an die Fahrzeuge senden",
+                CreateContent = () =>
+                {
+                    _settingsViewModel.ReloadInteriorHints();
+                    return new InteriorHintsView { DataContext = _settingsViewModel };
+                }
+            });
         }
         else
         {
@@ -1174,8 +1313,12 @@ public partial class MainViewModel : ObservableObject
             {
                 Title = "Anzeigen & Hinweise",
                 Icon = PackIconKind.Billboard,
-                Description = "Zielliste und datumgesteuerte Hinweise",
-                CreateContent = () => new DisplaysOperationsView { DataContext = DisplaysOperationsViewModel }
+                Description = "Zielliste, datumgesteuerte Hinweise und Innenhinweise",
+                CreateContent = () =>
+                {
+                    DisplaysOperationsViewModel.AttachInteriorHints(_settingsViewModel);
+                    return new DisplaysOperationsView { DataContext = DisplaysOperationsViewModel };
+                }
             };
             var nachrichten = new NavigationItem
             {

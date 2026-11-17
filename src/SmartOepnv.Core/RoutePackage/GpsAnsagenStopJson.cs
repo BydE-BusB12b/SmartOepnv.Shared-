@@ -52,6 +52,7 @@ public static class GpsAnsagenStopJson
             MobitecEndDestination = JsonNodeReading.GetString(obj["mobitecEndDestination"]),
             MobitecEndDestinationId = OutsideDisplayId.Normalize(JsonNodeReading.GetString(obj["mobitecEndDestinationId"])),
             IsEndStop = JsonNodeReading.GetBoolean(obj["isEndStop"]),
+            ShowOnTft = JsonNodeReading.GetBoolean(obj["showOnTft"], defaultValue: true),
             DepartureCountdownEnabled = JsonNodeReading.GetBoolean(obj["departureCountdownEnabled"], defaultValue: true),
             PlayEndStopAnnouncementEn = ReadPlayEndStopAnnouncementEn(obj),
             PlayEndStopAnnouncementNl = JsonNodeReading.GetBoolean(obj["playEndStopAnnouncementNl"]),
@@ -137,6 +138,7 @@ public static class GpsAnsagenStopJson
             ["mobitecEndDestination"] = stop.MobitecEndDestination,
             ["mobitecEndDestinationId"] = stop.MobitecEndDestinationId,
             ["isEndStop"] = stop.IsEndStop,
+            ["showOnTft"] = stop.ShowOnTft,
             ["departureCountdownEnabled"] = stop.DepartureCountdownEnabled,
             ["playEndStopAnnouncement"] = stop.PlayEndStopAnnouncement,
             ["playEndStopAnnouncementEn"] = stop.PlayEndStopAnnouncementEn,
@@ -327,6 +329,11 @@ public static class GpsAnsagenStopJson
         if (stop.IsEndStop)
         {
             obj["isEndStop"] = true;
+        }
+
+        if (!stop.ShowOnTft)
+        {
+            obj["showOnTft"] = false;
         }
 
         obj["departureCountdownEnabled"] = stop.DepartureCountdownEnabled;

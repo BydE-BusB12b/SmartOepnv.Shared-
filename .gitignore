@@ -13,3 +13,7 @@ Desktop.ini
 
 # NuGet
 packages/
+
+# Python
+__pycache__/
+*.pyc

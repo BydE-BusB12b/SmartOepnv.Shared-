@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.AppShared.Pdf;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
 
@@ -29,6 +30,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     private readonly Dictionary<OutsideDisplayProgram, string> _storageEntryCache = new(ReferenceEqualityComparer.Instance);
     private string _linkedDisplaySignature = string.Empty;
     private bool _hasUnsavedChanges;
+    private bool _lineReplacementsLoaded;
     private bool _committingChanges;
     private int _loadedRevision = -1;
     private OutsideDisplayProgram? _subscribedOutsideProgram;
@@ -49,11 +51,16 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     [ObservableProperty] private string newHintEndDate = string.Empty;
     [ObservableProperty] private DisplaysOperationsButtonState saveButtonState = DisplaysOperationsButtonState.Idle;
     [ObservableProperty] private int selectedTabIndex;
+
+    public SettingsViewModel? InteriorHints { get; private set; }
+
+    public void AttachInteriorHints(SettingsViewModel settings) => InteriorHints = settings;
     [ObservableProperty] private string outsideProgramSearchText = string.Empty;
     [ObservableProperty] private string selectedProtocolFilter = "Alle";
     [ObservableProperty] private string selectedOutsideProgramSort = "ID ↑";
 
     public ObservableCollection<DateBasedHintItem> DateBasedHints { get; } = [];
+    public ObservableCollection<LineReplacementRule> LineReplacements { get; } = [];
     public ObservableCollection<OutsideDisplayProgram> OutsidePrograms { get; } = [];
 
     /// <summary>Gefilterte Zielliste (Suche + Protokoll).</summary>
@@ -116,6 +123,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     public void RefreshFromEditor()
     {
         DateBasedHints.Clear();
+        LineReplacements.Clear();
         OutsidePrograms.Clear();
         _storageEntryCache.Clear();
         _preservedRawEntries.Clear();
@@ -126,6 +134,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
+            _lineReplacementsLoaded = false;
             StatusMessage = "Kein Route-Paket – unter Routen/Haltestellen zuerst anlegen oder Planer neu starten.";
             return;
         }
@@ -134,6 +143,13 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         {
             DateBasedHints.Add(hint);
         }
+
+        foreach (var rule in editor.LineReplacements)
+        {
+            LineReplacements.Add(rule);
+        }
+
+        _lineReplacementsLoaded = true;
 
         foreach (var entry in editor.OutsideDisplays)
         {
@@ -187,6 +203,10 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         try
         {
             editor.ReplaceDateBasedHints(DateBasedHints.ToList());
+            if (_lineReplacementsLoaded)
+            {
+                editor.ReplaceLineReplacements(LineReplacements.ToList());
+            }
             foreach (var program in OutsidePrograms)
             {
                 program.ApplyStartTargetName();
@@ -217,7 +237,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
             RefreshOutsideProgramListLabels();
             var enabledCount = OutsidePrograms.Count(p => p.IsListEnabled);
             StatusMessage =
-                $"Gespeichert – {OutsidePrograms.Count} Zielanzeigen ({enabledCount} in ITCS-Liste), {DateBasedHints.Count} Hinweise (Dropbox/Handy).";
+                $"Gespeichert – {OutsidePrograms.Count} Zielanzeigen ({enabledCount} in ITCS-Liste), {DateBasedHints.Count} Hinweise, {LineReplacements.Count} Linienersätze (Dropbox/Handy).";
 
             if (showSuccessFeedback)
             {
@@ -714,6 +734,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         SelectedTabIndex = tabKey switch
         {
             "hints" => 1,
+            "interior" => 2,
             _ => 0
         };
     }
@@ -1211,6 +1232,34 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         program.DestinationNumber = edit.DestinationNumber;
         program.IntervalSeconds = edit.IntervalSeconds;
         program.NotifyMobitecGraphicsChanged();
+    }
+
+    [RelayCommand]
+    private void OpenLineReplacementList()
+    {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
+        var dialog = new LineReplacementListDialog(LineReplacements.ToList())
+        {
+            Owner = DialogOwnerHelper.ResolveOwner()
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        LineReplacements.Clear();
+        foreach (var rule in dialog.Rules)
+        {
+            LineReplacements.Add(rule);
+        }
+
+        _lineReplacementsLoaded = true;
+        MarkDirty();
+        CommitChanges(force: true);
     }
 
     private bool EnsurePackageForOutsidePrograms()

@@ -41,6 +41,8 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     [ObservableProperty] private string routeOperatingDatesText = string.Empty;
     [ObservableProperty] private string routeOperatingDatesDisplay = string.Empty;
     [ObservableProperty] private string routeInteriorDisplayDestination = string.Empty;
+
+    [ObservableProperty] private string routeInteriorHint = string.Empty;
     [ObservableProperty] private string routeAnnouncementVoice = AnnouncementVoiceFiles.PetraLabel;
     [ObservableProperty] private int ds009TextMaxLength = PlanerDs009TextLength.Length20;
     [ObservableProperty] private bool routeItcsRouteListEnabled = true;
@@ -65,6 +67,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     private bool _suppressDateRangeSync;
     private bool _suppressOperatingDatesSync;
     private bool _suppressInteriorDestinationSync;
+    private bool _suppressInteriorHintSync;
     private bool _suppressAnnouncementVoiceSync;
     private bool _suppressItcsRouteListSync;
     private bool _suppressMainDeviceOnlySync;
@@ -847,6 +850,16 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         PersistRouteInteriorDisplayDestinationFromSelection();
     }
 
+    partial void OnRouteInteriorHintChanged(string value)
+    {
+        if (_suppressInteriorHintSync)
+        {
+            return;
+        }
+
+        PersistRouteInteriorHintFromSelection();
+    }
+
     partial void OnRouteAnnouncementVoiceChanged(string value)
     {
         if (_suppressAnnouncementVoiceSync)
@@ -915,6 +928,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         LoadRouteDateRangeForSelection(value);
         LoadRouteOperatingDatesForSelection(value);
         LoadRouteInteriorDisplayDestinationForSelection(value);
+        LoadRouteInteriorHintForSelection(value);
         LoadRouteAnnouncementVoiceForSelection(value);
         LoadRouteItcsRouteListForSelection(value);
         LoadRouteMainDeviceOnlyForSelection(value);
@@ -2169,6 +2183,42 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         editor.SetRouteInteriorDisplayDestination(SelectedRoute, RouteInteriorDisplayDestination);
         _sync.MarkDirty();
         StatusMessage = $"Haltestellenanzeige-Zieltext für „{SelectedRoute}“ geändert – bitte speichern.";
+    }
+
+    private void LoadRouteInteriorHintForSelection(string? routeKey)
+    {
+        var editor = AppServices.Routes.Editor;
+        _suppressInteriorHintSync = true;
+        try
+        {
+            RouteInteriorHint = string.IsNullOrWhiteSpace(routeKey) || editor is null
+                ? string.Empty
+                : editor.GetRouteInteriorHint(routeKey);
+        }
+        finally
+        {
+            _suppressInteriorHintSync = false;
+        }
+    }
+
+    private void PersistRouteInteriorHintFromSelection()
+    {
+        if (_suppressInteriorHintSync || string.IsNullOrWhiteSpace(SelectedRoute))
+        {
+            return;
+        }
+
+        var editor = AppServices.Routes.Editor;
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.SetRouteInteriorHint(SelectedRoute, RouteInteriorHint);
+        _sync.MarkDirty();
+        StatusMessage = string.IsNullOrWhiteSpace(RouteInteriorHint)
+            ? $"Hinweis für „{SelectedRoute}“ entfernt – bitte speichern."
+            : $"Hinweis für „{SelectedRoute}“ geändert – bitte speichern.";
     }
 
     private void LoadRouteAnnouncementVoiceForSelection(string? routeKey)

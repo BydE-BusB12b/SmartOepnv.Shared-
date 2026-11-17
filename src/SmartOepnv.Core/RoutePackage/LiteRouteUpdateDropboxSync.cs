@@ -13,7 +13,8 @@ public static class LiteRouteUpdateDropboxSync
 
     public static async Task<ImportResult> TryMergeFromDropboxAsync(
         CancellationToken ct = default,
-        bool skipWhenLeitstelleRoutesPresent = false)
+        bool skipWhenLeitstelleRoutesPresent = false,
+        bool leitstelleRoutesKnownPresent = false)
     {
         if (!AppServices.IsInitialized)
         {
@@ -27,6 +28,14 @@ public static class LiteRouteUpdateDropboxSync
 
         try
         {
+            if (leitstelleRoutesKnownPresent)
+            {
+                return new ImportResult(
+                    false,
+                    $"{DropboxConstants.RouteUpdateFileName} übersprungen – " +
+                    $"{DropboxConstants.LeitstelleRoutesFileName} ist maßgeblich.");
+            }
+
             if (skipWhenLeitstelleRoutesPresent)
             {
                 var leitstelleRoutesJson = await AppServices.Dropbox

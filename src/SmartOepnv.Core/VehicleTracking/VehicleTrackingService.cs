@@ -13,14 +13,20 @@ public sealed class VehicleTrackingService
         _dropbox = dropbox;
     }
 
-    public async Task<IReadOnlyList<VehicleLiveState>> SyncAsync(
+    public Task<IReadOnlyList<VehicleLiveState>> SyncAsync(
         string? routePackageJson,
         CancellationToken ct = default)
     {
         var roster = string.IsNullOrWhiteSpace(routePackageJson)
             ? Array.Empty<RegisteredVehicleInfo>()
             : RegisteredVehicleInfo.ParseFromJson(routePackageJson);
+        return SyncAsync(roster, ct);
+    }
 
+    public async Task<IReadOnlyList<VehicleLiveState>> SyncAsync(
+        IReadOnlyList<RegisteredVehicleInfo> roster,
+        CancellationToken ct = default)
+    {
         var files = await _dropbox.ListLocationChatFilesAsync(ct);
         if (files.Count == 0)
         {

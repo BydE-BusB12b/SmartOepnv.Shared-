@@ -382,6 +382,10 @@
                       Margin="0,0,16,4" VerticalAlignment="Center" />
             <CheckBox Content="Endhaltestelle" IsChecked="{Binding IsEndStop, Mode=TwoWay}"
                       Margin="0,0,16,4" VerticalAlignment="Center" />
+            <CheckBox Content="TFT"
+                      IsChecked="{Binding ShowOnTft, Mode=TwoWay}"
+                      Margin="0,0,16,4" VerticalAlignment="Center"
+                      ToolTip="Haltestelle auf dem Fahrgast-TFT anzeigen. Standard an. Bei Wendehalten ausschalten." />
             <StackPanel Orientation="Horizontal"
                         Visibility="{Binding ShowEndStopAnnouncementFields, Converter={StaticResource BoolToVis}}"
                         Margin="0,0,0,4" VerticalAlignment="Center">

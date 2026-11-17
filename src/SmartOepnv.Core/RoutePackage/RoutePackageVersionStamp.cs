@@ -152,6 +152,11 @@ public static class RoutePackageVersionStamp
 
         root[JsonKey] = next;
         root[KindKey] = kind == Kind.Export ? KindExport : KindUpdate;
+        root["interiorStandardText"] = string.IsNullOrWhiteSpace(settings.InteriorStandardText)
+            ? "info@smart-oepnv.de"
+            : settings.InteriorStandardText.Trim();
+        root["interiorTickerText"] = settings.InteriorTickerText?.Trim() ?? string.Empty;
+        root[InteriorTickerSchedule.ItemsField] = InteriorTickerSchedule.ToJsonArray(settings.InteriorTickerEntries);
         root["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         if (root["exportType"] is null)
         {

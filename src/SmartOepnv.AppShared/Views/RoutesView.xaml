@@ -252,6 +252,10 @@
                                     Style="{StaticResource Ds009Length20ButtonStyle}" />
                         </StackPanel>
                     </Grid>
+                    <TextBox materialDesign:HintAssist.Hint="Hinweis dieser Route"
+                             Text="{Binding RouteInteriorHint, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8"
+                             ToolTip="Steht unten auf der Innenanzeige, solange kein Liveticker mit Zeitfenster läuft." />
                     <ComboBox Margin="0,8,0,0"
                               HorizontalAlignment="Left"
                               MinWidth="240"

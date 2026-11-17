@@ -72,6 +72,9 @@ public static class DropboxConstants
     /// <summary>GPS-Fahrtenprüfung: Übertragung je Fahrzeug, 7-Tage-Fenster (<c>gps_trace_{telefon}.json</c>). Der Planer behält 30 Tage.</summary>
     public const string GpsTraceFilePrefix = "gps_trace_";
     public const string MaengelkarteFileName = "maengelkarte.json";
+
+    /// <summary>Liveticker mit Zeitfenster. Planer und Leitstelle schreiben dieselbe Datei. Fahrzeuge lesen sie.</summary>
+    public const string InteriorTickerFileName = "interior_ticker.json";
     public const string PlanerSessionFileName = "planer_session.json";
     /// <summary>Vollständiger Planer-Arbeitsstand (nicht routes_export.json – die lesen die Apps).</summary>
     public const string PlanerWorkspaceFileName = "planer_workspace.json";

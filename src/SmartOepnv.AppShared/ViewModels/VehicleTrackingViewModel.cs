@@ -127,8 +127,8 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
             var vehicles = _vehicles;
             if (vehicles.Count == 0)
             {
-                var json = AppServices.Routes.CurrentJson;
-                vehicles = await Task.Run(async () => await _tracking.SyncAsync(json));
+            var roster = AppServices.Routes.VehicleRoster;
+            vehicles = await Task.Run(async () => await _tracking.SyncAsync(roster));
                 await RunOnUiAsync(() =>
                 {
                     _vehicles = vehicles;
@@ -209,8 +209,8 @@ public partial class VehicleTrackingViewModel : ObservableObject, IDisposable
 
         try
         {
-            var json = AppServices.Routes.CurrentJson;
-            var vehicles = await Task.Run(async () => await _tracking.SyncAsync(json));
+            var roster = AppServices.Routes.VehicleRoster;
+            var vehicles = await Task.Run(async () => await _tracking.SyncAsync(roster));
 
             await RunOnUiAsync(() =>
             {

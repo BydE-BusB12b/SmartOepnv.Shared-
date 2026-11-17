@@ -44,7 +44,7 @@ public partial class AnnouncementsLibraryViewModel
             var rawDir = PlanerAnnouncementRawSoundsWorkspace.GetRawSoundsDirectory(AppServices.Workspace);
             Directory.CreateDirectory(rawDir);
             var rawTarget = Path.Combine(rawDir, voice2Name);
-            File.Copy(dialog.FileName, rawTarget, overwrite: true);
+            var converted = AnnouncementWavImport.Store(dialog.FileName, rawTarget);
 
             var embeddedDir = PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(AppServices.Workspace);
             Directory.CreateDirectory(embeddedDir);
@@ -55,8 +55,9 @@ public partial class AnnouncementsLibraryViewModel
                 voice2Name,
                 embeddedTarget);
             MarkDirty();
-            StatusMessage =
-                $"„{voice2Name}“ als Stimme 2 gespeichert. „{petraName}“ bleibt Petra. Speichern & JSON fürs Handy.";
+            StatusMessage = converted
+                ? $"„{voice2Name}“ aus der Audiodatei als WAV gespeichert. „{petraName}“ bleibt Petra. Speichern & JSON fürs Handy."
+                : $"„{voice2Name}“ als Stimme 2 gespeichert. „{petraName}“ bleibt Petra. Speichern & JSON fürs Handy.";
             RefreshGreetingSequenceNotes();
         }
         catch (Exception ex)
@@ -106,7 +107,7 @@ public partial class AnnouncementsLibraryViewModel
             var rawDir = PlanerAnnouncementRawSoundsWorkspace.GetRawSoundsDirectory(AppServices.Workspace);
             Directory.CreateDirectory(rawDir);
             var rawTarget = Path.Combine(rawDir, voice2Name);
-            File.Copy(dialog.FileName, rawTarget, overwrite: true);
+            var converted = AnnouncementWavImport.Store(dialog.FileName, rawTarget);
 
             var embeddedDir = PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(AppServices.Workspace);
             Directory.CreateDirectory(embeddedDir);
@@ -118,8 +119,9 @@ public partial class AnnouncementsLibraryViewModel
                 embeddedTarget);
             MarkDirty();
             RefreshGreetingSequenceNotes();
-            StatusMessage =
-                $"„{voice2Name}“ liegt neben „{petraName}“. Die Folge Linie → Nach → Ziel und die automatische Lücke bleiben. Speichern & JSON fürs Handy.";
+            StatusMessage = converted
+                ? $"„{voice2Name}“ aus der Audiodatei als WAV gespeichert. Die Folge Linie → Nach → Ziel und die automatische Lücke bleiben. Speichern & JSON fürs Handy."
+                : $"„{voice2Name}“ liegt neben „{petraName}“. Die Folge Linie → Nach → Ziel und die automatische Lücke bleiben. Speichern & JSON fürs Handy.";
         }
         catch (Exception ex)
         {

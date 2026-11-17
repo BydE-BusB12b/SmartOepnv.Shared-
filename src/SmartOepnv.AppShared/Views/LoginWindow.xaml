@@ -44,6 +44,22 @@
                        FontSize="12"
                        Margin="0,8,0,0"
                        Visibility="Collapsed" />
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <Border x:Name="SessionLed"
+                        Width="14"
+                        Height="14"
+                        CornerRadius="7"
+                        Background="#9E9E9E"
+                        BorderBrush="#55FFFFFF"
+                        BorderThickness="1"
+                        VerticalAlignment="Center" />
+                <TextBlock x:Name="SessionStatusText"
+                           Text="Status wird geprüft…"
+                           Margin="8,0,0,0"
+                           FontSize="13"
+                           VerticalAlignment="Center"
+                           Foreground="#BDBDBD" />
+            </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Row="1">

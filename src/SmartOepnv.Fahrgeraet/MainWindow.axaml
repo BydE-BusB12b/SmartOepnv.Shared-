@@ -9,7 +9,12 @@
   <Grid ColumnDefinitions="280,*" Margin="12">
     <StackPanel x:Name="Nav" Spacing="6" />
     <Grid Grid.Column="1" RowDefinitions="Auto,*">
-      <TextBlock x:Name="StatusText" Foreground="White" FontSize="16" TextWrapping="Wrap" />
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Border x:Name="IbisChip" CornerRadius="6" Padding="10,4" Background="#C62828">
+          <TextBlock x:Name="IbisChipText" Text="IBIS-IP" Foreground="White" FontSize="16" />
+        </Border>
+        <TextBlock x:Name="StatusText" Foreground="White" FontSize="16" TextWrapping="Wrap" />
+      </StackPanel>
       <ContentControl x:Name="PageHost" Grid.Row="1" />
     </Grid>
   </Grid>

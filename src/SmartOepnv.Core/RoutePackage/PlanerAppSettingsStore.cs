@@ -76,7 +76,20 @@ public sealed class PlanerAppSettingsStore
             sevTftHost = settings.SevTftHost,
             sevTftPort = settings.SevTftPort is >= 1 and <= 65535 ? settings.SevTftPort : 8080,
             sevTftEnabled = settings.SevTftEnabled,
-            sevTftAutoSend = settings.SevTftAutoSend
+            sevTftAutoSend = settings.SevTftAutoSend,
+            interiorStandardText = string.IsNullOrWhiteSpace(settings.InteriorStandardText)
+                ? "info@smart-oepnv.de"
+                : settings.InteriorStandardText.Trim(),
+            interiorTickerText = settings.InteriorTickerText?.Trim() ?? string.Empty,
+            interiorTickerEntries = settings.InteriorTickerEntries
+                .Select(entry => new
+                {
+                    text = entry.Text?.Trim() ?? string.Empty,
+                    from = entry.From?.Trim() ?? string.Empty,
+                    until = entry.Until?.Trim() ?? string.Empty
+                })
+                .Where(entry => entry.text.Length > 0 && entry.from.Length > 0 && entry.until.Length > 0)
+                .ToList()
         };
         SafeDataFileStore.WriteAllText(_settingsPath, JsonSerializer.Serialize(document, JsonOptions));
     }

@@ -20,16 +20,23 @@ public static class FahrBetrieb
 
 public static class TastenTon
 {
+    public static byte[] Sample() => Beep();
+
     public static void Play()
     {
-        if (!GeraetEinstellungen.Bool("button_sounds_enabled", false))
+        if (!GeraetEinstellungen.Bool("button_sounds_enabled", true))
         {
             return;
         }
 
         try
         {
-            StereoWav.Play(Beep(), null);
+            if (IvuTon.Piep())
+            {
+                return;
+            }
+
+            TonAusgang.PlayDisplay(Beep());
         }
         catch
         {
@@ -178,8 +185,16 @@ public static class FahrLuecken
             settings.AppKey = DropboxConstants.DefaultAppKey;
             settings.AppSecret = DropboxConstants.DefaultAppSecret;
             store.Save(settings);
-            Open(new DropboxApiClient(store).BuildAuthorizeUrl());
-            info.Text = "Im Browser anmelden und den Code hier einfügen.";
+            var url = new DropboxApiClient(store).BuildAuthorizeUrl();
+            try
+            {
+                Open(url);
+                info.Text = "Im Browser anmelden und den Code hier einfügen.";
+            }
+            catch (Exception ex)
+            {
+                info.Text = ex.Message + "\n" + url;
+            }
         };
         var exchange = FahrbetriebPages.Touch("Code einlösen");
         exchange.Click += async (_, _) =>
@@ -362,18 +377,51 @@ public static class FahrLuecken
                 return;
             }
 
+            var voice2 = GeraetEinstellungen.Bool("special_list_announcement_voice_2", false);
             var sounds = GpsAnsagenEmbeddedSoundsJson.ReadAllEntries(session.Package.PackageRoot);
-            var match = sounds.Keys.FirstOrDefault(file => file.Contains(key, StringComparison.OrdinalIgnoreCase));
+            var match = AnsageWahl.Prefer(sounds, key + ".wav", voice2)
+                        ?? sounds.Keys.FirstOrDefault(file => file.Contains(key, StringComparison.OrdinalIgnoreCase) &&
+                            (!voice2 || file.Contains("_2", StringComparison.OrdinalIgnoreCase)));
             if (match is null)
             {
                 info.Text = "Keine Tondatei zu dieser Sonderansage.";
                 return;
             }
 
-            StereoWav.Play(Convert.FromBase64String(sounds[match].Base64), true);
-            info.Text = key;
+            var zone = AnnouncementAudioOutput.Both;
+            if (session.Package.PackageRoot["specialAnnouncements"] is JsonObject list &&
+                list[key] is JsonObject entry)
+            {
+                zone = AnnouncementAudioOutput.Normalize(entry["audioOutput"]?.ToString());
+            }
+
+            Task.Run(() => AnsageSequenz.PlayClip(session, match, voice2, zone));
+            info.Text = (voice2 ? "Stimme 2 · " : "Petra · ") + key + " · Bluetooth";
         };
-        return FahrbetriebPages.Column("Ansagen", name, start, stop, many, info, specials, play);
+        var petra = FahrbetriebPages.Touch("Petra");
+        var stimme2 = FahrbetriebPages.Touch("Stimme 2");
+        void PaintVoice()
+        {
+            var on = GeraetEinstellungen.Bool("special_list_announcement_voice_2", false);
+            info.Text = on ? "Spezialliste: Stimme 2" : "Spezialliste: Petra";
+        }
+
+        petra.Click += (_, _) =>
+        {
+            var values = GeraetEinstellungen.Load();
+            values["special_list_announcement_voice_2"] = "false";
+            GeraetEinstellungen.Save(values);
+            PaintVoice();
+        };
+        stimme2.Click += (_, _) =>
+        {
+            var values = GeraetEinstellungen.Load();
+            values["special_list_announcement_voice_2"] = "true";
+            GeraetEinstellungen.Save(values);
+            PaintVoice();
+        };
+        PaintVoice();
+        return FahrbetriebPages.Column("Ansagen", name, start, stop, many, info, specials, petra, stimme2, play);
     }
 
     public static Control LinienCodes(FahrSession session)
@@ -736,10 +784,13 @@ public static class FahrLuecken
 
     public static Control Bluetooth()
     {
-        var mac = FahrbetriebPages.Field("Bluetooth-Adresse des Fahrergeräts");
+        var mac = FahrbetriebPages.Field("Bluetooth-Adresse für die Ansagen");
         mac.Text = GeraetEinstellungen.Text("bluetooth_device", "");
         var force = FahrbetriebPages.Check("Zwangskopplung", GeraetEinstellungen.Bool("bluetooth_force_pairing", true));
-        var info = FahrbetriebPages.Info("Alle 15 Sekunden wird Bluetooth eingeschaltet. Unter Linux wird zusätzlich das eingetragene Gerät verbunden.");
+        var info = FahrbetriebPages.Info(
+            "Nur Haltestellenansagen und Sonderansagen laufen über Bluetooth in den Fahrgastraum. Links ist innen, rechts ist außen. " +
+            "Stempel, Abfahrt, Tastentöne, IVU-Töne und der Funk laufen über die Lautsprecher des Displays. " +
+            TonAusgang.Describe());
         var save = FahrbetriebPages.Touch("Speichern");
         save.Click += (_, _) =>
         {
@@ -747,9 +798,23 @@ public static class FahrLuecken
             values["bluetooth_device"] = mac.Text ?? "";
             values["bluetooth_force_pairing"] = force.IsChecked == true ? "true" : "false";
             GeraetEinstellungen.Save(values);
-            info.Text = "Gespeichert.";
+            info.Text = "Gespeichert. " + TonAusgang.Describe();
         };
-        return FahrbetriebPages.Column("Bluetooth", mac, force, save, info);
+        var probeInside = FahrbetriebPages.Touch("Innen prüfen");
+        probeInside.Click += (_, _) =>
+        {
+            StereoWav.Play(TastenTon.Sample(), true);
+            info.Text = "Links, innen. " + TonAusgang.Describe();
+        };
+        var probeOutside = FahrbetriebPages.Touch("Außen prüfen");
+        probeOutside.Click += (_, _) =>
+        {
+            StereoWav.Play(TastenTon.Sample(), false);
+            info.Text = "Rechts, außen. " + TonAusgang.Describe();
+        };
+        var probeDisplay = FahrbetriebPages.Touch("Display prüfen");
+        probeDisplay.Click += (_, _) => info.Text = TonAusgang.Describe();
+        return FahrbetriebPages.Column("Bluetooth", mac, force, save, probeInside, probeOutside, probeDisplay, info);
     }
 
     private static ListBox Routes(FahrSession session)
@@ -824,6 +889,12 @@ public static class FahrLuecken
 
     private static void Open(string url)
     {
+        if (OperatingSystem.IsLinux())
+        {
+            Process.Start("xdg-open", url);
+            return;
+        }
+
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
@@ -880,12 +951,72 @@ public sealed class AnsageRecorder
 
 public static class VrrAbfahrten
 {
+    private static readonly object CacheGate = new();
+    private static List<Departure> _cached = [];
+
+    internal readonly record struct Departure(string Line, string Destination, string Time, string Delay);
+
+    public static async Task RefreshAsync(string stopId)
+    {
+        var rows = await LoadDeparturesAsync(stopId);
+        lock (CacheGate)
+        {
+            _cached = rows;
+        }
+    }
+
+    public static string ConnectionXml(string stamp)
+    {
+        List<Departure> copy;
+        lock (CacheGate)
+        {
+            copy = _cached.ToList();
+        }
+
+        var body = string.Join("\n", copy.Select(row =>
+        {
+            var delay = row.Delay.Length == 0
+                ? ""
+                : $"<Delay><Value>{Xml(row.Delay)}</Value><Language>de</Language></Delay>";
+            return $"""
+                <CurrentConnection>
+                  <LineName><Value>{Xml(row.Line)}</Value><Language>de</Language></LineName>
+                  <DestinationName><Value>{Xml(row.Destination)}</Value><Language>de</Language></DestinationName>
+                  <ExpectedDepartureTime><Value>{Xml(row.Time)}</Value><Language>de</Language></ExpectedDepartureTime>
+                  {delay}
+                </CurrentConnection>
+                """;
+        }));
+        return $"<CurrentConnectionData>{stamp}{body}</CurrentConnectionData>";
+    }
+
     public static async Task<IReadOnlyList<string>> LoadAsync(string stopId)
+    {
+        if (string.IsNullOrWhiteSpace(stopId))
+        {
+            return ["Haltestellennummer fehlt."];
+        }
+
+        var rows = await LoadDeparturesAsync(stopId);
+        if (rows.Count > 0)
+        {
+            lock (CacheGate)
+            {
+                _cached = rows;
+            }
+        }
+
+        return rows.Count == 0
+            ? ["Keine Abfahrten."]
+            : rows.Select(row => $"{row.Line}  {row.Destination}  {row.Time}  {row.Delay}".Trim()).ToList();
+    }
+
+    private static async Task<List<Departure>> LoadDeparturesAsync(string stopId)
     {
         var id = stopId.Trim();
         if (id.Length == 0)
         {
-            return ["Haltestellennummer fehlt."];
+            return [];
         }
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
@@ -893,7 +1024,7 @@ public static class VrrAbfahrten
         return rows.Count > 0 ? rows : await RequestAsync(http, id, "any");
     }
 
-    private static async Task<List<string>> RequestAsync(HttpClient http, string id, string type)
+    private static async Task<List<Departure>> RequestAsync(HttpClient http, string id, string type)
     {
         var body = new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -908,7 +1039,7 @@ public static class VrrAbfahrten
         using var response = await http.PostAsync("https://efa.vrr.de/vrr/XML_DM_REQUEST", body);
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
-        var rows = new List<string>();
+        var rows = new List<Departure>();
         if (!doc.RootElement.TryGetProperty("stopEvents", out var events))
         {
             return rows;
@@ -920,15 +1051,22 @@ public static class VrrAbfahrten
             var line = Text(transport, "disassembledName") ?? Text(transport, "number") ?? "";
             var destination = transport.ValueKind == JsonValueKind.Object &&
                               transport.TryGetProperty("destination", out var dest)
-                ? Text(dest, "name")
+                ? Text(dest, "name") ?? ""
                 : "";
             var planned = Text(ev, "departureTimePlanned");
             var live = Text(ev, "departureTimeEstimated");
-            rows.Add($"{line}  {destination}  {Clock(live) ?? Clock(planned)}".Trim());
+            rows.Add(new Departure(
+                line,
+                destination,
+                Clock(live) ?? Clock(planned) ?? "",
+                DelayLabel(planned, live)));
         }
 
         return rows;
     }
+
+    private static string Xml(string value) =>
+        value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
     private static string? Text(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object &&
@@ -945,6 +1083,29 @@ public static class VrrAbfahrten
         }
 
         return time.ToLocalTime().ToString("HH:mm");
+    }
+
+    /// <summary>Minuten gegen den Fahrplan. +1 später, -2 früher, +0 pünktlich. Ohne Echtzeit leer.</summary>
+    internal static string DelayLabel(string? plannedIso, string? liveIso)
+    {
+        if (string.IsNullOrWhiteSpace(plannedIso) || string.IsNullOrWhiteSpace(liveIso))
+        {
+            return "";
+        }
+
+        if (!DateTimeOffset.TryParse(plannedIso, out var planned) ||
+            !DateTimeOffset.TryParse(liveIso, out var live))
+        {
+            return "";
+        }
+
+        var minutes = (int)Math.Round((live - planned).TotalMinutes, MidpointRounding.AwayFromZero);
+        if (minutes > 0)
+        {
+            return "+" + minutes;
+        }
+
+        return minutes < 0 ? minutes.ToString() : "+0";
     }
 }
 

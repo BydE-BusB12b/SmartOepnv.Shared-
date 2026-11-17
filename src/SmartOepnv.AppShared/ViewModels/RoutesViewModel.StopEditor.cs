@@ -605,6 +605,22 @@ public partial class RoutesViewModel
         }
     }
 
+    public bool ShowOnTft
+    {
+        get => SelectedStop?.ShowOnTft ?? true;
+        set
+        {
+            if (SelectedStop is null)
+            {
+                return;
+            }
+
+            SelectedStop.ShowOnTft = value;
+            NotifyStopEditorStateChanged();
+            MarkStopDetailDirty();
+        }
+    }
+
     public bool DepartureCountdownEnabled
     {
         get => SelectedStop?.DepartureCountdownEnabled ?? true;
@@ -1714,6 +1730,7 @@ public partial class RoutesViewModel
         OnPropertyChanged(nameof(EntwerterLinieAuto));
         OnPropertyChanged(nameof(EntwerterTelegramPreview));
         OnPropertyChanged(nameof(IsEndStop));
+        OnPropertyChanged(nameof(ShowOnTft));
         OnPropertyChanged(nameof(DepartureCountdownEnabled));
         OnPropertyChanged(nameof(PlayEndStopAnnouncement));
         OnPropertyChanged(nameof(PlayEndStopAnnouncementEn));

@@ -115,7 +115,7 @@ public static class FahrbetriebPages
             }
         };
         ShowRoutes();
-        return Column("Route wählen", open, dropbox, info, list);
+        return ItcsPause.Cover(session, Column("Route wählen", open, dropbox, info, list));
     }
 
     public static Control Gps(FahrSession session)
@@ -213,12 +213,9 @@ public static class FahrbetriebPages
                     return;
                 }
 
-                var zones = GeraetEinstellungen.Bool("announcement_stereo_zones_enabled", true);
                 var bytes = Convert.FromBase64String(sounds[key].Base64);
-                StereoWav.Play(bytes, zones ? inside : null);
-                info.Text = zones
-                    ? (inside ? "Innen, links." : "Außen, rechts.")
-                    : "Beide Kanäle.";
+                StereoWav.Play(bytes, inside);
+                info.Text = inside ? "Innen, links, Bluetooth." : "Außen, rechts, Bluetooth.";
             }
             catch (Exception ex)
             {
@@ -489,7 +486,7 @@ public static class FahrbetriebPages
         return Column("Zeitwirtschaft", begin, pause, end, upload, info, list);
     }
 
-    private static JsonObject? OpenShift(JsonArray entries)
+    internal static JsonObject? OpenShift(JsonArray entries)
     {
         for (var i = entries.Count - 1; i >= 0; i--)
         {
@@ -615,14 +612,14 @@ public static class FahrbetriebPages
         return Column("Postfach", load, info, list);
     }
 
-    private static JsonObject NewZeit(FahrSession session) => new()
+    internal static JsonObject NewZeit(FahrSession session) => new()
     {
         ["updatedAtMs"] = Now(),
         ["devicePhone"] = session.DevicePhone,
         ["drivers"] = new JsonObject()
     };
 
-    private static string ZeitPath(FahrSession session) =>
+    internal static string ZeitPath(FahrSession session) =>
         Path.Combine(session.WorkspaceDir, $"zeitwirtschaft_{Digits(session.DevicePhone)}.json");
 
     internal static DropboxApiClient? OpenDropbox()
@@ -671,7 +668,7 @@ public static class FahrbetriebPages
     private static string Clock(long epoch) =>
         DateTimeOffset.FromUnixTimeMilliseconds(epoch).ToLocalTime().ToString("dd.MM.yyyy HH:mm");
 
-    private static string Digits(string? raw) => new((raw ?? "").Where(char.IsDigit).ToArray());
+    internal static string Digits(string? raw) => new((raw ?? "").Where(char.IsDigit).ToArray());
 
     internal static TextBox Field(string watermark) => new()
     {

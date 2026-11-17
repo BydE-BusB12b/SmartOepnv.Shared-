@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Smart-ÖPNV IP
+Comment=Innenanzeige starten, erneuter Doppelklick beendet sie
+Exec=/home/kiara/smart-oepnv-ip/anzeige.sh
+Icon=/home/kiara/.local/share/icons/smart-oepnv-ip.png
+Terminal=false
+Categories=Utility;
+StartupNotify=false

@@ -13,14 +13,20 @@ public sealed class GpsTripTraceService
         _dropbox = dropbox;
     }
 
-    public async Task<IReadOnlyList<GpsTripTraceFile>> LoadAllAsync(
+    public Task<IReadOnlyList<GpsTripTraceFile>> LoadAllAsync(
         string? routePackageJson,
         CancellationToken ct = default)
     {
         var roster = string.IsNullOrWhiteSpace(routePackageJson)
             ? Array.Empty<RegisteredVehicleInfo>()
             : RegisteredVehicleInfo.ParseFromJson(routePackageJson);
+        return LoadAllAsync(roster, ct);
+    }
 
+    public async Task<IReadOnlyList<GpsTripTraceFile>> LoadAllAsync(
+        IReadOnlyList<RegisteredVehicleInfo> roster,
+        CancellationToken ct = default)
+    {
         var archiveDir = GpsTripTraceArchive.DirectoryFor(AppServices.SettingsSubfolder);
         var files = await _dropbox.ListGpsTraceFilesAsync(ct);
         var byPhone = new Dictionary<string, GpsTripTraceFile>(StringComparer.Ordinal);

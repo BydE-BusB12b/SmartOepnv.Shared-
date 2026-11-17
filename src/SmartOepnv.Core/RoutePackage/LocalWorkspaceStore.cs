@@ -43,7 +43,7 @@ public sealed class LocalWorkspaceStore
 
     public bool Exists => File.Exists(_packagePath) || File.Exists(_legacyPackagePath);
 
-    public string? TryLoadPackageJson()
+    public string? TryLoadPackageJson(bool includeHeavyMedia = true)
     {
         TryMigrateLegacyPackageFiles();
         if (!File.Exists(_packagePath))
@@ -54,7 +54,7 @@ public sealed class LocalWorkspaceStore
         try
         {
             var body = File.ReadAllText(_packagePath);
-            return AttachHeavyMediaSidecarIfNeeded(body);
+            return includeHeavyMedia ? AttachHeavyMediaSidecarIfNeeded(body) : body;
         }
         catch
         {

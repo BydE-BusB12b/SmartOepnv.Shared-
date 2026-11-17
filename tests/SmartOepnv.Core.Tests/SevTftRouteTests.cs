@@ -161,6 +161,26 @@ public sealed class SevTftRouteTests
     }
 
     [Fact]
+    public void Unchecked_tft_stop_stays_off_the_screen_whatever_it_is_named()
+    {
+        var ok = SevTftRouteBuilder.TryBuild(
+            "S28 Kaarster See > Neuss Hbf",
+            [
+                Stop("Kaarster Bahnhof"),
+                new RouteStopItem { Name = "Neuss Hbf", IsEndStop = true },
+                new RouteStopItem { Name = "Neuss Hbf Pause", ShowOnTft = false, RouteChangeEnabled = true },
+                new RouteStopItem { Name = "Wendeplatz", ShowOnTft = false }
+            ],
+            null,
+            out var payload,
+            out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal("Neuss Hbf", payload!.Ziel);
+        Assert.Equal(["Kaarster Bahnhof", "Neuss Hbf"], payload.Haltestellen);
+    }
+
+    [Fact]
     public void Passed_stops_drop_off_and_the_destination_stays()
     {
         var ok = SevTftRouteBuilder.TryBuild(

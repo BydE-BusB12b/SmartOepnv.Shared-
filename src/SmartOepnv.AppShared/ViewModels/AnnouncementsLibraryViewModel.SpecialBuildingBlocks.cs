@@ -310,8 +310,11 @@ public partial class AnnouncementsLibraryViewModel
             }
 
             var rawDir = PlanerAnnouncementRawSoundsWorkspace.GetRawSoundsDirectory(AppServices.Workspace);
+            Directory.CreateDirectory(rawDir);
             var rawTarget = Path.Combine(rawDir, targetFileName);
-            File.Copy(sourcePath, rawTarget, overwrite: true);
+            var converted = targetFileName.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)
+                ? AnnouncementWavImport.Store(sourcePath, rawTarget)
+                : CopyUnchanged(sourcePath, rawTarget);
 
             var embeddedDir = PlanerEmbeddedSoundsWorkspace.GetSoundsDirectory(AppServices.Workspace);
             Directory.CreateDirectory(embeddedDir);
@@ -339,14 +342,22 @@ public partial class AnnouncementsLibraryViewModel
             RefreshSpecialBuildingBlocks();
             SelectedSpecialBuildingBlock =
                 SpecialBuildingBlocks.FirstOrDefault(b => b.Id == block.Id) ?? SelectedSpecialBuildingBlock;
+            var saved = converted ? $"„{targetFileName}“ aus der Audiodatei als WAV gespeichert" : $"„{targetFileName}“ übernommen";
             StatusMessage = voice2
-                ? $"„{targetFileName}“ als Stimme 2 übernommen. Petra bleibt. „Speichern & JSON“ fürs Handy."
-                : $"„{targetFileName}“ übernommen (Rohordner + embeddedSounds). „Speichern & JSON“ fürs Handy-Update.";
+                ? $"{saved}. Petra bleibt. „Speichern & JSON“ fürs Handy."
+                : $"{saved} (Rohordner + embeddedSounds). „Speichern & JSON“ fürs Handy-Update.";
         }
         catch (Exception ex)
         {
             StatusMessage = $"Zuweisen fehlgeschlagen: {ex.Message}";
         }
+    }
+
+    private static bool CopyUnchanged(string sourcePath, string targetPath)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        File.Copy(sourcePath, targetPath, overwrite: true);
+        return false;
     }
 
     private static void TryDeleteLegacyNextStopMp3(

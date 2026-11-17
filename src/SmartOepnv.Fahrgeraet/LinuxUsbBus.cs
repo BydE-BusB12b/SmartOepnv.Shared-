@@ -32,6 +32,8 @@ public static class LinuxUsbBus
     private static readonly Dictionary<string, Die> DieCache = new(StringComparer.Ordinal);
     private static int _started;
     private static int _retryScheduled;
+    private static int _huntScheduled;
+    private static int _huntAttempts;
     private static bool _allowFallback;
 
     public static void Start(FahrSession session)
@@ -95,6 +97,18 @@ public static class LinuxUsbBus
         lock (Gate)
         {
             var sticks = Scan();
+            var hubWait = sticks.Count == 1 && BehindExternalHub(sticks[0].Sysfs);
+            if (!hubWait)
+            {
+                _huntAttempts = 0;
+            }
+            else if (_huntAttempts < 6)
+            {
+                _huntAttempts++;
+                ScheduleHunt(session);
+                return false;
+            }
+
             var unresolved = Unresolved(sticks);
             var ibis = PickIbis(sticks);
             var rs = PickRs(sticks, ibis);
@@ -138,6 +152,58 @@ public static class LinuxUsbBus
 
             return changed;
         }
+    }
+
+    /// <summary>
+    /// Nur ein externer Hub (nicht der Root-Hub des Pi) lässt den zweiten CH340 verzögert erscheinen.
+    /// An eigenen Buchsen wird der einzelne Wandler sofort zugeordnet.
+    /// </summary>
+    private static bool BehindExternalHub(string sysfs)
+    {
+        var dir = Directory.GetParent(sysfs)?.FullName ?? "";
+        for (var i = 0; i < 8 && dir.Length > 0; i++)
+        {
+            var name = Path.GetFileName(dir);
+            if (name.StartsWith("usb", StringComparison.OrdinalIgnoreCase) &&
+                name.Length > 3 && name[3..].All(char.IsDigit))
+            {
+                return false;
+            }
+
+            if (ReadSys(Path.Combine(dir, "bDeviceClass")) == "09")
+            {
+                return true;
+            }
+
+            dir = Directory.GetParent(dir)?.FullName ?? "";
+        }
+
+        return false;
+    }
+
+    private static void ScheduleHunt(FahrSession session)
+    {
+        if (Interlocked.Exchange(ref _huntScheduled, 1) == 1)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(2000);
+                Apply(session);
+            }
+            catch (Exception ex)
+            {
+                FahrProtokoll.Add("USB-Hub: " + ex.Message);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _huntScheduled, 0);
+            }
+        });
     }
 
     private static void ScheduleRetry(FahrSession session, bool unresolved)

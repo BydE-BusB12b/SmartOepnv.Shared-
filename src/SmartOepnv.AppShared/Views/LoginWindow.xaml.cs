@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using SmartOepnv.AppShared.Helpers;
 using SmartOepnv.Core;
 using SmartOepnv.Core.Session;
@@ -8,6 +10,16 @@ namespace SmartOepnv.AppShared.Views;
 
 public partial class LoginWindow : Window
 {
+    private static readonly SolidColorBrush LedFree = Freeze(Color.FromRgb(0x43, 0xA0, 0x47));
+    private static readonly SolidColorBrush LedBusy = Freeze(Color.FromRgb(0xE5, 0x39, 0x35));
+    private static readonly SolidColorBrush LedUnknown = Freeze(Color.FromRgb(0x9E, 0x9E, 0x9E));
+    private static readonly SolidColorBrush TextFree = Freeze(Color.FromRgb(0xA5, 0xD6, 0xA7));
+    private static readonly SolidColorBrush TextBusy = Freeze(Color.FromRgb(0xEF, 0x9A, 0x9A));
+    private static readonly SolidColorBrush TextUnknown = Freeze(Color.FromRgb(0xBD, 0xBD, 0xBD));
+
+    private readonly DispatcherTimer _sessionLedTimer;
+    private int _sessionLedBusy;
+
     public string? PendingUsername { get; private set; }
 
     public string? PendingPassword { get; private set; }
@@ -21,9 +33,25 @@ public partial class LoginWindow : Window
             LockWarningText.Text = lockWarning;
             LockWarningText.Visibility = Visibility.Visible;
             ForceReleaseLockButton.Visibility = Visibility.Visible;
+            PaintSessionLed(PlanerSessionAvailability.InUseByOther, activeUser: null);
         }
 
-        Loaded += (_, _) => UsernameBox.Focus();
+        _sessionLedTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+        _sessionLedTimer.Tick += async (_, _) => await RefreshSessionLedAsync();
+        Loaded += async (_, _) =>
+        {
+            UsernameBox.Focus();
+            await RefreshSessionLedAsync();
+            _sessionLedTimer.Start();
+        };
+        Closed += (_, _) => _sessionLedTimer.Stop();
+    }
+
+    private static SolidColorBrush Freeze(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
     }
 
     private void SetupDropbox_Click(object sender, RoutedEventArgs e)
@@ -92,6 +120,7 @@ public partial class LoginWindow : Window
             LockWarningText.Visibility = Visibility.Collapsed;
             ForceReleaseLockButton.Visibility = Visibility.Collapsed;
             ErrorText.Text = "Sperre freigegeben – jetzt anmelden.";
+            await RefreshSessionLedAsync();
         }
         catch (Exception ex)
         {
@@ -137,7 +166,85 @@ public partial class LoginWindow : Window
         }
         finally
         {
-            LoginButton.IsEnabled = true;
+            LoginButton.IsEnabled = SessionLed.Background != LedBusy;
+        }
+    }
+
+    private async Task RefreshSessionLedAsync()
+    {
+        if (Interlocked.Exchange(ref _sessionLedBusy, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!IsLoaded && !IsVisible)
+            {
+                return;
+            }
+
+            if (!AppServices.Dropbox.Settings.IsConnected || AppServices.PlanerSession is null)
+            {
+                PaintSessionLed(PlanerSessionAvailability.DropboxUnavailable, activeUser: null);
+                return;
+            }
+
+            var (availability, activeUser) = await AppServices.PlanerSession
+                .InspectLockAsync()
+                .ConfigureAwait(true);
+            if (!IsLoaded)
+            {
+                return;
+            }
+
+            PaintSessionLed(availability, activeUser);
+        }
+        catch
+        {
+            if (IsLoaded)
+            {
+                PaintSessionLed(PlanerSessionAvailability.DropboxUnavailable, activeUser: null);
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _sessionLedBusy, 0);
+        }
+    }
+
+    private void PaintSessionLed(PlanerSessionAvailability availability, string? activeUser)
+    {
+        switch (availability)
+        {
+            case PlanerSessionAvailability.Available:
+                SessionLed.Background = LedFree;
+                SessionStatusText.Foreground = TextFree;
+                SessionStatusText.Text = "Frei";
+                LockWarningText.Visibility = Visibility.Collapsed;
+                ForceReleaseLockButton.Visibility = Visibility.Collapsed;
+                LoginButton.IsEnabled = true;
+                break;
+            case PlanerSessionAvailability.InUseByOther:
+                SessionLed.Background = LedBusy;
+                SessionStatusText.Foreground = TextBusy;
+                SessionStatusText.Text = string.IsNullOrWhiteSpace(activeUser)
+                    ? "Besetzt"
+                    : $"Besetzt – {activeUser.Trim()}";
+                LockWarningText.Text =
+                    "Planer gesperrt – anderer Nutzer ist angemeldet" +
+                    (string.IsNullOrWhiteSpace(activeUser) ? "." : $": {activeUser.Trim()}.") +
+                    " Bitte dort abmelden oder Sperre freigeben.";
+                LockWarningText.Visibility = Visibility.Visible;
+                ForceReleaseLockButton.Visibility = Visibility.Visible;
+                LoginButton.IsEnabled = false;
+                break;
+            default:
+                SessionLed.Background = LedUnknown;
+                SessionStatusText.Foreground = TextUnknown;
+                SessionStatusText.Text = "Status unbekannt";
+                LoginButton.IsEnabled = true;
+                break;
         }
     }
 }

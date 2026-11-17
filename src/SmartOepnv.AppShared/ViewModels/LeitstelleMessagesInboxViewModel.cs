@@ -49,13 +49,7 @@ public partial class LeitstelleMessagesInboxViewModel : ObservableObject, IDispo
     public void RefreshFromEditor()
     {
         _vehicleByPhone.Clear();
-        var json = AppServices.Routes.CurrentJson;
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return;
-        }
-
-        foreach (var v in RegisteredVehicleInfo.ParseFromJson(json))
+        foreach (var v in AppServices.Routes.VehicleRoster)
         {
             var key = NormalizePhone(v.PhoneNumber);
             if (key.Length == 0) continue;

@@ -2,31 +2,11 @@ namespace SmartOepnv.Fahrgeraet;
 
 public static class StereoWav
 {
-    public static void Play(byte[] source, bool? inside)
-    {
-        var wav = inside is null ? ToBothChannels(source) : ToZonedWav(source, inside.Value);
-        var path = Path.Combine(Path.GetTempPath(), "smartoepnv-ansage.wav");
-        File.WriteAllBytes(path, wav);
-        if (OperatingSystem.IsWindows())
-        {
-            using var player = new System.Media.SoundPlayer(path);
-            player.PlaySync();
-            return;
-        }
+    public static void Play(byte[] source, bool? inside) =>
+        TonAusgang.PlayAnnouncement(source, inside);
 
-        using var process = new System.Diagnostics.Process
-        {
-            StartInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "aplay",
-                ArgumentList = { path },
-                UseShellExecute = false,
-                CreateNoWindow = true
-            }
-        };
-        process.Start();
-        process.WaitForExit(120_000);
-    }
+    public static void PlayHandset(byte[] source) =>
+        TonAusgang.PlayDisplay(source);
 
     public static byte[] ToZonedWav(byte[] source, bool inside)
     {
@@ -51,7 +31,7 @@ public static class StereoWav
         return WrapPcm(stereo, rate, 2);
     }
 
-    private static byte[] ToBothChannels(byte[] source)
+    public static byte[] ToBothChannels(byte[] source)
     {
         if (!TryPcm16(source, out var channels, out var rate, out var pcm))
         {

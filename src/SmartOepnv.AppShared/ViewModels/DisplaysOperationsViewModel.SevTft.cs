@@ -43,7 +43,7 @@ public partial class DisplaysOperationsViewModel
         OnPropertyChanged(nameof(FooterStatusMessage));
         if (value == 2)
         {
-            RefreshSevPreview(SevTftCoordinator.OpenedRouteKey);
+            InteriorHints?.ReloadInteriorHints();
         }
     }
 

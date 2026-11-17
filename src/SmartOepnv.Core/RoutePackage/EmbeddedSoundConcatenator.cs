@@ -48,7 +48,7 @@ public static class EmbeddedSoundConcatenator
                             throw new FileNotFoundException("Audiodatei nicht gefunden.", part.AudioPath);
                         }
 
-                        var reader = OpenReader(part.AudioPath);
+                        var reader = OpenReader(part.AudioPath!);
                         readers.Add(reader);
                         providers.Add(NormalizeProvider(reader.ToSampleProvider()));
                         break;
@@ -194,6 +194,53 @@ public static class EmbeddedSoundConcatenator
         }
     }
 
+    /// <summary>
+    /// MP3 oder OGG wird als PCM-WAV an <paramref name="outputWavPath"/> geschrieben.
+    /// Eine schon gültige WAV wird nur kopiert.
+    /// </summary>
+    public static bool StorePcmWav(string sourcePath, string outputWavPath)
+    {
+        if (LooksLikePcmWav(sourcePath))
+        {
+            if (!string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(outputWavPath), StringComparison.OrdinalIgnoreCase))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(outputWavPath)!);
+                File.Copy(sourcePath, outputWavPath, overwrite: true);
+            }
+
+            return false;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outputWavPath)!);
+        var temp = outputWavPath + ".tmp.wav";
+        try
+        {
+            using (var reader = OpenCompressed(sourcePath))
+            {
+                WaveFileWriter.CreateWaveFile16(temp, reader.ToSampleProvider());
+            }
+
+            File.Move(temp, outputWavPath, overwrite: true);
+            return true;
+        }
+        catch
+        {
+            if (File.Exists(temp))
+            {
+                try
+                {
+                    File.Delete(temp);
+                }
+                catch
+                {
+                    // ignore cleanup errors
+                }
+            }
+
+            throw;
+        }
+    }
+
     private static WaveStream OpenReader(string path)
     {
         // Inhalt vor Extension: WAV als „.mp3“ (Fehlzuweisung) sonst nicht lesbar.
@@ -202,10 +249,34 @@ public static class EmbeddedSoundConcatenator
             return new WaveFileReader(path);
         }
 
+        // MP3 wurde früher unter dem Stimme-2-Namen *.wav abgelegt.
+        if (path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) &&
+            (LooksLikeMp3(path) || LooksLikeOgg(path)))
+        {
+            StorePcmWav(path, path);
+            return new WaveFileReader(path);
+        }
+
+        return OpenCompressed(path);
+    }
+
+    private static WaveStream OpenCompressed(string path)
+    {
+        if (LooksLikeMp3(path))
+        {
+            return new Mp3FileReader(path);
+        }
+
+        if (LooksLikeOgg(path))
+        {
+            return new VorbisWaveReader(path);
+        }
+
         var ext = Path.GetExtension(path);
         return ext.ToLowerInvariant() switch
         {
-            ".wav" => new WaveFileReader(path),
+            ".wav" => throw new InvalidDataException(
+                "Die Datei heißt WAV, der Inhalt ist kein WAV. Eine MP3 wird beim Zuweisen in WAV umgewandelt."),
             ".mp3" => new Mp3FileReader(path),
             ".ogg" => new VorbisWaveReader(path),
             _ => throw new NotSupportedException(
@@ -231,6 +302,40 @@ public static class EmbeddedSoundConcatenator
 
             return hdr[0] == (byte)'R' && hdr[1] == (byte)'I' && hdr[2] == (byte)'F' && hdr[3] == (byte)'F' &&
                    hdr[8] == (byte)'W' && hdr[9] == (byte)'A' && hdr[10] == (byte)'V' && hdr[11] == (byte)'E';
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool LooksLikeMp3(string path) =>
+        StartsWith(path, [(byte)'I', (byte)'D', (byte)'3']) || HasMp3FrameSync(path);
+
+    private static bool LooksLikeOgg(string path) =>
+        StartsWith(path, [(byte)'O', (byte)'g', (byte)'g', (byte)'S']);
+
+    private static bool StartsWith(string path, byte[] magic)
+    {
+        try
+        {
+            using var fs = File.OpenRead(path);
+            var hdr = new byte[magic.Length];
+            return fs.Read(hdr, 0, hdr.Length) == hdr.Length && hdr.AsSpan().SequenceEqual(magic);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool HasMp3FrameSync(string path)
+    {
+        try
+        {
+            using var fs = File.OpenRead(path);
+            Span<byte> hdr = stackalloc byte[2];
+            return fs.Read(hdr) == 2 && hdr[0] == 0xFF && (hdr[1] & 0xE0) == 0xE0;
         }
         catch
         {

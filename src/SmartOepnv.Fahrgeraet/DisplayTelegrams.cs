@@ -28,11 +28,13 @@ public static class DisplayTelegrams
         string stop,
         IReadOnlyList<string>? course = null)
     {
+        DankeAnzeige.Remember(line, destination);
         var notes = new List<string>();
         var outside = session.OutsideProtocol;
         if (outside == "IBIS-IP")
         {
-            notes.Add(await SendIbisIpAsync(session, line, destination));
+            notes.Add("IBIS-IP: die Anzeigen lesen den Dienst auf Port " +
+                      (session.IbisIpListenPort <= 0 ? 8080 : session.IbisIpListenPort));
         }
         else if (outside == "Mobitec")
         {

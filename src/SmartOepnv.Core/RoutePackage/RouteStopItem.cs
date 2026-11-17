@@ -59,6 +59,9 @@ public sealed class RouteStopItem
 
     public bool IsEndStop { get; set; }
 
+    /// <summary>Haltestelle auf dem Fahrgast-TFT. Standard an. Wendehalte aus.</summary>
+    public bool ShowOnTft { get; set; } = true;
+
     /// <summary>Abfahrtscountdown an dieser Starthaltestelle. Standard an, Betriebsfahrten aus.</summary>
     public bool DepartureCountdownEnabled { get; set; } = true;
     /// <summary>Englische Endhaltestellen-Ansage (aktueller Kartei-Eintrag „Endhaltestelle“).</summary>
@@ -170,6 +173,7 @@ public sealed class RouteStopItem
         MobitecEndDestination = MobitecEndDestination,
         MobitecEndDestinationId = MobitecEndDestinationId,
         IsEndStop = IsEndStop,
+        ShowOnTft = ShowOnTft,
         DepartureCountdownEnabled = DepartureCountdownEnabled,
         PlayEndStopAnnouncementEn = PlayEndStopAnnouncementEn,
         PlayEndStopAnnouncementNl = PlayEndStopAnnouncementNl,
@@ -242,6 +246,7 @@ public sealed class RouteStopItem
         MobitecEndDestination = other.MobitecEndDestination;
         MobitecEndDestinationId = other.MobitecEndDestinationId;
         IsEndStop = other.IsEndStop;
+        ShowOnTft = other.ShowOnTft;
         DepartureCountdownEnabled = other.DepartureCountdownEnabled;
         PlayEndStopAnnouncementEn = other.PlayEndStopAnnouncementEn;
         PlayEndStopAnnouncementNl = other.PlayEndStopAnnouncementNl;

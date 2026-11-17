@@ -96,4 +96,10 @@ public sealed class RemoteDeviceSettingsPayload
     public string? SevTftHost { get; set; }
     public int? SevTftPort { get; set; }
     public string? SevTftApiToken { get; set; }
+
+    /// <summary>Untere Zeile der Innenanzeige. Leer wird in der App zur vorbelegten Adresse.</summary>
+    public string? InteriorStandardText { get; set; }
+
+    /// <summary>Ersetzt den Standardtext, wenn nicht leer.</summary>
+    public string? InteriorTickerText { get; set; }
 }

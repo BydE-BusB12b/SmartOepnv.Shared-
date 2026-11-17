@@ -122,6 +122,7 @@ public static class AutoSchedulePlanner
         var templateTripNumber = RouteDisplayHelper.NormalizeTripNumber(
             RouteDisplayHelper.Parse(request.TemplateRouteKey).TripNumber);
         var templateInteriorDestination = editor.GetRouteInteriorDisplayDestination(request.TemplateRouteKey);
+        var templateInteriorHint = editor.GetRouteInteriorHint(request.TemplateRouteKey);
         var templateInItcsRouteList = editor.IsRouteInItcsRouteList(request.TemplateRouteKey);
         var templateMainDeviceOnly = editor.IsRouteMainDeviceOnly(request.TemplateRouteKey);
         var templateStartTime = ResolveTemplateStartTime(templateStops, request.StartTime);
@@ -174,6 +175,11 @@ public static class AutoSchedulePlanner
             if (!string.IsNullOrWhiteSpace(templateInteriorDestination))
             {
                 editor.SetRouteInteriorDisplayDestination(displayKey, templateInteriorDestination);
+            }
+
+            if (!string.IsNullOrWhiteSpace(templateInteriorHint))
+            {
+                editor.SetRouteInteriorHint(displayKey, templateInteriorHint);
             }
 
             editor.SetAutoScheduleSourceRoute(displayKey, request.TemplateRouteKey);

@@ -32,6 +32,7 @@ public sealed class EditableRoutePackage
     public TicketTemplateDocument TicketTemplate { get; private set; } = TicketTemplateDocument.CreateDefault();
     public IList<string> AdditionalAllowedRoutes { get; } = [];
     public IList<DateBasedHintItem> DateBasedHints { get; } = [];
+    public IList<LineReplacementRule> LineReplacements { get; } = [];
     public IList<string> OutsideDisplays { get; } = [];
     public IDictionary<string, HashSet<DutyOperatingDay>> RouteOperatingDaysByRoute { get; } =
         new Dictionary<string, HashSet<DutyOperatingDay>>(StringComparer.Ordinal);
@@ -41,6 +42,9 @@ public sealed class EditableRoutePackage
 
     public IDictionary<string, HashSet<DateOnly>> RouteOperatingDatesByRoute { get; } =
         new Dictionary<string, HashSet<DateOnly>>(StringComparer.Ordinal);
+
+    public IDictionary<string, string> RouteInteriorHintsByRoute { get; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
 
     public IDictionary<string, string> RouteInteriorDisplayDestinationsByRoute { get; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
@@ -335,11 +339,13 @@ public sealed class EditableRoutePackage
         TicketTemplate = TicketTemplateDocument.CreateDefault();
         AdditionalAllowedRoutes.Clear();
         DateBasedHints.Clear();
+        LineReplacements.Clear();
         OutsideDisplays.Clear();
         RouteOperatingDaysByRoute.Clear();
         RouteDateRangesByRoute.Clear();
         RouteOperatingDatesByRoute.Clear();
         RouteInteriorDisplayDestinationsByRoute.Clear();
+        RouteInteriorHintsByRoute.Clear();
         RouteAnnouncementVoicesByRoute.Clear();
         RouteChainIdentitiesByRoute.Clear();
         RoutesExcludedFromItcsRouteList.Clear();
@@ -363,6 +369,11 @@ public sealed class EditableRoutePackage
         foreach (var (key, text) in RouteInteriorDisplayDestinationEditor.LoadFromRoot(_root))
         {
             RouteInteriorDisplayDestinationsByRoute[key] = text;
+        }
+
+        foreach (var (key, text) in RouteInteriorHintEditor.LoadFromRoot(_root))
+        {
+            RouteInteriorHintsByRoute[key] = text;
         }
 
         foreach (var (key, voice) in RouteAnnouncementVoiceEditor.LoadFromRoot(_root))
@@ -468,6 +479,11 @@ public sealed class EditableRoutePackage
         foreach (var hint in DateBasedHintsEditor.LoadFromRoot(_root))
         {
             DateBasedHints.Add(hint);
+        }
+
+        foreach (var rule in LineReplacementList.LoadFromRoot(_root))
+        {
+            LineReplacements.Add(rule);
         }
 
         foreach (var entry in RoutePackagePhoneMetadata.LoadOutsideDisplays(_root))
@@ -800,6 +816,12 @@ public sealed class EditableRoutePackage
                 SetRouteInteriorDisplayDestination(displayKey, interiorDestination);
             }
 
+            var interiorHint = GetRouteInteriorHint(sourceKey);
+            if (!string.IsNullOrWhiteSpace(interiorHint))
+            {
+                SetRouteInteriorHint(displayKey, interiorHint);
+            }
+
             var announcementVoice = GetRouteAnnouncementVoice(sourceKey);
             if (AnnouncementVoiceFiles.IsVoice2(announcementVoice))
             {
@@ -930,6 +952,7 @@ public sealed class EditableRoutePackage
             RouteDateRangeEditor.RemoveRoute(RouteDateRangesByRoute, key);
             RouteOperatingDatesEditor.RemoveRoute(RouteOperatingDatesByRoute, key);
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, key);
+            RouteInteriorHintEditor.RemoveRoute(RouteInteriorHintsByRoute, key);
             RouteAnnouncementVoiceEditor.RemoveRoute(RouteAnnouncementVoicesByRoute, key);
             RouteChainIdentityEditor.RemoveRoute(RouteChainIdentitiesByRoute, key);
             RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, key);
@@ -1137,6 +1160,13 @@ public sealed class EditableRoutePackage
                 newKey,
                 interior);
             RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, oldKey);
+        }
+
+        var hint = RouteInteriorHintEditor.GetForRoute(RouteInteriorHintsByRoute, oldKey);
+        if (!string.IsNullOrEmpty(hint))
+        {
+            RouteInteriorHintEditor.SetForRoute(RouteInteriorHintsByRoute, newKey, hint);
+            RouteInteriorHintEditor.RemoveRoute(RouteInteriorHintsByRoute, oldKey);
         }
 
         var announcementVoice = RouteAnnouncementVoiceEditor.GetForRoute(
@@ -1452,6 +1482,15 @@ public sealed class EditableRoutePackage
 
         RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, alias);
 
+        var aliasHint = RouteInteriorHintEditor.GetForRoute(RouteInteriorHintsByRoute, alias);
+        if (!string.IsNullOrEmpty(aliasHint) &&
+            string.IsNullOrEmpty(RouteInteriorHintEditor.GetForRoute(RouteInteriorHintsByRoute, primary)))
+        {
+            RouteInteriorHintEditor.SetForRoute(RouteInteriorHintsByRoute, primary, aliasHint);
+        }
+
+        RouteInteriorHintEditor.RemoveRoute(RouteInteriorHintsByRoute, alias);
+
         var aliasVoice = RouteAnnouncementVoiceEditor.GetForRoute(RouteAnnouncementVoicesByRoute, alias);
         if (AnnouncementVoiceFiles.IsVoice2(aliasVoice) &&
             !AnnouncementVoiceFiles.IsVoice2(
@@ -1660,6 +1699,12 @@ public sealed class EditableRoutePackage
     public void SetRouteInteriorDisplayDestination(string routeDisplayKey, string? text) =>
         RouteInteriorDisplayDestinationEditor.SetForRoute(RouteInteriorDisplayDestinationsByRoute, routeDisplayKey, text);
 
+    public string GetRouteInteriorHint(string routeDisplayKey) =>
+        RouteInteriorHintEditor.GetForRoute(RouteInteriorHintsByRoute, routeDisplayKey);
+
+    public void SetRouteInteriorHint(string routeDisplayKey, string? text) =>
+        RouteInteriorHintEditor.SetForRoute(RouteInteriorHintsByRoute, routeDisplayKey, text);
+
     public string GetRouteAnnouncementVoice(string routeDisplayKey) =>
         RouteAnnouncementVoiceEditor.GetForRoute(RouteAnnouncementVoicesByRoute, routeDisplayKey);
 
@@ -1797,6 +1842,7 @@ public sealed class EditableRoutePackage
                     routeNode["tripNumber"]?.GetValue<string>() ?? string.Empty,
                     routeNode["passengerDisplayLine"]?.GetValue<string>() ?? string.Empty);
                 var interiorDestination = routeNode["interiorDestinationText"]?.GetValue<string>()?.Trim();
+                var interiorHint = routeNode["interiorHint"]?.GetValue<string>()?.Trim();
                 var announcementVoice = routeNode["announcementVoice"]?.GetValue<string>()?.Trim();
                 var display = RouteDisplayHelper.ToDisplayString(definition);
                 if (string.IsNullOrWhiteSpace(display))
@@ -1822,6 +1868,16 @@ public sealed class EditableRoutePackage
                             interiorDestination);
                     }
 
+                    if (!string.IsNullOrEmpty(interiorHint))
+                    {
+                        var existingKey = RouteNames.First(existing =>
+                            RouteDisplayHelper.RouteKeysMatchSameSchedule(existing, display));
+                        RouteInteriorHintEditor.SetForRoute(
+                            RouteInteriorHintsByRoute,
+                            existingKey,
+                            interiorHint);
+                    }
+
                     if (AnnouncementVoiceFiles.IsVoice2(announcementVoice))
                     {
                         var existingKey = RouteNames.First(existing =>
@@ -1842,6 +1898,11 @@ public sealed class EditableRoutePackage
                         RouteInteriorDisplayDestinationsByRoute,
                         display,
                         interiorDestination);
+                }
+
+                if (!string.IsNullOrEmpty(interiorHint))
+                {
+                    RouteInteriorHintEditor.SetForRoute(RouteInteriorHintsByRoute, display, interiorHint);
                 }
 
                 if (AnnouncementVoiceFiles.IsVoice2(announcementVoice))
@@ -2114,6 +2175,15 @@ public sealed class EditableRoutePackage
         foreach (var h in hints)
         {
             DateBasedHints.Add(h);
+        }
+    }
+
+    public void ReplaceLineReplacements(IList<LineReplacementRule> rules)
+    {
+        LineReplacements.Clear();
+        foreach (var rule in rules)
+        {
+            LineReplacements.Add(rule);
         }
     }
 

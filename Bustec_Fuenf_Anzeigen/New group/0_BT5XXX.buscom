@@ -1,0 +1,56 @@
+﻿<root>
+  <Component DeviceAddress="0">
+    <LedColor>1</LedColor>
+    <IPToFileName>False</IPToFileName>
+    <LocationY>50</LocationY>
+    <LocationX>50</LocationX>
+    <DebugLocationY>0</DebugLocationY>
+    <DebugLocationX>0</DebugLocationX>
+    <PanelSizeWidth>32</PanelSizeWidth>
+    <PanelSizeHeight>32</PanelSizeHeight>
+    <Text>Led sign</Text>
+    <IPAddress />
+    <CurrentDatabase>Bustec_Fuenf_Anzeigen</CurrentDatabase>
+    <CurrentFirmware />
+  </Component>
+  <Database Name="Bustec_Fuenf_Anzeigen" Version="                ">
+    <ValidityEnable>False</ValidityEnable>
+    <ValidityFrom>16.11.2026 15:10:14</ValidityFrom>
+    <ValidityTo>16.11.2026 15:10:14</ValidityTo>
+    <ConfFile>
+      <Path>00_Bustec_Fuenf_Anzeigen.conf</Path>
+      <Type>Configuration</Type>
+      <ParenthoodType>0</ParenthoodType>
+      <Parent>0</Parent>
+      <Assembly>New</Assembly>
+    </ConfFile>
+    <FontsFile>
+      <Path>00_Bustec_Fuenf_Anzeigen.fnt</Path>
+      <Type>Fonts</Type>
+      <ParenthoodType>0</ParenthoodType>
+      <Parent>0</Parent>
+      <Assembly>New</Assembly>
+    </FontsFile>
+    <LinesFile>
+      <Path>00_Bustec_Fuenf_Anzeigen.lin</Path>
+      <Type>Lines</Type>
+      <ParenthoodType>0</ParenthoodType>
+      <Parent>0</Parent>
+      <Assembly>New</Assembly>
+    </LinesFile>
+    <DestinationsFile>
+      <Path>00_Bustec_Fuenf_Anzeigen.des</Path>
+      <Type>Destinations</Type>
+      <ParenthoodType>0</ParenthoodType>
+      <Parent>0</Parent>
+      <Assembly>New</Assembly>
+    </DestinationsFile>
+    <StationsFile>
+      <Path>00_Bustec_Fuenf_Anzeigen.sta</Path>
+      <Type>Stations</Type>
+      <ParenthoodType>0</ParenthoodType>
+      <Parent>0</Parent>
+      <Assembly>New</Assembly>
+    </StationsFile>
+  </Database>
+</root>

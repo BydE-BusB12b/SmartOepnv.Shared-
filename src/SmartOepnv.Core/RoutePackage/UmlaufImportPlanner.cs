@@ -314,6 +314,7 @@ public static class UmlaufImportPlanner
                 ? templateOperatingDates
                 : null;
             var templateInteriorDestination = editor.GetRouteInteriorDisplayDestination(templateKey);
+            var templateInteriorHint = editor.GetRouteInteriorHint(templateKey);
             var templateInItcsRouteList = editor.IsRouteInItcsRouteList(templateKey);
             var templateMainDeviceOnly = editor.IsRouteMainDeviceOnly(templateKey);
 
@@ -353,6 +354,11 @@ public static class UmlaufImportPlanner
             if (!string.IsNullOrWhiteSpace(templateInteriorDestination))
             {
                 editor.SetRouteInteriorDisplayDestination(displayKey, templateInteriorDestination);
+            }
+
+            if (!string.IsNullOrWhiteSpace(templateInteriorHint))
+            {
+                editor.SetRouteInteriorHint(displayKey, templateInteriorHint);
             }
 
             editor.SetAutoScheduleSourceRoute(displayKey, templateKey);

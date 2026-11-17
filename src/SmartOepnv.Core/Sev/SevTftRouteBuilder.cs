@@ -50,7 +50,7 @@ public static class SevTftRouteBuilder
         {
             foreach (var stop in stops)
             {
-                if (stop.IsWaypoint || ResolveStopLabel(stop).Length == 0)
+                if (stop.IsWaypoint || !stop.ShowOnTft || ResolveStopLabel(stop).Length == 0)
                 {
                     continue;
                 }

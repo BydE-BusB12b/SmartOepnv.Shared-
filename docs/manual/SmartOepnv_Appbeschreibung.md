@@ -227,6 +227,26 @@ Darunter, ohne dass etwas gespeichert wurde:
 
 ![Entwerter](shots/56_entwerter.png)
 
+### Gorba über XIMPLE
+
+In der App gibt es dafür keinen Schalter. Der XIMPLE-Server startet mit der App und hört auf Port 1598. Das gewählte Protokoll bleibt IBIS-IP. Der WLAN-Weg zum Pi bleibt derselbe.
+
+Die Gorba verbindet sich selbst zum Tablet. In `Layout\InfoMedia.xml` dieser Anzeige (`Gorba TFT 1203\InfoMedia`):
+
+- `ReadXIMPLE` = 1
+- `ActivateSockets` = 1
+- `SocketAddress` = IPv4 des Tablets, nicht die IP des Bildschirms. In der Datei ist das Feld noch leer und muss vor dem Kopieren auf das Gerät gefüllt werden.
+- `SocketPort` = 1598
+- `XimpleInactivityTimeout` = -300
+
+Die Sicherung davor heißt `InfoMedia.xml.bak-vor-ximple`. Auf dem Gerät liegt die Datei unter `D:\InfoMedia\Layout\`. InfoMedia danach neu starten. Diese Gorba zeigt Haltestelle und Verlauf. Eine Anschlussseite ist in diesem Layout nicht vorhanden.
+
+Gesendet wird derselbe Inhalt wie auf dem Pi: Linie, Ziel, Halte mit Uhrzeit, der aktuelle Halt, Anschlüsse (Linie, Richtung, Abfahrt, Steig; pünktlich ohne +0) und der Hinweistext. Bei Linie/Kurs 000/00 bleibt nur das Ziel, Linie und Halte werden geleert. Ohne Anschlusszeilen geht ein Löschbefehl raus, das Layout kann den Verlauf wieder zeigen. Kommen Anschlusszeilen, werden die Anschlussfelder gefüllt. Einen Befehl „zeige Seite 3“ gibt es nicht. Die Seite schaltet das Layout auf der Gorba.
+
+Das Layout muss diese Blöcke auswerten: `LineInfoData`, `DestNumberInfoData`, `StopItemsInfoData`, `ConnectionItemsInfoData`, `TickerItemsInfoData`. Ein Layout, das nur fremde Tabellenspalten liest, bleibt trotz Verbindung leer.
+
+Auf dem Tablet gilt das erst nach einer neuen App.
+
 ## 15. Zeitwirtschaft
 
 ![Zeitwirtschaft](shots/13_zeitwirtschaft.png)

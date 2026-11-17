@@ -77,8 +77,8 @@ public partial class TripInspectionViewModel : ObservableObject
         StatusMessage = "GPS-Spuren werden geladen …";
         try
         {
-            var json = AppServices.Routes.CurrentJson;
-            var files = await Task.Run(async () => await _traces.LoadAllAsync(json));
+            var roster = AppServices.Routes.VehicleRoster;
+            var files = await Task.Run(async () => await _traces.LoadAllAsync(roster));
             await RunOnUiAsync(() =>
             {
                 _files = files;
@@ -380,26 +380,22 @@ public partial class TripInspectionViewModel : ObservableObject
         // Roster-Fahrzeuge ohne Spur: Abruf trotzdem möglich
         try
         {
-            var json = AppServices.Routes.CurrentJson;
-            if (!string.IsNullOrWhiteSpace(json))
+            foreach (var roster in AppServices.Routes.VehicleRoster)
             {
-                foreach (var roster in RegisteredVehicleInfo.ParseFromJson(json))
+                var phone = new string((roster.PhoneNumber ?? string.Empty).Where(char.IsDigit).ToArray());
+                if (phone.Length == 0 || byPhone.ContainsKey(phone))
                 {
-                    var phone = new string((roster.PhoneNumber ?? string.Empty).Where(char.IsDigit).ToArray());
-                    if (phone.Length == 0 || byPhone.ContainsKey(phone))
-                    {
-                        continue;
-                    }
-
-                    byPhone[phone] = new TripInspectionVehicleItem
-                    {
-                        Phone = phone,
-                        DisplayName = string.IsNullOrWhiteSpace(roster.Name) ? phone : roster.Name.Trim(),
-                        PointCount = 0,
-                        DayCount = 0,
-                        UpdatedLabel = "–"
-                    };
+                    continue;
                 }
+
+                byPhone[phone] = new TripInspectionVehicleItem
+                {
+                    Phone = phone,
+                    DisplayName = string.IsNullOrWhiteSpace(roster.Name) ? phone : roster.Name.Trim(),
+                    PointCount = 0,
+                    DayCount = 0,
+                    UpdatedLabel = "–"
+                };
             }
         }
         catch

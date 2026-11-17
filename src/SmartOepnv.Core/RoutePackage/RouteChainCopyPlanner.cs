@@ -72,6 +72,12 @@ public static class RouteChainCopyPlanner
                 editor.SetRouteInteriorDisplayDestination(displayKey, interior);
             }
 
+            var hint = editor.GetRouteInteriorHint(sourceKey);
+            if (!string.IsNullOrWhiteSpace(hint))
+            {
+                editor.SetRouteInteriorHint(displayKey, hint);
+            }
+
             keyMap[sourceKey] = displayKey;
             var canonical = RouteDisplayHelper.ToCanonicalRouteKey(sourceKey);
             if (!keyMap.ContainsKey(canonical))

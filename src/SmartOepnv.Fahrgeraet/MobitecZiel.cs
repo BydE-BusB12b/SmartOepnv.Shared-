@@ -32,6 +32,38 @@ public static class MobitecZiel
         yield return Line(line);
     }
 
+    /// <summary>Front und Linie als Smile, Seite als Text „Danke“.</summary>
+    public static IEnumerable<byte[]> Danke()
+    {
+        yield return Smile(0x0B, 0x1C);
+        yield return Side("Danke", "");
+        yield return Smile(0x06, 0x80);
+    }
+
+    private static byte[] Smile(byte address, byte d0)
+    {
+        var body = Head(address, d0, 0xF0);
+        Bitmap(body, 0x07, 0x04, "30 28 24 32 32 23 21 21 23 32 32 24 28 30");
+        Bitmap(body, 0x06, 0x09, "3E 33 20 31 21 21 20 30 3C 20 21 21 31 20 33 3E");
+        Bitmap(body, 0x07, 0x0E, "23 24 29 32 34 34 24 24 34 34 32 29 24 23");
+        Bitmap(body, 0x0C, 0x13, "21 21 21 21");
+        return Sum(body);
+    }
+
+    private static void Bitmap(List<byte> body, byte x, byte y, string hex)
+    {
+        body.Add(0xD2);
+        body.Add(x);
+        body.Add(0xD3);
+        body.Add(y);
+        body.Add(0xD4);
+        body.Add(0x77);
+        foreach (var part in hex.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            body.Add(Convert.ToByte(part, 16));
+        }
+    }
+
     private static byte[] Front(string line, string top, string bottom)
     {
         var body = Head(0x06, 0x80, 0xF0);
@@ -121,7 +153,8 @@ public static class MobitecZiel
             var text = string.Join(' ', new[] { top, bottom }.Where(part => part.Length > 0));
             if (text.Length > 0)
             {
-                objects.Add(new Piece(Center(text, 0x69, 100, 28), 0x0F, 0x69, text));
+                var font = FitFont(text, 100);
+                objects.Add(new Piece(Center(text, font, 100, 28), 0x0F, font, text));
             }
 
             return objects;
@@ -247,6 +280,40 @@ public static class MobitecZiel
 
     private static List<byte> Head(byte address, byte d0, byte mode) =>
         [0xFF, address, 0xA2, mode, 0xD0, d0, 0xD1, 0x10];
+
+    /// <summary>Dieselbe Leiter wie auf dem Tablet: 0x69, dann 0x6C, dann 0x64.</summary>
+    private static int FitFont(string text, int maxPx)
+    {
+        foreach (var font in new[] { 0x69, 0x6C, 0x64 })
+        {
+            if (Estimate(text, font) <= maxPx)
+            {
+                return font;
+            }
+        }
+
+        return 0x64;
+    }
+
+    private static int Estimate(string text, int font)
+    {
+        var nominal = font switch
+        {
+            0x69 => 12,
+            0x6C => 9,
+            _ => 7
+        };
+        double sum = 0;
+        foreach (var ch in text)
+        {
+            var factor = ch is 'i' or 'l' or 'I' or 'j' or 't' or 'f' or 'r' or '.' or ',' or ':' or ';' or '!' or ' ' or '|'
+                ? 0.45
+                : ch is '1' ? 0.55 : ch is 'm' or 'w' or 'M' or 'W' ? 1.15 : 1.0;
+            sum += nominal * factor;
+        }
+
+        return (int)Math.Ceiling(sum);
+    }
 
     private static void Text(List<byte> body, int x, int y, int font, string text) =>
         MobitecUmlaut.Append(body, x, y, font, text);

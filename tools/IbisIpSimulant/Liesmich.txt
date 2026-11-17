@@ -1,0 +1,30 @@
+IBIS-IP-Simulant
+
+Solange das Programm läuft, ist dieser Rechner die IBIS-IP-Anlage.
+Anzeigen und die App sprechen ihn über HTTP-XML an, wie eine VDV-301-Anlage.
+
+Start auf dem Pi, im Ordner dieses Programms:
+
+  bash starten.sh
+
+Port ist 8081. Port 8080 bleibt für das SEV-Programm frei.
+Status im Browser: http://<Pi-IP>:8081/
+
+Beispiel für eine Anzeige:
+
+  http://<Pi-IP>:8081/CustomerInformationService/GetCurrentDisplayContent
+
+Dienste: Geräteinfo, Fahrgastinfo, GNSS, Fahrt, Uhrzeit.
+Tür, Ticketing und Video sind nicht enthalten.
+DNS-SD geht mit, wenn avahi-utils auf dem Pi installiert ist.
+
+Der Pi ist der Gorba-TFT. Die App ist die IBIS-IP-Anlage.
+Beide am selben Ethernet. In der App Protokoll IBIS-IP wählen.
+Die HTTP-Adresse bleibt leer. Der Pi meldet sich in der Suche
+und holt Linie, Ziel und Halte von der gefundenen App.
+
+  python3 gorba_innen.py --anzeige
+
+Der TFT meldet sich im IBIS-IP-Netz, damit die Suche in der App
+seine IP zeigt. Linie, Ziel und Halte kommen von der gefundenen App.
+Die Ansicht wechselt alle 15 Sekunden. Die Uhr läuft auf dem Pi.
