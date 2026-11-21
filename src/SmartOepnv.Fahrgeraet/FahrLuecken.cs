@@ -4,7 +4,9 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using NAudio.Wave;
@@ -20,7 +22,24 @@ public static class FahrBetrieb
 
 public static class TastenTon
 {
+    private static readonly Piepdaten Ton = Piepdaten.Laden();
+    private static int _anstoesse;
+    private static int _laeuft;
+    private static int _warm;
+    private static int _hdmiGelesen;
+    private static string? _hdmi;
+    private static long _letzterDruck;
+
     public static byte[] Sample() => Beep();
+
+    /// <summary>Öffnet den HDMI-Ton schon beim Start, damit der erste Klick nicht ins stumme Aufwachen fällt.</summary>
+    public static void Bereit()
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            Starte();
+        }
+    }
 
     public static void Play()
     {
@@ -29,18 +48,283 @@ public static class TastenTon
             return;
         }
 
+        if (!OperatingSystem.IsLinux())
+        {
+            _ = Task.Run(static () =>
+            {
+                try
+                {
+                    if (!IvuTon.Piep())
+                    {
+                        TonAusgang.PlayDisplay(Beep());
+                    }
+                }
+                catch
+                {
+                    // Ohne Linux gibt es keinen offenen HDMI-Strom.
+                }
+            });
+            return;
+        }
+
+        // Touch und Maus vom selben Druck liegen oft unter 140 ms. Das ist kein zweiter Klick.
+        var jetzt = Environment.TickCount64;
+        if (jetzt - Volatile.Read(ref _letzterDruck) < 140)
+        {
+            return;
+        }
+
+        Volatile.Write(ref _letzterDruck, jetzt);
+        Interlocked.Increment(ref _anstoesse);
+        Starte();
+    }
+
+    private static void Starte()
+    {
+        if (!GeraetEinstellungen.Bool("button_sounds_enabled", true))
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _laeuft, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(static () =>
+        {
+            try
+            {
+                while (true)
+                {
+                    Spieloffen();
+                    Thread.Sleep(200);
+                }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _laeuft, 0);
+            }
+        });
+    }
+
+    /// <summary>Hält den HDMI-Strom die ganze Sitzung offen. Ein Klick setzt nur den Pieps neu an.</summary>
+    private static void Spieloffen()
+    {
+        Process? process = null;
+        var spielt = false;
         try
         {
-            if (IvuTon.Piep())
+            var start = new ProcessStartInfo
+            {
+                FileName = "pw-cat",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardInput = true,
+                RedirectStandardError = true
+            };
+            start.ArgumentList.Add("--playback");
+            start.ArgumentList.Add("--raw");
+            start.ArgumentList.Add("--format");
+            start.ArgumentList.Add("s16");
+            start.ArgumentList.Add("--rate");
+            start.ArgumentList.Add(Ton.Rate.ToString());
+            start.ArgumentList.Add("--channels");
+            start.ArgumentList.Add(Ton.Kanaele.ToString());
+            start.ArgumentList.Add("--latency");
+            start.ArgumentList.Add("20ms");
+            var ziel = Hdmi();
+            if (!string.IsNullOrWhiteSpace(ziel))
+            {
+                start.ArgumentList.Add("--target");
+                start.ArgumentList.Add(ziel);
+            }
+
+            start.ArgumentList.Add("-");
+            process = Process.Start(start);
+            if (process is null)
             {
                 return;
             }
 
-            TonAusgang.PlayDisplay(Beep());
+            process.BeginErrorReadLine();
+            var eingabe = process.StandardInput.BaseStream;
+            var stille = new byte[Ton.Rate / 50 * Ton.Kanaele * 2];
+            var pos = 0;
+            var anfang = DateTime.UtcNow;
+            while (!process.HasExited)
+            {
+                // Die ersten zwei Sekunden wecken nur den HDMI-Ausgang. Klicks bleiben liegen
+                // und klingen, sobald der Strom wirklich läuft.
+                if (Volatile.Read(ref _warm) == 0)
+                {
+                    eingabe.Write(stille, 0, stille.Length);
+                    eingabe.Flush();
+                    if ((DateTime.UtcNow - anfang).TotalMilliseconds >= 2000)
+                    {
+                        Interlocked.Exchange(ref _warm, 1);
+                    }
+
+                    Thread.Sleep(18);
+                    continue;
+                }
+
+                var neu = Interlocked.Exchange(ref _anstoesse, 0);
+                if (neu > 0)
+                {
+                    pos = 0;
+                    spielt = true;
+                }
+
+                var stueck = spielt
+                    ? Math.Min(stille.Length, Ton.Pcm.Length - pos)
+                    : stille.Length;
+                if (spielt && stueck <= 0)
+                {
+                    spielt = false;
+                    continue;
+                }
+
+                if (spielt)
+                {
+                    eingabe.Write(Ton.Pcm, pos, stueck);
+                    pos += stueck;
+                }
+                else
+                {
+                    eingabe.Write(stille, 0, stille.Length);
+                }
+
+                eingabe.Flush();
+                Thread.Sleep(18);
+            }
         }
         catch
         {
-            // Kein Ausgabegerät
+            if (spielt)
+            {
+                Interlocked.Increment(ref _anstoesse);
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (process is { HasExited: false })
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+                // Der Strom ist schon zu.
+            }
+
+            process?.Dispose();
+        }
+    }
+
+    private static string? Hdmi()
+    {
+        if (Interlocked.CompareExchange(ref _hdmiGelesen, 1, 0) != 0)
+        {
+            return _hdmi;
+        }
+
+        try
+        {
+            _hdmi = TonAusgang.HdmiZiel();
+        }
+        catch
+        {
+            _hdmi = null;
+        }
+
+        if (string.IsNullOrWhiteSpace(_hdmi))
+        {
+            Interlocked.Exchange(ref _hdmiGelesen, 0);
+        }
+
+        return _hdmi;
+    }
+
+    private readonly record struct Piepdaten(byte[] Pcm, int Rate, int Kanaele)
+    {
+        public static Piepdaten Laden()
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "sounds", "IVU_piep_ton.wav");
+            try
+            {
+                if (File.Exists(path))
+                {
+                    using var reader = new WaveFileReader(path);
+                    var fmt = reader.WaveFormat;
+                    if (fmt.Encoding == WaveFormatEncoding.Pcm && fmt.BitsPerSample == 16 && fmt.Channels is 1 or 2)
+                    {
+                        var roh = new byte[reader.Length];
+                        var gelesen = 0;
+                        while (gelesen < roh.Length)
+                        {
+                            var n = reader.Read(roh, gelesen, roh.Length - gelesen);
+                            if (n <= 0)
+                            {
+                                break;
+                            }
+
+                            gelesen += n;
+                        }
+
+                        roh = roh[..gelesen];
+                        if (fmt.Channels == 1)
+                        {
+                            roh = MonoNachStereo(roh);
+                        }
+
+                        return new Piepdaten(roh, fmt.SampleRate, 2);
+                    }
+                }
+            }
+            catch
+            {
+                // Dann der kurze Ersatxton.
+            }
+
+            return new Piepdaten(Kurzton(), 44100, 2);
+        }
+
+        private static byte[] MonoNachStereo(byte[] mono)
+        {
+            var stereo = new byte[mono.Length * 2];
+            for (var i = 0; i + 1 < mono.Length; i += 2)
+            {
+                var ziel = i * 2;
+                stereo[ziel] = mono[i];
+                stereo[ziel + 1] = mono[i + 1];
+                stereo[ziel + 2] = mono[i];
+                stereo[ziel + 3] = mono[i + 1];
+            }
+
+            return stereo;
+        }
+
+        private static byte[] Kurzton()
+        {
+            const int rate = 44100;
+            const int frames = 3528;
+            var data = new byte[frames * 4];
+            for (var i = 0; i < frames; i++)
+            {
+                var sample = (short)(Math.Sin(2 * Math.PI * 880 * i / rate) * 8000);
+                var lo = (byte)(sample & 0xFF);
+                var hi = (byte)((sample >> 8) & 0xFF);
+                var o = i * 4;
+                data[o] = lo;
+                data[o + 1] = hi;
+                data[o + 2] = lo;
+                data[o + 3] = hi;
+            }
+
+            return data;
         }
     }
 
@@ -168,82 +452,291 @@ public static class FahrProtokoll
 
 public static class FahrLuecken
 {
-    public static Control DropboxSeite()
+    public static Control DropboxSeite(Action? back = null, FahrSession? session = null)
     {
         var store = new DropboxSettingsStore(FahrgeraetRouteSync.AppFolder);
         var settings = store.Load();
-        var folder = FahrbetriebPages.Field("Dropbox-Ordner");
-        folder.Text = string.IsNullOrWhiteSpace(settings.FolderPath) ? DropboxConstants.DefaultFolderPath : settings.FolderPath;
-        var code = FahrbetriebPages.Field("Freigabecode");
         var info = FahrbetriebPages.Info(settings.IsConnected
-            ? $"Verbunden: {settings.ConnectedAccountEmail ?? settings.ConnectedAccountName}"
+            ? "Verbunden: " + (settings.ConnectedAccountEmail ?? settings.ConnectedAccountName)
             : "Nicht verbunden.");
-        var open = FahrbetriebPages.Touch("Bei Dropbox anmelden");
-        open.Click += (_, _) =>
+        var fields = new StackPanel { Spacing = 8, IsVisible = false };
+        var url = FahrbetriebPages.Field("Dropbox-URL");
+        url.Text = settings.DropboxUrl ?? "";
+        var token = SecretField("Dropbox Access Token (optional)");
+        token.Text = settings.AccessToken ?? "";
+        var refresh = SecretField("Refresh Token (optional, für automatische Erneuerung)");
+        refresh.Text = settings.RefreshToken ?? "";
+        var appKey = FahrbetriebPages.Field("App Key (optional - bereits konfiguriert)");
+        var appSecret = SecretField("App Secret (optional - bereits konfiguriert)");
+        fields.Children.Add(url);
+        fields.Children.Add(token);
+        fields.Children.Add(refresh);
+        fields.Children.Add(appKey);
+        fields.Children.Add(appSecret);
+        fields.Children.Add(FahrbetriebPages.Info("Hinweis: Access Token läuft nach 4h ab. Für automatische Erneuerung benötigen Sie Refresh Token + App Key/Secret."));
+        var showFields = FahrbetriebPages.Check("Eingabefelder anzeigen", false);
+        showFields.IsCheckedChanged += (_, _) => fields.IsVisible = showFields.IsChecked == true;
+        var folder = FahrbetriebPages.Field("Geteilter Ordner-Pfad (z.B. /smart öpnv)");
+        if (!string.IsNullOrWhiteSpace(settings.FolderPath)
+            && !string.Equals(settings.FolderPath, DropboxConstants.DefaultFolderPath, StringComparison.Ordinal))
         {
-            settings.FolderPath = folder.Text ?? DropboxConstants.DefaultFolderPath;
-            settings.AppKey = DropboxConstants.DefaultAppKey;
-            settings.AppSecret = DropboxConstants.DefaultAppSecret;
-            store.Save(settings);
-            var url = new DropboxApiClient(store).BuildAuthorizeUrl();
-            try
-            {
-                Open(url);
-                info.Text = "Im Browser anmelden und den Code hier einfügen.";
-            }
-            catch (Exception ex)
-            {
-                info.Text = ex.Message + "\n" + url;
-            }
+            folder.Text = settings.FolderPath;
+        }
+
+        var help = FahrbetriebPages.Info();
+        help.IsVisible = false;
+        var connect = Farbknopf("Mit Dropbox verbinden (EINFACH - empfohlen)", "#FFA500");
+        var manual = Farbknopf("Anleitung: Refresh Token manuell erstellen", "#2196F3");
+        var save = Farbknopf("Speichern", "#4CAF50");
+        var delete = Farbknopf("Dropbox-Verbindung löschen", "#FF0000");
+        delete.IsVisible = settings.IsConnected;
+        manual.Click += (_, _) =>
+        {
+            help.IsVisible = !help.IsVisible;
+            help.Text = help.IsVisible
+                ? "Einfach: Mit Dropbox verbinden antippen, im Fenster mit dem Dropbox-Konto anmelden, erlauben. Das Programm speichert Access Token und Refresh Token selbst.\n\nManuell: Eingabefelder anzeigen, Access Token, Refresh Token, App Key und App Secret eintragen, dann Speichern.\n\nAnderes Konto: Dropbox-Verbindung löschen oder erneut Mit Dropbox verbinden. Die Anmeldeseite erscheint neu."
+                : "";
         };
-        var exchange = FahrbetriebPages.Touch("Code einlösen");
-        exchange.Click += async (_, _) =>
+        connect.Click += async (_, _) =>
         {
+            if (!connect.IsEnabled)
+            {
+                return;
+            }
+
+            connect.IsEnabled = false;
             try
             {
-                settings.FolderPath = folder.Text ?? settings.FolderPath;
-                store.Save(settings);
-                await new DropboxApiClient(store).ExchangeCodeForTokensAsync(code.Text ?? "");
-                info.Text = "Dropbox ist verbunden.";
+                var current = store.Load();
+                var key = string.IsNullOrWhiteSpace(appKey.Text) ? current.AppKey : appKey.Text.Trim();
+                var secret = string.IsNullOrWhiteSpace(appSecret.Text) ? current.AppSecret : appSecret.Text.Trim();
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(secret))
+                {
+                    key = DropboxConstants.DefaultAppKey;
+                    secret = DropboxConstants.DefaultAppSecret;
+                }
+
+                current.AppKey = key;
+                current.AppSecret = secret;
+                var folderText = folder.Text?.Trim();
+                if (!string.IsNullOrWhiteSpace(folderText))
+                {
+                    current.FolderPath = DropboxConstants.NormalizeFolderPath(folderText);
+                }
+
+                store.Save(current);
+                info.Text = "Anmeldung läuft. Im Browser bei Dropbox anmelden. Das Programm speichert die Verbindung danach selbst.";
+                FensterWeg(connect, true);
+                var code = await DropboxAnmeldung.WartenAufCodeAsync(AuthorizeUrl(current));
+                await new DropboxApiClient(store).ExchangeCodeForTokensAsync(code);
+                var connected = store.Load();
+                info.Text = string.IsNullOrWhiteSpace(connected.ConnectedAccountEmail)
+                    ? "Dropbox erfolgreich verbunden."
+                    : "Dropbox erfolgreich verbunden: " + connected.ConnectedAccountEmail;
+                delete.IsVisible = true;
+                info.Text = "Dropbox verbunden. Export und Update werden geladen…";
+                info.Text = await RoutenInstallieren(session, connect);
             }
             catch (Exception ex)
             {
                 info.Text = ex.Message;
             }
-        };
-        var saveFolder = FahrbetriebPages.Touch("Ordner speichern");
-        saveFolder.Click += (_, _) =>
-        {
-            settings = store.Load();
-            settings.FolderPath = folder.Text ?? DropboxConstants.DefaultFolderPath;
-            store.Save(settings);
-            info.Text = "Ordner gespeichert.";
-        };
-        var test = FahrbetriebPages.Touch("Verbindung prüfen");
-        test.Click += async (_, _) =>
-        {
-            try
+            finally
             {
-                var result = await new DropboxApiClient(store).TestConnectionAsync();
-                info.Text = result.Message;
-            }
-            catch (Exception ex)
-            {
-                info.Text = ex.Message;
+                FensterWeg(connect, false);
+                connect.IsEnabled = true;
             }
         };
-        var disconnect = FahrbetriebPages.Touch("Trennen");
-        disconnect.Click += (_, _) =>
+        save.Click += async (_, _) =>
         {
-            settings = store.Load();
-            settings.AccessToken = null;
-            settings.RefreshToken = null;
-            settings.ConnectedAccountEmail = null;
-            settings.ConnectedAccountName = null;
-            store.Save(settings);
-            info.Text = "Verbindung gelöscht.";
+            var current = store.Load();
+            var changed = false;
+            var folderText = folder.Text?.Trim();
+            if (!string.IsNullOrWhiteSpace(folderText))
+            {
+                current.FolderPath = DropboxConstants.NormalizeFolderPath(folderText);
+                changed = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(token.Text))
+            {
+                current.AccessToken = token.Text.Trim();
+                changed = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(refresh.Text))
+            {
+                current.RefreshToken = refresh.Text.Trim();
+                changed = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(appKey.Text) && !string.IsNullOrWhiteSpace(appSecret.Text))
+            {
+                current.AppKey = appKey.Text.Trim();
+                current.AppSecret = appSecret.Text.Trim();
+                changed = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(url.Text))
+            {
+                current.DropboxUrl = url.Text.Trim();
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                info.Text = "Bitte geben Sie mindestens eine Dropbox-URL, einen Ordner oder einen Access Token ein.";
+                return;
+            }
+
+            store.Save(current);
+            delete.IsVisible = current.IsConnected;
+            info.Text = current.IsConnected
+                ? "Dropbox-Konfiguration gespeichert. Export und Update werden geladen…"
+                : "Konfiguration gespeichert.";
+            if (current.IsConnected)
+            {
+                info.Text = await RoutenInstallieren(session, save);
+            }
         };
-        return FahrbetriebPages.Column("Dropbox", folder, open, code, exchange, saveFolder, test, disconnect, info);
+        delete.Click += (_, _) =>
+        {
+            var current = store.Load();
+            current.DropboxUrl = null;
+            current.AccessToken = null;
+            current.RefreshToken = null;
+            current.ConnectedAccountEmail = null;
+            current.ConnectedAccountName = null;
+            current.AppKey = DropboxConstants.DefaultAppKey;
+            current.AppSecret = DropboxConstants.DefaultAppSecret;
+            current.FolderPath = DropboxConstants.DefaultFolderPath;
+            store.Save(current);
+            url.Text = "";
+            token.Text = "";
+            refresh.Text = "";
+            appKey.Text = "";
+            appSecret.Text = "";
+            folder.Text = "";
+            delete.IsVisible = false;
+            info.Text = "Dropbox-Verbindung gelöscht.";
+        };
+        var panel = new StackPanel { Spacing = 8, Margin = new Thickness(16) };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Dropbox-Konfiguration",
+            Foreground = Brushes.White,
+            FontSize = 22,
+            FontWeight = FontWeight.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+        panel.Children.Add(FahrbetriebPages.Info("Einfach (empfohlen):\n1. Mit Dropbox verbinden antippen\n2. Mit dem eigenen Dropbox-Konto anmelden\n3. Fertig. Tokens werden automatisch gespeichert.\n\nAnderes Konto: zuerst Dropbox-Verbindung löschen oder erneut verbinden. Die Anmeldeseite erscheint dann neu.\n\nManuell: Eingabefelder anzeigen und die Werte eintragen.\n\nApp Key und App Secret sind bereits konfiguriert."));
+        panel.Children.Add(showFields);
+        panel.Children.Add(fields);
+        panel.Children.Add(folder);
+        panel.Children.Add(FahrbetriebPages.Info("Leer lassen = Standard /smart öpnv. Auf allen Geräten denselben Pfad eintragen und Speichern."));
+        panel.Children.Add(connect);
+        panel.Children.Add(manual);
+        panel.Children.Add(help);
+        panel.Children.Add(save);
+        panel.Children.Add(delete);
+        panel.Children.Add(info);
+        if (back is not null)
+        {
+            var backButton = Farbknopf("Zurück", "#FF0000");
+            backButton.Click += (_, _) => back();
+            panel.Children.Add(backButton);
+        }
+
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#1A237E")),
+            CornerRadius = new CornerRadius(8),
+            Margin = new Thickness(8),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Child = FahrTabletMenue.MenuScroll(panel)
+        };
+    }
+
+    private static string AuthorizeUrl(DropboxSettings settings)
+    {
+        var query = new Dictionary<string, string>
+        {
+            ["client_id"] = settings.AppKey ?? "",
+            ["response_type"] = "code",
+            ["token_access_type"] = "offline",
+            ["force_reapprove"] = "true",
+            ["redirect_uri"] = DropboxConstants.OAuthRedirectUri
+        };
+        var text = string.Join("&", query.Select(pair => Uri.EscapeDataString(pair.Key) + "=" + Uri.EscapeDataString(pair.Value)));
+        return DropboxConstants.AuthorizeUrl + "?" + text;
+    }
+
+    private static async Task<string> RoutenInstallieren(FahrSession? session, Control anchor)
+    {
+        var root = TopLevel.GetTopLevel(anchor)?.Content as Grid;
+        if (LadeAnzeige.Offen)
+        {
+            return "Update läuft bereits.";
+        }
+
+        try
+        {
+            var result = await new FahrgeraetRouteSync().SyncAsync(CancellationToken.None, new Progress<RoutenFortschritt>(stand =>
+                LadeAnzeige.Setzen(stand.Prozent, stand.Meldung)));
+            if (result.Success && result.Package is not null && session is not null)
+            {
+                session.Package = result.Package;
+            }
+
+            FahrProtokoll.Add(result.Message);
+            return result.Message;
+        }
+        catch (OperationCanceledException)
+        {
+            return "Update abgebrochen.";
+        }
+        finally
+        {
+            if (root is not null)
+            {
+                LadeAnzeige.Schliessen(root);
+            }
+        }
+    }
+
+    private static TextBox SecretField(string watermark)
+    {
+        var box = FahrbetriebPages.Field(watermark);
+        box.PasswordChar = '•';
+        return box;
+    }
+
+    private static Button Farbknopf(string text, string color)
+    {
+        var button = FahrbetriebPages.Touch(text);
+        button.Background = new SolidColorBrush(Color.Parse(color));
+        return button;
+    }
+
+    private static void FensterWeg(Control anchor, bool weg)
+    {
+        if (TopLevel.GetTopLevel(anchor) is not Window window)
+        {
+            return;
+        }
+
+        if (weg)
+        {
+            window.Topmost = false;
+            window.IsVisible = false;
+            return;
+        }
+
+        window.IsVisible = true;
+        window.WindowState = WindowState.FullScreen;
+        window.Topmost = true;
+        window.Activate();
     }
 
     public static Control Transfer(FahrSession session)
@@ -743,43 +1236,116 @@ public static class FahrLuecken
         return FahrbetriebPages.Column("Impressum", company, text, save, info);
     }
 
-    public static Control Update()
+    public static Control Update(FahrSession session, Action back)
     {
-        var info = FahrbetriebPages.Info("Auf dem Raspberry Pi installiert eine neue fahrgeraet-linux.zip in Dropbox von selbst. Der Taster installiert sofort.");
-        var check = FahrbetriebPages.Touch("Update installieren");
-        check.Click += async (_, _) =>
+        var info = FahrbetriebPages.Info("");
+        var manual = Farbknopf("Manuelles Update laden", "#4CAF50");
+        manual.Click += async (_, _) =>
+            info.Text = await RoutenMitKreis(session, manual, "Manuelles Update", false);
+        var test = Farbknopf("Testupdate laden", "#FFA500");
+        test.Click += async (_, _) =>
+            info.Text = await RoutenMitKreis(session, test, "Testupdate", true);
+        var app = Farbknopf("Appupdate", "#2196F3");
+        app.Click += async (_, _) => info.Text = await AppUpdate(app);
+        var zurueck = Farbknopf("Zurück", "#FF0000");
+        zurueck.Click += (_, _) => back();
+        return FahrbetriebPages.Column("Updates", manual, test, app, zurueck, info);
+    }
+
+    private static async Task<string> RoutenMitKreis(FahrSession session, Control anchor, string titel, bool test)
+    {
+        var root = TopLevel.GetTopLevel(anchor)?.Content as Grid;
+        if (root is null)
         {
-            var client = FahrbetriebPages.OpenDropbox();
-            if (client is null)
+            return "Fenster nicht bereit.";
+        }
+
+        if (LadeAnzeige.Offen)
+        {
+            return "Update läuft bereits.";
+        }
+
+        try
+        {
+            var result = await new FahrgeraetRouteSync().SyncAsync(
+                CancellationToken.None,
+                new Progress<RoutenFortschritt>(stand => LadeAnzeige.Setzen(stand.Prozent, stand.Meldung)),
+                test);
+            if (result.Success && result.Package is not null)
             {
-                info.Text = "Dropbox ist nicht verbunden.";
-                return;
+                session.Package = result.Package;
             }
 
-            info.Text = "Lade fahrgeraet-linux.zip…";
-            try
-            {
-                var meta = await client.TryGetNamedFileMetadataAsync(FahrUpdate.PackageName);
-                var bytes = await client.TryDownloadNamedBinaryFileAsync(FahrUpdate.PackageName);
-                if (bytes is null || bytes.Length == 0)
-                {
-                    info.Text = "fahrgeraet-linux.zip fehlt in Dropbox.";
-                    return;
-                }
+            FahrProtokoll.Add(result.Message);
+            return result.Message;
+        }
+        catch (OperationCanceledException)
+        {
+            return "Update abgebrochen.";
+        }
+        finally
+        {
+            LadeAnzeige.KopfAus();
+        }
+    }
 
-                if (meta is not null)
-                {
-                    FahrUpdate.Remember(FahrUpdate.Identity(meta.Value));
-                }
+    private static async Task<string> AppUpdate(Control anchor)
+    {
+        var client = FahrbetriebPages.OpenDropbox();
+        if (client is null)
+        {
+            return "Dropbox ist nicht verbunden.";
+        }
 
-                FahrUpdate.Install(bytes);
-            }
-            catch (Exception ex)
+        var root = TopLevel.GetTopLevel(anchor)?.Content as Grid;
+        if (root is null)
+        {
+            return "Fenster nicht bereit.";
+        }
+
+        if (LadeAnzeige.Offen)
+        {
+            return "Update läuft bereits.";
+        }
+
+        var token = LadeAnzeige.Zeigen(root, "Appupdate", "Lade fahrgeraet-linux.zip…");
+        try
+        {
+            var bytes = await client.DownloadNamedBinaryFileAsync(
+                FahrUpdate.PackageName,
+                token,
+                new Progress<DropboxTransferProgress>(stand =>
+                    LadeAnzeige.Setzen((int)stand.Percent, "Lade fahrgeraet-linux.zip…")));
+            if (bytes.Length == 0)
             {
-                info.Text = ex.Message;
+                return "fahrgeraet-linux.zip fehlt in Dropbox.";
             }
-        };
-        return FahrbetriebPages.Column("App-Update", check, info);
+
+            var meta = await client.TryGetNamedFileMetadataAsync(FahrUpdate.PackageName, token);
+            if (meta is not null)
+            {
+                FahrUpdate.Remember(FahrUpdate.Identity(meta.Value));
+            }
+
+            FahrUpdate.Install(bytes);
+            return "Appupdate wird installiert.";
+        }
+        catch (OperationCanceledException)
+        {
+            return "Update abgebrochen.";
+        }
+        catch (Exception ex) when (ex.Message.Contains("not_found", StringComparison.OrdinalIgnoreCase))
+        {
+            return "fahrgeraet-linux.zip fehlt in Dropbox.";
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+        finally
+        {
+            LadeAnzeige.Schliessen(root);
+        }
     }
 
     public static Control Bluetooth()
@@ -789,7 +1355,7 @@ public static class FahrLuecken
         var force = FahrbetriebPages.Check("Zwangskopplung", GeraetEinstellungen.Bool("bluetooth_force_pairing", true));
         var info = FahrbetriebPages.Info(
             "Nur Haltestellenansagen und Sonderansagen laufen über Bluetooth in den Fahrgastraum. Links ist innen, rechts ist außen. " +
-            "Stempel, Abfahrt, Tastentöne, IVU-Töne und der Funk laufen über die Lautsprecher des Displays. " +
+            "Ohne Bluetooth spielt der DAC-Hut dieselbe Ansage. Stempel, Abfahrt, Tastentöne und IVU-Töne laufen über die Lautsprecher des Displays. " +
             TonAusgang.Describe());
         var save = FahrbetriebPages.Touch("Speichern");
         save.Click += (_, _) =>

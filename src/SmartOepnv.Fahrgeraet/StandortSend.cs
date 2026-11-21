@@ -163,6 +163,7 @@ internal static class GpsQuelle
     private static string? _port;
 
     public static event Action<double, double>? Fix;
+    public static int? AccuracyMeters => _nmea?.AccuracyMeters;
 
     public static void Hold(string owner, string? portName)
     {

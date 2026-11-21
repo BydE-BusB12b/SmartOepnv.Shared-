@@ -33,6 +33,7 @@ public sealed class GpsNmea : IDisposable
     private readonly StringBuilder _buffer = new();
 
     public event Action<double, double>? Fix;
+    public int? AccuracyMeters { get; private set; }
 
     public void Start(string portName)
     {
@@ -82,8 +83,9 @@ public sealed class GpsNmea : IDisposable
 
             foreach (var line in lines)
             {
-                if (TryParse(line.Trim(), out var lat, out var lon))
+                if (TryParse(line.Trim(), out var lat, out var lon, out var accuracy))
                 {
+                    AccuracyMeters = accuracy;
                     Fix?.Invoke(lat, lon);
                 }
             }
@@ -94,9 +96,13 @@ public sealed class GpsNmea : IDisposable
         }
     }
 
-    public static bool TryParse(string sentence, out double lat, out double lon)
+    public static bool TryParse(string sentence, out double lat, out double lon) =>
+        TryParse(sentence, out lat, out lon, out _);
+
+    public static bool TryParse(string sentence, out double lat, out double lon, out int? accuracyMeters)
     {
         lat = lon = 0;
+        accuracyMeters = null;
         if (!sentence.StartsWith("$G") || sentence.Length < 6)
         {
             return false;
@@ -113,6 +119,13 @@ public sealed class GpsNmea : IDisposable
 
         if (type is "GGA" && parts.Length > 5 && parts[6] != "0")
         {
+            if (parts.Length > 8 &&
+                double.TryParse(parts[8], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var hdop) &&
+                hdop > 0)
+            {
+                accuracyMeters = (int)Math.Round(hdop * 5);
+            }
+
             return TryDeg(parts[2], parts[3], out lat) && TryDeg(parts[4], parts[5], out lon);
         }
 

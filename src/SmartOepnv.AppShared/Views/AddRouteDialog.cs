@@ -14,6 +14,7 @@ public sealed class AddRouteDialog : Window
     private static Brush LabelForeground => UiTheme.ForegroundBrush;
 
     private readonly TextBox _routeNameBox;
+    private readonly TextBox _chainNameBox;
     private readonly TextBox _orderNumberBox;
     private readonly int _sequenceNumber;
     private readonly TextBox _lineCourseBox;
@@ -39,7 +40,28 @@ public sealed class AddRouteDialog : Window
     public bool ResultItcsRouteListEnabled { get; private set; }
     public bool ResultMainDeviceOnly { get; private set; }
     public string ResultOrderNumber { get; private set; } = string.Empty;
+    public string ResultChainName { get; private set; } = string.Empty;
     public int ResultSequenceNumber { get; private set; }
+
+    private static string ChainNameOf(EditableRoutePackage package, string? routeKey)
+    {
+        if (string.IsNullOrWhiteSpace(routeKey))
+        {
+            return string.Empty;
+        }
+
+        var own = package.GetRouteChainIdentity(routeKey).Name;
+        if (!string.IsNullOrWhiteSpace(own))
+        {
+            return own.Trim();
+        }
+
+        var chain = RouteChainPlanner.BuildConnectedRouteChain(package, routeKey);
+        return chain
+            .Select(key => package.GetRouteChainIdentity(key).Name)
+            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name))
+            ?.Trim() ?? string.Empty;
+    }
 
     public AddRouteDialog(EditableRoutePackage package, RouteDefinition? initial = null, string? copyFromRouteKey = null, string? editingRouteKey = null)
         : this(
@@ -57,7 +79,8 @@ public sealed class AddRouteDialog : Window
                 : package.GetRouteChainIdentity(editingRouteKey).OrderNumber,
             editingRouteKey is null
                 ? package.PeekNextChainSequenceNumber()
-                : package.GetRouteChainIdentity(editingRouteKey).SequenceNumber)
+                : package.GetRouteChainIdentity(editingRouteKey).SequenceNumber,
+            ChainNameOf(package, editingRouteKey))
     {
     }
 
@@ -72,7 +95,8 @@ public sealed class AddRouteDialog : Window
         bool initialItcsRouteListEnabled = false,
         bool initialMainDeviceOnly = false,
         string? initialOrderNumber = null,
-        int initialSequenceNumber = 0)
+        int initialSequenceNumber = 0,
+        string? initialChainName = null)
     {
         _dateRangesByRoute = dateRangesByRoute;
         _operatingDatesByRoute = operatingDatesByRoute;
@@ -164,6 +188,18 @@ public sealed class AddRouteDialog : Window
         Grid.SetColumn(sequenceColumn, 4);
         nameRow.Children.Add(sequenceColumn);
         form.Children.Add(nameRow);
+
+        form.Children.Add(MakeLabel("Name der Routenschnur"));
+        form.Children.Add(new TextBlock
+        {
+            Text = "Nur für den Kalender. Die Routenliste bleibt unverändert. Verknüpfte Fahrten übernehmen den Namen, die Auftragsnummer wird angehängt.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        _chainNameBox = MakeInput("z. B. Umleitung Hbf", initialChainName ?? string.Empty);
+        form.Children.Add(_chainNameBox);
 
         form.Children.Add(MakeLabel("Linie/Kurs"));
         _lineCourseBox = MakeInput(string.Empty, initial.LineCourse);
@@ -515,6 +551,7 @@ public sealed class AddRouteDialog : Window
         ResultItcsRouteListEnabled = _itcsRouteListCheck.IsChecked == true;
         ResultMainDeviceOnly = _mainDeviceOnlyCheck.IsChecked == true;
         ResultOrderNumber = _orderNumberBox.Text.Trim();
+        ResultChainName = _chainNameBox.Text.Trim();
         ResultSequenceNumber = _sequenceNumber;
         DialogResult = true;
         Close();

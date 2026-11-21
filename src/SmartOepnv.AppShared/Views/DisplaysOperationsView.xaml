@@ -205,7 +205,7 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Margin="0,2">
-                                            <TextBlock Text="{Binding Name}"
+                                            <TextBlock Text="{Binding ListTitle}"
                                                        FontWeight="SemiBold"
                                                        FontSize="13"
                                                        TextWrapping="Wrap" />
@@ -441,10 +441,63 @@
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
 
-                                        <CheckBox Grid.Row="0" Grid.ColumnSpan="2"
-                                                  Content="Als Startziel (Name: Startziel)"
-                                                  IsChecked="{Binding IsStartTarget, UpdateSourceTrigger=PropertyChanged}"
-                                                  Margin="0,0,0,10" />
+                                        <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,10">
+                                            <CheckBox Content="Als Startziel (Name: Startziel)"
+                                                      IsChecked="{Binding IsStartTarget, UpdateSourceTrigger=PropertyChanged}">
+                                                <CheckBox.Style>
+                                                    <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+                                                        <Setter Property="Margin" Value="0,0,0,8" />
+                                                        <Setter Property="IsEnabled" Value="True" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasStartzielDate}" Value="True">
+                                                                <Setter Property="IsEnabled" Value="False" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </CheckBox.Style>
+                                            </CheckBox>
+                                            <StackPanel Visibility="{Binding IsStartTarget, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="Standard gilt an allen Tagen ohne eigenes Datum. Ein Datum öffnet das Startziel nur für diesen Tag. Front, Seite und Linie bleiben getrennt."
+                                                           TextWrapping="Wrap"
+                                                           Opacity="0.75"
+                                                           FontSize="11"
+                                                           Margin="0,0,0,8" />
+                                                <ItemsControl ItemsSource="{Binding DataContext.StartzielDays, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button Content="{Binding StartzielDayLabel}"
+                                                                    Margin="0,0,6,6"
+                                                                    MinWidth="88"
+                                                                    Command="{Binding DataContext.SelectStartzielDayCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                    CommandParameter="{Binding}" />
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <Grid Margin="0,4,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <DatePicker SelectedDate="{Binding DataContext.NewStartzielDate, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                MinHeight="36" />
+                                                    <Button Grid.Column="1"
+                                                            Content="Hinzufügen"
+                                                            Margin="8,0,0,0"
+                                                            Command="{Binding DataContext.AddStartzielDayCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                                    <Button Grid.Column="2"
+                                                            Content="Diesen Tag entfernen"
+                                                            Margin="8,0,0,0"
+                                                            Visibility="{Binding HasStartzielDate, Converter={StaticResource BoolToVis}}"
+                                                            Command="{Binding DataContext.RemoveStartzielDayCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </StackPanel>
 
                                         <TextBlock Grid.Row="1" Grid.Column="0" Text="Anzeigename" VerticalAlignment="Center" Margin="0,0,8,8" />
                                         <Grid Grid.Row="1" Grid.Column="1" Margin="0,0,0,8">

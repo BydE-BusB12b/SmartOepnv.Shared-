@@ -8,7 +8,7 @@ var outDir = args.FirstOrDefault()
              ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "hardware"));
 Directory.CreateDirectory(outDir);
 var outPath = Path.Combine(outDir, "SmartOepnv_RaspberryPi_Einkaufsliste.pdf");
-var created = new DateTime(2026, 11, 5);
+var created = new DateTime(2026, 11, 20);
 
 Document.Create(document =>
 {
@@ -22,7 +22,7 @@ Document.Create(document =>
         {
             h.Item().Text("Smart ÖPNV · Fahrerarbeitsplatz").FontSize(10).SemiBold().FontColor(Colors.Blue.Darken2);
             h.Item().Text("Einkaufsliste Raspberry Pi").FontSize(16).SemiBold();
-            h.Item().Text("Linux-Gerät im Fahrzeug · Stand 05.11.2026")
+            h.Item().Text("Linux-Gerät im Fahrzeug · Stand 20.11.2026")
                 .FontSize(9).FontColor(Colors.Grey.Darken1);
             h.Item().PaddingTop(4).LineHorizontal(1.2f).LineColor(Colors.Blue.Darken2);
         });
@@ -69,6 +69,7 @@ Document.Create(document =>
             ShopTable(col,
             [
                 ["1", "Waveshare PCIe to 5G HAT+ für den Pi 5, mit Quectel RM520N-GL", "Daten-SIM und GPS über das flache PCIe-Kabel. Europa-Bänder."],
+                ["1", "Waveshare SIM7600G-H 4G HAT (B)", "LTE Cat-4 und GNSS. Daten und GPS. Shop-Orientierung 74,90 €."],
                 ["1", "Nano-SIM, nur Daten", "Leitstelle, Dropbox, ITCS, VoIP"],
                 ["2", "Adapter IPEX-4 (MHF4) auf SMA, kurz", "ANT0 und ANT3. Bleiben im Gehäuse. Oft im HAT-Set enthalten."],
                 ["1", "Dachantenne Mobilfunk, SMA, 50 Ω", "an ANT0"],
@@ -77,6 +78,9 @@ Document.Create(document =>
             ]);
             P(col, "ANT1 und ANT2 sind weitere Mobilfunkantennen und für die Datenverbindung nicht nötig. " +
                    "GPS im RM520N-GL ist vorhanden und wird in der Software eingeschaltet.");
+            P(col, "Das SIM7600G-H 4G HAT (B) ist LTE Cat-4 mit GNSS. Gesehener Shop-Preis bei BerryBase: 74,90 €. " +
+                   "Das ist kein Angebot, nur die Orientierung aus der angesehenen Seite. " +
+                   "Das HAT spricht über USB und ist für den Pi 4 gelegt.");
 
             H(col, "3. Ton");
             ShopTable(col,
@@ -114,6 +118,22 @@ Document.Create(document =>
                 ["1", "USB-IBIS-Wandler", "IBIS. Belegt eine USB-Buchse."],
                 ["1", "USB-RS485-Wandler", "RS485. Belegt eine USB-Buchse."]
             ]);
+            P(col, "FMS-CAN-Stecker, 12-polig. So liegt der gelieferte Stecker.");
+            PinTable(col,
+            [
+                ["1", "schwarz", "Masse"],
+                ["2", "braun", "Masse"],
+                ["3", "", "leer"],
+                ["4", "", "leer"],
+                ["5", "", "leer"],
+                ["6", "weiß", "CAN H"],
+                ["7", "", "leer"],
+                ["8", "", "leer"],
+                ["9", "blau", "CAN L"],
+                ["10", "orange", "Klemme 15"],
+                ["11", "", "leer"],
+                ["12", "rot", "Klemme 30"]
+            ]);
 
             H(col, "7. Mechanik");
             ShopTable(col,
@@ -148,6 +168,34 @@ static void Bullet(ColumnDescriptor col, string text) =>
 static void Callout(ColumnDescriptor col, string text) =>
     col.Item().Background(Colors.Blue.Lighten5).Border(0.5f).BorderColor(Colors.Blue.Lighten2)
         .Padding(8).Text(text).FontSize(9).FontColor(Colors.Blue.Darken4);
+
+static void PinTable(ColumnDescriptor col, string[][] rows)
+{
+    col.Item().Table(t =>
+    {
+        t.ColumnsDefinition(c =>
+        {
+            c.ConstantColumn(36);
+            c.RelativeColumn(4);
+            c.RelativeColumn(6);
+        });
+        t.Header(h =>
+        {
+            foreach (var header in new[] { "Pin", "Kabelfarbe", "Belegung" })
+                h.Cell().Background(Colors.Blue.Darken3).Padding(3)
+                    .Text(header).FontSize(8).SemiBold().FontColor(Colors.White);
+        });
+        var alt = false;
+        foreach (var row in rows)
+        {
+            var bg = alt ? Colors.Grey.Lighten4 : Colors.White;
+            alt = !alt;
+            for (var i = 0; i < row.Length; i++)
+                t.Cell().Background(bg).BorderBottom(0.4f).BorderColor(Colors.Grey.Lighten2)
+                    .Padding(3).Text(row[i]).FontSize(8);
+        }
+    });
+}
 
 static void ShopTable(ColumnDescriptor col, string[][] rows)
 {

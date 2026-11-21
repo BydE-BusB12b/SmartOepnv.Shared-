@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -244,8 +245,53 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
     public string Name
     {
         get => _name;
-        set => SetProperty(ref _name, value, nameof(DisplayLabel), nameof(Ds003ListLabel));
+        set => SetProperty(ref _name, value, nameof(DisplayLabel), nameof(Ds003ListLabel), nameof(ListTitle));
     }
+
+    private string _startzielDate = string.Empty;
+
+    /// <summary>
+    /// Geltungstag eines Startziels (<c>yyyy-MM-dd</c>). Leer = Standard für alle übrigen Tage.
+    /// </summary>
+    public string StartzielDate
+    {
+        get => _startzielDate;
+        set
+        {
+            var next = NormalizeStartzielDate(value);
+            if (_startzielDate == next)
+            {
+                return;
+            }
+
+            _startzielDate = next;
+            if (next.Length > 0)
+            {
+                _isStartTarget = true;
+                if (!string.Equals(_name, "Startziel", StringComparison.Ordinal))
+                {
+                    _name = "Startziel";
+                }
+            }
+
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasStartzielDate));
+            OnPropertyChanged(nameof(StartzielDayLabel));
+            OnPropertyChanged(nameof(ListTitle));
+            OnPropertyChanged(nameof(IsStartTarget));
+            OnPropertyChanged(nameof(Name));
+        }
+    }
+
+    public bool HasStartzielDate => _startzielDate.Length > 0;
+
+    /// <summary>Schaltfläche in der Datumsleiste: „Standard“ oder TT.MM.JJJJ.</summary>
+    public string StartzielDayLabel =>
+        _startzielDate.Length == 0 ? "Standard" : FormatStartzielDate(_startzielDate);
+
+    /// <summary>Listenzeile. Datums-Startziele bleiben im Namen „Startziel“ und zeigen den Tag dazu.</summary>
+    public string ListTitle =>
+        _startzielDate.Length == 0 ? Name : $"{Name} · {FormatStartzielDate(_startzielDate)}";
 
     public string FrontLine1
     {
@@ -619,6 +665,18 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         if (leftStart != rightStart)
         {
             return leftStart ? -1 : 1;
+        }
+
+        if (leftStart && rightStart)
+        {
+            var dateOrder = string.Compare(
+                left.StartzielDate,
+                right.StartzielDate,
+                StringComparison.Ordinal);
+            if (dateOrder != 0)
+            {
+                return dateOrder;
+            }
         }
 
         return CompareZiellisteNames(left.Name, right.Name);
@@ -1266,11 +1324,36 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             program.IsStartTarget = true;
         }
 
+        var dateRaw = DecodeUtf8(parts.ElementAtOrDefault(18));
+        if (IsIsoDate(dateRaw))
+        {
+            program.StartzielDate = dateRaw;
+        }
+
         return program;
+    }
+
+    /// <summary>Kopie des Standard-Startziels für einen einzelnen Tag. Eigene Id, eigene Texte.</summary>
+    public OutsideDisplayProgram CloneAsDatedStartziel(string isoDate, IEnumerable<string?> existingIds)
+    {
+        var copy = TryParse(ToStorageEntry()) ?? new OutsideDisplayProgram();
+        copy.Id = OutsideDisplayId.NewUniqueId(existingIds);
+        copy.DestinationNumber = null;
+        copy.StartzielDate = isoDate;
+        copy.IsStartTarget = true;
+        copy.Name = "Startziel";
+        return copy;
     }
 
     public void ApplyStartTargetName()
     {
+        if (HasStartzielDate)
+        {
+            IsStartTarget = true;
+            Name = "Startziel";
+            return;
+        }
+
         if (IsStartTarget)
         {
             Name = "Startziel";
@@ -1280,6 +1363,19 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
             Name = "Neues Ziel";
         }
     }
+
+    private static string NormalizeStartzielDate(string? value)
+    {
+        var text = value?.Trim() ?? string.Empty;
+        return IsIsoDate(text) ? text : string.Empty;
+    }
+
+    private static bool IsIsoDate(string value) =>
+        DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+
+    private static string FormatStartzielDate(string isoDate) =>
+        DateOnly.ParseExact(isoDate, "yyyy-MM-dd", CultureInfo.InvariantCulture)
+            .ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
 
     public string ToStorageEntry()
     {
@@ -1392,6 +1488,8 @@ public sealed class OutsideDisplayProgram : INotifyPropertyChanged
         parts.Add(DestinationNumber is int dn
             ? EncodeUtf8(dn.ToString("D4"))
             : string.Empty);
+        // Index 18: Startziel-Datum (yyyy-MM-dd). Leer = Standard.
+        parts.Add(HasStartzielDate ? EncodeUtf8(StartzielDate) : string.Empty);
         return string.Join('|', parts);
     }
 

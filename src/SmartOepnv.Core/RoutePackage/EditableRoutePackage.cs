@@ -1117,6 +1117,14 @@ public sealed class EditableRoutePackage
                 continue;
             }
 
+            // Schon gespeicherte Tage behalten. Die Kennung im Namen wird danach
+            // angeglichen. Nur ein leerer Eintrag wird aus „Verkehr:“ aufgefüllt.
+            var stored = RouteOperatingDaysEditor.GetDaysForRoute(RouteOperatingDaysByRoute, routeKey);
+            if (!RouteOperatingDaysEditor.IsConfiguredForAllDays(stored))
+            {
+                continue;
+            }
+
             SetRouteOperatingDays(routeKey, fromLabel);
         }
     }
@@ -1159,14 +1167,14 @@ public sealed class EditableRoutePackage
                 RouteInteriorDisplayDestinationsByRoute,
                 newKey,
                 interior);
-            RouteInteriorDisplayDestinationEditor.RemoveRoute(RouteInteriorDisplayDestinationsByRoute, oldKey);
+            DropStaleRawKey(RouteInteriorDisplayDestinationsByRoute, oldKey, newKey);
         }
 
         var hint = RouteInteriorHintEditor.GetForRoute(RouteInteriorHintsByRoute, oldKey);
         if (!string.IsNullOrEmpty(hint))
         {
             RouteInteriorHintEditor.SetForRoute(RouteInteriorHintsByRoute, newKey, hint);
-            RouteInteriorHintEditor.RemoveRoute(RouteInteriorHintsByRoute, oldKey);
+            DropStaleRawKey(RouteInteriorHintsByRoute, oldKey, newKey);
         }
 
         var announcementVoice = RouteAnnouncementVoiceEditor.GetForRoute(
@@ -1178,19 +1186,19 @@ public sealed class EditableRoutePackage
                 RouteAnnouncementVoicesByRoute,
                 newKey,
                 announcementVoice);
-            RouteAnnouncementVoiceEditor.RemoveRoute(RouteAnnouncementVoicesByRoute, oldKey);
+            DropStaleRawKey(RouteAnnouncementVoicesByRoute, oldKey, newKey);
         }
 
         if (!RouteItcsRouteListEditor.IsInItcsRouteList(RoutesExcludedFromItcsRouteList, oldKey))
         {
             RouteItcsRouteListEditor.SetInItcsRouteList(RoutesExcludedFromItcsRouteList, newKey, false);
-            RouteItcsRouteListEditor.RemoveRoute(RoutesExcludedFromItcsRouteList, oldKey);
+            DropStaleRawKey(RoutesExcludedFromItcsRouteList, oldKey, newKey);
         }
 
         if (RouteMainDeviceOnlyEditor.IsMainDeviceOnly(RoutesMainDeviceOnly, oldKey))
         {
             RouteMainDeviceOnlyEditor.SetMainDeviceOnly(RoutesMainDeviceOnly, newKey, true);
-            RouteMainDeviceOnlyEditor.RemoveRoute(RoutesMainDeviceOnly, oldKey);
+            DropStaleRawKey(RoutesMainDeviceOnly, oldKey, newKey);
         }
 
         AutoScheduleSourceRouteEditor.RenameRouteKey(AutoScheduleSourceByRoute, oldKey, newKey);
@@ -1201,6 +1209,34 @@ public sealed class EditableRoutePackage
 
         RouteNavigationMetadataCopy.CopyForRoute(_root, oldKey, newKey);
         RoutePackagePhoneMetadata.RemoveRouteKeysFromBlocks(_root, oldKey);
+    }
+
+    /// <summary>
+    /// Alten Anzeigenamen entfernen, den gemeinsamen Speicher-Schlüssel der neuen Route behalten.
+    /// Ein Remove auf den Verteilungsschlüssel würde Zieltext und Stimme gerade löschen.
+    /// </summary>
+    private static void DropStaleRawKey(IDictionary<string, string> map, string oldKey, string newKey)
+    {
+        var oldRaw = (oldKey ?? string.Empty).Trim();
+        var storage = RouteDisplayHelper.ToDistributionDisplayString(newKey);
+        if (oldRaw.Length == 0 || string.Equals(oldRaw, storage, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        map.Remove(oldRaw);
+    }
+
+    private static void DropStaleRawKey(ISet<string> keys, string oldKey, string newKey)
+    {
+        var oldRaw = (oldKey ?? string.Empty).Trim();
+        var storage = RouteDisplayHelper.ToDistributionDisplayString(newKey);
+        if (oldRaw.Length == 0 || string.Equals(oldRaw, storage, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        keys.Remove(oldRaw);
     }
 
     private void MigrateStopsForRenamedRoute(string oldKey, string newKey)
@@ -1543,12 +1579,20 @@ public sealed class EditableRoutePackage
     public RouteChainIdentity GetRouteChainIdentity(string routeDisplayKey) =>
         RouteChainIdentityEditor.GetForRoute(RouteChainIdentitiesByRoute, routeDisplayKey);
 
-    public void SetRouteChainIdentity(string routeDisplayKey, string? orderNumber, int sequenceNumber) =>
+    public void SetRouteChainIdentity(
+        string routeDisplayKey,
+        string? orderNumber,
+        int sequenceNumber,
+        string? name = null)
+    {
+        var storedName = name ?? GetRouteChainIdentity(routeDisplayKey).Name;
         RouteChainIdentityEditor.SetForRoute(
             RouteChainIdentitiesByRoute,
             routeDisplayKey,
             orderNumber,
-            sequenceNumber);
+            sequenceNumber,
+            storedName);
+    }
 
     public int PeekNextChainSequenceNumber() =>
         RouteChainIdentityEditor.PeekNextSequenceNumber(RouteChainIdentitiesByRoute);
@@ -1619,16 +1663,18 @@ public sealed class EditableRoutePackage
                 ? preferred
                 : NextFreeSequence(used);
             var order = FirstOrderNumber(pending);
+            var chainName = FirstChainName(pending);
             foreach (var key in pending)
             {
                 var current = GetRouteChainIdentity(key);
                 if (current.SequenceNumber == sequence &&
-                    string.Equals(current.OrderNumber, order, StringComparison.Ordinal))
+                    string.Equals(current.OrderNumber, order, StringComparison.Ordinal) &&
+                    string.Equals(current.Name, chainName, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                SetRouteChainIdentity(key, order, sequence);
+                SetRouteChainIdentity(key, order, sequence, chainName);
                 changed = true;
             }
         }
@@ -1647,7 +1693,7 @@ public sealed class EditableRoutePackage
                 continue;
             }
 
-            SetRouteChainIdentity(name, current.OrderNumber, sequence);
+            SetRouteChainIdentity(name, current.OrderNumber, sequence, current.Name);
             changed = true;
         }
 
@@ -1676,6 +1722,20 @@ public sealed class EditableRoutePackage
             if (!string.IsNullOrWhiteSpace(order))
             {
                 return order;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private string FirstChainName(IReadOnlyList<string> keys)
+    {
+        foreach (var key in keys)
+        {
+            var name = GetRouteChainIdentity(key).Name;
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                return name.Trim();
             }
         }
 

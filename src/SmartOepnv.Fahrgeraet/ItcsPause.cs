@@ -84,25 +84,87 @@ public static class ItcsPause
         {
             Text = Sprache.T("Pause", "Pauze"),
             Foreground = Brushes.White,
-            FontSize = 42,
-            HorizontalAlignment = HorizontalAlignment.Center
+            FontSize = 56,
+            FontWeight = FontWeight.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Avalonia.Thickness(0, 8, 0, 0)
         };
         var end = FahrbetriebPages.Touch(Sprache.T("Pause beenden", "Pauze beëindigen"));
         end.HorizontalAlignment = HorizontalAlignment.Center;
         end.MinWidth = 280;
+        end.MinHeight = 72;
+        end.FontSize = 22;
+        end.Background = new SolidColorBrush(Color.Parse("#FFEB3B"));
+        end.Foreground = new SolidColorBrush(Color.Parse("#00008B"));
+        end.Margin = new Avalonia.Thickness(0, 36, 0, 0);
         end.Click += (_, _) => ShowUnlock(session, root);
         var panel = new StackPanel
         {
-            Spacing = 24,
+            Spacing = 0,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Children = { title, end }
+            Children = { Kaffee(), title, end }
         };
         return new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#1B5E20")),
+            Background = new SolidColorBrush(Color.Parse("#0D47A1")),
             Child = panel,
-            Tag = "itcs-pause"
+            Tag = "itcs-pause",
+            ZIndex = 40,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+    }
+
+    public static void Present(FahrSession session, Grid host)
+    {
+        if (!Open)
+        {
+            Open = true;
+            if (ZeitPause.Start(session))
+            {
+                PlayStamp(session);
+            }
+        }
+
+        if (host.Children.OfType<Control>().Any(child => Equals(child.Tag, "itcs-pause")))
+        {
+            return;
+        }
+
+        host.Children.Add(Overlay(session, host));
+    }
+
+    public static void Dismiss(Grid host)
+    {
+        Open = false;
+        RemoveOverlay(host);
+    }
+
+    private static Control Kaffee()
+    {
+        var gelb = new SolidColorBrush(Color.Parse("#FFEB3B"));
+        var canvas = new Canvas { Width = 24, Height = 24 };
+        foreach (var data in new[]
+        {
+            "M4,19.2 h16 v1.6 H4 z",
+            "M6,4 h10.2 c0.5,0 0.8,0.4 0.8,0.8 v6.4 c0,2.6 -2.1,4.8 -4.8,4.8 H8.8 C6.1,16 4,13.8 4,11.2 V4.8 C4,4.4 4.4,4 4.8,4 H6 z M6,6 v5.2 c0,1.5 1.2,2.8 2.8,2.8 h3.4 c1.5,0 2.8,-1.2 2.8,-2.8 V6 H6 z",
+            "M17,6.2 h1.4 c1.5,0 2.6,1.2 2.6,2.6 v0.8 c0,1.5 -1.2,2.6 -2.6,2.6 H17 V10.6 h1.2 c0.5,0 1,-0.4 1,-1 v-0.8 c0,-0.5 -0.4,-1 -1,-1 H17 z",
+            "M8.1,3.6 c0.5,-0.7 0.5,-1.3 0,-2 c0.7,0.2 1.2,0.7 1.2,1.3 c0,-0.7 0.5,-1.2 1.2,-1.4 c-0.5,0.6 -0.5,1.2 0,1.9 c-0.6,-0.2 -1.1,-0.6 -1.2,-1.1 c-0.2,0.5 -0.6,0.9 -1.2,1.3 z"
+        })
+        {
+            canvas.Children.Add(new Avalonia.Controls.Shapes.Path
+            {
+                Fill = gelb,
+                Data = Geometry.Parse(data)
+            });
+        }
+
+        return new Viewbox
+        {
+            Width = 180,
+            Height = 180,
+            Child = canvas
         };
     }
 
@@ -204,7 +266,7 @@ public static class ItcsPause
 
         ReplaceOverlay(root, new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#1B5E20")),
+            Background = new SolidColorBrush(Color.Parse("#0D47A1")),
             Child = box,
             Tag = "itcs-pause"
         });

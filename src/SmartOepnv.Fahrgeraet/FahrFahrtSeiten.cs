@@ -15,6 +15,7 @@ public static class FahrFahrtSeiten
         var info = FahrbetriebPages.Info(trip.Status);
         var rows = new StackPanel { Spacing = 4 };
         var list = new ScrollViewer { Content = rows, Height = 420 };
+        FingerZug.An(list);
         var start = FahrbetriebPages.Touch("GPS starten");
         start.Click += (_, _) =>
         {
@@ -85,7 +86,7 @@ public static class FahrFahrtSeiten
 
             _ = Task.Run(async () =>
             {
-                await Task.Delay(320);
+                await Task.Delay(160);
                 await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     if (generation != stopTapGeneration || stopTapCount >= 3)
@@ -127,6 +128,7 @@ public static class FahrFahrtSeiten
         }
 
         var symbolList = new ScrollViewer { Content = symbols, Height = 160, IsVisible = false };
+        FingerZug.An(symbolList);
         var nav = FahrbetriebPages.Touch(Sprache.T("Navigation", "Navigatie"));
         nav.Click += (_, _) =>
         {

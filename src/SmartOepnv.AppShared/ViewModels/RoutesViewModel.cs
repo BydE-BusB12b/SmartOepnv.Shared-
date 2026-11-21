@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -28,6 +29,11 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
 
     [ObservableProperty] private string? selectedRoute;
     [ObservableProperty] private bool listByRouteChain;
+    [ObservableProperty] private bool showCalendar;
+    private DateOnly _calendarMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    public ObservableCollection<RouteChainCalendarDay> CalendarDays { get; } = [];
+    public ObservableCollection<RouteChainCalendarWeek> CalendarWeeks { get; } = [];
+    private IReadOnlyList<string> _openedChainRoutes = [];
     private readonly Dictionary<string, string> _chainLabels = new(StringComparer.Ordinal);
     private string? _selectedChainHead;
     private IReadOnlyList<string> _sequenceGroupTrips = [];
@@ -274,6 +280,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         var editor = AppServices.Routes.Editor;
         if (editor is null)
         {
+            CalendarDays.Clear();
             StatusMessage = "Kein Route-Paket – „Route hinzufügen“ legt ein leeres Paket für den neuen Betrieb an.";
             return;
         }
@@ -296,11 +303,19 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             _sync.MarkDirty();
             StatusMessage = "Fortlaufende Nummern verknüpfter Fahrten angeglichen – bitte speichern.";
         }
+
+        RebuildCalendar();
     }
 
     partial void OnSearchQueryChanged(string value) => _searchDebouncer.Schedule();
 
-    public string RouteListTitle => ListByRouteChain ? "Routenschnüre" : "Routen";
+    public string RouteListTitle =>
+        _openedChainRoutes.Count > 0
+            ? "Routenschnur"
+            : ShowCalendar ? "Maßnahmen" : ListByRouteChain ? "Routenschnüre" : "Routen";
+
+    public string CalendarTitle =>
+        _calendarMonth.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("de-DE"));
 
     public string RouteSearchHint => ListByRouteChain
         ? "Suchen (Name, Auftragsnummer)"
@@ -405,10 +420,153 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     }
 
     [RelayCommand]
-    private void ShowIndividualRoutes() => ListByRouteChain = false;
+    private void ShowIndividualRoutes()
+    {
+        ClearOpenedChain();
+        ShowCalendar = false;
+        ListByRouteChain = false;
+    }
 
     [RelayCommand]
-    private void ShowRouteChains() => ListByRouteChain = true;
+    private void ShowRouteChains()
+    {
+        ClearOpenedChain();
+        ShowCalendar = false;
+        ListByRouteChain = true;
+    }
+
+    [RelayCommand]
+    private void ShowRouteCalendar()
+    {
+        ClearOpenedChain();
+        if (!ListByRouteChain)
+        {
+            ListByRouteChain = true;
+        }
+
+        ShowCalendar = true;
+        RebuildCalendar();
+    }
+
+    [RelayCommand]
+    private void ShowPreviousCalendarMonth()
+    {
+        _calendarMonth = _calendarMonth.AddMonths(-1);
+        OnPropertyChanged(nameof(CalendarTitle));
+        RebuildCalendar();
+    }
+
+    [RelayCommand]
+    private void ShowNextCalendarMonth()
+    {
+        _calendarMonth = _calendarMonth.AddMonths(1);
+        OnPropertyChanged(nameof(CalendarTitle));
+        RebuildCalendar();
+    }
+
+    [RelayCommand]
+    private void SelectCalendarMeasure(string? headRouteKey)
+    {
+        var editor = AppServices.Routes.Editor;
+        if (editor is null || string.IsNullOrWhiteSpace(headRouteKey))
+        {
+            return;
+        }
+
+        var resolved = _allRoutes.FirstOrDefault(route =>
+                           RouteDisplayHelper.RouteKeysMatch(route, headRouteKey))
+                       ?? headRouteKey.Trim();
+        var chain = RouteChainPlanner.BuildConnectedRouteChain(editor, resolved);
+        _openedChainRoutes = chain.Count == 0 ? [resolved] : chain.ToList();
+        OnPropertyChanged(nameof(RouteListTitle));
+        ShowCalendar = false;
+        if (ListByRouteChain)
+        {
+            ListByRouteChain = false;
+        }
+        else
+        {
+            ApplyRouteFilter();
+        }
+
+        var first = _openedChainRoutes[0];
+        if (!string.Equals(SelectedRoute, first, StringComparison.Ordinal))
+        {
+            SelectedRoute = first;
+        }
+
+        StatusMessage = _openedChainRoutes.Count == 1
+            ? "Routenschnur geöffnet – eine Fahrt."
+            : $"Routenschnur geöffnet – {_openedChainRoutes.Count} Fahrten. Links jede Fahrt einzeln wählen.";
+    }
+
+    private void ClearOpenedChain()
+    {
+        if (_openedChainRoutes.Count == 0)
+        {
+            return;
+        }
+
+        _openedChainRoutes = [];
+        OnPropertyChanged(nameof(RouteListTitle));
+    }
+
+    /// <summary>Name der Schnur gilt sofort für die Fahrt und alle schon verknüpften Folgefahrten.</summary>
+    private static void StoreChainIdentity(
+        EditableRoutePackage editor,
+        string displayKey,
+        string? orderNumber,
+        int sequenceNumber,
+        string? chainName)
+    {
+        editor.SetRouteChainIdentity(displayKey, orderNumber, sequenceNumber, chainName);
+        var chain = RouteChainPlanner.BuildConnectedRouteChain(editor, displayKey);
+        foreach (var key in chain)
+        {
+            if (RouteDisplayHelper.RouteKeysMatch(key, displayKey))
+            {
+                continue;
+            }
+
+            var current = editor.GetRouteChainIdentity(key);
+            editor.SetRouteChainIdentity(
+                key,
+                string.IsNullOrWhiteSpace(current.OrderNumber) ? orderNumber : current.OrderNumber,
+                current.SequenceNumber > 0 ? current.SequenceNumber : sequenceNumber,
+                chainName);
+        }
+    }
+
+    partial void OnShowCalendarChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RouteListTitle));
+        if (value)
+        {
+            RebuildCalendar();
+        }
+    }
+
+    private void RebuildCalendar()
+    {
+        CalendarDays.Clear();
+        CalendarWeeks.Clear();
+        var editor = AppServices.Routes.Editor;
+        if (editor is null || !ShowCalendar)
+        {
+            return;
+        }
+
+        var days = RouteChainCalendar.Build(editor, _calendarMonth);
+        foreach (var day in days)
+        {
+            CalendarDays.Add(day);
+        }
+
+        foreach (var week in RouteChainCalendar.BuildWeeks(days))
+        {
+            CalendarWeeks.Add(week);
+        }
+    }
 
     private void ApplyRouteFilter()
     {
@@ -420,7 +578,12 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
         _sequenceGroupTrips = [];
 
         List<string> source;
-        if (ListByRouteChain && editor is not null)
+        if (_openedChainRoutes.Count > 0)
+        {
+            source = _openedChainRoutes.ToList();
+            _chainLabels.Clear();
+        }
+        else if (ListByRouteChain && editor is not null)
         {
             source = RouteChainPlanner.ListChainHeads(editor, _sortedAllRoutes).ToList();
             _chainLabels.Clear();
@@ -658,6 +821,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             definition.TripNumber,
             definition.PassengerDisplayLine,
             RouteDisplayHelper.ToCompactRouteListLabel(routeKey, days),
+            AppServices.Routes.Editor?.GetRouteChainIdentity(routeKey).Name,
             AppServices.Routes.Editor?.GetRouteChainIdentity(routeKey).OrderNumber,
             AppServices.Routes.Editor?.GetRouteChainIdentity(routeKey).SequenceNumber.ToString());
     }
@@ -864,6 +1028,14 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
     {
         if (_suppressAnnouncementVoiceSync)
         {
+            return;
+        }
+
+        // Die Auswahlliste setzt beim Neuzeichnen kurz leer. Das darf Stimme 2 nicht löschen.
+        if (string.IsNullOrWhiteSpace(value) ||
+            !AnnouncementVoiceChoices.Contains(value, StringComparer.Ordinal))
+        {
+            LoadRouteAnnouncementVoiceForSelection(SelectedRoute);
             return;
         }
 
@@ -1139,7 +1311,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
-        editor.SetRouteChainIdentity(displayKey, dialog.ResultOrderNumber, dialog.ResultSequenceNumber);
+        StoreChainIdentity(editor, displayKey, dialog.ResultOrderNumber, dialog.ResultSequenceNumber, dialog.ResultChainName);
         _sync.MarkDirty();
         _needsStopTemplateEnrich = true;
         RefreshFromEditor();
@@ -1187,7 +1359,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
-        editor.SetRouteChainIdentity(displayKey, dialog.ResultOrderNumber, dialog.ResultSequenceNumber);
+        StoreChainIdentity(editor, displayKey, dialog.ResultOrderNumber, dialog.ResultSequenceNumber, dialog.ResultChainName);
         _sync.MarkDirty();
         RefreshFromEditor();
         SelectedRoute = displayKey;
@@ -1773,7 +1945,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
-        editor.SetRouteChainIdentity(displayKey, addDialog.ResultOrderNumber, addDialog.ResultSequenceNumber);
+        StoreChainIdentity(editor, displayKey, addDialog.ResultOrderNumber, addDialog.ResultSequenceNumber, addDialog.ResultChainName);
 
         var clonedStops = copyDialog.ResultStops
             .Select(s =>
@@ -1875,7 +2047,7 @@ public partial class RoutesViewModel : ObservableObject, IEditorAreaViewModel
             _routeSearchHaystack.Clear();
             ApplyRouteFilter();
             ReloadStopsForSelectedRoute();
-            StatusMessage = "Routenwechsel verknüpft – Auftragsnummer übernommen. Bitte „Speichern“.";
+            StatusMessage = "Routenwechsel verknüpft – Name und Auftragsnummer übernommen. Bitte „Speichern“.";
         }
         catch (Exception ex)
         {

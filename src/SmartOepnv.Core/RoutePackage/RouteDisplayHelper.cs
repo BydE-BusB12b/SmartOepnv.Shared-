@@ -267,10 +267,25 @@ public static class RouteDisplayHelper
     /// </summary>
     public static bool RouteKeysMatchSameSchedule(string? left, string? right) =>
         RouteKeysMatch(left, right) &&
-        string.Equals(
-            GetVerkehrLabel(left),
-            GetVerkehrLabel(right),
-            StringComparison.OrdinalIgnoreCase);
+        VerkehrLabelsMatch(left, right);
+
+    /// <summary>
+    /// „Mo-Fr“ und „Montag-Freitag“ sind dieselbe Kennung.
+    /// Leere Kennung bleibt „alle Tage“ und mischt sich nicht mit einer Teilmenge.
+    /// </summary>
+    private static bool VerkehrLabelsMatch(string? left, string? right)
+    {
+        var a = GetVerkehrLabel(left);
+        var b = GetVerkehrLabel(right);
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var daysA = DutyOperatingDayHelper.Parse(a);
+        var daysB = DutyOperatingDayHelper.Parse(b);
+        return daysA.Count > 0 && daysB.Count > 0 && daysA.SetEquals(daysB);
+    }
 
     public static RouteDefinition Parse(string displayString)
     {

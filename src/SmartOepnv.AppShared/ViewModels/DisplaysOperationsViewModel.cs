@@ -642,6 +642,7 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         NotifyActiveWechseltextBindings();
+        RefreshStartzielDays();
     }
 
     partial void OnSelectedWechseltextIndexChanged(int value) => NotifyActiveWechseltextBindings();
@@ -763,7 +764,8 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
     }
 
     private string CurrentDisplayLinkSignature() =>
-        string.Join('\n', OutsidePrograms.Select(program => $"{program.Id}|{program.Protocol}|{program.Name}"));
+        string.Join('\n', OutsidePrograms.Select(program =>
+            $"{program.Id}|{program.Protocol}|{program.Name}|{program.StartzielDate}"));
 
     private void InvalidateStorageEntry(OutsideDisplayProgram program) =>
         _storageEntryCache.Remove(program);
@@ -809,9 +811,12 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         }
 
         if (!_committingChanges &&
-            e.PropertyName is nameof(OutsideDisplayProgram.IsStartTarget) or nameof(OutsideDisplayProgram.Name))
+            e.PropertyName is nameof(OutsideDisplayProgram.IsStartTarget)
+                or nameof(OutsideDisplayProgram.Name)
+                or nameof(OutsideDisplayProgram.StartzielDate))
         {
             SortOutsidePrograms();
+            RefreshStartzielDays();
         }
 
         if (_committingChanges)
@@ -1278,11 +1283,136 @@ public partial class DisplaysOperationsViewModel : ObservableObject, IEditorArea
         return AppServices.Routes.Editor is not null;
     }
 
+    public ObservableCollection<OutsideDisplayProgram> StartzielDays { get; } = [];
+
+    [ObservableProperty]
+    private DateTime? _newStartzielDate;
+
+    private void RefreshStartzielDays()
+    {
+        var selected = SelectedOutsideProgram;
+        var next = selected is { IsStartTarget: true }
+            ? OutsidePrograms
+                .Where(p => p.IsStartTarget && p.Protocol == selected.Protocol)
+                .OrderBy(p => p.StartzielDate, StringComparer.Ordinal)
+                .ToList()
+            : [];
+
+        if (next.Count == StartzielDays.Count && next.Zip(StartzielDays).All(pair => ReferenceEquals(pair.First, pair.Second)))
+        {
+            return;
+        }
+
+        StartzielDays.Clear();
+        foreach (var program in next)
+        {
+            StartzielDays.Add(program);
+        }
+    }
+
+    [RelayCommand]
+    private void SelectStartzielDay(OutsideDisplayProgram? program)
+    {
+        if (program is null || !OutsidePrograms.Contains(program))
+        {
+            return;
+        }
+
+        SelectedOutsideProgram = program;
+        StatusMessage = program.HasStartzielDate
+            ? $"Startziel für {program.StartzielDayLabel} – Front, Seite und Linie getrennt bearbeiten."
+            : "Standard-Startziel – gilt an allen Tagen ohne eigenes Datum.";
+    }
+
+    [RelayCommand]
+    private void AddStartzielDay()
+    {
+        if (!EnsurePackageForOutsidePrograms())
+        {
+            return;
+        }
+
+        var selected = SelectedOutsideProgram;
+        if (selected is not { IsStartTarget: true })
+        {
+            StatusMessage = "Zuerst ein Standard-Startziel auswählen.";
+            return;
+        }
+
+        if (NewStartzielDate is not DateTime day)
+        {
+            StatusMessage = "Datum für das neue Startziel wählen.";
+            return;
+        }
+
+        var iso = day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var standard = OutsidePrograms.FirstOrDefault(p =>
+            p.IsStartTarget &&
+            p.Protocol == selected.Protocol &&
+            !p.HasStartzielDate);
+        if (standard is null)
+        {
+            StatusMessage = "Das Standard-Startziel fehlt. Es ist die Voraussetzung für einen einzelnen Tag.";
+            return;
+        }
+
+        var existing = OutsidePrograms.FirstOrDefault(p =>
+            p.IsStartTarget &&
+            p.Protocol == selected.Protocol &&
+            string.Equals(p.StartzielDate, iso, StringComparison.Ordinal));
+        if (existing is not null)
+        {
+            SelectedOutsideProgram = existing;
+            StatusMessage = $"Startziel für {existing.StartzielDayLabel} ist schon da und wurde geöffnet.";
+            return;
+        }
+
+        var copy = standard.CloneAsDatedStartziel(iso, OutsidePrograms.Select(p => p.Id));
+        OutsidePrograms.Add(copy);
+        SortOutsidePrograms();
+        SelectedOutsideProgram = copy;
+        NewStartzielDate = null;
+        MarkDirty();
+        StatusMessage = $"Startziel für {copy.StartzielDayLabel} angelegt. Front, Seite und Linie getrennt anpassen und speichern.";
+    }
+
+    [RelayCommand]
+    private void RemoveStartzielDay()
+    {
+        var selected = SelectedOutsideProgram;
+        if (selected is not { HasStartzielDate: true })
+        {
+            StatusMessage = "Das Standard-Startziel bleibt bestehen.";
+            return;
+        }
+
+        var standard = OutsidePrograms.FirstOrDefault(p =>
+            p.IsStartTarget &&
+            p.Protocol == selected.Protocol &&
+            !p.HasStartzielDate);
+        OutsidePrograms.Remove(selected);
+        SelectedOutsideProgram = standard ?? OutsidePrograms.FirstOrDefault();
+        MarkDirty();
+        StatusMessage = "Startziel für diesen Tag entfernt – „Speichern“ nicht vergessen.";
+    }
+
     [RelayCommand]
     private void RemoveOutsideProgram()
     {
         if (SelectedOutsideProgram is null)
         {
+            return;
+        }
+
+        if (SelectedOutsideProgram.IsStartTarget &&
+            !SelectedOutsideProgram.HasStartzielDate &&
+            OutsidePrograms.Any(p =>
+                !ReferenceEquals(p, SelectedOutsideProgram) &&
+                p.IsStartTarget &&
+                p.Protocol == SelectedOutsideProgram.Protocol &&
+                p.HasStartzielDate))
+        {
+            StatusMessage = "Das Standard-Startziel bleibt, solange Tage davon abhängen.";
             return;
         }
 

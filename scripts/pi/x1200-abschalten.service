@@ -1,0 +1,12 @@
+[Unit]
+Description=X1200 schaltet den Pi 15 Minuten nach Netzausfall aus
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/smart-oepnv/x1200-abschalten.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

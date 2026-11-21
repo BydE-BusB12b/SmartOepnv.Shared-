@@ -4,7 +4,8 @@ namespace SmartOepnv.Fahrgeraet;
 
 /// <summary>
 /// Ansagen laufen über Bluetooth: links innen, rechts außen.
-/// Tastentöne, IVU-Töne und der Funk laufen über die Lautsprecher des HDMI-Displays.
+/// Liegt Bluetooth nicht an, spielt der DAC-Hut die Ansage.
+/// Tastentöne und IVU-Töne laufen über die Lautsprecher des Displays.
 /// </summary>
 public static class TonAusgang
 {
@@ -52,7 +53,10 @@ public static class TonAusgang
             return;
         }
 
-        PlayHandset(path);
+        if (!PlayHandset(path))
+        {
+            PlayHat(path);
+        }
     }
 
     public static bool PlayFile(string path, bool hoerer)
@@ -127,24 +131,24 @@ public static class TonAusgang
 
     private static bool PlayDisplayDevice(string path)
     {
-        var card = HdmiCard();
-        if (card is not null && Run("aplay", ["-D", "plughw:CARD=" + card + ",DEV=0", path], 120_000))
-        {
-            return true;
-        }
-
-        var sink = HdmiSink();
-        if (sink is not null && Run("paplay", ["--device=" + sink, path], 120_000))
-        {
-            return true;
-        }
-
+        // plughw am HDMI-Anschluss liefert nur ein Knacken: der Bildschirm erwartet den HDMI-Ton,
+        // nicht rohes PCM. PipeWire hält diesen Ausgang offen, deshalb zuerst dorthin.
+        var sink = PipeWireSink(line =>
+            line.Contains("hdmi", StringComparison.OrdinalIgnoreCase) &&
+            !IsHatName(line));
         if (sink is not null && Run("pw-play", ["--target", sink, path], 120_000))
         {
             return true;
         }
 
-        return Run("aplay", [path], 120_000);
+        var card = HdmiCard();
+        if (card is not null && Run("aplay", ["-D", "hdmi:CARD=" + card + ",DEV=0", path], 120_000))
+        {
+            return true;
+        }
+
+        var pulse = HdmiSink();
+        return pulse is not null && Run("paplay", ["--device=" + pulse, path], 120_000);
     }
 
     private static bool PlayHandset(string path)
@@ -169,8 +173,25 @@ public static class TonAusgang
         return Run("aplay", ["-D", "bluealsa:DEV=" + mac + ",PROFILE=a2dp", path], 120_000);
     }
 
+    private static bool PlayHat(string path)
+    {
+        var hatSink = PipeWireSink(IsHatSink);
+        if (hatSink is not null && Run("pw-play", ["--target", hatSink, path], 120_000))
+        {
+            return true;
+        }
+
+        var hat = HatCard();
+        return hat is not null && Run("aplay", ["-D", "plughw:CARD=" + hat + ",DEV=0", path], 120_000);
+    }
+
     private static bool PlayCabin(string path)
     {
+        if (PlayHat(path))
+        {
+            return true;
+        }
+
         var card = UsbCard();
         if (card is not null && Run("aplay", ["-D", "plughw:CARD=" + card + ",DEV=0", path], 120_000))
         {
@@ -271,6 +292,94 @@ public static class TonAusgang
         }
 
         return cards.Count == 0 ? null : cards[0];
+    }
+
+    /// <summary>InnoMaker HiFi DAC HAT, PCM5122, über den Boss-DAC-Treiber.</summary>
+    public static string? HatCard()
+    {
+        if (!Directory.Exists("/sys/class/sound"))
+        {
+            return null;
+        }
+
+        foreach (var dir in Directory.EnumerateDirectories("/sys/class/sound"))
+        {
+            var name = Path.GetFileName(dir);
+            if (!name.StartsWith("card", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var idPath = Path.Combine(dir, "id");
+            if (!File.Exists(idPath))
+            {
+                continue;
+            }
+
+            var id = File.ReadAllText(idPath).Trim();
+            if (IsHatName(id))
+            {
+                return id;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsHatName(string name) =>
+        name.Contains("hifiberry", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("pcm512", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("dacplus", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("boss", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("allo", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsHatSink(string line) =>
+        IsHatName(line) || line.Contains("dac", StringComparison.OrdinalIgnoreCase);
+
+    internal static string? HdmiZiel() =>
+        PipeWireSink(line =>
+            line.Contains("hdmi", StringComparison.OrdinalIgnoreCase) &&
+            !IsHatName(line));
+
+    private static string? PipeWireSink(Func<string, bool> match)
+    {
+        var text = Capture("wpctl", "status");
+        var sinks = false;
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim().TrimStart('│', '├', '└', '─', ' ').Trim();
+            if (line.StartsWith("Sinks:", StringComparison.OrdinalIgnoreCase))
+            {
+                sinks = true;
+                continue;
+            }
+
+            if (!sinks)
+            {
+                continue;
+            }
+
+            if (line.StartsWith("Sources:", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Filters:", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Video", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            if (!match(line))
+            {
+                continue;
+            }
+
+            var star = line.TrimStart('*', ' ');
+            var dot = star.IndexOf('.');
+            if (dot > 0 && int.TryParse(star[..dot].Trim(), out _))
+            {
+                return star[..dot].Trim();
+            }
+        }
+
+        return null;
     }
 
     private static int? ConnectedHdmiPort()

@@ -135,6 +135,14 @@ public static class UiTheme
         resources["MaterialDesign.Brush.Primary.Dark"] = Brush(primaryDark);
         resources["MaterialDesign.Brush.Primary.Light"] = Brush(primaryLight);
         resources["MaterialDesign.Brush.Secondary"] = Brush(accent);
+        // Schrift auf blauen Schaltflächen: die Palette liefert sonst wieder Blau.
+        var onBlue = Brush(Colors.White);
+        resources["MaterialDesign.Brush.Primary.Foreground"] = onBlue;
+        resources["MaterialDesign.Brush.Primary.Light.Foreground"] = onBlue;
+        resources["MaterialDesign.Brush.Primary.Dark.Foreground"] = onBlue;
+        resources["MaterialDesign.Brush.Secondary.Foreground"] = onBlue;
+        resources["MaterialDesign.Brush.Secondary.Light.Foreground"] = onBlue;
+        resources["MaterialDesign.Brush.Secondary.Dark.Foreground"] = onBlue;
 
         resources[SystemColors.WindowBrushKey] = Brush(windowSys);
         resources[SystemColors.WindowTextBrushKey] = Brush(foreground);

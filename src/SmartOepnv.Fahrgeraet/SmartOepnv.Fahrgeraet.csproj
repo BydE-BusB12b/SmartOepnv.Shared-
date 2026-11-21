@@ -30,6 +30,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AvaloniaResource Include="Assets\kiara.png" />
+    <AvaloniaResource Include="Assets\route-verlassen.png" />
     <Content Include="sounds\IVU_*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

@@ -1,6 +1,6 @@
 # Smart ÖPNV – Einkaufsliste Raspberry Pi (Fahrerarbeitsplatz)
 
-Stand: 05.11.2026
+Stand: 20.11.2026
 
 Diese Datei ist die Quelle der Einkaufsliste im Projekt. Dieselbe Liste steht als PDF unter `docs/hardware/SmartOepnv_RaspberryPi_Einkaufsliste.pdf`. Bei einer Änderung beide Dateien und `_tools/RaspberryPiEinkaufsliste` zusammen anpassen.
 
@@ -35,6 +35,7 @@ Das offizielle Touch Display 2 braucht neben dem Flachbandkabel ein kurzes Kabel
 | Anz. | Teil | Wofür |
 | --- | --- | --- |
 | 1 | Waveshare PCIe to 5G HAT+ für den Pi 5, mit Quectel RM520N-GL | Daten-SIM und GPS über das flache PCIe-Kabel. Europa-Bänder. |
+| 1 | Waveshare SIM7600G-H 4G HAT (B) | LTE Cat-4 und GNSS. Daten und GPS. |
 | 1 | Nano-SIM, nur Daten | Leitstelle, Dropbox, ITCS, VoIP |
 | 2 | Adapter IPEX-4 (MHF4) auf SMA, kurz | ANT0 und ANT3. Bleiben im Gehäuse. Oft im HAT-Set enthalten. |
 | 1 | Dachantenne Mobilfunk, SMA, 50 Ω | an ANT0 |
@@ -44,6 +45,8 @@ Das offizielle Touch Display 2 braucht neben dem Flachbandkabel ein kurzes Kabel
 ANT1 und ANT2 sind weitere Mobilfunkantennen. Für die Datenverbindung sind sie nicht nötig.
 
 GPS im RM520N-GL ist vorhanden und wird in der Software eingeschaltet. Eine eigene GPS-Maus ist nicht vorgesehen.
+
+Das SIM7600G-H 4G HAT (B) ist LTE Cat-4 mit GNSS. Gesehener Shop-Preis bei BerryBase: 74,90 €. Das ist kein Angebot, nur die Orientierung aus der angesehenen Seite. Das HAT spricht über USB und ist für den Pi 4 gelegt.
 
 ## 3. Ton
 
@@ -85,6 +88,23 @@ Gesehener Shop-Preis des Mean Well: 19,90 €.
 | --- | --- | --- |
 | 1 | USB-IBIS-Wandler | IBIS. Belegt eine USB-Buchse. |
 | 1 | USB-RS485-Wandler | RS485. Belegt eine USB-Buchse. |
+
+FMS-CAN-Stecker, 12-polig. So liegt der gelieferte Stecker.
+
+| Pin | Kabelfarbe | Belegung |
+| --- | --- | --- |
+| 1 | schwarz | Masse |
+| 2 | braun | Masse |
+| 3 | | leer |
+| 4 | | leer |
+| 5 | | leer |
+| 6 | weiß | CAN H |
+| 7 | | leer |
+| 8 | | leer |
+| 9 | blau | CAN L |
+| 10 | orange | Klemme 15 |
+| 11 | | leer |
+| 12 | rot | Klemme 30 |
 
 ## 7. Mechanik
 

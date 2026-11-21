@@ -161,6 +161,11 @@ public static class DutyOperatingDayHelper
             }
         }
 
+        if (TryParseShortSegment(segment, out days))
+        {
+            return true;
+        }
+
         for (var start = 0; start < Definitions.Length; start++)
         {
             for (var end = start; end < Definitions.Length; end++)
@@ -179,5 +184,50 @@ public static class DutyOperatingDayHelper
 
         days = [];
         return false;
+    }
+
+    private static bool TryParseShortSegment(string segment, out IEnumerable<DutyOperatingDay> days)
+    {
+        var compact = segment
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace('–', '-')
+            .Replace('—', '-');
+        foreach (var (day, _) in Definitions)
+        {
+            if (string.Equals(compact, ShortName(day), StringComparison.OrdinalIgnoreCase))
+            {
+                days = [day];
+                return true;
+            }
+        }
+
+        var dash = compact.IndexOf('-');
+        if (dash > 0 && dash < compact.Length - 1)
+        {
+            var start = ShortIndex(compact[..dash]);
+            var end = ShortIndex(compact[(dash + 1)..]);
+            if (start >= 0 && end >= start)
+            {
+                days = Enumerable.Range(start, end - start + 1)
+                    .Select(index => Definitions[index].Day);
+                return true;
+            }
+        }
+
+        days = [];
+        return false;
+    }
+
+    private static int ShortIndex(string shortName)
+    {
+        for (var index = 0; index < Definitions.Length; index++)
+        {
+            if (string.Equals(ShortName(Definitions[index].Day), shortName, StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 }

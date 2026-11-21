@@ -747,6 +747,9 @@ public static class FahrbetriebPages
             panel.Children.Add(child);
         }
 
-        return new ScrollViewer { Content = panel };
+        var scroll = new ScrollViewer { Content = panel };
+        FingerZug.An(scroll);
+        FingerZug.In(panel);
+        return scroll;
     }
 }

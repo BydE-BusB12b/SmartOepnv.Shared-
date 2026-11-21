@@ -20,6 +20,8 @@ public sealed class FahrTrip
     private double? _previousLon;
     private string? _route;
     private string? _destinationRoute;
+    private string? _kopfZiel;
+    private string? _kopfRoute;
     private string? _shapeRoute;
     private List<RoutePathLatLng>? _shape;
     private string? _sevRoute;
@@ -27,12 +29,16 @@ public sealed class FahrTrip
     private double _entwerterLat;
     private double _entwerterLon;
     private bool _entwerterLeft;
+    private bool _ohneGpsAusgerichtet;
     private readonly HashSet<int> _hints = [];
     private static readonly object PlayGate = new();
+    private int _spielt = -1;
     public double LastLat { get; private set; }
     public double LastLon { get; private set; }
     public double LastSpeedMps { get; private set; }
     public bool HasFix { get; private set; }
+
+    public int? AccuracyMeters { get; private set; }
     public DateTime LastFixUtc { get; private set; } = DateTime.MinValue;
     public double ShownAlong { get; set; }
     public bool HasShownAlong { get; set; }
@@ -45,6 +51,24 @@ public sealed class FahrTrip
     public bool Running { get; private set; }
     public string Status { get; private set; } = "Fahrt nicht gestartet.";
     public int? NextIndex { get; private set; }
+
+    /// <summary>Haltestelle, die im orangen Rahmen stehen soll. Der Doppeltipp setzt sie.</summary>
+    public int? RahmenIndex { get; private set; }
+
+    public bool Spielt(int index) => _spielt == index;
+
+    /// <summary>Schon angesagt. Die Haltestelle, deren Ton noch läuft, bleibt grün.</summary>
+    public bool Angesagt(int index) => _played.Contains(index) && _spielt != index;
+
+    private void EndeAnsage(int index)
+    {
+        if (_spielt == index)
+        {
+            _spielt = -1;
+        }
+
+        Changed?.Invoke();
+    }
     public Action? Changed { get; set; }
 
     public void Reset()
@@ -58,8 +82,13 @@ public sealed class FahrTrip
         _hasHold = false;
         _previousFixUtc = DateTime.MinValue;
         NextIndex = null;
+        RahmenIndex = null;
+        _spielt = -1;
+        _ohneGpsAusgerichtet = false;
         _route = null;
         _destinationRoute = null;
+        _kopfZiel = null;
+        _kopfRoute = null;
         _shapeRoute = null;
         _shape = null;
         Status = "Haltestellenfolge zurückgesetzt.";
@@ -104,6 +133,7 @@ public sealed class FahrTrip
 
         GpsQuelle.Drop("fahrt");
         Abfahrtston.Disarm();
+        _ohneGpsAusgerichtet = false;
         Status = "Fahrt gestoppt.";
         Changed?.Invoke();
     }
@@ -178,6 +208,7 @@ public sealed class FahrTrip
         LastLat = lat;
         LastLon = lon;
         HasFix = true;
+        AccuracyMeters = GpsQuelle.AccuracyMeters;
         LastSpeedMps = speed;
         LastFixUtc = now;
         GpsSpur.Note(session, lat, lon, speed);
@@ -193,10 +224,21 @@ public sealed class FahrTrip
             if (routeChanged)
             {
                 _destinationRoute = null;
+                _kopfZiel = null;
+                _kopfRoute = null;
+                RahmenIndex = null;
+                _spielt = -1;
             }
 
             _route = session.RouteName;
             _ = SendSevAsync(session, stops);
+        }
+
+        if (_ohneGpsAusgerichtet)
+        {
+            _ohneGpsAusgerichtet = false;
+            AlignPas(session);
+            stops = Stops(session);
         }
 
         ScanHints(session, stops, lat, lon);
@@ -230,11 +272,18 @@ public sealed class FahrTrip
         }
 
         _played.Add(index);
+        RahmenIndex = index;
         var stop = stops[index];
         NextIndex = NextPlayable(stops);
         Status = $"{reason}: {stop.Name}";
+        var hinweis = stop.Name.StartsWith("Hinweis:", StringComparison.OrdinalIgnoreCase);
+        if (!hinweis)
+        {
+            _spielt = index;
+        }
+
         Changed?.Invoke();
-        if (stop.Name.StartsWith("Hinweis:", StringComparison.OrdinalIgnoreCase))
+        if (hinweis)
         {
             Status = stop.Name;
             Changed?.Invoke();
@@ -246,10 +295,17 @@ public sealed class FahrTrip
         {
             lock (PlayGate)
             {
-                Play(session, stop);
-                if (greeting)
+                try
                 {
-                    PlayGreeting(session);
+                    Play(session, stop);
+                    if (greeting)
+                    {
+                        PlayGreeting(session);
+                    }
+                }
+                finally
+                {
+                    EndeAnsage(index);
                 }
             }
         });
@@ -301,6 +357,8 @@ public sealed class FahrTrip
             _played.Add(i);
         }
 
+        RahmenIndex = index;
+        _spielt = index;
         NextIndex = NextPlayable(stops);
         var target = stop;
         if (!greeting && !string.Equals(_destinationRoute, session.RouteName, StringComparison.Ordinal))
@@ -326,13 +384,20 @@ public sealed class FahrTrip
         {
             lock (PlayGate)
             {
-                if (greeting)
+                try
                 {
-                    PlayGreeting(session);
+                    if (greeting)
+                    {
+                        PlayGreeting(session);
+                    }
+                    else
+                    {
+                        Play(session, stop);
+                    }
                 }
-                else
+                finally
                 {
-                    Play(session, stop);
+                    EndeAnsage(index);
                 }
             }
         });
@@ -391,6 +456,9 @@ public sealed class FahrTrip
         try
         {
             _destinationRoute = session.RouteName;
+            _kopfZiel = choice.Destination;
+            _kopfRoute = session.RouteName;
+            Changed?.Invoke();
             var course = stops.Select(item => item.Name).ToList();
             IbisIpDienst.NoteStop(session, stop, choice.Destination);
             IbisIpDienst.NoteManual(choice.Line, choice.Destination);
@@ -446,6 +514,10 @@ public sealed class FahrTrip
         _played.Clear();
         _zielwechsel.Clear();
         _destinationRoute = null;
+        _kopfZiel = null;
+        _kopfRoute = null;
+        RahmenIndex = null;
+        _spielt = -1;
         _route = next;
         Status = $"Nächste Fahrt: {next}";
         Changed?.Invoke();
@@ -662,6 +734,18 @@ public sealed class FahrTrip
         return HasText(stop.Destination) || HasText(stop.Ds021NeuDestination) || HasText(stop.FmaS1Destination) ||
                HasText(stop.Ds003aDestination) || HasText(stop.ZielnummerDestination) || HasText(stop.MobitecDestination) ||
                HasText(stop.LineNumber);
+    }
+
+    /// <summary>Ziel der Kopfzeile: zuletzt gesendet, sonst das Ziel der Starthaltestelle im Außenprotokoll.</summary>
+    public string ZielFuerKopf(FahrSession session)
+    {
+        if (HasText(_kopfZiel) && string.Equals(_kopfRoute, session.RouteName, StringComparison.Ordinal))
+        {
+            return _kopfZiel!.Trim();
+        }
+
+        var start = Stops(session).FirstOrDefault(item => !item.IsWaypoint && IsStartStop(item));
+        return start is null ? "" : DestinationName(session.OutsideProtocol ?? "", start, end: false);
     }
 
     private static string DestinationName(string protocol, RouteStopItem stop, bool end)
@@ -1007,6 +1091,36 @@ public sealed class FahrTrip
         AnsageSequenz.PlayClip(session, wanted, voice2, zone);
     }
 
+    /// <summary>
+    /// Pas.-Info an: mit GPS die aktuelle Haltestelle in den Rahmen, ohne GPS die erste.
+    /// </summary>
+    public void BeimEinschalten(FahrSession session)
+    {
+        if (!HasFix)
+        {
+            var stops = Stops(session);
+            var first = -1;
+            for (var i = 0; i < stops.Count; i++)
+            {
+                if (!stops[i].IsWaypoint)
+                {
+                    first = i;
+                    break;
+                }
+            }
+
+            _played.Clear();
+            RahmenIndex = first < 0 ? null : first;
+            NextIndex = RahmenIndex;
+            _ohneGpsAusgerichtet = true;
+            Status = first < 0 ? "Pas.-Info ohne GPS." : $"Pas.-Info: {stops[first].Name}";
+            Changed?.Invoke();
+            return;
+        }
+
+        AlignPas(session);
+    }
+
     /// <summary>Pas.-Info: bereits passierte Haltestellen gelten als erledigt, die nächste liegt voraus.</summary>
     public void AlignPas(FahrSession session)
     {
@@ -1060,6 +1174,8 @@ public sealed class FahrTrip
         }
 
         NextIndex = best;
+        RahmenIndex = best;
+        _ohneGpsAusgerichtet = false;
         Status = $"Pas.-Info: {stops[best].Name}";
         GpsSpur.Event(session, "pas_on", stops[best].Name);
         Changed?.Invoke();

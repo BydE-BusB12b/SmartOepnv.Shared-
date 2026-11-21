@@ -6,12 +6,14 @@ namespace SmartOepnv.Core.RoutePackage;
 /// Auftragsnummer und fortlaufende Nummer einer Fahrt. Verknüpfte Fahrten einer
 /// Routenschnur teilen sich beide Werte.
 /// </summary>
-public readonly record struct RouteChainIdentity(string OrderNumber, int SequenceNumber)
+public readonly record struct RouteChainIdentity(string OrderNumber, int SequenceNumber, string Name = "")
 {
     public static RouteChainIdentity Empty { get; } = new(string.Empty, 0);
 
     public bool HasValue =>
-        SequenceNumber > 0 || !string.IsNullOrWhiteSpace(OrderNumber);
+        SequenceNumber > 0 ||
+        !string.IsNullOrWhiteSpace(OrderNumber) ||
+        !string.IsNullOrWhiteSpace(Name);
 }
 
 public static class RouteChainIdentityEditor
@@ -19,6 +21,7 @@ public static class RouteChainIdentityEditor
     public const string RootFieldName = "routeChainIdentities";
     private const string OrderFieldName = "orderNumber";
     private const string SequenceFieldName = "sequenceNumber";
+    private const string NameFieldName = "name";
 
     public static Dictionary<string, RouteChainIdentity> LoadFromRoot(JsonObject root)
     {
@@ -36,6 +39,7 @@ public static class RouteChainIdentityEditor
             }
 
             var order = item[OrderFieldName]?.GetValue<string>()?.Trim() ?? string.Empty;
+            var name = item[NameFieldName]?.GetValue<string>()?.Trim() ?? string.Empty;
             var sequence = 0;
             if (item[SequenceFieldName] is JsonValue sequenceNode &&
                 sequenceNode.TryGetValue<int>(out var parsed) &&
@@ -44,12 +48,12 @@ public static class RouteChainIdentityEditor
                 sequence = parsed;
             }
 
-            if (sequence <= 0 && string.IsNullOrEmpty(order))
+            if (sequence <= 0 && string.IsNullOrEmpty(order) && string.IsNullOrEmpty(name))
             {
                 continue;
             }
 
-            result[entry.Key.Trim()] = new RouteChainIdentity(order, sequence);
+            result[entry.Key.Trim()] = new RouteChainIdentity(order, sequence, name);
         }
 
         return result;
@@ -77,23 +81,25 @@ public static class RouteChainIdentityEditor
         IDictionary<string, RouteChainIdentity> map,
         string routeDisplayKey,
         string? orderNumber,
-        int sequenceNumber)
+        int sequenceNumber,
+        string? name)
     {
         var key = RouteDisplayHelper.ToDistributionDisplayString(routeDisplayKey);
         map.Remove(routeDisplayKey.Trim());
         var order = orderNumber?.Trim() ?? string.Empty;
+        var storedName = name?.Trim() ?? string.Empty;
         if (sequenceNumber < 0)
         {
             sequenceNumber = 0;
         }
 
-        if (sequenceNumber <= 0 && string.IsNullOrEmpty(order))
+        if (sequenceNumber <= 0 && string.IsNullOrEmpty(order) && string.IsNullOrEmpty(storedName))
         {
             map.Remove(key);
             return;
         }
 
-        map[key] = new RouteChainIdentity(order, sequenceNumber);
+        map[key] = new RouteChainIdentity(order, sequenceNumber, storedName);
     }
 
     public static void RemoveRoute(IDictionary<string, RouteChainIdentity> map, string routeDisplayKey)
@@ -115,7 +121,7 @@ public static class RouteChainIdentityEditor
             return;
         }
 
-        SetForRoute(map, newRouteDisplayKey, identity.OrderNumber, identity.SequenceNumber);
+        SetForRoute(map, newRouteDisplayKey, identity.OrderNumber, identity.SequenceNumber, identity.Name);
     }
 
     public static string FormatSequenceNumber(int sequenceNumber) =>
@@ -170,6 +176,11 @@ public static class RouteChainIdentityEditor
             if (entry.Value.SequenceNumber > 0)
             {
                 item[SequenceFieldName] = entry.Value.SequenceNumber;
+            }
+
+            if (!string.IsNullOrEmpty(entry.Value.Name))
+            {
+                item[NameFieldName] = entry.Value.Name;
             }
 
             obj[key] = item;

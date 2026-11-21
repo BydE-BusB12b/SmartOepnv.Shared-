@@ -627,7 +627,7 @@ public static class LiteRouteUpdateMerge
 
                 {
 
-                    mergedRoutes.Add(node);
+                    mergedRoutes.Add(node.DeepClone().AsObject());
 
                 }
 

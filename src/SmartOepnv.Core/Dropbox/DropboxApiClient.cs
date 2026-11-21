@@ -15,7 +15,7 @@ public readonly record struct DropboxNamedFileMetadata(
 public sealed class DropboxApiClient
 {
     private readonly DropboxSettingsStore _store;
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(10) };
     private readonly HttpClient _uploadHttp = new()
     {
         Timeout = TimeSpan.FromMinutes(DropboxConstants.UploadTimeoutMinutes)
@@ -258,9 +258,16 @@ public sealed class DropboxApiClient
         }
     }
 
-    public async Task<byte[]> DownloadNamedBinaryFileAsync(string fileName, CancellationToken ct = default)
+    public async Task<byte[]> DownloadNamedBinaryFileAsync(
+        string fileName,
+        CancellationToken ct = default,
+        IProgress<DropboxTransferProgress>? progress = null)
     {
-        return await DownloadNamedBinaryFileInternalAsync(fileName, await GetValidAccessTokenAsync(ct), ct);
+        return await DownloadNamedBinaryFileInternalAsync(
+            fileName,
+            await GetValidAccessTokenAsync(ct),
+            ct,
+            progress);
     }
 
     private static bool IsDropboxNotFound(Exception ex) =>

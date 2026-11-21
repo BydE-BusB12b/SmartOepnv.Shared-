@@ -360,7 +360,7 @@ public static class RouteChainPlanner
         return IsRouteActiveOn(editor, routeKey, reference);
     }
 
-    private static bool IsRouteActiveOn(
+    internal static bool IsRouteActiveOn(
         EditableRoutePackage editor,
         string routeKey,
         DateOnly date)
@@ -966,10 +966,18 @@ public static class RouteChainPlanner
 
         title = EnsureLineCourse(title, passengerLine, lineCourse);
 
-        var identity = FirstIdentity(editor, chain);
-        if (!string.IsNullOrWhiteSpace(identity.OrderNumber))
+        var identity = FirstNamedIdentity(editor, chain);
+        var order = identity.OrderNumber;
+        if (string.IsNullOrWhiteSpace(order))
         {
-            return $"{title} ({identity.OrderNumber})";
+            order = chain
+                .Select(key => editor.GetRouteChainIdentity(key).OrderNumber)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(order))
+        {
+            return $"{title} ({order.Trim()})";
         }
 
         if (identity.SequenceNumber > 0)
@@ -991,18 +999,24 @@ public static class RouteChainPlanner
         }
     }
 
-    private static RouteChainIdentity FirstIdentity(EditableRoutePackage editor, IReadOnlyList<string> chain)
+    private static RouteChainIdentity FirstNamedIdentity(EditableRoutePackage editor, IReadOnlyList<string> chain)
     {
+        var fallback = RouteChainIdentity.Empty;
         foreach (var key in chain)
         {
             var identity = editor.GetRouteChainIdentity(key);
-            if (identity.HasValue)
+            if (!string.IsNullOrWhiteSpace(identity.Name))
             {
                 return identity;
             }
+
+            if (!fallback.HasValue && identity.HasValue)
+            {
+                fallback = identity;
+            }
         }
 
-        return RouteChainIdentity.Empty;
+        return fallback;
     }
 
     /// <summary>Linie im Fahrgastraum plus Kurs, z. B. „S28“ und „S28/01“ → „S28/01“.</summary>

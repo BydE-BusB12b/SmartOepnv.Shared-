@@ -14,6 +14,7 @@
         <conv:RouteStopRoleBrushConverter x:Key="RouteStopRoleBrushConverter" />
         <conv:CompactRouteListLabelConverter x:Key="CompactRouteListLabelConverter" />
         <conv:RouteListLabelConverter x:Key="RouteListLabelConverter" />
+        <conv:CalendarLaneMarginConverter x:Key="CalendarLaneMarginConverter" />
         <Style x:Key="ChainRowButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -46,7 +47,21 @@
         <Style x:Key="RouteModeChainButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
             <Setter Property="Foreground" Value="{StaticResource SmartPrimaryBrush}" />
             <Style.Triggers>
-                <DataTrigger Binding="{Binding ListByRouteChain}" Value="True">
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding ListByRouteChain}" Value="True" />
+                        <Condition Binding="{Binding ShowCalendar}" Value="False" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+                    <Setter Property="Foreground" Value="White" />
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="RouteModeCalendarButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="Foreground" Value="{StaticResource SmartPrimaryBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ShowCalendar}" Value="True">
                     <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
                     <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
                     <Setter Property="Foreground" Value="White" />
@@ -104,17 +119,22 @@
                              Background="{StaticResource SmartSurfaceBrush}">
             <DockPanel LastChildFill="True">
                 <TextBlock DockPanel.Dock="Top" Text="{Binding RouteListTitle}" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8" />
-                <UniformGrid DockPanel.Dock="Top" Columns="2" Margin="0,0,0,8">
+                <UniformGrid DockPanel.Dock="Top" Columns="3" Margin="0,0,0,8">
                     <Button Content="Einzelne Routen"
                             Command="{Binding ShowIndividualRoutesCommand}"
                             Style="{StaticResource RouteModeIndividualButton}"
                             Margin="0,0,4,0"
-                            Padding="8,6" />
+                            Padding="4,6" />
                     <Button Content="Routenschnüre"
                             Command="{Binding ShowRouteChainsCommand}"
                             Style="{StaticResource RouteModeChainButton}"
+                            Margin="4,0,4,0"
+                            Padding="4,6" />
+                    <Button Content="Kalender"
+                            Command="{Binding ShowRouteCalendarCommand}"
+                            Style="{StaticResource RouteModeCalendarButton}"
                             Margin="4,0,0,0"
-                            Padding="8,6" />
+                            Padding="4,6" />
                 </UniformGrid>
                 <TextBox DockPanel.Dock="Top"
                          materialDesign:HintAssist.Hint="{Binding RouteSearchHint}"
@@ -206,7 +226,8 @@
                            Opacity="0.8"
                            TextWrapping="Wrap" />
 
-                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8"
+                            Visibility="{Binding ShowCalendar, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                     <TextBlock Text="{Binding SelectedRouteListLabel}"
                                TextWrapping="Wrap"
                                FontWeight="SemiBold"
@@ -267,6 +288,7 @@
                 </StackPanel>
 
                 <Grid>
+                    <Grid Visibility="{Binding ShowCalendar, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -550,6 +572,131 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                     </Grid>
+                    </Grid>
+                    <DockPanel Visibility="{Binding ShowCalendar, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0"
+                                    Content="‹"
+                                    Command="{Binding ShowPreviousCalendarMonthCommand}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    Width="40"
+                                    Margin="0,0,8,0"
+                                    ToolTip="Voriger Monat" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding CalendarTitle}"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="2"
+                                    Content="›"
+                                    Command="{Binding ShowNextCalendarMonthCommand}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    Width="40"
+                                    ToolTip="Nächster Monat" />
+                        </Grid>
+                        <UniformGrid DockPanel.Dock="Top" Columns="7" Margin="0,0,0,4">
+                            <TextBlock Text="Mo" HorizontalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" />
+                            <TextBlock Text="Di" HorizontalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" />
+                            <TextBlock Text="Mi" HorizontalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" />
+                            <TextBlock Text="Do" HorizontalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" />
+                            <TextBlock Text="Fr" HorizontalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" />
+                            <TextBlock Text="Sa" HorizontalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" />
+                            <TextBlock Text="So" HorizontalAlignment="Center" FontWeight="SemiBold" Opacity="0.7" />
+                        </UniformGrid>
+                        <ItemsControl ItemsSource="{Binding CalendarWeeks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,1,0,2">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="22" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <ItemsControl Grid.Row="0" ItemsSource="{Binding Days}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Columns="7" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="1,0" Padding="2,0" BorderThickness="1" BorderBrush="#33FFFFFF">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Opacity" Value="1" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding InMonth}" Value="False">
+                                                                        <Setter Property="Opacity" Value="0.4" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsToday}" Value="True">
+                                                                        <Setter Property="BorderBrush" Value="{StaticResource SmartAccentBrush}" />
+                                                                        <Setter Property="BorderThickness" Value="2" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <TextBlock Text="{Binding DayNumber}"
+                                                                   FontWeight="SemiBold"
+                                                                   HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{StaticResource SmartForegroundBrush}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <ItemsControl Grid.Row="1" ItemsSource="{Binding Bars}" Margin="0,2,0,0">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                    </Grid>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemContainerStyle>
+                                                <Style TargetType="ContentPresenter">
+                                                    <Setter Property="Grid.Column" Value="{Binding Column}" />
+                                                    <Setter Property="Grid.ColumnSpan" Value="{Binding ColumnSpan}" />
+                                                    <Setter Property="Margin" Value="{Binding Lane, Converter={StaticResource CalendarLaneMarginConverter}}" />
+                                                    <Setter Property="VerticalAlignment" Value="Top" />
+                                                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                                </Style>
+                                            </ItemsControl.ItemContainerStyle>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="{Binding Label}"
+                                                            ToolTip="{Binding Label}"
+                                                            Command="{Binding DataContext.SelectCalendarMeasureCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding HeadRouteKey}"
+                                                            Height="20"
+                                                            Padding="6,0"
+                                                            FontSize="11"
+                                                            Foreground="White"
+                                                            Background="#1E5A9E"
+                                                            BorderThickness="0"
+                                                            HorizontalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Left"
+                                                            Cursor="Hand" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DockPanel>
                 </Grid>
             </DockPanel>
         </materialDesign:Card>
