@@ -50,6 +50,10 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
     private bool _rebuildScheduled;
 
+    private bool _fullRebuildPending;
+
+    private readonly HashSet<string> _pendingRowKeys = new(StringComparer.Ordinal);
+
     public FahrzeugdispoViewModel()
         : base("Kalenderschnur: Fahrzeuge links, Tage rechts – Tag anklicken für Stundenansicht.")
     {
@@ -299,7 +303,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             Label = result.DisplayLabel
         });
 
-        SaveAndRefresh(result.StartEpochMs, "Fahrt gespeichert.");
+        SaveAndRefresh(result.StartEpochMs, "Fahrt gespeichert.", result.PhoneKey);
     }
 
     public void EditTrip(string assignmentId)
@@ -324,16 +328,18 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
         if (result.DeleteRequested)
         {
+            var deletedVehicle = existing.VehiclePhone;
             _assignments.RemoveAll(a => a.Id == assignmentId);
-            SaveAndRefresh(null, "Fahrt gelöscht.");
+            SaveAndRefresh(null, "Fahrt gelöscht.", deletedVehicle);
             return;
         }
 
+        var previousVehicle = existing.VehiclePhone;
         existing.VehiclePhone = result.PhoneKey;
         existing.StartEpochMs = result.StartEpochMs;
         existing.EndEpochMs = result.EndEpochMs;
         existing.Label = result.DisplayLabel;
-        SaveAndRefresh(result.StartEpochMs, "Fahrt aktualisiert.");
+        SaveAndRefresh(result.StartEpochMs, "Fahrt aktualisiert.", previousVehicle, result.PhoneKey);
     }
 
     [RelayCommand]
@@ -380,6 +386,42 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
     private void ScheduleRebuildGrid()
     {
+        _fullRebuildPending = true;
+        _pendingRowKeys.Clear();
+        QueueRebuild();
+    }
+
+    private void ScheduleRebuildRows(IEnumerable<string> vehicleKeys)
+    {
+        if (_fullRebuildPending && _rebuildScheduled)
+        {
+            return;
+        }
+
+        if (!_rebuildScheduled)
+        {
+            _fullRebuildPending = false;
+            _pendingRowKeys.Clear();
+        }
+
+        foreach (var key in vehicleKeys)
+        {
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                _pendingRowKeys.Add(key);
+            }
+        }
+
+        if (_pendingRowKeys.Count == 0)
+        {
+            _fullRebuildPending = true;
+        }
+
+        QueueRebuild();
+    }
+
+    private void QueueRebuild()
+    {
         if (_rebuildScheduled)
         {
             return;
@@ -390,7 +432,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
         if (dispatcher is null)
         {
             _rebuildScheduled = false;
-            RebuildGrid();
+            RunScheduledRebuild();
             return;
         }
 
@@ -398,9 +440,25 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             () =>
             {
                 _rebuildScheduled = false;
-                RebuildGrid();
+                RunScheduledRebuild();
             },
             DispatcherPriority.Background);
+    }
+
+    private void RunScheduledRebuild()
+    {
+        var full = _fullRebuildPending || _pendingRowKeys.Count == 0;
+        var keys = _pendingRowKeys.ToArray();
+        _fullRebuildPending = false;
+        _pendingRowKeys.Clear();
+        if (full)
+        {
+            RebuildGrid();
+        }
+        else
+        {
+            RebuildVehicleRows(keys);
+        }
     }
 
     private void RebuildGrid()
@@ -464,32 +522,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
                 HourModeDateLabel = _expandedDate?.ToString("dd.MM.yyyy", DeCulture) ?? string.Empty
             };
 
-            if (row.IsHourMode && _expandedDate is not null)
-            {
-                row.Cells.Add(CreateCollapseCell(dispoKey, _expandedDate.Value));
-                for (var hour = 0; hour < 24; hour++)
-                {
-                    row.Cells.Add(CreateHourCell(dispoKey, _expandedDate.Value, hour));
-                }
-
-                foreach (var bar in BuildHourAssignmentBars(vehicle, _expandedDate.Value))
-                {
-                    row.AssignmentBars.Add(bar);
-                }
-            }
-            else
-            {
-                foreach (var day in days)
-                {
-                    row.Cells.Add(CreateDayCell(dispoKey, day));
-                }
-
-                foreach (var bar in BuildAssignmentBars(vehicle, days))
-                {
-                    row.AssignmentBars.Add(bar);
-                }
-            }
-
+            FillVehicleRow(row, vehicle, days);
             rows.Add(row);
         }
 
@@ -500,14 +533,91 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             "„Neue Fahrt“ zum Eintragen, Rechtsklick auf Balken zum Bearbeiten – wird automatisch gespeichert.";
     }
 
-    private void SaveAndRefresh(long? focusStartEpochMs, string message)
+    private void FillVehicleRow(
+        FahrzeugdispoVehicleRowVm row,
+        RegisteredVehicleItem vehicle,
+        IReadOnlyList<DateTime> days)
     {
-        if (focusStartEpochMs is not null)
+        var dispoKey = row.PhoneKey;
+        row.Cells.Clear();
+        row.AssignmentBars.Clear();
+        if (row.IsHourMode && _expandedDate is not null)
         {
-            EnsureWeekVisible(focusStartEpochMs.Value);
+            row.Cells.Add(CreateCollapseCell(dispoKey, _expandedDate.Value));
+            for (var hour = 0; hour < 24; hour++)
+            {
+                row.Cells.Add(CreateHourCell(dispoKey, _expandedDate.Value, hour));
+            }
+
+            foreach (var bar in BuildHourAssignmentBars(vehicle, _expandedDate.Value))
+            {
+                row.AssignmentBars.Add(bar);
+            }
+        }
+        else
+        {
+            foreach (var day in days)
+            {
+                row.Cells.Add(CreateDayCell(dispoKey, day));
+            }
+
+            foreach (var bar in BuildAssignmentBars(vehicle, days))
+            {
+                row.AssignmentBars.Add(bar);
+            }
+        }
+    }
+
+    private void RebuildVehicleRows(IReadOnlyCollection<string> keys)
+    {
+        var editor = AppServices.Routes.Editor;
+        if (editor is null || VehicleRows.Count == 0 || keys.Count == 0)
+        {
+            RebuildGrid();
+            return;
         }
 
-        ScheduleRebuildGrid();
+        var vehicles = editor.RegisteredVehicles
+            .Where(v => !ShowOnlyActiveVehicles || v.PlannerDetails.IsActive)
+            .ToList();
+        if (vehicles.Count != VehicleRows.Count)
+        {
+            RebuildGrid();
+            return;
+        }
+
+        var days = BuildVisibleDays();
+        foreach (var key in keys)
+        {
+            var vehicle = vehicles.FirstOrDefault(v =>
+                string.Equals(RegisteredVehicleDispoKeys.FromVehicle(v), key, StringComparison.Ordinal) ||
+                RegisteredVehicleDispoKeys.KeysMatch(key, v));
+            var dispoKey = vehicle is null ? null : RegisteredVehicleDispoKeys.FromVehicle(vehicle);
+            var row = dispoKey is null
+                ? null
+                : VehicleRows.FirstOrDefault(r => string.Equals(r.PhoneKey, dispoKey, StringComparison.Ordinal));
+            if (vehicle is null || row is null)
+            {
+                RebuildGrid();
+                return;
+            }
+
+            FillVehicleRow(row, vehicle, days);
+        }
+    }
+
+    private void SaveAndRefresh(long? focusStartEpochMs, string message, params string[] affectedVehicleKeys)
+    {
+        var weekMoved = focusStartEpochMs is not null && EnsureWeekVisible(focusStartEpochMs.Value);
+        if (weekMoved || affectedVehicleKeys.Length == 0)
+        {
+            ScheduleRebuildGrid();
+        }
+        else
+        {
+            ScheduleRebuildRows(affectedVehicleKeys);
+        }
+
         if (PersistAssignments())
         {
             _sync.AfterCommit();
@@ -588,14 +698,17 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
         public string DisplayLabel { get; init; } = string.Empty;
     }
 
-    private void EnsureWeekVisible(long startEpochMs)
+    private bool EnsureWeekVisible(long startEpochMs)
     {
         var startLocal = DateTimeOffset.FromUnixTimeMilliseconds(startEpochMs).LocalDateTime.Date;
         var weekEnd = ViewStartDate.Date.AddDays(VisibleDayCount - 1);
         if (startLocal < ViewStartDate.Date || startLocal > weekEnd)
         {
             ViewStartDate = GetWeekStart(startLocal);
+            return true;
         }
+
+        return false;
     }
 
     private FahrzeugdispoTimeCellVm CreateCollapseCell(string phoneKey, DateTime date) =>
@@ -646,7 +759,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             .OrderBy(a => a.StartEpochMs)
             .ToList();
 
-        AssignOverlapLanes(visibleAssignments, out var laneById, out var laneCount);
+        AssignOverlapLanes(visibleAssignments, out var laneById, out var laneCount, out var overlappingIds);
 
         foreach (var assignment in visibleAssignments)
         {
@@ -666,10 +779,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             var tripName = string.IsNullOrWhiteSpace(assignment.Label) ? string.Empty : assignment.Label;
 
             var laneIndex = laneById.GetValueOrDefault(assignment.Id, 0);
-            var hasOverlap = visibleAssignments.Any(other =>
-                other.Id != assignment.Id &&
-                other.StartEpochMs < assignment.EndEpochMs &&
-                other.EndEpochMs > assignment.StartEpochMs);
+            var hasOverlap = overlappingIds.Contains(assignment.Id);
             var (top, height, labelAbove) = GetHourAssignmentBarVerticalLayout(
                 laneIndex,
                 hasOverlap ? laneCount : 1);
@@ -729,7 +839,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
             .OrderBy(a => a.StartEpochMs)
             .ToList();
 
-        AssignOverlapLanes(visibleAssignments, out var laneById, out var laneCount);
+        AssignOverlapLanes(visibleAssignments, out var laneById, out var laneCount, out var overlappingIds);
 
         var weekEndExclusive = weekEnd.AddDays(1);
 
@@ -770,12 +880,7 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
 
         foreach (var (assignment, visibleStart, left, width, laneIndex, label) in barLayouts)
         {
-            var hasOverlap = barLayouts.Any(other =>
-                other.Assignment.Id != assignment.Id &&
-                other.Assignment.StartEpochMs < assignment.EndEpochMs &&
-                other.Assignment.EndEpochMs > assignment.StartEpochMs &&
-                left < other.Left + other.Width &&
-                left + width > other.Left);
+            var hasOverlap = overlappingIds.Contains(assignment.Id);
             var (top, height) = hasOverlap
                 ? GetAssignmentBarVerticalLayout(laneIndex, laneCount)
                 : GetAssignmentBarVerticalLayout(0, 1);
@@ -800,39 +905,14 @@ public partial class FahrzeugdispoViewModel : EditorStatusViewModelBase
     private static void AssignOverlapLanes(
         IReadOnlyList<VehicleDispositionAssignment> assignments,
         out Dictionary<string, int> laneById,
-        out int laneCount)
+        out int laneCount,
+        out HashSet<string> overlappingIds)
     {
-        laneById = new Dictionary<string, int>(StringComparer.Ordinal);
-        laneCount = 0;
-        if (assignments.Count == 0)
-        {
-            return;
-        }
-
-        var laneEnds = new List<long>();
-        foreach (var assignment in assignments)
-        {
-            var lane = -1;
-            for (var i = 0; i < laneEnds.Count; i++)
-            {
-                if (laneEnds[i] <= assignment.StartEpochMs)
-                {
-                    lane = i;
-                    laneEnds[i] = assignment.EndEpochMs;
-                    break;
-                }
-            }
-
-            if (lane < 0)
-            {
-                lane = laneEnds.Count;
-                laneEnds.Add(assignment.EndEpochMs);
-            }
-
-            laneById[assignment.Id] = lane;
-        }
-
-        laneCount = laneEnds.Count;
+        DispositionOverlapLanes.Assign(
+            assignments.Select(a => (a.Id, a.StartEpochMs, a.EndEpochMs)).ToList(),
+            out laneById,
+            out laneCount,
+            out overlappingIds);
     }
 
     private static (double Top, double Height, bool LabelAbove) GetHourAssignmentBarVerticalLayout(

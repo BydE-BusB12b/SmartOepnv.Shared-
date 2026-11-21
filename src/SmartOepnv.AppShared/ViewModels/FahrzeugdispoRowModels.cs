@@ -4,6 +4,73 @@ using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
+/// <summary>
+/// Spuren für überlappende Balken. Die Überlappung gilt pro Balken:
+/// ein einzelner Dienst ohne Überschneidung bleibt hoch.
+/// </summary>
+internal static class DispositionOverlapLanes
+{
+    public static void Assign(
+        IReadOnlyList<(string Id, long StartEpochMs, long EndEpochMs)> assignments,
+        out Dictionary<string, int> laneById,
+        out int laneCount,
+        out HashSet<string> overlappingIds)
+    {
+        laneById = new Dictionary<string, int>(StringComparer.Ordinal);
+        overlappingIds = new HashSet<string>(StringComparer.Ordinal);
+        laneCount = 0;
+        if (assignments.Count == 0)
+        {
+            return;
+        }
+
+        var ordered = assignments.OrderBy(a => a.StartEpochMs).ToList();
+        var laneEnds = new List<long>(4);
+        var laneOccupants = new List<string>(4);
+        foreach (var assignment in ordered)
+        {
+            var lane = -1;
+            var overlaps = false;
+            for (var i = 0; i < laneEnds.Count; i++)
+            {
+                if (laneEnds[i] <= assignment.StartEpochMs)
+                {
+                    if (lane < 0)
+                    {
+                        lane = i;
+                    }
+                }
+                else
+                {
+                    overlaps = true;
+                    overlappingIds.Add(laneOccupants[i]);
+                }
+            }
+
+            if (overlaps)
+            {
+                overlappingIds.Add(assignment.Id);
+            }
+
+            if (lane < 0)
+            {
+                lane = laneEnds.Count;
+                laneEnds.Add(assignment.EndEpochMs);
+                laneOccupants.Add(assignment.Id);
+            }
+            else
+            {
+                laneEnds[lane] = assignment.EndEpochMs;
+                laneOccupants[lane] = assignment.Id;
+            }
+
+            laneById[assignment.Id] = lane;
+        }
+
+        laneCount = laneEnds.Count;
+    }
+}
+
 public sealed partial class FahrzeugdispoVehicleRowVm : ObservableObject
 {
     public string PhoneKey { get; init; } = string.Empty;
