@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using MaterialDesignThemes.Wpf;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -11,8 +12,8 @@ public sealed class FahrzeugdispoNewTripDialog : Window
 {
     private static readonly Brush InputBackground = Brushes.White;
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush LabelForeground = Brushes.White;
-    private static readonly Brush DialogBackground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
+    private static Brush DialogBackground => UiTheme.BackgroundBrush;
     private static readonly Brush DateFieldBackground = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
 
     private readonly ComboBox _vehicleBox;
@@ -139,6 +140,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
         var timeFromPanel = new StackPanel();
         timeFromPanel.Children.Add(MakeLabel("Uhrzeit von"));
         _timeFromBox = MakeInput("HH:mm", startLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_timeFromBox);
         timeFromPanel.Children.Add(_timeFromBox);
         Grid.SetColumn(timeFromPanel, 0);
         timeRow.Children.Add(timeFromPanel);
@@ -146,6 +148,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
         var timeToPanel = new StackPanel();
         timeToPanel.Children.Add(MakeLabel("Uhrzeit bis"));
         _timeToBox = MakeInput("HH:mm", endLocal.ToString("HH:mm", CultureInfo.InvariantCulture));
+        AttachTimeNormalization(_timeToBox);
         timeToPanel.Children.Add(_timeToBox);
         Grid.SetColumn(timeToPanel, 2);
         timeRow.Children.Add(timeToPanel);
@@ -153,7 +156,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
 
         _errorText = new TextBlock
         {
-            Foreground = Brushes.White,
+            Foreground = UiTheme.ForegroundBrush,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -270,13 +273,13 @@ public sealed class FahrzeugdispoNewTripDialog : Window
 
         if (!TryParseTime(_timeFromBox.Text, out var timeFrom))
         {
-            error = "Uhrzeit von ist ungültig (Format: HH:mm).";
+            error = "Uhrzeit von ist ungültig (z. B. 04:29 oder 429).";
             return false;
         }
 
         if (!TryParseTime(_timeToBox.Text, out var timeTo))
         {
-            error = "Uhrzeit bis ist ungültig (Format: HH:mm).";
+            error = "Uhrzeit bis ist ungültig (z. B. 04:29 oder 429).";
             return false;
         }
 
@@ -299,13 +302,26 @@ public sealed class FahrzeugdispoNewTripDialog : Window
     private static bool TryParseTime(string text, out TimeSpan time)
     {
         time = default;
-        var trimmed = text.Trim();
-        if (TimeSpan.TryParseExact(trimmed, "hh\\:mm", CultureInfo.InvariantCulture, out time))
+        var normalized = RouteScheduleTimeCalculator.NormalizeTimeInput(text);
+        if (!RouteScheduleTimeCalculator.TryParseTime(normalized, out var timeOnly))
         {
-            return true;
+            return false;
         }
 
-        return TimeSpan.TryParseExact(trimmed, "h\\:mm", CultureInfo.InvariantCulture, out time);
+        time = timeOnly.ToTimeSpan();
+        return true;
+    }
+
+    private static void AttachTimeNormalization(TextBox box)
+    {
+        box.LostFocus += (_, _) =>
+        {
+            var normalized = RouteScheduleTimeCalculator.NormalizeTimeInput(box.Text);
+            if (!string.Equals(box.Text, normalized, StringComparison.Ordinal))
+            {
+                box.Text = normalized;
+            }
+        };
     }
 
     private static string BuildVehicleLabel(RegisteredVehicleItem vehicle)
@@ -478,7 +494,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
             {
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 FontWeight = FontWeights.SemiBold,
                 FontSize = 15
             };
@@ -522,7 +538,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
                 var header = new TextBlock
                 {
                     Text = WeekdayHeaders[c],
-                    Foreground = Brushes.White,
+                    Foreground = UiTheme.ForegroundBrush,
                     Opacity = 0.85,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Margin = new Thickness(2, 0, 2, 4),
@@ -643,7 +659,7 @@ public sealed class FahrzeugdispoNewTripDialog : Window
             _dateText = new TextBlock
             {
                 Text = FormatDate(initial),
-                Foreground = Brushes.White,
+                Foreground = UiTheme.ForegroundBrush,
                 VerticalAlignment = VerticalAlignment.Center
             };
             displayBorder.Child = _dateText;

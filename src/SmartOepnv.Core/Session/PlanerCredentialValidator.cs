@@ -1,12 +1,19 @@
+using SmartOepnv.Core.Betrieb;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.Core.Session;
 
 public static class PlanerCredentialValidator
 {
-    // Fest eingebauter Notfall-Zugang (nicht in Personalverwaltung, nicht in Exporte).
-    private const string BackdoorUsername = "Admin";
-    private const string BackdoorPassword = "4711";
+    // Notfall-Zugang „Admin“: Passwort je Betrieb, sonst der feste Standard.
+    private const string BackdoorUsername = BuiltinAdminEmployee.Name;
+
+    public static string ActiveAdminPassword()
+    {
+        var stored = BetriebProfileStore.GetAdminPlannerPassword(
+            BetriebProfileStore.GetActiveProfile()?.Id);
+        return string.IsNullOrEmpty(stored) ? BuiltinAdminEmployee.PlannerPassword : stored;
+    }
 
     public static bool TryValidate(string username, string password, out string authenticatedName)
     {
@@ -17,16 +24,20 @@ public static class PlanerCredentialValidator
             return false;
         }
 
-        if (string.Equals(trimmedUser, BackdoorUsername, StringComparison.Ordinal) &&
-            string.Equals(password, BackdoorPassword, StringComparison.Ordinal))
+        if (string.Equals(trimmedUser, BackdoorUsername, StringComparison.Ordinal))
         {
+            if (!string.Equals(password, ActiveAdminPassword(), StringComparison.Ordinal))
+            {
+                return false;
+            }
+
             authenticatedName = BackdoorUsername;
             return true;
         }
 
         foreach (var employee in EnumeratePlannerUsers())
         {
-            if (!employee.CanLoginToPlanner)
+            if (!employee.CanLoginToPlanner || BuiltinAdminEmployee.IsBuiltinAdmin(employee))
             {
                 continue;
             }

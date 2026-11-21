@@ -16,11 +16,11 @@ public sealed class VehicleInspectionWarningItem
     {
         var (bg, fg) = warning.Level switch
         {
-            VehicleInspectionWarningLevel.Notice30To16Days => ("#FFF176", "#1A1A1A"),
-            VehicleInspectionWarningLevel.Notice15To5Days => ("#FF9800", "#FFFFFF"),
-            VehicleInspectionWarningLevel.Urgent4To1Days => ("#E53935", "#FFFFFF"),
+            VehicleInspectionWarningLevel.Notice30To16Days => ("#FFF176", "#002171"),
+            VehicleInspectionWarningLevel.Notice15To5Days => ("#FFE0B2", "#002171"),
+            VehicleInspectionWarningLevel.Urgent4To1Days => ("#FFCDD2", "#002171"),
             VehicleInspectionWarningLevel.Overdue => ("#9C27B0", "#FFFFFF"),
-            _ => ("#455A64", "#FFFFFF")
+            _ => ("#ECEFF1", "#002171")
         };
 
         return new VehicleInspectionWarningItem

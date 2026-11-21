@@ -74,6 +74,7 @@ public sealed class EmbeddedSoundPickerDialog : Window
             BorderThickness = new Thickness(1),
             Margin = new Thickness(0, 0, 0, 12)
         };
+        MergedAnnouncementUiHighlight.ApplyToListBox(list);
         list.MouseDoubleClick += (_, _) => ConfirmSelection(list);
         Grid.SetRow(list, 3);
         root.Children.Add(list);
@@ -141,10 +142,17 @@ public sealed class EmbeddedSoundPickerDialog : Window
         IEnumerable<string> source = _allNames;
         if (!string.IsNullOrWhiteSpace(query))
         {
-            source = _allNames.Where(n => EmbeddedSoundSearch.Matches(
-                n,
-                query,
-                _searchHintsByFileName.GetValueOrDefault(n)));
+            source = _allNames
+                .Select(n => (
+                    Name: n,
+                    Score: EmbeddedSoundSearch.Score(
+                        n,
+                        query,
+                        _searchHintsByFileName.GetValueOrDefault(n))))
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Name);
         }
 
         foreach (var name in source)
@@ -157,6 +165,8 @@ public sealed class EmbeddedSoundPickerDialog : Window
             ? "Dateiname antippen oder doppelklicken."
             : count == 0
                 ? $"Keine Treffer für „{query}“"
-                : $"{count} von {_allNames.Count} Treffern";
+                : count == 1
+                    ? "1 Treffer"
+                    : $"{count} Treffer";
     }
 }

@@ -1,0 +1,182 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SmartOepnv.Fahrgeraet.MainWindow"
+        Title="Smart ÖPNV"
+        Width="1024"
+        Height="600"
+        CanResize="False"
+        SystemDecorations="None"
+        ExtendClientAreaToDecorationsHint="False"
+        WindowState="FullScreen"
+        Background="#2196F3">
+  <Grid Background="#2196F3">
+    <Grid RowDefinitions="80,2,*,56" Margin="4,2,4,2" Background="#2196F3">
+      <Grid ColumnDefinitions="*,Auto" Height="80">
+        <StackPanel Spacing="0" VerticalAlignment="Top" Margin="0,4,0,4">
+          <StackPanel Orientation="Horizontal" Spacing="8" Height="32" VerticalAlignment="Center">
+            <Ellipse x:Name="GpsDot" Width="16" Height="16" Fill="#FF0000" VerticalAlignment="Center" />
+            <TextBlock x:Name="GpsText" Text="GPS inaktiv" Foreground="White" FontSize="16" VerticalAlignment="Center" />
+            <TextBlock x:Name="GpsAccuracy" Text="" Foreground="White" FontSize="14" VerticalAlignment="Center" IsVisible="False" />
+            <Image x:Name="OffRouteIcon" Width="26" Height="26" IsVisible="True" VerticalAlignment="Center"
+                   Source="avares://SmartOepnv.Fahrgeraet/Assets/route-verlassen.png" />
+            <Border x:Name="IbisChip" Background="#FF0000" CornerRadius="4" Padding="8,3" VerticalAlignment="Center">
+              <TextBlock x:Name="IbisChipText" Text="IBIS-USB" Foreground="White" FontSize="14" FontWeight="Bold" />
+            </Border>
+            <StackPanel x:Name="SignalBars" Orientation="Horizontal" Spacing="2" Height="14" VerticalAlignment="Center" Margin="4,0,0,0">
+              <Border x:Name="Signal0" Width="3" Height="5" VerticalAlignment="Bottom" Background="#46FFFFFF" />
+              <Border x:Name="Signal1" Width="3" Height="8" VerticalAlignment="Bottom" Background="#46FFFFFF" />
+              <Border x:Name="Signal2" Width="3" Height="11" VerticalAlignment="Bottom" Background="#46FFFFFF" />
+              <Border x:Name="Signal3" Width="3" Height="14" VerticalAlignment="Bottom" Background="#46FFFFFF" />
+            </StackPanel>
+            <TextBlock x:Name="BatteryText" Text="" Foreground="White" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" IsVisible="False" />
+            <Panel x:Name="ImportRingHost" Width="14" Height="14" VerticalAlignment="Center" Margin="6,0,0,0" IsVisible="False">
+              <Ellipse Width="14" Height="14" Stroke="#FFEB3B" StrokeThickness="2.5" />
+            </Panel>
+            <TextBlock x:Name="ImportPercent" Text="0%" Foreground="#FFEB3B" FontSize="14" FontWeight="Bold"
+                       VerticalAlignment="Center" Margin="4,0,0,0" IsVisible="False" />
+          </StackPanel>
+          <Grid x:Name="RouteLine" Height="36" ColumnDefinitions="Auto,Auto,*" VerticalAlignment="Bottom">
+            <TextBlock x:Name="LineText" Foreground="White" FontSize="28" FontWeight="Bold" VerticalAlignment="Center" />
+            <TextBlock x:Name="RouteNameText" Grid.Column="1" Margin="8,0,0,0" Foreground="White" FontSize="28" FontWeight="Bold"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="DestText" Grid.Column="2" Margin="24,0,8,0" Foreground="White" FontSize="24" FontWeight="Bold"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Stretch" Margin="8,4,0,4">
+          <Image Source="avares://SmartOepnv.Fahrgeraet/Assets/kiara.png"
+                 Width="40" Height="40" Opacity="0.5"
+                 VerticalAlignment="Center" />
+            <LayoutTransformControl VerticalAlignment="Stretch">
+            <LayoutTransformControl.LayoutTransform>
+              <ScaleTransform ScaleX="0.8" ScaleY="1" />
+            </LayoutTransformControl.LayoutTransform>
+            <Border x:Name="DelayBox" Background="#808080" CornerRadius="6" Padding="10,0" VerticalAlignment="Stretch">
+              <TextBlock x:Name="DelayText" Text="00:00" Foreground="White" FontSize="20" FontWeight="Bold"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" />
+            </Border>
+          </LayoutTransformControl>
+          <LayoutTransformControl VerticalAlignment="Bottom">
+            <LayoutTransformControl.LayoutTransform>
+              <ScaleTransform ScaleX="0.8" ScaleY="1" />
+            </LayoutTransformControl.LayoutTransform>
+            <StackPanel>
+              <TextBlock x:Name="ClockText" Text="00:00:00" Foreground="White" FontSize="28" FontWeight="Bold"
+                         HorizontalAlignment="Right" TextAlignment="Right" />
+              <TextBlock x:Name="DateText" Text="00.00.0000" Foreground="White" FontSize="14" FontWeight="Bold"
+                         HorizontalAlignment="Stretch" TextAlignment="Right" />
+            </StackPanel>
+          </LayoutTransformControl>
+        </StackPanel>
+      </Grid>
+
+      <Border Grid.Row="1" Background="#FFEB3B" />
+
+      <Grid Grid.Row="2" Margin="0,6,0,4">
+        <Grid x:Name="ItcsLayer" ColumnDefinitions="*,0,2*">
+          <Grid RowDefinitions="*,*,*,*,*,*,*,*,*,*,*" Margin="4,0,8,0">
+            <Button x:Name="PasInfoButton" Grid.Row="0" Classes="pill" Content="Pas.-Info on" Background="#4CAF50" />
+            <Button x:Name="NavButton" Grid.Row="1" Classes="pill" Content="Navigation" Background="#795548" />
+            <Button x:Name="SonderButton" Grid.Row="2" Classes="pill" Content="Sonderansagen" Background="#00008B" />
+            <Button x:Name="RouteButton" Grid.Row="3" Classes="pill" Content="Route" Background="#00008B" />
+            <Button x:Name="LineButton" Grid.Row="4" Classes="pill" Content="Linie/Kurs" Background="#00008B" />
+            <Button x:Name="ZielButton" Grid.Row="5" Classes="pill" Content="Zielanzeige" Background="#00008B" />
+            <Button x:Name="PostfachButton" Grid.Row="6" Classes="pill" Content="Postfach" Background="#808080" Opacity="0.45" />
+            <Button x:Name="MailButton" Grid.Row="7" Classes="pill" Content="Mail" Background="#4CAF50" />
+            <Button x:Name="ZblButton" Grid.Row="8" Classes="pill" Content="ZBL" Background="#4CAF50" />
+            <Button x:Name="UnfallButton" Grid.Row="9" Classes="pill" Content="Unfallruf" Background="#FF0000" />
+            <Button x:Name="RazziaButton" Grid.Row="10" Classes="pill" Content="◉  Razzia" Background="#FFEB3B" Foreground="#00008B" />
+          </Grid>
+          <Border x:Name="NavField" Grid.Column="1" IsVisible="False" Background="#00008B" BorderBrush="#FFA500"
+                  BorderThickness="3" CornerRadius="8" Padding="8" Margin="4,0,6,0">
+            <ContentControl x:Name="NavHost" />
+          </Border>
+          <Grid Grid.Column="2" Margin="8,0,4,0">
+            <Grid RowDefinitions="Auto,*">
+              <Grid x:Name="StopsHeading" MinHeight="36">
+                <TextBlock Text="Haltestellen" Foreground="White" FontSize="28" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Button x:Name="PauseButton" Content="Pause" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        MinHeight="28" Padding="14,0" FontSize="14" FontWeight="Bold"
+                        Background="#FFEB3B" Foreground="#00008B" CornerRadius="14" />
+              </Grid>
+              <Grid Grid.Row="1">
+                <ScrollViewer x:Name="StopsScroll">
+                  <StackPanel x:Name="StopsList" />
+                </ScrollViewer>
+                <Border x:Name="StopOrangeFrame" IsVisible="False" IsHitTestVisible="False"
+                        BorderBrush="#FFA500" BorderThickness="3" CornerRadius="10"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Top" />
+                <TextBlock x:Name="SelbsthaltungText" Text="Selbsthaltung!" IsVisible="False" IsHitTestVisible="False"
+                           Foreground="White" FontSize="42" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" />
+              </Grid>
+            </Grid>
+          </Grid>
+        </Grid>
+
+        <Grid x:Name="MenuLayer" IsVisible="False" Background="#2196F3"
+              RowDefinitions="Auto,*,*,*,*,*,*,*" Margin="4,0">
+          <TextBlock Grid.Row="0" Text="HAUPTMENÜ" Foreground="White" FontSize="20" FontWeight="Bold"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,2" />
+          <Button x:Name="AdminButton" Grid.Row="1" Classes="menu" Content="Administration" Background="#00008B" Margin="0,3" />
+          <Grid Grid.Row="2" ColumnDefinitions="*,*" Margin="0,3">
+            <Button x:Name="DisplaysButton" Classes="menu" Content="Innen-/Außenanzeigen+Entwerter" Background="#9C27B0" Margin="0,0,4,0" />
+            <Button x:Name="SettingsButton" Grid.Column="1" Classes="menu" Content="Einstellungen" Background="#00008B" Margin="4,0,0,0" />
+          </Grid>
+          <Grid Grid.Row="3" ColumnDefinitions="*,*" Margin="0,3">
+            <Button x:Name="ZeitButton" Classes="menu" Content="Zeitwirtschaft" Background="#4CAF50" Margin="0,0,4,0" />
+            <Button x:Name="MangelButton" Grid.Column="1" Classes="menu" Content="Mängelkarte" Background="#4CAF50" Margin="4,0,0,0" />
+          </Grid>
+          <Grid Grid.Row="4" ColumnDefinitions="*,*" Margin="0,3">
+            <Button x:Name="AbmeldenButton" Classes="menu" Content="Abmelden" Background="#FFA500" Margin="0,0,4,0" />
+          </Grid>
+          <Grid Grid.Row="5" ColumnDefinitions="*,*" Margin="0,3">
+            <Button x:Name="AnsagenButton" Classes="menu" Content="Ansagen" Background="#9C27B0" Margin="0,0,4,0" />
+            <Button x:Name="MenuPauseButton" Grid.Column="1" Classes="menu" Content="Pause" Background="#FFA500" Margin="4,0,0,0" />
+          </Grid>
+          <Grid Grid.Row="6" ColumnDefinitions="*,*" Margin="0,3">
+            <Button x:Name="AnleitungButton" Classes="menu" Content="Bedienungsanleitung" Background="#808080" Margin="0,0,4,0" />
+            <Button x:Name="ImpressumButton" Grid.Column="1" Classes="menu" Content="Impressum" Background="#808080" Margin="4,0,0,0" />
+          </Grid>
+          <Grid Grid.Row="7" ColumnDefinitions="*,*" Margin="0,3,0,2">
+            <Button x:Name="BeendenButton" Classes="menu" Content="App beenden" Background="#FF0000" Margin="0,0,4,0" />
+          </Grid>
+        </Grid>
+
+        <Border x:Name="PageLayer" IsVisible="False" Background="#2196F3">
+          <ContentControl x:Name="PageHost" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+        </Border>
+      </Grid>
+
+      <Border x:Name="LockBar" Grid.RowSpan="4" IsVisible="False" IsHitTestVisible="False"
+              Background="#FF0000" Height="55" VerticalAlignment="Top" HorizontalAlignment="Stretch" ZIndex="100">
+        <TextBlock Text="Funktion gesperrt" Foreground="White" FontSize="16" FontWeight="Bold"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+      </Border>
+
+      <Grid Grid.Row="3" ColumnDefinitions="*,*,*" Margin="0,4,0,0" Background="#2196F3">
+        <Border x:Name="ItcsFrame" BorderBrush="#FFFF00" BorderThickness="2" CornerRadius="8" Margin="0,0,4,0" Background="#00008B">
+          <Button x:Name="ItcsButton" Classes="bar" Background="#00008B" Foreground="White" CornerRadius="6"
+                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <StackPanel>
+              <TextBlock x:Name="ItcsArrow" Text="▲" FontSize="9" Foreground="#FFFF00" HorizontalAlignment="Center" />
+              <TextBlock Text="ITCS" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </Border>
+        <Border x:Name="VerkaufFrame" Grid.Column="1" BorderBrush="White" BorderThickness="2" CornerRadius="8" Margin="2,0">
+          <Button x:Name="VerkaufButton" Classes="bar" Content="VERKAUF" Background="#00008B" Foreground="White"
+                  FontSize="14" FontWeight="Bold" CornerRadius="6" MinHeight="40"
+                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+        </Border>
+        <Border x:Name="MenuFrame" Grid.Column="2" BorderBrush="White" BorderThickness="2" CornerRadius="8" Margin="4,0,0,0">
+          <Button x:Name="MenuButton" Classes="bar" Content="MENÜ" Background="#00008B" Foreground="White"
+                  FontSize="15" FontWeight="Bold" CornerRadius="6" MinHeight="40"
+                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>

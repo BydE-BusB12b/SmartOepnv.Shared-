@@ -19,22 +19,31 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
     private DateTime _idleDeadlineUtc;
     private bool _isActive;
     private bool _logoutInProgress;
+    private int _suspendCount;
 
     public event Func<Task>? IdleTimeoutReached;
     public event Action<TimeSpan?>? CountdownChanged;
 
     public void Start()
     {
-        if (!AppServices.IsPlannerApp || _isActive)
+        if (!AppServices.IsPlannerApp)
         {
             return;
         }
 
-        InputManager.Current.PreProcessInput += OnPreProcessInput;
         lock (_sync)
         {
-            _isActive = true;
-            ResetTimerCore();
+            if (!_isActive)
+            {
+                InputManager.Current.PreProcessInput += OnPreProcessInput;
+                _isActive = true;
+            }
+
+            if (_suspendCount == 0 && !_logoutInProgress)
+            {
+                ResetTimerCore();
+            }
+
             EnsureWallClockTimerRunning();
         }
     }
@@ -45,28 +54,94 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
         {
             if (!_isActive)
             {
+                _suspendCount = 0;
+                _logoutInProgress = false;
                 return;
             }
 
             _wallClockTimer?.Dispose();
             _wallClockTimer = null;
             _isActive = false;
+            _suspendCount = 0;
+            _logoutInProgress = false;
         }
 
         InputManager.Current.PreProcessInput -= OnPreProcessInput;
         PublishCountdownOnUi(null);
     }
 
+    /// <summary>Monitor neu starten und Countdown-Anzeige sofort aktualisieren (z. B. nach abgebrochenem Schließen).</summary>
+    public void Restart()
+    {
+        if (!AppServices.IsPlannerApp)
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            if (!_isActive)
+            {
+                InputManager.Current.PreProcessInput += OnPreProcessInput;
+                _isActive = true;
+            }
+
+            _suspendCount = 0;
+            _logoutInProgress = false;
+            ResetTimerCore();
+            EnsureWallClockTimerRunning();
+        }
+    }
+
     public void ResetTimer()
     {
         lock (_sync)
         {
-            if (!_isActive || _logoutInProgress)
+            if (!_isActive || _logoutInProgress || _suspendCount > 0)
             {
                 return;
             }
 
             ResetTimerCore();
+        }
+    }
+
+    /// <summary>
+    /// Pausiert Countdown und Auto-Abmeldung während langer Vorgänge (Sync, Speichern).
+    /// Unterstützt verschachtelte Aufrufe.
+    /// </summary>
+    public void Suspend()
+    {
+        lock (_sync)
+        {
+            _suspendCount++;
+        }
+
+        PublishCountdownOnUi(null);
+    }
+
+    public void Resume()
+    {
+        var shouldHide = false;
+        lock (_sync)
+        {
+            if (_suspendCount > 0)
+            {
+                _suspendCount--;
+            }
+
+            if (_suspendCount == 0 && _isActive && !_logoutInProgress)
+            {
+                ResetTimerCore();
+                return;
+            }
+
+            shouldHide = _suspendCount > 0;
+        }
+
+        if (shouldHide)
+        {
+            PublishCountdownOnUi(null);
         }
     }
 
@@ -92,7 +167,7 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
 
         lock (_sync)
         {
-            if (!_isActive || _logoutInProgress)
+            if (!_isActive || _logoutInProgress || _suspendCount > 0)
             {
                 return;
             }
@@ -169,7 +244,7 @@ public sealed class PlanerIdleLogoutMonitor : IDisposable
 
     private void OnPreProcessInput(object sender, PreProcessInputEventArgs e)
     {
-        if (!_isActive || _logoutInProgress)
+        if (!_isActive || _logoutInProgress || _suspendCount > 0)
         {
             return;
         }

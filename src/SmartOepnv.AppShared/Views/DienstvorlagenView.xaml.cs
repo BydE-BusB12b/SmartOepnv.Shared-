@@ -41,6 +41,9 @@ public partial class DienstvorlagenView : UserControl
     private void SplitDutyButton_PreviewMouseDown(object sender, MouseButtonEventArgs e) =>
         CaptureGridSelectionBeforeCommand(GetGridWithSelection());
 
+    private void SplitShiftButton_PreviewMouseDown(object sender, MouseButtonEventArgs e) =>
+        CaptureGridSelectionBeforeCommand(Part1RowsGrid);
+
     private DataGrid GetGridWithSelection()
     {
         if (Part3RowsGrid.SelectedItems.Count > 0)

@@ -1,22 +1,35 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.Json;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using SmartOepnv.AppShared.Employees;
+using SmartOepnv.AppShared.Helpers;
+using SmartOepnv.AppShared.Views;
 using SmartOepnv.Core;
 using SmartOepnv.Core.RoutePackage;
 
 namespace SmartOepnv.AppShared.ViewModels;
 
+public enum EmployeeManagementButtonState
+{
+    Idle,
+    Success
+}
+
 public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
 {
+    private const int SuccessFeedbackMs = 5000;
+
     private readonly EditorAreaSyncState _sync = new();
     private string? _loadedFingerprint;
+    private CancellationTokenSource? _saveFeedbackCts;
 
     [ObservableProperty] private string statusMessage = "Bitte zuerst ein Route-Paket importieren.";
     [ObservableProperty] private EmployeeRosterItem? selectedEmployee;
+    [ObservableProperty] private EmployeeManagementButtonState saveButtonState = EmployeeManagementButtonState.Idle;
 
     public ObservableCollection<EmployeeRosterItem> Employees { get; } = [];
 
@@ -86,6 +99,11 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
 
         foreach (var employee in editor.Employees)
         {
+            if (BuiltinAdminEmployee.IsBuiltinAdmin(employee))
+            {
+                continue;
+            }
+
             Employees.Add(Clone(employee));
         }
 
@@ -103,10 +121,10 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
-        CommitChanges();
+        CommitChanges(showSuccessFeedback: false);
     }
 
-    public void CommitChanges()
+    public void CommitChanges(bool showSuccessFeedback = true)
     {
         var editor = AppServices.Routes.Editor;
         if (editor is null)
@@ -115,13 +133,22 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
         }
 
         ApplyLastEditedTimestamps(editor.Employees);
-        editor.ReplaceEmployees(Employees.Select(Clone).ToList());
-        AppServices.Routes.ApplyEditorChanges("fahrer");
+        editor.ReplaceEmployees(
+            Employees
+                .Where(e => !BuiltinAdminEmployee.IsBuiltinAdmin(e))
+                .Select(Clone)
+                .ToList());
+        AppServices.Routes.ApplyEditorChanges("fahrer", rebuildEmbeddedMedia: false);
         AppServices.PlannerLocal?.PersistFromEditor(editor);
         StatusMessage =
             $"{Employees.Count} Mitarbeiter im Planer gespeichert (lokal, höchste Priorität) – werden mit Routen-Export/Dropbox übertragen.";
         _sync.AfterCommit();
         _loadedFingerprint = ComputeFingerprint();
+
+        if (showSuccessFeedback)
+        {
+            _ = ShowSaveSuccessFeedbackAsync();
+        }
     }
 
     [RelayCommand]
@@ -156,22 +183,66 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
             return;
         }
 
-        if (AppServices.PlannerLocal is not null)
+        var label = string.IsNullOrWhiteSpace(SelectedEmployee.Name)
+            ? SelectedEmployee.DisplayLabel
+            : SelectedEmployee.Name.Trim();
+
+        var confirmed = SmartConfirmDialog.ShowConfirm(
+            Application.Current.MainWindow,
+            "Mitarbeiter löschen",
+            $"„{label}“ wirklich aus der Personalverwaltung entfernen?\n\n" +
+            "Der Mitarbeiter wird auch aus der Fahrerdisposition entfernt.\n" +
+            "Zeitwirtschaft-Daten bleiben erhalten und müssen dort bei Bedarf separat gelöscht werden.",
+            confirmButton: "Löschen",
+            cancelButton: "Abbrechen");
+
+        if (!confirmed)
         {
-            AppServices.PlannerLocal.RecordEmployeeDeleted(SelectedEmployee);
+            return;
         }
 
-        var idx = Employees.IndexOf(SelectedEmployee);
-        Employees.Remove(SelectedEmployee);
+        var employee = SelectedEmployee;
+
+        if (AppServices.PlannerLocal is not null)
+        {
+            AppServices.PlannerLocal.RecordEmployeeDeleted(employee);
+        }
+
+        var idx = Employees.IndexOf(employee);
+        Employees.Remove(employee);
         SelectedEmployee = Employees.Count == 0
             ? null
             : Employees[Math.Clamp(idx, 0, Employees.Count - 1)];
         _sync.MarkDirty();
-        StatusMessage = "Mitarbeiter aus der Liste entfernt – „Speichern“ nicht vergessen.";
+        StatusMessage =
+            $"„{label}“ entfernt (Fahrerdisposition bereinigt) – bitte „Speichern“. Zeitwirtschaft unverändert.";
     }
 
     [RelayCommand]
-    private void SaveChanges() => CommitChanges();
+    private void SaveChanges()
+    {
+        StatusMessage = "Speichern…";
+        UiDispatch.RunAfterPaint(() => CommitChanges());
+    }
+
+    private async Task ShowSaveSuccessFeedbackAsync()
+    {
+        _saveFeedbackCts?.Cancel();
+        _saveFeedbackCts?.Dispose();
+        _saveFeedbackCts = new CancellationTokenSource();
+        var token = _saveFeedbackCts.Token;
+
+        SaveButtonState = EmployeeManagementButtonState.Success;
+        try
+        {
+            await Task.Delay(SuccessFeedbackMs, token).ConfigureAwait(true);
+            SaveButtonState = EmployeeManagementButtonState.Idle;
+        }
+        catch (TaskCanceledException)
+        {
+            // neuer Klick hat Feedback zurückgesetzt
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(CanExportBriefingPdf))]
     private void ExportBriefingPdf()
@@ -271,6 +342,9 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
         PersonnelNumber = e.PersonnelNumber,
         Password = e.Password,
         LicenseExpiry = e.LicenseExpiry,
+        BirthDate = e.BirthDate,
+        EntryDate = e.EntryDate,
+        MaternityProtection = e.MaternityProtection,
         FqnExpiry = e.FqnExpiry,
         DriverCardExpiry = e.DriverCardExpiry,
         LoginAsMainDevice = e.LoginAsMainDevice,
@@ -313,6 +387,7 @@ public partial class EmployeesViewModel : ObservableObject, IEditorAreaViewModel
             e.LicenseExpiry,
             e.FqnExpiry,
             e.DriverCardExpiry,
+            e.EntryDate,
             e.LoginAsMainDevice,
             e.PlannerLoginEnabled,
             e.PlannerPassword,

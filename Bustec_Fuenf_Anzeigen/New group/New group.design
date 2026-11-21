@@ -1,0 +1,5 @@
+﻿<root>
+  <Group Name="New group">
+    <Item DeviceAddress="0" Type="BT5XXX" />
+  </Group>
+</root>

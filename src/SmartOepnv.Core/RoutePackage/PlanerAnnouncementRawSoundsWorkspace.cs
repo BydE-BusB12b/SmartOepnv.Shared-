@@ -1,5 +1,7 @@
 namespace SmartOepnv.Core.RoutePackage;
 
+using System.Security.Cryptography;
+
 /// <summary>
 /// Roh-Tondateien für die Ansagen-Kartei (vor Zusammenfügen / embeddedSounds).
 /// Liegt neben <c>routes_export.json</c> unter <c>ansagen_roh</c>.
@@ -64,7 +66,19 @@ public static class PlanerAnnouncementRawSoundsWorkspace
         return TryGetLocalFilePath(workspace, fileName);
     }
 
-    public static Dictionary<string, PlanerWorkspaceBinaryPayload> CaptureForSync(LocalWorkspaceStore workspace)
+    public static Dictionary<string, PlanerWorkspaceBinaryPayload> CaptureForSync(
+        LocalWorkspaceStore workspace,
+        IReadOnlyDictionary<string, PlanerWorkspaceBinaryPayload>? reuseFrom = null)
+    {
+        return CaptureManifestForSync(workspace, reuseFrom);
+    }
+
+    /// <summary>
+    /// Manifest für Dropbox-Sync: nur Dateiname, Größe und Hash – keine Base64-Daten in planer_workspace.json.
+    /// </summary>
+    public static Dictionary<string, PlanerWorkspaceBinaryPayload> CaptureManifestForSync(
+        LocalWorkspaceStore workspace,
+        IReadOnlyDictionary<string, PlanerWorkspaceBinaryPayload>? reuseFrom = null)
     {
         var result = new Dictionary<string, PlanerWorkspaceBinaryPayload>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in ListAudioFiles(workspace))
@@ -77,16 +91,23 @@ public static class PlanerAnnouncementRawSoundsWorkspace
 
             try
             {
-                var bytes = File.ReadAllBytes(path);
-                if (bytes.Length == 0)
+                var fileInfo = new FileInfo(path);
+                if (fileInfo.Length <= 0)
                 {
+                    continue;
+                }
+
+                if (TryReuseManifestEntry(reuseFrom, fileName, fileInfo.Length, out var reused))
+                {
+                    result[fileName] = reused;
                     continue;
                 }
 
                 result[fileName] = new PlanerWorkspaceBinaryPayload
                 {
-                    Data = Convert.ToBase64String(bytes),
-                    Size = bytes.Length
+                    Data = string.Empty,
+                    Size = fileInfo.Length,
+                    Sha256 = ComputeSha256Hex(path)
                 };
             }
             catch
@@ -96,6 +117,57 @@ public static class PlanerAnnouncementRawSoundsWorkspace
         }
 
         return result;
+    }
+
+    public static bool TryReuseManifestEntry(
+        IReadOnlyDictionary<string, PlanerWorkspaceBinaryPayload>? reuseFrom,
+        string fileName,
+        long fileSize,
+        out PlanerWorkspaceBinaryPayload entry)
+    {
+        entry = new PlanerWorkspaceBinaryPayload();
+        if (reuseFrom?.TryGetValue(fileName, out var cached) != true ||
+            cached.Size != fileSize ||
+            string.IsNullOrWhiteSpace(cached.Sha256))
+        {
+            return false;
+        }
+
+        entry = new PlanerWorkspaceBinaryPayload
+        {
+            Data = string.Empty,
+            Size = cached.Size,
+            Sha256 = cached.Sha256
+        };
+        return true;
+    }
+
+    public static string ComputeSha256Hex(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        var hash = SHA256.HashData(stream);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    public static bool LocalFileMatchesManifest(string filePath, PlanerWorkspaceBinaryPayload manifest)
+    {
+        if (!File.Exists(filePath) || manifest.Size <= 0)
+        {
+            return false;
+        }
+
+        var info = new FileInfo(filePath);
+        if (info.Length != manifest.Size)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(manifest.Sha256))
+        {
+            return true;
+        }
+
+        return string.Equals(ComputeSha256Hex(filePath), manifest.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
     public static int ApplyFromSync(
@@ -114,12 +186,23 @@ public static class PlanerAnnouncementRawSoundsWorkspace
 
         foreach (var (fileName, payload) in incoming)
         {
-            if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(payload.Data))
+            if (string.IsNullOrWhiteSpace(fileName))
             {
                 continue;
             }
 
             if (!EmbeddedSoundCatalog.IsAudioFile(fileName))
+            {
+                continue;
+            }
+
+            if (payload.IsExternalReference)
+            {
+                keep.Add(fileName.Trim());
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(payload.Data))
             {
                 continue;
             }

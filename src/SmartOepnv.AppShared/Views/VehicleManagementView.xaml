@@ -7,11 +7,12 @@
              xmlns:vm="clr-namespace:SmartOepnv.AppShared.ViewModels"
              VerticalAlignment="Stretch"
              HorizontalAlignment="Stretch"
-             Foreground="White"
-             TextElement.Foreground="White">
+             Foreground="{DynamicResource SmartForegroundBrush}"
+             TextElement.Foreground="{DynamicResource SmartForegroundBrush}">
     <UserControl.Resources>
         <conv:InspectionDateConverter x:Key="InspectionDateConverter" />
         <conv:VehicleInspectionBrushConverter x:Key="VehicleInspectionBrushConverter" />
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <Style x:Key="VehicleMgmtSaveButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="{StaticResource SmartAccentBrush}" />
@@ -25,8 +26,8 @@
             </Style.Triggers>
         </Style>
         <Style x:Key="VehicleMgmtDeleteButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SmartForegroundBrush}" />
             <Setter Property="Background" Value="Transparent" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding DeleteButtonState}" Value="{x:Static vm:VehicleManagementButtonState.Success}">
@@ -37,7 +38,7 @@
             </Style.Triggers>
         </Style>
         <Style x:Key="VehicleMgmtTabItemStyle" TargetType="TabItem">
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Padding" Value="16,10" />
             <Setter Property="Margin" Value="0,0,4,0" />
@@ -59,8 +60,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="TabHeaderBorder" Property="Background" Value="{StaticResource SmartAccentBrush}" />
-                                <Setter Property="Foreground" Value="White" />
+                                <Setter TargetName="TabHeaderBorder" Property="Background" Value="{DynamicResource SmartPrimaryLightBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource SmartForegroundBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.5" />
@@ -71,7 +72,7 @@
             </Setter>
         </Style>
     </UserControl.Resources>
-    <TabControl Background="{StaticResource SmartPrimaryDarkBrush}"
+    <TabControl Background="{DynamicResource SmartPanelBrush}"
                 BorderThickness="0"
                 ItemContainerStyle="{StaticResource VehicleMgmtTabItemStyle}"
                 VerticalAlignment="Stretch">
@@ -96,6 +97,8 @@
                                         Command="{Binding AddVehicleCommand}"
                                         Style="{StaticResource MaterialDesignRaisedButton}"
                                         Foreground="White"
+                                        Background="{StaticResource SmartAccentBrush}"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
                                         Margin="0,0,0,4"
                                         Padding="12,4" />
                                 <Button Content="Auswahl löschen"
@@ -107,6 +110,16 @@
                                         Command="{Binding SaveChangesCommand}"
                                         Style="{StaticResource VehicleMgmtSaveButtonStyle}"
                                         Padding="12,4" />
+                                <Button Content="Einstellungen senden"
+                                        Command="{Binding SendRemoteSettingsCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Foreground="White"
+                                        Background="{StaticResource SmartAccentBrush}"
+                                        BorderBrush="{StaticResource SmartAccentBrush}"
+                                        Margin="0,4,0,0"
+                                        Padding="12,4"
+                                        Visibility="{Binding ShowRemoteSettingsSend, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                        ToolTip="Tablet-Einstellungen an das gewählte Fahrzeug senden (remote_settings_Telefonnummer.json)." />
                             </StackPanel>
                             <ListBox ItemsSource="{Binding Vehicles}"
                                      SelectedItem="{Binding SelectedVehicle}"

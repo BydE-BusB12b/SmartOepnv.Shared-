@@ -137,6 +137,22 @@ public sealed class PlannerPackageVersionStore
         return snapshots;
     }
 
+    /// <summary>Nur Metadaten – PackageJson bleibt leer (liegt in workspace/versions/).</summary>
+    public IReadOnlyList<PlannerPackageVersionSnapshotData> ExportSnapshotsMetadataOnly()
+    {
+        var index = LoadIndex();
+        return index.Select(info => new PlannerPackageVersionSnapshotData
+        {
+            Id = info.Id,
+            Label = info.Label,
+            SavedAtUtc = info.SavedAtUtc,
+            ByteSize = info.ByteSize,
+            RouteCount = info.RouteCount,
+            PackageTimestampMs = info.PackageTimestampMs,
+            PackageJson = string.Empty
+        }).ToList();
+    }
+
     /// <summary>
     /// Für Dropbox-Export: unveränderte Snapshots aus der letzten Workspace-Datei wiederverwenden
     /// (vermeidet erneutes Einlesen großer JSON-Dateien beim Beenden).

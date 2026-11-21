@@ -25,6 +25,7 @@ internal static class PlanerWorkspaceContentCompare
         score += document.VehicleDispositionAssignments.Count * 3;
         score += document.DriverDispositionAssignments?.Count ?? 0;
         score += document.SevSignDrafts.Count * 5;
+        score += (document.MitteilungDrafts?.Count ?? 0) * 4;
         score += (document.DutyTemplates?.Count ?? 0) * 20;
         score += document.PackageVersionSnapshots.Count * 10;
         score += document.AnnouncementRawSounds.Count * 4;

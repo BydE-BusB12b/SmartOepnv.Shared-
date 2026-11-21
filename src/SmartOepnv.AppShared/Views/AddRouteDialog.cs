@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using SmartOepnv.Core.Dienstvorlagen;
 using SmartOepnv.Core.RoutePackage;
+using SmartOepnv.AppShared.Helpers;
 
 namespace SmartOepnv.AppShared.Views;
 
@@ -10,60 +11,200 @@ public sealed class AddRouteDialog : Window
 {
     private static readonly Brush InputBackground = Brushes.White;
     private static readonly Brush InputForeground = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
-    private static readonly Brush LabelForeground = Brushes.White;
+    private static Brush LabelForeground => UiTheme.ForegroundBrush;
 
     private readonly TextBox _routeNameBox;
+    private readonly TextBox _chainNameBox;
+    private readonly TextBox _orderNumberBox;
+    private readonly int _sequenceNumber;
     private readonly TextBox _lineCourseBox;
     private readonly TextBox _tripNumberBox;
     private readonly TextBox _passengerLineBox;
     private readonly TextBlock _errorText;
+    private readonly CheckBox _itcsRouteListCheck;
+    private readonly CheckBox _mainDeviceOnlyCheck;
     private readonly List<CheckBox> _operatingDayChecks = [];
+    private readonly TextBox _dateFromBox;
+    private readonly TextBox _dateToBox;
+    private readonly TextBox _operatingDatesBox;
+    private readonly IDictionary<string, RouteDateRange> _dateRangesByRoute;
+    private readonly IDictionary<string, HashSet<DateOnly>> _operatingDatesByRoute;
     private bool _formattingLineCourse;
 
     public RouteDefinition? ResultDefinition { get; private set; }
     public IReadOnlyList<DutyOperatingDay> ResultOperatingDays { get; private set; } = [];
+    public RouteDateRange? ResultDateRange { get; private set; }
+    public IReadOnlyList<DateOnly> ResultOperatingDates { get; private set; } = [];
     public string? CopyStopsFromRouteKey { get; private set; }
+    public string? EditingRouteKey { get; }
+    public bool ResultItcsRouteListEnabled { get; private set; }
+    public bool ResultMainDeviceOnly { get; private set; }
+    public string ResultOrderNumber { get; private set; } = string.Empty;
+    public string ResultChainName { get; private set; } = string.Empty;
+    public int ResultSequenceNumber { get; private set; }
 
-    public AddRouteDialog(EditableRoutePackage package, RouteDefinition? initial = null, string? copyFromRouteKey = null)
-        : this(package.RouteNames.ToList(), package.RouteOperatingDaysByRoute, initial, copyFromRouteKey)
+    private static string ChainNameOf(EditableRoutePackage package, string? routeKey)
+    {
+        if (string.IsNullOrWhiteSpace(routeKey))
+        {
+            return string.Empty;
+        }
+
+        var own = package.GetRouteChainIdentity(routeKey).Name;
+        if (!string.IsNullOrWhiteSpace(own))
+        {
+            return own.Trim();
+        }
+
+        var chain = RouteChainPlanner.BuildConnectedRouteChain(package, routeKey);
+        return chain
+            .Select(key => package.GetRouteChainIdentity(key).Name)
+            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name))
+            ?.Trim() ?? string.Empty;
+    }
+
+    public AddRouteDialog(EditableRoutePackage package, RouteDefinition? initial = null, string? copyFromRouteKey = null, string? editingRouteKey = null)
+        : this(
+            package.RouteNames.ToList(),
+            package.RouteOperatingDaysByRoute,
+            package.RouteDateRangesByRoute,
+            package.RouteOperatingDatesByRoute,
+            initial,
+            copyFromRouteKey,
+            editingRouteKey,
+            editingRouteKey is not null && package.IsRouteInItcsRouteList(editingRouteKey),
+            editingRouteKey is not null && package.IsRouteMainDeviceOnly(editingRouteKey),
+            editingRouteKey is null
+                ? string.Empty
+                : package.GetRouteChainIdentity(editingRouteKey).OrderNumber,
+            editingRouteKey is null
+                ? package.PeekNextChainSequenceNumber()
+                : package.GetRouteChainIdentity(editingRouteKey).SequenceNumber,
+            ChainNameOf(package, editingRouteKey))
     {
     }
 
     public AddRouteDialog(
         IReadOnlyList<string> existingRoutes,
         IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute,
+        IDictionary<string, RouteDateRange> dateRangesByRoute,
+        IDictionary<string, HashSet<DateOnly>> operatingDatesByRoute,
         RouteDefinition? initial = null,
-        string? copyFromRouteKey = null)
+        string? copyFromRouteKey = null,
+        string? editingRouteKey = null,
+        bool initialItcsRouteListEnabled = false,
+        bool initialMainDeviceOnly = false,
+        string? initialOrderNumber = null,
+        int initialSequenceNumber = 0,
+        string? initialChainName = null)
     {
-        Title = "Neue Route hinzufügen";
-        Width = 460;
-        MinWidth = 420;
+        _dateRangesByRoute = dateRangesByRoute;
+        _operatingDatesByRoute = operatingDatesByRoute;
+        EditingRouteKey = string.IsNullOrWhiteSpace(editingRouteKey) ? null : editingRouteKey.Trim();
+        var isEdit = EditingRouteKey is not null;
+
+        Title = isEdit ? "Route bearbeiten" : "Neue Route hinzufügen";
+        Width = 920;
+        MinWidth = 860;
+        MinHeight = 480;
+        MaxHeight = SystemParameters.WorkArea.Height * 0.92;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
-        Background = new SolidColorBrush(Color.FromRgb(0x0A, 0x16, 0x28));
+        ResizeMode = ResizeMode.CanResize;
+        Background = UiTheme.BackgroundBrush;
 
-        initial ??= new RouteDefinition(string.Empty);
+        initial ??= isEdit && EditingRouteKey is not null
+            ? RouteDisplayHelper.Parse(EditingRouteKey)
+            : new RouteDefinition(string.Empty);
         CopyStopsFromRouteKey = copyFromRouteKey;
 
-        var root = new StackPanel { Margin = new Thickness(24) };
-        root.Children.Add(new TextBlock
+        var shell = new DockPanel { Margin = new Thickness(24) };
+        shell.Children.Add(new TextBlock
         {
-            Text = "Neue Route hinzufügen",
+            Text = isEdit ? "Route bearbeiten" : "Neue Route hinzufügen",
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
             Foreground = LabelForeground,
             Margin = new Thickness(0, 0, 0, 16)
         });
+        DockPanel.SetDock(shell.Children[^1], Dock.Top);
 
-        root.Children.Add(MakeLabel("Routenname"));
-        _routeNameBox = MakeInput("Routenname (z.B. Hamburg/Berlin)", initial.Name);
-        root.Children.Add(_routeNameBox);
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        var cancel = new Button { Content = "Abbrechen", MinWidth = 100, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
+        var add = new Button { Content = isEdit ? "Speichern" : "Hinzufügen", MinWidth = 110, IsDefault = true };
+        cancel.Click += (_, _) => { DialogResult = false; Close(); };
+        add.Click += (_, _) => ConfirmSave(existingRoutes, operatingDaysByRoute);
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(add);
+        shell.Children.Add(buttons);
+        DockPanel.SetDock(buttons, Dock.Bottom);
 
-        root.Children.Add(MakeLabel("Linie/Kurs"));
+        _errorText = new TextBlock
+        {
+            Foreground = Brushes.IndianRed,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8),
+            Visibility = Visibility.Collapsed
+        };
+        shell.Children.Add(_errorText);
+        DockPanel.SetDock(_errorText, Dock.Bottom);
+
+        _sequenceNumber = initialSequenceNumber;
+        var form = new StackPanel();
+        var nameRow = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(180) });
+
+        var nameColumn = new StackPanel();
+        nameColumn.Children.Add(MakeLabel("Routenname"));
+        _routeNameBox = MakeInput("Routenname (z.B. Neuss Hbf > Kaarster See)", initial.Name);
+        nameColumn.Children.Add(_routeNameBox);
+        Grid.SetColumn(nameColumn, 0);
+        nameRow.Children.Add(nameColumn);
+
+        var orderColumn = new StackPanel();
+        orderColumn.Children.Add(MakeLabel("Auftragsnummer"));
+        _orderNumberBox = MakeInput("Auftragsnummer", initialOrderNumber ?? string.Empty);
+        orderColumn.Children.Add(_orderNumberBox);
+        Grid.SetColumn(orderColumn, 2);
+        nameRow.Children.Add(orderColumn);
+
+        var sequenceColumn = new StackPanel();
+        sequenceColumn.Children.Add(MakeLabel("Fortlaufende Nummer"));
+        var sequenceBox = MakeInput(
+            string.Empty,
+            RouteChainIdentityEditor.FormatSequenceNumber(_sequenceNumber));
+        sequenceBox.IsReadOnly = true;
+        sequenceBox.ToolTip = "Wird automatisch vergeben. Beim Routenwechsel übernimmt die Folgefahrt diese Nummer.";
+        sequenceColumn.Children.Add(sequenceBox);
+        Grid.SetColumn(sequenceColumn, 4);
+        nameRow.Children.Add(sequenceColumn);
+        form.Children.Add(nameRow);
+
+        form.Children.Add(MakeLabel("Name der Routenschnur"));
+        form.Children.Add(new TextBlock
+        {
+            Text = "Nur für den Kalender. Die Routenliste bleibt unverändert. Verknüpfte Fahrten übernehmen den Namen, die Auftragsnummer wird angehängt.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        _chainNameBox = MakeInput("z. B. Umleitung Hbf", initialChainName ?? string.Empty);
+        form.Children.Add(_chainNameBox);
+
+        form.Children.Add(MakeLabel("Linie/Kurs"));
         _lineCourseBox = MakeInput(string.Empty, initial.LineCourse);
         _lineCourseBox.TextChanged += (_, _) => FormatLineCourseField();
-        root.Children.Add(_lineCourseBox);
+        form.Children.Add(_lineCourseBox);
 
         var split = new Grid { Margin = new Thickness(0, 0, 0, 8) };
         split.ColumnDefinitions.Add(new ColumnDefinition());
@@ -83,12 +224,12 @@ public sealed class AddRouteDialog : Window
         right.Children.Add(_passengerLineBox);
         Grid.SetColumn(right, 2);
         split.Children.Add(right);
-        root.Children.Add(split);
+        form.Children.Add(split);
 
-        root.Children.Add(MakeLabel("Verkehrstage"));
-        root.Children.Add(new TextBlock
+        form.Children.Add(MakeLabel("Verkehrstage"));
+        form.Children.Add(new TextBlock
         {
-            Text = "Gleiche Linie/Kurs + Fahrt nur einmal pro Tag · Betriebstag 00:01–03:59 Folgetag",
+            Text = "Gleiche Linie/Kurs + Fahrt nur einmal pro Tag · Betriebstag 03:00–02:59 Folgetag",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
             FontSize = 11,
@@ -108,42 +249,99 @@ public sealed class AddRouteDialog : Window
             _operatingDayChecks.Add(check);
             dayWrap.Children.Add(check);
         }
-        root.Children.Add(dayWrap);
+        form.Children.Add(dayWrap);
+        if (isEdit)
+        {
+            ApplyOperatingDaysToChecks(
+                RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, EditingRouteKey!));
+        }
+
+        form.Children.Add(MakeLabel("Gültigkeit (optional)"));
+        form.Children.Add(new TextBlock
+        {
+            Text = "Kalenderdatum von/bis – leer = unbegrenzt (TT.MM.JJJJ)",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        var dateGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        _dateFromBox = MakeInput("Datum von (TT.MM.JJJJ)", string.Empty);
+        _dateToBox = MakeInput("Datum bis (TT.MM.JJJJ)", string.Empty);
+        Grid.SetColumn(_dateFromBox, 0);
+        Grid.SetColumn(_dateToBox, 2);
+        dateGrid.Children.Add(_dateFromBox);
+        dateGrid.Children.Add(_dateToBox);
+        form.Children.Add(dateGrid);
+        form.Children.Add(MakeLabel("Einzelne Betriebstage (optional)"));
+        form.Children.Add(new TextBlock
+        {
+            Text = "Mehrere Tage kommagetrennt, z. B. 28.07, 30.07 oder 10.08-14.08, 17.08-19.08 – " +
+                   "Route nur an diesen Tagen sichtbar (zusätzlich zu Verkehrstagen und von/bis). Leer = alle Tage im Zeitraum.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        _operatingDatesBox = MakeInput("z. B. 28.07, 30.07.2026, 31.07, 07.08", string.Empty);
+        _operatingDatesBox.AcceptsReturn = false;
+        form.Children.Add(_operatingDatesBox);
+        if (isEdit)
+        {
+            ApplyDateRangeToFields(
+                RouteDateRangeEditor.GetRangeForRoute(_dateRangesByRoute, EditingRouteKey!));
+            ApplyOperatingDatesToField(
+                RouteOperatingDatesEditor.GetDatesForRoute(_operatingDatesByRoute, EditingRouteKey!));
+        }
+
+        _itcsRouteListCheck = new CheckBox
+        {
+            Content = "In ITCS-Routenliste (Route wählen)",
+            IsChecked = initialItcsRouteListEnabled,
+            Foreground = LabelForeground,
+            Margin = new Thickness(0, 4, 0, 4)
+        };
+        form.Children.Add(_itcsRouteListCheck);
+        _mainDeviceOnlyCheck = new CheckBox
+        {
+            Content = "Route nur für Hauptnutzergeräte",
+            IsChecked = initialMainDeviceOnly,
+            Foreground = LabelForeground,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+        form.Children.Add(_mainDeviceOnlyCheck);
+        form.Children.Add(new TextBlock
+        {
+            Text = "Hauptnutzer-Routen sind auf Mitarbeitergeräten weder in der ITCS-Routenliste noch in der Linie/Kurs-Suche sichtbar.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xDE, 0xFB)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 8)
+        });
 
         var copyButton = new Button
         {
             Content = "Route kopieren",
             MinHeight = 36,
             Margin = new Thickness(0, 4, 0, 8),
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Visibility = isEdit ? Visibility.Collapsed : Visibility.Visible
         };
         copyButton.Click += (_, _) => PickRouteToCopy(existingRoutes, operatingDaysByRoute);
-        root.Children.Add(copyButton);
+        form.Children.Add(copyButton);
 
-        _errorText = new TextBlock
+        var scroll = new ScrollViewer
         {
-            Foreground = Brushes.IndianRed,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 8),
-            Visibility = Visibility.Collapsed
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = form
         };
-        root.Children.Add(_errorText);
+        shell.Children.Add(scroll);
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 8, 0, 0)
-        };
-        var cancel = new Button { Content = "Abbrechen", MinWidth = 100, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
-        var add = new Button { Content = "Hinzufügen", MinWidth = 110, IsDefault = true };
-        cancel.Click += (_, _) => { DialogResult = false; Close(); };
-        add.Click += (_, _) => ConfirmAdd(existingRoutes, operatingDaysByRoute);
-        buttons.Children.Add(cancel);
-        buttons.Children.Add(add);
-        root.Children.Add(buttons);
-
-        Content = root;
+        Content = shell;
         Loaded += (_, _) => _routeNameBox.Focus();
     }
 
@@ -151,10 +349,9 @@ public sealed class AddRouteDialog : Window
         IReadOnlyList<string> existingRoutes,
         IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute)
     {
-        var routes = existingRoutes
-            .Where(r => !string.IsNullOrWhiteSpace(r))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(r => r, StringComparer.OrdinalIgnoreCase)
+        var routes = RouteDisplayHelper.SortRoutesByLineCourseAndTrip(
+                existingRoutes.Where(r => !string.IsNullOrWhiteSpace(r)))
+            .Select(key => new RouteCopyPickItem(key))
             .ToList();
         if (routes.Count == 0)
         {
@@ -175,6 +372,7 @@ public sealed class AddRouteDialog : Window
         };
         var grid = new Grid { Margin = new Thickness(20) };
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
@@ -183,14 +381,61 @@ public sealed class AddRouteDialog : Window
             Text = "Quellroute wählen – Haltestellen werden in die neue Route übernommen.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = LabelForeground,
-            Margin = new Thickness(0, 0, 0, 12)
+            Margin = new Thickness(0, 0, 0, 8)
         };
         Grid.SetRow(hint, 0);
         grid.Children.Add(hint);
 
-        var list = new ListBox { ItemsSource = routes };
-        Grid.SetRow(list, 1);
+        var searchBox = new TextBox
+        {
+            Margin = new Thickness(0, 0, 0, 10),
+            MinHeight = 32,
+            Padding = new Thickness(8, 4, 8, 4),
+            Background = InputBackground,
+            Foreground = InputForeground,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5)),
+            BorderThickness = new Thickness(1),
+            ToolTip = "Suche (Name, Linie/Kurs, Fahrt…)"
+        };
+        // Platzhalter über Tag + leeren Start – sichtbarer Hinweis als Label darüber
+        var searchLabel = new TextBlock
+        {
+            Text = "Suche (Name, Linie/Kurs, Fahrt…)",
+            Foreground = LabelForeground,
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+        var searchPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 0) };
+        searchPanel.Children.Add(searchLabel);
+        searchPanel.Children.Add(searchBox);
+        Grid.SetRow(searchPanel, 1);
+        grid.Children.Add(searchPanel);
+
+        var list = new ListBox
+        {
+            ItemsSource = routes,
+            DisplayMemberPath = nameof(RouteCopyPickItem.Display)
+        };
+        Grid.SetRow(list, 2);
         grid.Children.Add(list);
+
+        void ApplyRouteFilter()
+        {
+            var query = (searchBox.Text ?? string.Empty).Trim();
+            if (query.Length == 0)
+            {
+                list.ItemsSource = routes;
+                return;
+            }
+
+            list.ItemsSource = routes
+                .Where(item =>
+                    item.Display.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    item.Key.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        searchBox.TextChanged += (_, _) => ApplyRouteFilter();
 
         var btns = new StackPanel
         {
@@ -204,15 +449,17 @@ public sealed class AddRouteDialog : Window
         ok.Click += (_, _) => picker.DialogResult = true;
         btns.Children.Add(cancel);
         btns.Children.Add(ok);
-        Grid.SetRow(btns, 2);
+        Grid.SetRow(btns, 3);
         grid.Children.Add(btns);
         picker.Content = grid;
+        picker.Loaded += (_, _) => searchBox.Focus();
 
-        if (picker.ShowDialog() != true || list.SelectedItem is not string selected)
+        if (picker.ShowDialog() != true || list.SelectedItem is not RouteCopyPickItem selectedItem)
         {
             return;
         }
 
+        var selected = selectedItem.Key;
         CopyStopsFromRouteKey = selected;
         var parsed = RouteDisplayHelper.Parse(selected);
         _routeNameBox.Text = parsed.Name;
@@ -221,10 +468,18 @@ public sealed class AddRouteDialog : Window
         _passengerLineBox.Text = parsed.PassengerDisplayLine;
         ApplyOperatingDaysToChecks(
             RouteOperatingDaysEditor.GetDaysForRoute(operatingDaysByRoute, selected));
-        ShowError($"Haltestellen werden von „{selected}“ kopiert – bitte neue Fahrtnummer und Verkehrstage setzen.");
+        ApplyDateRangeToFields(RouteDateRangeEditor.GetRangeForRoute(_dateRangesByRoute, selected));
+        ApplyOperatingDatesToField(RouteOperatingDatesEditor.GetDatesForRoute(_operatingDatesByRoute, selected));
+        ShowError($"Haltestellen werden von „{selectedItem.Display}“ kopiert – bitte neue Fahrtnummer, Verkehrstage und Gültigkeit setzen.");
     }
 
-    private void ConfirmAdd(
+    private sealed class RouteCopyPickItem(string key)
+    {
+        public string Key { get; } = key;
+        public string Display { get; } = RouteDisplayHelper.ToLineCourseTripFirstDisplayString(key);
+    }
+
+    private void ConfirmSave(
         IReadOnlyList<string> existingRoutes,
         IDictionary<string, HashSet<DutyOperatingDay>> operatingDaysByRoute)
     {
@@ -248,25 +503,56 @@ public sealed class AddRouteDialog : Window
         var passengerLine = _passengerLineBox.Text.Trim();
         var definition = new RouteDefinition(name, lineCourse, tripNumber, passengerLine);
         var displayKey = RouteDisplayHelper.ToDisplayStringWithOperatingDays(definition, selectedDays);
+        if (!RouteDateRange.TryParse(_dateFromBox.Text, _dateToBox.Text, out var candidateDateRange))
+        {
+            ShowError("Ungültiges Datum – bitte TT.MM.JJJJ verwenden (von ≤ bis).");
+            return;
+        }
 
-        if (existingRoutes.Contains(displayKey, StringComparer.Ordinal))
+        if (!RouteOperatingDatesEditor.TryParseDateList(
+                _operatingDatesBox.Text,
+                out var candidateOperatingDates,
+                out var datesError))
+        {
+            ShowError(datesError ?? "Ungültige Betriebstage.");
+            return;
+        }
+
+        var routesToCheck = EditingRouteKey is null
+            ? existingRoutes
+            : existingRoutes
+                .Where(route => !RouteDisplayHelper.RouteKeysMatch(route, EditingRouteKey))
+                .ToList();
+
+        if (routesToCheck.Contains(displayKey, StringComparer.Ordinal))
         {
             ShowError("Route schon vorhanden.");
             return;
         }
 
-        if (RouteDisplayHelper.HasOperatingDayConflict(
-                existingRoutes,
+        if (RouteDisplayHelper.HasRouteScheduleConflict(
+                routesToCheck,
                 operatingDaysByRoute,
+                _dateRangesByRoute,
                 definition,
-                selectedDays))
+                selectedDays,
+                candidateDateRange,
+                _operatingDatesByRoute,
+                candidateOperatingDates))
         {
-            ShowError("Route schon vorhanden (Linie/Kurs, Fahrt und Verkehrstag überschneiden sich).");
+            ShowError("Route schon vorhanden (Linie/Kurs, Fahrt, Verkehrstag und/oder Datumsbereich überschneiden sich).");
             return;
         }
 
         ResultDefinition = definition;
         ResultOperatingDays = selectedDays.ToList();
+        ResultDateRange = candidateDateRange.IsRestricted ? candidateDateRange : null;
+        ResultOperatingDates = candidateOperatingDates;
+        ResultItcsRouteListEnabled = _itcsRouteListCheck.IsChecked == true;
+        ResultMainDeviceOnly = _mainDeviceOnlyCheck.IsChecked == true;
+        ResultOrderNumber = _orderNumberBox.Text.Trim();
+        ResultChainName = _chainNameBox.Text.Trim();
+        ResultSequenceNumber = _sequenceNumber;
         DialogResult = true;
         Close();
     }
@@ -290,6 +576,15 @@ public sealed class AddRouteDialog : Window
             }
         }
     }
+
+    private void ApplyDateRangeToFields(RouteDateRange range)
+    {
+        _dateFromBox.Text = range.From is { } from ? RouteDateRange.FormatDate(from) : string.Empty;
+        _dateToBox.Text = range.To is { } to ? RouteDateRange.FormatDate(to) : string.Empty;
+    }
+
+    private void ApplyOperatingDatesToField(IReadOnlyCollection<DateOnly> dates) =>
+        _operatingDatesBox.Text = RouteOperatingDatesEditor.FormatDisplay(dates);
 
     private void FormatLineCourseField()
     {

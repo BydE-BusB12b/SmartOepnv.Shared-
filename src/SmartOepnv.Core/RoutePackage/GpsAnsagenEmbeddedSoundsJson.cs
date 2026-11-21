@@ -31,6 +31,13 @@ public static class GpsAnsagenEmbeddedSoundsJson
             return;
         }
 
+        // Schnellpfad: Menge + vorhandene Base64 unverändert → kein Rebuild (spart bei großen Paketen Sekunden)
+        if (root["embeddedSounds"] is JsonObject existingObj &&
+            EmbeddedSoundSetMatches(existingObj, names))
+        {
+            return;
+        }
+
         var existing = ReadAllEntries(root);
         var output = new JsonObject();
 
@@ -59,6 +66,40 @@ public static class GpsAnsagenEmbeddedSoundsJson
         {
             PlanerEmbeddedSoundsWorkspace.PruneUnreferencedFiles(workspace, names);
         }
+    }
+
+    private static bool EmbeddedSoundSetMatches(JsonObject existingObj, IReadOnlyList<string> requiredNames)
+    {
+        if (existingObj.Count != requiredNames.Count)
+        {
+            return false;
+        }
+
+        foreach (var name in requiredNames)
+        {
+            if (existingObj[name] is not JsonObject soundObj)
+            {
+                return false;
+            }
+
+            var data = JsonNodeReading.GetString(soundObj["data"]);
+            if (string.IsNullOrWhiteSpace(data))
+            {
+                data = JsonNodeReading.GetString(soundObj["soundData"]);
+            }
+
+            if (string.IsNullOrWhiteSpace(data))
+            {
+                data = JsonNodeReading.GetString(soundObj["audioData"]);
+            }
+
+            if (string.IsNullOrWhiteSpace(data))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static IReadOnlyDictionary<string, (string Base64, int Size)> ReadAllEntries(JsonObject root)

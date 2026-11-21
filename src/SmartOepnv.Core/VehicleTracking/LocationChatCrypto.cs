@@ -56,4 +56,17 @@ public static class LocationChatCrypto
         var payloadJson = DecryptLocationUpdateMessage(messageField);
         return JsonDocument.Parse(payloadJson);
     }
+
+    public static string EncryptLocationUpdateMessage(string payloadJson)
+    {
+        var keyBytes = Encoding.UTF8.GetBytes(AppKey);
+        using var aes = Aes.Create();
+        aes.Mode = CipherMode.ECB;
+        aes.Padding = PaddingMode.PKCS7;
+        aes.Key = keyBytes;
+        using var encryptor = aes.CreateEncryptor();
+        var plain = Encoding.UTF8.GetBytes(payloadJson);
+        var cipher = encryptor.TransformFinalBlock(plain, 0, plain.Length);
+        return Prefix + Convert.ToBase64String(cipher);
+    }
 }

@@ -12,9 +12,9 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Border Grid.Row="0" Background="{StaticResource SmartPrimaryDarkBrush}" Padding="16,12">
+        <Border Grid.Row="0" Background="{DynamicResource SmartPanelBrush}" Padding="16,12">
             <TextBlock Text="Melden Sie sich mit Ihrem Dropbox-Konto an (Haupt- oder freigegebenes Konto)."
-                       Foreground="White" TextWrapping="Wrap" />
+                       Foreground="{DynamicResource SmartForegroundBrush}" TextWrapping="Wrap" />
         </Border>
         <wv2:WebView2 x:Name="OAuthWebView" Grid.Row="1" />
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="12">

@@ -17,6 +17,11 @@ public sealed class SevSignDraft
 
     public string Destination { get; set; } = string.Empty;
 
+    /// <summary>Nur Variante 2; leer = erste Haltestelle beim PDF.</summary>
+    public string StartStation { get; set; } = string.Empty;
+
+    public SevDestinationVariant DestinationVariant { get; set; } = SevDestinationVariant.DestinationOnly;
+
     public List<string> Stops { get; set; } = [];
 
     public List<SevOperatorKind> Operators { get; set; } = [SevOperatorKind.RegioBahn];

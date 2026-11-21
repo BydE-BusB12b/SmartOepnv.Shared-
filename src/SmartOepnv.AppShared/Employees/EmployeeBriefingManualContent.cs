@@ -30,6 +30,8 @@ internal static class EmployeeBriefingManualContent
             • „Route suchen…“ filtert die Liste; „Sortieren“ ändert die Reihenfolge.
             • Die Anzahl gefundener Routen wird unter dem Suchfeld angezeigt.
             • Tippen Sie die richtige Fahrt an – die Haltestellenliste und Zielanzeige werden geladen.
+            • Oben in der Statuszeile werden Linie/Kurs, Routenname und Ziel: angezeigt.
+            • Ist an der Starthaltestelle kein Ziel hinterlegt, steht dort „Ziel: Kein Ziel“ (niederländisch: „Doel: Geen doel“).
             • „ABBRECHEN“ schließt den Dialog ohne Auswahl; bei unbekannter Linie/Kurs erscheint „Keine Route verfügbar“.
             • Wählen Sie vor jeder Fahrt die korrekte Linie/Kurs-Kombination und Fahrt aus. Standardmäßig erfolgt der Routenwechsel bei geplanten Fahrten automatisch.
             """,
@@ -40,8 +42,12 @@ internal static class EmployeeBriefingManualContent
             "3. ITCS – Fahren und Linienbetrieb",
             """
             • Die ITCS-Seite ist Ihre Hauptansicht im Linienbetrieb: Haltestellenfolge, Linie/Kurs und Statushinweise (siehe Abbildungen unten).
+            • In der Kopfzeile sehen Sie Linie/Kurs, Routenname und Ziel: – ohne hinterlegtes Starthaltestellenziel erscheint „Ziel: Kein Ziel“.
             • Pas.-Info: rot „off“ = Fahrgastinformation und Ansagen aktiv, grün „on“ = deaktiviert – vor Fahrtantritt einschalten, wenn vorgesehen.
             • IBIS-USB in der Statuszeile: rot = nicht verbunden, grün = verbunden, blau blinkend = sendet gerade IBIS-Daten.
+            • Statuszeile – Symbol „Laden“ (weißes Stecker-Symbol neben dem Akkustand): Das Gerät wird am Stromnetz geladen. Ohne Stecker sehen Sie nur den Akkustand in Prozent.
+            • Statuszeile – Symbol „Bluetoothverbindung“ (Bluetooth-Zeichen mit Lautsprecher, weiß): Bluetooth-Audio bzw. Fahrgastraum-Lautsprecher ist verbunden; Ansagen und Durchsagen können darüber ausgegeben werden. Fehlt das Symbol, ist keine Bluetooth-Audioverbindung aktiv.
+            • Gelber Kreis neben dem Netz-/Empfangssymbol in der Statuszeile: Synchronisation bzw. Routen-Update läuft (z. B. neues Fahrzeugupdate). Währenddessen die App nicht beenden und warten, bis das Symbol wieder verschwindet.
             • Die aktuelle Haltestelle ist gelb umrandet; ausfallende Haltestellen erscheinen rot mit X.
             • Symbol mit Fragezeichen in der Statuszeile: Route wurde verlassen – fehlt die Linienführung oder gibt es Fehler, diese bitte über Mängelmeldung melden oder an die Planung wenden.
             • Wählen Sie vor Abfahrt Linie/Kurs und Fahrt aus – Ablauf in Abschnitt 2; prüfen Sie Zielanzeige und Fahrtrichtung.
@@ -50,10 +56,10 @@ internal static class EmployeeBriefingManualContent
             • Bei Störungen oder Unklarheiten wenden Sie sich an die Leitstelle – schnelle Meldungen über „Mail“ (Abschnitt 9).
             """,
             [
-                new BriefingImage("ITCS – Pas.-Info aus", "briefing_itcs_pasinfo_off.png"),
+                new BriefingImage("ITCS – Pas.-Info an", "briefing_itcs_pasinfo_on.png"),
                 new BriefingImage(
-                    "ITCS – Pas.-Info an, ausfallende und aktuelle Haltestelle, Route verlassen",
-                    "briefing_itcs_pasinfo_on.png")
+                    "ITCS – Pas.-Info aus, ausfallende und aktuelle Haltestelle, Route verlassen",
+                    "briefing_itcs_pasinfo_off.png")
             ]),
         new BriefingSection(
             "4. Pas.Info, Ansagen und Fahrgastinformation",
@@ -116,6 +122,7 @@ internal static class EmployeeBriefingManualContent
             • Die Pause aktivieren Sie im Hauptmenü über den roten Button „Pause“ (siehe Abbildung unten).
             • Die App wird sofort gesperrt; oben erscheint der Hinweis „App pausiert – Passwort erforderlich“.
             • Während der Pause bleiben Sie angemeldet – auch wenn der Bildschirm ausgeschaltet wird oder die App in den Hintergrund wechselt.
+            • Schließen Sie die App und öffnen sie erneut, ist die Pause ebenfalls aktiv: Zum Fortfahren müssen Sie die Pause mit Ihrem eigenen Anmeldepasswort entsperren.
             • Zum Fortfahren „Pause beenden“: Ihr Anmeldepasswort über das Ziffernfeld eingeben und „OK“ bestätigen.
             • „Löschen“ entfernt die letzte Eingabe; bei falschem Passwort erneut versuchen.
             • „Zwangsabmelden“ beendet die Anmeldung vollständig – nur nutzen, wenn Sie das Passwort vergessen haben oder den Dienst beenden möchten.
@@ -142,9 +149,9 @@ internal static class EmployeeBriefingManualContent
     ];
 }
 
-internal sealed record BriefingImage(string Caption, string AssetFileName);
+public sealed record BriefingImage(string Caption, string AssetFileName);
 
-internal sealed record BriefingSection(
+public sealed record BriefingSection(
     string Title,
     string Body,
     IReadOnlyList<BriefingImage>? Images = null);

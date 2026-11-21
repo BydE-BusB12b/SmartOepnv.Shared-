@@ -10,8 +10,8 @@
         Width="480"
         MinWidth="420"
         Background="{StaticResource SmartBackgroundBrush}"
-        Foreground="White"
-        TextElement.Foreground="White">
+        Foreground="{DynamicResource SmartForegroundBrush}"
+        TextElement.Foreground="{DynamicResource SmartForegroundBrush}">
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -23,7 +23,7 @@
                    Text="Planer schließen"
                    FontSize="20"
                    FontWeight="SemiBold"
-                   Foreground="White"
+                   Foreground="{DynamicResource SmartForegroundBrush}"
                    TextWrapping="Wrap" />
 
         <TextBlock Grid.Row="1"
@@ -31,27 +31,27 @@
                    FontSize="13"
                    LineHeight="20"
                    TextWrapping="Wrap"
-                   Foreground="White"
+                   Foreground="{DynamicResource SmartForegroundBrush}"
                    Opacity="0.88"
                    Text="Soll der Arbeitsstand vor dem Schließen nach Dropbox gespeichert werden?&#x0a;&#x0a;Zum Testen können Sie auch ohne Speichern schließen – lokale Änderungen bleiben dann nur auf diesem PC." />
 
         <StackPanel Grid.Row="2">
             <Button Content="Speichern &amp; schließen"
                     IsDefault="True"
-                    Foreground="White"
+                    Foreground="{DynamicResource SmartForegroundBrush}"
                     Style="{StaticResource MaterialDesignRaisedButton}"
                     Padding="16,8"
                     Margin="0,0,0,8"
                     Click="SaveAndClose_Click" />
             <Button Content="Ohne Speichern schließen"
-                    Foreground="White"
+                    Foreground="{DynamicResource SmartForegroundBrush}"
                     Style="{StaticResource MaterialDesignOutlinedButton}"
                     Padding="16,8"
                     Margin="0,0,0,8"
                     Click="CloseWithoutSave_Click" />
             <Button Content="Abbrechen"
                     IsCancel="True"
-                    Foreground="White"
+                    Foreground="{DynamicResource SmartForegroundBrush}"
                     Style="{StaticResource MaterialDesignOutlinedButton}"
                     Padding="16,8"
                     Click="Cancel_Click" />

@@ -11,10 +11,42 @@ namespace SmartOepnv.AppShared.Views;
 public partial class RoutesView : UserControl
 {
     private bool _openingStopDialog;
+    private bool _suppressChainTripPick;
 
     public RoutesView()
     {
         InitializeComponent();
+    }
+
+    private void ChainRow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.DataContext is not string head || DataContext is not RoutesViewModel vm)
+        {
+            return;
+        }
+
+        var trips = vm.TripsInChain(head);
+        _suppressChainTripPick = true;
+        ChainTripList.ItemsSource = trips;
+        ChainTripList.SelectedIndex = -1;
+        _suppressChainTripPick = false;
+
+        ChainTripPopup.PlacementTarget = button;
+        ChainTripPopup.Width = Math.Max(240, button.ActualWidth);
+        ChainTripPopup.IsOpen = true;
+        vm.RouteListSelection = head;
+        e.Handled = true;
+    }
+
+    private void ChainTripList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressChainTripPick || ChainTripList.SelectedItem is not string trip || DataContext is not RoutesViewModel vm)
+        {
+            return;
+        }
+
+        ChainTripPopup.IsOpen = false;
+        vm.SelectChainTrip(trip);
     }
 
     private void StopsList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -40,7 +72,6 @@ public partial class RoutesView : UserControl
             return;
         }
 
-        vm.SelectedStop = stop;
         OpenStopEditDialog(vm, stop);
     }
 
@@ -57,7 +88,12 @@ public partial class RoutesView : UserControl
         {
             owner = Window.GetWindow(this);
             var dialog = new RouteStopEditDialog(vm, stop) { Owner = owner };
-            dialog.ShowDialog();
+            var saved = dialog.ShowDialog() == true;
+            if (saved)
+            {
+                vm.RefreshStopAfterEdit(stop);
+            }
+
             CollectionViewSource.GetDefaultView(vm.Stops)?.Refresh();
         }
         catch (Exception ex)

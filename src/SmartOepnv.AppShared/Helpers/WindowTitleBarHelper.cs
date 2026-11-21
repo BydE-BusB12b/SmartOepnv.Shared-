@@ -9,15 +9,18 @@ namespace SmartOepnv.AppShared.Helpers;
 /// <summary>Windows-Titelleiste an Smart-ÖPNV-Statusleiste (SmartPrimaryDark) anpassen.</summary>
 public static class WindowTitleBarHelper
 {
-    private static readonly SolidColorBrush DarkWindowBackground = CreateFrozenBrush(0x0A, 0x10, 0x20);
+    public static bool IsLightTheme { get; set; }
 
-    /// <summary>SmartBackgroundColor (#0A1020) – vor InitializeComponent setzen, kein weißer Aufblitzer.</summary>
+    private static readonly SolidColorBrush DarkWindowBackground = CreateFrozenBrush(0x0A, 0x10, 0x20);
+    private static readonly SolidColorBrush LightWindowBackground = CreateFrozenBrush(0xF5, 0xFA, 0xFF);
+
+    /// <summary>SmartBackground – vor InitializeComponent setzen, kein Aufblitzer.</summary>
     public static void ApplyDarkWindowBackground(Window window)
     {
-        window.Background = DarkWindowBackground;
+        window.Background = IsLightTheme ? LightWindowBackground : DarkWindowBackground;
     }
 
-    /// <summary>Zeigt Fenster sichtbar und aktiviert es – dunkler Hintergrund verhindert den weißen Aufblitzer.</summary>
+    /// <summary>Zeigt Fenster sichtbar und aktiviert es – Hintergrund verhindert den Aufblitzer.</summary>
     public static void ShowWhenContentReady(Window window)
     {
         ApplyDarkWindowBackground(window);
@@ -45,6 +48,10 @@ public static class WindowTitleBarHelper
 
     // SmartPrimaryDarkColor #FF002171 → COLORREF 0x00BBGGRR
     private const int SmartPrimaryDarkColorRef = 0x00712100;
+    // Hell: hellblau Caption #BBDEFB → 0x00FBDEBB
+    private const int SmartLightCaptionColorRef = 0x00FBDEBB;
+    // Dunkelblau Text #002171
+    private const int SmartDarkTextColorRef = 0x00712100;
 
     public static void ApplySmartOepnvTitleBar(Window window)
     {
@@ -59,14 +66,14 @@ public static class WindowTitleBarHelper
             return;
         }
 
-        var darkMode = 1;
+        var darkMode = IsLightTheme ? 0 : 1;
         _ = DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
         _ = DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkModeBefore20H1, ref darkMode, sizeof(int));
 
-        var captionColor = SmartPrimaryDarkColorRef;
+        var captionColor = IsLightTheme ? SmartLightCaptionColorRef : SmartPrimaryDarkColorRef;
         _ = DwmSetWindowAttribute(hwnd, DwmwaCaptionColor, ref captionColor, sizeof(int));
 
-        var textColor = 0x00FFFFFF;
+        var textColor = IsLightTheme ? SmartDarkTextColorRef : 0x00FFFFFF;
         _ = DwmSetWindowAttribute(hwnd, DwmwaTextColor, ref textColor, sizeof(int));
     }
 

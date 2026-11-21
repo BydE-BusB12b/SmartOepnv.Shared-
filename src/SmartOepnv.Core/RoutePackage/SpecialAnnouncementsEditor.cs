@@ -22,7 +22,8 @@ public static class SpecialAnnouncementsEditor
         AnnouncementSoundFileResolver.ApplyResolvedFileNames(templates, root, workspace);
 
         var active = templates
-            .Where(t => t.IncludeInSpecialAnnouncements)
+            .Where(t => t.IncludeInSpecialAnnouncements &&
+                        !StartStopGreetingResolver.MatchesAnyGreetingTemplate(t))
             .ToList();
 
         if (active.Count == 0)
@@ -58,7 +59,8 @@ public static class SpecialAnnouncementsEditor
                 ["id"] = t.Id,
                 ["name"] = name,
                 ["isEmbedded"] = true,
-                ["fileName"] = fileName
+                ["fileName"] = fileName,
+                ["audioOutput"] = AnnouncementAudioOutput.Normalize(t.AudioOutput)
             };
 
             if (sounds.TryGetValue(fileName, out var audio))

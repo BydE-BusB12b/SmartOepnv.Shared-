@@ -98,6 +98,7 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
             ItemsSource = _filtered,
             BorderThickness = new Thickness(1)
         };
+        MergedAnnouncementUiHighlight.ApplyToListBox(availableList);
         availableList.MouseDoubleClick += (_, _) => AddSelectedFromAvailable(availableList);
         DockPanel.SetDock(availableList, Dock.Bottom);
         availablePanel.Children.Add(availableList);
@@ -109,6 +110,7 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
             ItemsSource = _selected,
             BorderThickness = new Thickness(1)
         };
+        MergedAnnouncementUiHighlight.ApplyToListBox(selectedList);
         selectedList.MouseDoubleClick += (_, _) => RemoveFromSelected(selectedList);
 
         var moveButtons = new StackPanel
@@ -280,10 +282,17 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
         IEnumerable<string> source = _allNames;
         if (!string.IsNullOrWhiteSpace(query))
         {
-            source = _allNames.Where(n => EmbeddedSoundSearch.Matches(
-                n,
-                query,
-                _searchHintsByFileName.GetValueOrDefault(n)));
+            source = _allNames
+                .Select(n => (
+                    Name: n,
+                    Score: EmbeddedSoundSearch.Score(
+                        n,
+                        query,
+                        _searchHintsByFileName.GetValueOrDefault(n))))
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Name);
         }
 
         foreach (var name in source)
@@ -308,6 +317,8 @@ public sealed class EmbeddedSoundMultiPickerDialog : Window
         var count = filteredCount ?? _filtered.Count;
         _status.Text = count == 0
             ? $"Keine Treffer für „{query}“"
-            : $"{_selected.Count} gewählt{suffix} · {count} von {_allNames.Count} Treffern";
+            : count == 1
+                ? $"{_selected.Count} gewählt{suffix} · 1 Treffer"
+                : $"{_selected.Count} gewählt{suffix} · {count} Treffer";
     }
 }

@@ -5,7 +5,10 @@ namespace SmartOepnv.AppShared.Models;
 public enum AnnouncementSequenceEntryKind
 {
     Audio,
-    Pause
+    Pause,
+    Line,
+    Nach,
+    RouteEndDestination
 }
 
 public partial class AnnouncementAudioSequenceItem : ObservableObject
@@ -20,15 +23,24 @@ public partial class AnnouncementAudioSequenceItem : ObservableObject
 
     [ObservableProperty] private double pauseSeconds = 0.5;
 
-    public string ListLabel => Kind switch
-    {
-        AnnouncementSequenceEntryKind.Pause => $"Pause {PauseSeconds:0.###} s",
-        _ => string.IsNullOrWhiteSpace(DisplayName) ? "Tondatei" : DisplayName
-    };
+    [ObservableProperty] private string sequenceNote = string.Empty;
+
+    public string ListLabel =>
+        (Kind switch
+        {
+            AnnouncementSequenceEntryKind.Pause => $"Pause {PauseSeconds:0.###} s",
+            AnnouncementSequenceEntryKind.Line => "Linie (aus Route)",
+            AnnouncementSequenceEntryKind.Nach => "Nach",
+            AnnouncementSequenceEntryKind.RouteEndDestination => "Endhaltestelle (Ziel)",
+            _ => string.IsNullOrWhiteSpace(DisplayName) ? "Tondatei" : DisplayName
+        })
+        + (string.IsNullOrWhiteSpace(SequenceNote) ? string.Empty : $"  ·  {SequenceNote}");
 
     partial void OnPauseSecondsChanged(double value) => OnPropertyChanged(nameof(ListLabel));
 
     partial void OnDisplayNameChanged(string value) => OnPropertyChanged(nameof(ListLabel));
+
+    partial void OnSequenceNoteChanged(string value) => OnPropertyChanged(nameof(ListLabel));
 
     public AnnouncementAudioSequenceItem Clone() => new()
     {

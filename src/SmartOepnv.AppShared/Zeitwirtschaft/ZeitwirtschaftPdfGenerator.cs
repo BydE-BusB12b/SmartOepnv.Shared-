@@ -22,15 +22,16 @@ public static class ZeitwirtschaftPdfGenerator
         var monthLabel = new DateTime(year, month, 1)
             .ToString("MMMM yyyy", CultureInfo.GetCultureInfo("de-DE"));
         var totalDuration = ZeitwirtschaftMergeService.SumDurationHhMm(rows);
+        var totalPause = ZeitwirtschaftMergeService.SumPauseMinutesHhMm(rows);
         var created = DateTime.Now;
 
         Document.Create(document =>
         {
             document.Page(page =>
             {
-                page.Size(PageSizes.A4);
+                page.Size(PageSizes.A4.Landscape());
                 page.Margin(36);
-                page.DefaultTextStyle(x => x.FontSize(10).FontColor(Colors.Black));
+                page.DefaultTextStyle(x => x.FontSize(9).FontColor(Colors.Black));
 
                 page.Header().Element(header =>
                     PlanerPdfBranding.ComposeHeaderWithSmartLogo(header, left =>
@@ -50,19 +51,23 @@ public static class ZeitwirtschaftPdfGenerator
                     table.ColumnsDefinition(columns =>
                     {
                         columns.RelativeColumn(1.4f);
-                        columns.RelativeColumn(2.2f);
-                        columns.RelativeColumn(2.2f);
-                        columns.ConstantColumn(64);
-                        columns.ConstantColumn(64);
+                        columns.RelativeColumn(1.6f);
+                        columns.RelativeColumn(1.6f);
+                        columns.RelativeColumn(1.5f);
+                        columns.ConstantColumn(70);
+                        columns.ConstantColumn(72);
+                        columns.RelativeColumn(2.4f);
                     });
 
                     table.Header(header =>
                     {
-                        header.Cell().Element(CellHeader).Text("Fahrzeug");
+                        header.Cell().Element(CellHeader).Text("Ort");
                         header.Cell().Element(CellHeader).Text("Kommen");
                         header.Cell().Element(CellHeader).Text("Gehen");
+                        header.Cell().Element(CellHeader).Text("Pause");
                         header.Cell().Element(CellHeader).Text("Arbeitszeit");
                         header.Cell().Element(CellHeader).Text("Lohnstunden");
+                        header.Cell().Element(CellHeader).Text("Hinweis");
                     });
 
                     foreach (var row in rows)
@@ -70,8 +75,10 @@ public static class ZeitwirtschaftPdfGenerator
                         table.Cell().Element(CellBody).Text(row.VehicleDisplayName);
                         table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Kommen));
                         table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Gehen));
+                        table.Cell().Element(CellBody).Element(c => WritePauseCell(c, row));
                         table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Arbeitszeit));
                         table.Cell().Element(CellBody).Element(c => WriteCell(c, row, row.Lohnstunden));
+                        table.Cell().Element(CellBody).Text(row.Hinweis);
                     }
 
                     if (rows.Count > 0)
@@ -79,17 +86,51 @@ public static class ZeitwirtschaftPdfGenerator
                         table.Cell().Element(CellTotal).Text("Gesamtsumme");
                         table.Cell().Element(CellTotal).Text(string.Empty);
                         table.Cell().Element(CellTotal).Text(string.Empty);
+                        table.Cell().Element(CellTotal).Text(totalPause);
                         table.Cell().Element(CellTotal).Text(totalDuration);
                         table.Cell().Element(CellTotal).Text(totalDuration);
+                        table.Cell().Element(CellTotal).Text(string.Empty);
                     }
                 });
             });
         }).GeneratePdf(outputPath);
     }
 
-    private static void WriteCell(IContainer container, ZeitwirtschaftTimeTableRow row, string text)
+    private static void WritePauseCell(IContainer container, ZeitwirtschaftTimeTableRow row)
     {
-        var display = text.Replace('\n', ' ').Trim();
+        if (row.PauseLines.Count == 0)
+        {
+            container.Text(row.Pause);
+            return;
+        }
+
+        container.Text(text =>
+        {
+            for (var i = 0; i < row.PauseLines.Count; i++)
+            {
+                if (i > 0)
+                {
+                    text.Span("\n");
+                }
+
+                var line = row.PauseLines[i];
+                var span = text.Span(line.Text);
+                if (row.IsVoided)
+                {
+                    span.Strikethrough();
+                }
+
+                if (line.Ignored)
+                {
+                    span.FontColor(Colors.Orange.Darken2);
+                }
+            }
+        });
+    }
+
+    private static void WriteCell(IContainer container, ZeitwirtschaftTimeTableRow row, string text, bool keepLineBreaks = false)
+    {
+        var display = keepLineBreaks ? text.Trim() : text.Replace('\n', ' ').Trim();
         if (!row.IsVoided)
         {
             container.Text(display);

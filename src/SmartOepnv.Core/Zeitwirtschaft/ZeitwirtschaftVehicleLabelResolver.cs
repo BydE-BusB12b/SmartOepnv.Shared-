@@ -52,6 +52,29 @@ public static class ZeitwirtschaftVehicleLabelResolver
         return phone;
     }
 
+    /// <summary>
+    /// Kennzeichen aus der Fahrzeugliste. Leer, wenn die Nummer dort keinem Fahrzeug gehört.
+    /// Der Typ hinter dem Namen bleibt draußen, der Ort zeigt nur das Kennzeichen.
+    /// </summary>
+    public static string? TryVehicleName(string? phone, IReadOnlyDictionary<string, string>? labelMap)
+    {
+        if (string.IsNullOrWhiteSpace(phone) || labelMap is null)
+        {
+            return null;
+        }
+
+        var key = RegisteredVehiclesEditor.NormalizePhoneKey(phone);
+        if (key.Length == 0 || !labelMap.ContainsKey(key))
+        {
+            return null;
+        }
+
+        var label = Resolve(phone, labelMap).Trim();
+        var split = label.Split(" – ", 2, StringSplitOptions.None);
+        var name = split[0].Trim();
+        return name.Length == 0 ? null : name;
+    }
+
     private static IEnumerable<string> CollectPhoneKeys(RegisteredVehicleItem vehicle)
     {
         var keys = new HashSet<string>(StringComparer.Ordinal);

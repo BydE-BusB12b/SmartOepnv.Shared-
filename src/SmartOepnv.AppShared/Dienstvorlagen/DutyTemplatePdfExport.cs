@@ -24,6 +24,20 @@ public static class DutyTemplatePdfExport
         out IReadOnlyList<DutyTemplateRow> rows,
         out string dutyNumber)
     {
+        if (template.IsSplitShift && part == 1)
+        {
+            rows = template.Rows.Concat(template.Part2Rows).ToList();
+            dutyNumber = template.DutyNumber;
+            return rows.Count > 0 && !string.IsNullOrWhiteSpace(dutyNumber);
+        }
+
+        if (template.IsSplitShift)
+        {
+            rows = [];
+            dutyNumber = string.Empty;
+            return false;
+        }
+
         rows = part switch
         {
             3 => template.Part3Rows,

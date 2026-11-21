@@ -1,0 +1,8 @@
+﻿SW Tastentöne aktivieren checked=true bounds=[502,159][1417,206]
+SW Bluetooth-Zwangskopplung checked=true bounds=[502,238][1417,285]
+SW Hauptgerät-Modus checked=true bounds=[502,351][1417,398]
+SW Automatische Routen-Öffnung checked=true bounds=[502,430][1417,477]
+SW Nachtmodus checked=false bounds=[502,509][1417,556]
+SW Verkauf aktiv checked=true bounds=[502,588][1417,635]
+SW Status- und Navigationsleiste ausblenden checked=true bounds=[502,701][1417,748]
+SW Automatisch bei GPS-Betrieb checked=true bounds=[502,762][1417,809]

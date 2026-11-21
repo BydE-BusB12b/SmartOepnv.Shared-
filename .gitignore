@@ -4,10 +4,16 @@ obj/
 .vs/
 *.user
 *.suo
-
-# NuGet
-packages/
+.pio/
+.pioenvs/
 
 # OS
 Thumbs.db
 Desktop.ini
+
+# NuGet
+packages/
+
+# Python
+__pycache__/
+*.pyc

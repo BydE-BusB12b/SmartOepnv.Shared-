@@ -1,0 +1,40 @@
+Idee für spätere IP-Monitore, zuerst am Pi prüfbar.
+Stand 15.11.2026. Designwahl nach dem Start ist im Pi-Programm.
+Die fertigen Hintergründe S, RE und RB fehlen noch.
+
+Farbe und Liveticker sollen aus dem Kurs kommen, nicht aus einer eigenen Design-Datei.
+Salmi macht das im Routen-Editor mit Parametern. Ein gespeicherter Kurs soll für jede Anzeige reichen.
+
+Was die Anzeige daraus malt:
+- Oben links die Farbe. Beim SEV nennt Salmi Typ 37, dann wird das Feld pink.
+  In der Kursdatei RE19_12_MBauKo 308_SEV.json steht bei Fahrgastfahrten transportType 20, bei Dienstfahrten 99.
+  Typ 37 steht in dieser Datei nicht.
+- Unten ein Liveticker. Im Kurs ist das onlineTickerEnabled. tickerText ist dort leer, der Text kommt von außen.
+- Eine eigene Umsteigeseite. Der Text kommt aus transferInfo, zum Beispiel Bussteig 5.
+  Bei der Lawo sitzt das als Feld rechts unter der Uhr. Bei uns ist es eine eigene Seite.
+
+IBIS-IP nach VDV 301 bleibt XML mit Linie, Ziel und Halten. Die App schickt heute keinen Ticker und keine Farbe.
+Der Pi bleibt die Anzeige und sucht die App. Er vergibt keine Adressen.
+
+Prüfung am Pi: nach dem Start die Designseite.
+NEW ist das bisherige Gorba-Bild, zwei Seiten.
+Monitor ist das eigene Bild mit drei Seiten. Die Haltestellenseite ist wie NEW aufgebaut, in Weiß, Grün und Blau: Linie und Uhr oben, Ziel groß, darunter eine große Haltestelle mit dem runden Zeichen. Die Umsteigeseite hat oben die Spalten Linie, Richtung, Abfahrt und Steig und unten dieselbe AdditionalInformation-Zeile. Die Verlaufsseite ist gezeichnet: Grün, Blau und Weiß, oben Linie, Ziel, Datum und Uhrzeit, sechs Halte. Links ein leicht gebogener Pfeil von unten nach oben, oben weiter rechts als unten, ohne zurückzuschwingen. An jeder Haltestelle das Haltestellenzeichen, nach oben kleiner. Die Schrift der Perlenschnur ist fett. Die aktuelle Haltestelle steht unten größer im hohen orangefarbenen Rahmen, die darüber werden jeweils etwas kleiner. Darunter steht AdditionalInformation. Passt der Text in die Zeile, bleibt er stehen, sonst läuft er von rechts nach links. Ohne Text steht info@smart-oepnv.de. Die Hintergründe S, RE und RB fehlen noch.
+Solange keine Entfernung zum Halt ankommt, wechseln bei Monitor alle drei Seiten, damit sie sichtbar sind.
+Kommt die Meldung, dass der Halt nah ist, bleiben nur Haltestelle und Umsteigen. Der Verlauf kommt zurück, wenn der 120-m-Radius verlassen ist.
+Die Verlaufsseite ist das gezeichnete Standardbild. S, RE und RB kommen später als eigene Bilder dazu. Die NEW-Bilder der Gorba bleiben bei der Gorba-Anzeige.
+Der Kurs wählt später den Hintergrund und einen Farbwert.
+Drei Seiten, nicht zwei wie bei NEW: Haltestelle, Verlauf, Umsteigen.
+Unterwegs wechseln Haltestelle und Verlauf.
+Kurz vor der Haltestelle kommt die Umsteigeseite dazu. Der Wechsel springt dann nur noch zwischen Haltestelle und Umsteigen.
+Der Verlauf bleibt aus, bis der 120-m-Radius der Haltestelle verlassen wurde.
+Linie, Ziel und Halte kommen weiter über die IBIS-IP-XML und werden auf das gewählte Bild geschrieben.
+
+Umsetzung, noch nicht gebaut:
+Die App kennt den Kurs. Der Pi liest die JSON nicht.
+In derselben XML stehen der Hintergrund (S, RE, RB oder Standard), der Farbwert, der Tickertext und die Umsteigeinfo.
+Der Pi legt das passende Bild hin und setzt den Farbwert. Eine Anzeige, die diese Felder nicht kennt, zeigt weiter nur Linie, Ziel und Halte.
+
+Beispiel RE19: Hintergrund RE, Farbwert der Fahrgastfahrt, Ticker an.
+Unterwegs Haltestelle und Verlauf. Kurz vor Duisburg nur noch Haltestelle und Umsteigen, Text aus transferInfo.
+Der Verlauf kommt wieder, wenn der 120-m-Radius verlassen ist.
+Dienstfahrt: Standardbild oder anderer Farbwert, Ticker aus, keine Umsteigeseite.

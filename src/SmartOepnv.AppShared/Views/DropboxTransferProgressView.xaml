@@ -9,7 +9,7 @@
                    TextAlignment="Center"
                    FontSize="12"
                    Opacity="0.85"
-                   Foreground="White"
+                   Foreground="{DynamicResource SmartForegroundBrush}"
                    Margin="0,0,0,8" />
         <ProgressBar x:Name="TransferProgressBar"
                      Minimum="0"
@@ -21,12 +21,12 @@
                        HorizontalAlignment="Left"
                        FontSize="13"
                        FontWeight="SemiBold"
-                       Foreground="White" />
+                       Foreground="{DynamicResource SmartForegroundBrush}" />
             <TextBlock x:Name="EtaText"
                        HorizontalAlignment="Right"
                        FontSize="12"
                        Opacity="0.85"
-                       Foreground="White" />
+                       Foreground="{DynamicResource SmartForegroundBrush}" />
         </Grid>
     </StackPanel>
 </UserControl>
